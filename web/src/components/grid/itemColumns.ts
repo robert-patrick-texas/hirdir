@@ -156,7 +156,17 @@ export function itemColumns(
   const named = (list: readonly string[]): Option[] =>
     list.map((value) => ({ value, label: value }));
   const columns: GridColumn<Item>[] = [
-    { id: "name", header: "Name", kind: "text", value: itemName, link: true, width: 220 },
+    {
+      id: "name",
+      header: "Name",
+      kind: "text",
+      value: itemName,
+      link: true,
+      width: 220,
+      // 0.9.6: it shows the name, or the host name where there is none: an export holds
+      // both, so that a file of the list as it first stands has the host name (P-204).
+      column: ["name", "hostname"],
+    },
     {
       id: "hostname",
       header: "Hostname",

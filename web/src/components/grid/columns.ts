@@ -205,8 +205,8 @@ export interface ColumnContext<T> {
   open: (row: T) => void;
   /** A path of the app as a link's `href`. */
   hrefOf: (path: string) => string;
-  /** Go to a path of the app without loading the app again. */
-  go: (path: string) => void;
+  /** Go to a path of the app without loading the app again, from the row of the cell. */
+  go: (path: string, row?: T) => void;
 }
 
 function linkRenderer<T>(context: ColumnContext<T>) {
@@ -256,7 +256,7 @@ function pathRenderer<T>(path: (row: T) => string | null | undefined, context: C
         event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
       if (!plainClick) return;
       event.preventDefault();
-      context.go(to);
+      context.go(to, params.data);
     });
     return link;
   };
@@ -309,7 +309,7 @@ function chipRenderer<T>(chip: NonNullable<GridColumn<T>["chip"]>, context: Colu
         event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
       if (!plainClick) return;
       event.preventDefault();
-      context.go(about.path);
+      context.go(about.path, params.data);
     });
     cell.append(link);
     if (about.note) {

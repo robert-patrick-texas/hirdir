@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { itemSearch, MAJOR_ONLY, offered, pickLabel } from "./pick";
+import {
+  entryLabel,
+  entrySearch,
+  entrySeen,
+  itemSearch,
+  MAJOR_ONLY,
+  offered,
+  pickLabel,
+  sawEntries,
+} from "./pick";
 
 describe("itemSearch", () => {
   it("is no search for blank text", () => {
@@ -58,5 +67,44 @@ describe("offered", () => {
     const found = [{ hid: "i-1" }, { hid: "i-2" }, { hid: "i-3" }];
     expect(offered(found, ["i-2"])).toEqual([{ hid: "i-1" }, { hid: "i-3" }]);
     expect(offered(found, [])).toHaveLength(3);
+  });
+});
+
+describe("entrySearch", () => {
+  it("is no search for blank text", () => {
+    expect(entrySearch("  ")).toBeNull();
+  });
+
+  it("looks for each word in the PID, the model name and the vendor's name", () => {
+    const where = (value: string) => ({
+      or: [
+        { field: "pid", op: "contains", value },
+        { field: "model_name", op: "contains", value },
+        { field: "vendor", op: "contains", value },
+      ],
+    });
+    expect(entrySearch("48P")).toEqual(where("48P"));
+    expect(entrySearch(" sample  48P ")).toEqual({ and: [where("sample"), where("48P")] });
+  });
+});
+
+describe("entryLabel", () => {
+  it("puts the vendor beside the PID, then the model", () => {
+    const vendor = { hid: "v-1", name: "Sample Networks" };
+    expect(entryLabel({ pid: "SN-48P", model_name: "Edge Switch", vendor })).toBe(
+      "SN-48P · Sample Networks · Edge Switch",
+    );
+    expect(entryLabel({ pid: "SN-48P", model_name: null, vendor: "Sample Networks" })).toBe(
+      "SN-48P · Sample Networks",
+    );
+  });
+});
+
+describe("sawEntries", () => {
+  it("keeps the entries a search offered, by HID", () => {
+    const entry = { hid: "e-1", pid: "SN-48P", vendor: { hid: "v-1", name: "Sample Networks" } };
+    expect(entrySeen("e-1")).toBeUndefined();
+    sawEntries([entry]);
+    expect(entrySeen("e-1")).toBe(entry);
   });
 });

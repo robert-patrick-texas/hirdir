@@ -1,6 +1,8 @@
 // The small lists that forms and filters offer, read from the server. A list a page
 // reads whole when it opens is read again, in the background, when the person comes
 // back to the tab (P-183), so that what was made meanwhile in another tab is offered.
+// 0.9.6: a list of a kind that can be long is chosen from by searching instead (P-200);
+// a list read whole is read to its end, past the first 1,000 (`whole`).
 
 import { useCallback, useRef } from "react";
 import { api } from "../api";
@@ -9,9 +11,10 @@ import { type Loaded, useLoad, useReloadOnReturn } from "./hooks";
 import { type Mark, markOf } from "./operators";
 import { ownerOptions } from "./owners";
 import type { Option } from "./patch";
+import { EVERY, whole } from "./whole";
 
-// The most rows the server lists at once.
-export const EVERY = 1000;
+export { EVERY, whole };
+
 // The least time between two reads of a list on coming back to the tab, in milliseconds.
 const RETURN_PAUSE = 5000;
 
@@ -65,8 +68,10 @@ export function useMoney(): string {
 /** The vendors a form may choose from, by name. */
 export function useVendorOptions(): Loaded<Option[]> {
   return useList("vendor-options", async (signal) => {
-    const page = await api.request("get", "/api/v1/vendors", { query: { limit: EVERY }, signal });
-    return page.items.map((vendor) => ({ value: vendor.hid, label: vendor.name }));
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/vendors", { query: { limit: EVERY, offset }, signal }),
+    );
+    return items.map((vendor) => ({ value: vendor.hid, label: vendor.name }));
   });
 }
 
@@ -76,19 +81,23 @@ export function useVendorOptions(): Loaded<Option[]> {
  */
 export function useOwnerOptions(): Loaded<Option[]> {
   return useList("owner-options", async (signal) => {
-    const page = await api.request("get", "/api/v1/owners", { query: { limit: EVERY }, signal });
-    return ownerOptions(page.items);
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/owners", { query: { limit: EVERY, offset }, signal }),
+    );
+    return ownerOptions(items);
   });
 }
 
 /** The contacts a place or an owner may be given, by name, with the address of each. */
 export function useContactOptions(turn = 0): Loaded<Option[]> {
   return useList(`contact-options ${turn}`, async (signal) => {
-    const page = await api.request("get", "/api/v1/contacts", {
-      query: { limit: EVERY, include_drafts: true },
-      signal,
-    });
-    return page.items.map((contact) => ({
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/contacts", {
+        query: { limit: EVERY, offset, include_drafts: true },
+        signal,
+      }),
+    );
+    return items.map((contact) => ({
       value: contact.hid,
       label: contact.email ? `${contact.name} (${contact.email})` : contact.name,
     }));
@@ -98,22 +107,26 @@ export function useContactOptions(turn = 0): Loaded<Option[]> {
 /** The regions a site or a region may be in, by path, drafts among them. */
 export function useRegions(turn = 0) {
   return useList(`regions ${turn}`, async (signal) => {
-    const page = await api.request("get", "/api/v1/regions", {
-      query: { limit: EVERY, include_drafts: true },
-      signal,
-    });
-    return [...page.items].sort((one, other) => one.path.localeCompare(other.path));
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/regions", {
+        query: { limit: EVERY, offset, include_drafts: true },
+        signal,
+      }),
+    );
+    return [...items].sort((one, other) => one.path.localeCompare(other.path));
   });
 }
 
 /** The regions a form may choose from, by path. */
 export function useRegionOptions(): Loaded<Option[]> {
   return useList("region-options", async (signal) => {
-    const page = await api.request("get", "/api/v1/regions", {
-      query: { limit: EVERY, sort: ["name"] },
-      signal,
-    });
-    return page.items
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/regions", {
+        query: { limit: EVERY, offset, sort: ["name"] },
+        signal,
+      }),
+    );
+    return items
       .map((region) => ({ value: region.hid, label: region.path }))
       .sort((one, other) => one.label.localeCompare(other.label));
   });
@@ -122,11 +135,13 @@ export function useRegionOptions(): Loaded<Option[]> {
 /** The sites a form may choose from, by path. */
 export function useSiteOptions(): Loaded<Option[]> {
   return useList("site-options", async (signal) => {
-    const page = await api.request("get", "/api/v1/sites", {
-      query: { limit: EVERY, sort: ["name"] },
-      signal,
-    });
-    return page.items
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/sites", {
+        query: { limit: EVERY, offset, sort: ["name"] },
+        signal,
+      }),
+    );
+    return items
       .map((site) => ({ value: site.hid, label: site.path }))
       .sort((one, other) => one.label.localeCompare(other.label));
   });
@@ -138,11 +153,13 @@ export function useSiteOptions(): Loaded<Option[]> {
  */
 export function useAgreementOptions(turn = 0): Loaded<Array<Option & { vendorHid: string }>> {
   return useList(`agreement-options ${turn}`, async (signal) => {
-    const page = await api.request("get", "/api/v1/agreements", {
-      query: { limit: EVERY, include_drafts: true },
-      signal,
-    });
-    return page.items.map((agreement) => ({
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/agreements", {
+        query: { limit: EVERY, offset, include_drafts: true },
+        signal,
+      }),
+    );
+    return items.map((agreement) => ({
       value: agreement.hid,
       label: `${agreement.name} (${agreement.vendor.name})`,
       vendorHid: agreement.vendor_hid,
@@ -153,22 +170,23 @@ export function useAgreementOptions(turn = 0): Loaded<Array<Option & { vendorHid
 /** The external systems, by name, retired ones among them: a registration may name one. */
 export function useSystems(turn = 0) {
   return useList(`systems ${turn}`, async (signal) => {
-    const page = await api.request("get", "/api/v1/external-systems", {
-      query: { limit: EVERY, include_drafts: true, include_archived: true },
-      signal,
-    });
-    return page.items;
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/external-systems", {
+        query: { limit: EVERY, offset, include_drafts: true, include_archived: true },
+        signal,
+      }),
+    );
+    return items;
   });
 }
 
 /** The catalog entries a form may choose from, by vendor and PID. */
 export function useEntryOptions(): Loaded<Option[]> {
   return useList("entry-options", async (signal) => {
-    const page = await api.request("get", "/api/v1/catalog-entries", {
-      query: { limit: EVERY },
-      signal,
-    });
-    return page.items.map((entry) => ({
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/catalog-entries", { query: { limit: EVERY, offset }, signal }),
+    );
+    return items.map((entry) => ({
       value: entry.hid,
       label: entry.model_name ? `${entry.pid} (${entry.model_name})` : entry.pid,
       group: entry.vendor.name,
@@ -179,19 +197,23 @@ export function useEntryOptions(): Loaded<Option[]> {
 /** The networks an address may be under, by label. */
 export function useNetworkOptions(turn = 0): Loaded<Option[]> {
   return useList(`network-options ${turn}`, async (signal) => {
-    const page = await api.request("get", "/api/v1/networks", { query: { limit: EVERY }, signal });
-    return page.items.map((network) => ({ value: network.hid, label: network.label }));
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/networks", { query: { limit: EVERY, offset }, signal }),
+    );
+    return items.map((network) => ({ value: network.hid, label: network.label }));
   });
 }
 
 /** The device groups another group may be nested in, by name, with the type of each. */
 export function useGroupOptions(): Loaded<Option[]> {
   return useList("group-options", async (signal) => {
-    const page = await api.request("get", "/api/v1/device-groups", {
-      query: { limit: EVERY, include_drafts: true },
-      signal,
-    });
-    return page.items.map((group) => ({
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/device-groups", {
+        query: { limit: EVERY, offset, include_drafts: true },
+        signal,
+      }),
+    );
+    return items.map((group) => ({
       value: group.hid,
       label: group.name,
       group: groupTypeLabel(group.type),
@@ -208,11 +230,13 @@ export function useOperatorMarks(wanted: boolean): Loaded<Map<string, Mark>> {
   return useLoad(`operator-marks ${wanted}`, async (signal) => {
     const marks = new Map<string, Mark>();
     if (!wanted) return marks;
-    const page = await api.request("get", "/api/v1/operators", {
-      query: { limit: EVERY, include_drafts: true, include_archived: true },
-      signal,
-    });
-    for (const operator of page.items) {
+    const items = await whole((offset) =>
+      api.request("get", "/api/v1/operators", {
+        query: { limit: EVERY, offset, include_drafts: true, include_archived: true },
+        signal,
+      }),
+    );
+    for (const operator of items) {
       const mark = markOf(operator);
       if (mark) marks.set(operator.hid, mark);
     }

@@ -31,7 +31,9 @@ export type FieldKind =
   /** A contact, found by searching for it by name or email. What the form holds is its HID. */
   | "contact"
   /** An operator, found by its label or by the person behind it. What the form holds is its HID. */
-  | "operator";
+  | "operator"
+  /** 0.9.6: a catalog entry, found by its PID, model name or vendor (P-200). Its HID. */
+  | "entry";
 
 export interface Option {
   value: string;

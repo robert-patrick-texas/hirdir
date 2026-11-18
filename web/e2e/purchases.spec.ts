@@ -34,6 +34,15 @@ const vendor = `Example Networks ${suffix}`;
 const pid = `EN-9300-24T-${suffix}`;
 // Another model of the vendor, and two items that are put on a second line by hand.
 const otherPid = `EN-9300-48T-${suffix}`;
+
+/** 0.9.6: a catalog entry is chosen by searching for it, here by its PID (P-200). */
+async function chooseEntry(form: Locator, pid: string) {
+  await form.getByLabel("Catalog entry").fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} ·`) })
+    .click();
+}
 const ofOtherModel = `site4-sw-${suffix}-x1`;
 const noModel = `site4-sw-${suffix}-x2`;
 // The reference of a request holds no slash: that separates it from the number of a line.
@@ -343,9 +352,7 @@ test("D-161: an item put on a line is of its model, and what 0.6.0 let in is mar
 
   // While it is on the line its model is not changed, and the form says so beside it.
   const details = region(page, "Details");
-  await details
-    .getByLabel("Catalog entry")
-    .selectOption({ label: `${otherPid} (Example 9300 48-port)` });
+  await chooseEntry(details, otherPid);
   await details.getByRole("button", { name: "Save" }).click();
   await expect(
     details.locator(".field-error", {

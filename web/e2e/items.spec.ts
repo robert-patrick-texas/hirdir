@@ -17,6 +17,15 @@ import { expectClean, mark, signIn, test, watch } from "./support";
 const suffix = mark("items");
 const vendor = `Example Networks ${suffix}`;
 const pid = `EN-4800-48P-${suffix}`;
+
+/** 0.9.6: a catalog entry is chosen by searching for it, here by its PID (P-200). */
+async function chooseEntry(form: Locator, pid: string) {
+  await form.getByLabel("Catalog entry").fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} ·`) })
+    .click();
+}
 const first = `site2-sw-access-${suffix}-01`;
 const second = `site2-sw-access-${suffix}-02`;
 
@@ -42,7 +51,7 @@ async function createItem(page: Page, hostname: string, serial: string, state: s
   await main(page).getByRole("link", { name: "Items" }).click();
   await page.getByRole("button", { name: "New item" }).click();
   const form = region(page, "New item");
-  await form.getByLabel("Catalog entry").selectOption({ label: pid });
+  await chooseEntry(form, pid);
   await form.getByLabel("Serial number").fill(serial);
   await form.getByLabel("Hostname").fill(hostname);
   if (state) await form.getByLabel("Lifecycle state").selectOption(state);

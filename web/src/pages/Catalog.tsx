@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { Created, createdState, useCreated } from "../components/Created";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Links } from "../components/Links";
@@ -15,7 +16,7 @@ import { itemsPath } from "../lib/filter";
 import { formatTime } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { useChoices, useEntryOptions, useTags, useVendorOptions, withCurrent } from "../lib/lists";
+import { useChoices, useTags, useVendorOptions, withCurrent } from "../lib/lists";
 import {
   CATALOG_KINDS,
   choiceFilterOptions,
@@ -188,12 +189,11 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
 /** The fields of a catalog entry, for the form that makes one and the form that changes one. */
 function entrySpecs(lists: {
   vendors: readonly Option[];
-  entries: readonly Option[];
   tags: readonly string[];
   choices: readonly Choice[] | undefined;
   entry: Entry | null;
 }): FieldSpec[] {
-  const { vendors, entries, tags, choices, entry } = lists;
+  const { vendors, tags, choices, entry } = lists;
   const labels = [...new Set([...tags, ...(entry?.tags ?? [])])];
   return [
     {
@@ -272,9 +272,9 @@ function entrySpecs(lists: {
     {
       name: "successor_hid",
       label: "Successor",
-      kind: "choice",
+      // 0.9.6: searched for, not a list of every model (P-200).
+      kind: "entry",
       blank: "No successor",
-      options: entries.filter((option) => option.value !== entry?.hid),
       hint: "The model that replaces this one",
     },
     { name: "review_status", label: "Review status", kind: "choice", options: REVIEW_STATUSES },
@@ -307,7 +307,12 @@ export function Catalog() {
         <NewEntry
           choices={choices.data}
           onCancel={() => setAdding(false)}
-          onCreated={(entry) => navigate(`/catalog/${encodeURIComponent(entry.hid)}`)}
+          onCreated={(entry) => {
+            const to = `/catalog/${encodeURIComponent(entry.hid)}`;
+            // 0.9.6: its page says it was created (P-204).
+            const name = `${entry.vendor.name} ${entry.pid}`;
+            navigate(to, { state: createdState({ kind: "Catalog entry", name, to }) });
+          }}
         />
       )}
       {choices.loading && <p role="status">Loading…</p>}
@@ -351,18 +356,16 @@ interface NewEntryProps {
 
 function NewEntry({ choices, onCancel, onCreated }: NewEntryProps) {
   const vendors = useVendorOptions();
-  const entries = useEntryOptions();
   const tags = useTags();
   const specs = useMemo(
     () =>
       entrySpecs({
         vendors: vendors.data ?? [],
-        entries: entries.data ?? [],
         tags: (tags.data ?? []).map((tag) => tag.label),
         choices,
         entry: null,
       }),
-    [vendors.data, entries.data, tags.data, choices],
+    [vendors.data, tags.data, choices],
   );
   return (
     <CreateForm<Schemas["CatalogEntryCreate"], Entry>
@@ -374,7 +377,7 @@ function NewEntry({ choices, onCancel, onCreated }: NewEntryProps) {
       onCancel={onCancel}
       submitLabel="Create catalog entry"
     >
-      <Problem error={vendors.error ?? entries.error ?? tags.error} />
+      <Problem error={vendors.error ?? tags.error} />
       {vendors.data?.length === 0 && (
         <p className="alert alert-info">
           There are no vendors yet. <Link to="/vendors">Create a vendor</Link> first.
@@ -394,6 +397,7 @@ export function CatalogEntryDetail() {
   );
   const choices = useChoices();
   const [done, setDone] = useState("");
+  const created = useCreated();
   const record = entry.data;
   useTitle(record ? `${record.vendor.name} ${record.pid}` : "Catalog entry");
 
@@ -416,6 +420,7 @@ export function CatalogEntryDetail() {
       <Problem error={entry.error} />
       <Problem error={choices.error} />
       <Notice text={done} />
+      <Created made={created} />
       {entry.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
@@ -565,18 +570,16 @@ interface EntryDetailsProps {
 
 function EntryDetails({ entry, choices, onSaved, onReload }: EntryDetailsProps) {
   const vendors = useVendorOptions();
-  const entries = useEntryOptions();
   const tags = useTags();
   const specs = useMemo(
     () =>
       entrySpecs({
         vendors: vendors.data ?? [],
-        entries: entries.data ?? [],
         tags: (tags.data ?? []).map((tag) => tag.label),
         choices,
         entry,
       }),
-    [vendors.data, entries.data, tags.data, choices, entry],
+    [vendors.data, tags.data, choices, entry],
   );
   const discount = entry.effective.stack_discount_pct;
   const hints = {
@@ -585,7 +588,7 @@ function EntryDetails({ entry, choices, onSaved, onReload }: EntryDetailsProps) 
       discount.source === "own" ? null : discount,
     )}`,
   };
-  const ready = !vendors.loading && !entries.loading && !tags.loading;
+  const ready = !vendors.loading && !tags.loading;
 
   return (
     <section aria-labelledby="details">
@@ -594,7 +597,7 @@ function EntryDetails({ entry, choices, onSaved, onReload }: EntryDetailsProps) 
         A change to a date or an amount here shows at once on every item of this model that has not
         set its own.
       </p>
-      <Problem error={vendors.error ?? entries.error ?? tags.error} />
+      <Problem error={vendors.error ?? tags.error} />
       {!ready && <p role="status">Loading…</p>}
       {ready && (
         <EditForm<Entry, Schemas["CatalogEntryPatch"]>

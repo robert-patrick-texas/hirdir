@@ -37,6 +37,16 @@ interface SearchProps extends PickFieldProps {
    * asked for, and how many times it was asked for again (P-184).
    */
   none?: (asked: string, again: number) => ReactNode;
+  /**
+   * 0.9.6: what else the field offers beneath what was found, as New item offers to add a
+   * model that the catalog does not have (P-201): given what was typed, whether a search
+   * found nothing, and a way to choose a record made there.
+   */
+  after?: (state: {
+    typed: string;
+    nothing: boolean;
+    choose: (option: Option) => void;
+  }) => ReactNode;
 }
 
 /**
@@ -49,7 +59,7 @@ interface SearchProps extends PickFieldProps {
  */
 export function PickField(props: SearchProps) {
   const { label, name, value, onChange, known = [], blank = "None", hint, error, disabled } = props;
-  const { noun, how, find, none } = props;
+  const { noun, how, find, none, after } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
   const { asked, again, askNow, forget } = useAsked(typed);
@@ -163,10 +173,15 @@ export function PickField(props: SearchProps) {
         )}
         {options.length > 0 && more > 0 && (
           <p className="hint">
-            {plural(more, `more ${noun[0]}`)} {more === 1 ? "matches" : "match"}. Type more to
-            narrow them down.
+            {plural(more, `more ${noun[0]}`, `more ${noun[1]}`)} {more === 1 ? "matches" : "match"}.
+            Type more to narrow them down.
           </p>
         )}
+        {after?.({
+          typed: typed.trim() || asked.trim(),
+          nothing: searching && Boolean(found.data) && options.length === 0,
+          choose,
+        })}
       </div>
     </div>
   );

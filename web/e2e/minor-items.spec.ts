@@ -47,11 +47,19 @@ const switchPid = `EN-9300-48P-${suffix}`;
 const supplyPid = `EN-PWR-715-${suffix}`;
 const modulePid = `EN-NM-8X-${suffix}`;
 // A catalog entry as a form offers it: its PID, and its model name beside it.
-const switchEntry = `${switchPid} (Example 9300 48-port)`;
 const supplyEntry = `${supplyPid} (Example 715 W supply)`;
 const moduleEntry = `${modulePid} (Example 8-port uplink module)`;
 const engineering = `Network Engineering ${suffix}`;
 const campus = `Campus Services ${suffix}`;
+
+/** 0.9.6: a catalog entry is chosen by searching for it, here by its PID (P-200). */
+async function chooseEntry(form: Locator, pid: string) {
+  await form.getByLabel("Catalog entry").fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} ·`) })
+    .click();
+}
 
 // S18: a switch and what is in it.
 const chassisPrefix = `site2-sw-acc-${suffix}`;
@@ -84,7 +92,7 @@ async function move(page: Page, to: string, reason: string) {
 async function addMinorItem(page: Page, entry: string, hostname: string, position: string) {
   await region(page, "Minor items").getByRole("button", { name: "Add a minor item" }).click();
   const form = region(page, "New minor item");
-  await form.getByLabel("Catalog entry").selectOption({ label: entry });
+  await chooseEntry(form, entry.split(" ")[0] ?? entry);
   await form.getByLabel("Serial number").fill(`${hostname}-sn`.toUpperCase());
   await form.getByLabel("Hostname").fill(hostname);
   await form.getByLabel("Position").fill(position);
@@ -158,7 +166,7 @@ test("S18: minor items have the owner and the standing of the item they are in",
   await main(page).getByRole("link", { name: "Items" }).click();
   await page.getByRole("button", { name: "New item" }).click();
   const newItem = region(page, "New item");
-  await newItem.getByLabel("Catalog entry").selectOption({ label: switchEntry });
+  await chooseEntry(newItem, switchPid);
   await newItem.getByLabel("Serial number").fill(`ENC${upper}01`);
   await newItem.getByLabel("Hostname").fill(chassis);
   await newItem.getByLabel("Owner").selectOption({ label: engineering });

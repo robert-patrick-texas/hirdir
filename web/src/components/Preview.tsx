@@ -15,7 +15,6 @@ import {
   appliedLabel,
   appliedText,
   changeText,
-  countsText,
   firstPage,
   isOutcome,
   isWorking,
@@ -55,20 +54,29 @@ function keyed(lines: readonly string[]): Array<{ key: string; line: string }> {
   });
 }
 
-/** How many rows of a job the preview found to create, to update, unchanged and rejected. */
+/**
+ * The order the rows of a job are in until a header is clicked: a file's, or for a bulk
+ * edit, which no file is behind, that of the items it changes (P-204).
+ */
+function inOrder(job: Job): string {
+  return job.source === "bulk" ? "in the order of the items" : "in the order of the file";
+}
+
+/**
+ * How many rows of a job the preview found to create, to update, unchanged and rejected.
+ * 0.9.6: a bulk edit creates nothing, and does not say it would (P-204).
+ */
 export function JobCounts({ job }: { job: Job }) {
-  const counts: Array<[name: string, label: string, count: number]> = [
+  const all: Array<[name: string, label: string, count: number]> = [
     ["created", "To create", job.created],
     ["updated", "To update", job.updated],
     ["unchanged", "Unchanged", job.unchanged],
     ["rejected", "Rejected", job.rejected],
   ];
+  const counts = job.source === "bulk" ? all.filter(([name]) => name !== "created") : all;
+  const said = counts.map(([, label, count]) => `${count} ${label.toLowerCase()}`).join(", ");
   return (
-    <dl
-      className="counts"
-      data-testid="preview-counts"
-      aria-label={`As previewed: ${countsText(job)}`}
-    >
+    <dl className="counts" data-testid="preview-counts" aria-label={`As previewed: ${said}`}>
       {counts.map(([name, label, count]) => (
         <div key={name} data-count={name} className={count > 0 ? undefined : "muted"}>
           <dt>{label}</dt>
@@ -198,7 +206,7 @@ export function PreviewRows({ job, preview, turn = 0 }: PreviewRowsProps) {
           <div className="scroll">
             <table className="preview-rows" data-testid="preview-rows">
               <caption className="visually-hidden">
-                What each row would do, in the order of the file until a header is clicked
+                What each row would do, {inOrder(job)} until a header is clicked
               </caption>
               <thead>
                 <tr>
@@ -382,7 +390,7 @@ export function LeftOutRows({ job, outcome, turn = 0 }: LeftOutRowsProps) {
           <div className="scroll">
             <table className="preview-rows">
               <caption className="visually-hidden">
-                {LEFT_OUT_TITLES[outcome]}, in the order of the file until a header is clicked
+                {LEFT_OUT_TITLES[outcome]}, {inOrder(job)} until a header is clicked
               </caption>
               <thead>
                 <tr>

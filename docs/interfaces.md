@@ -1737,7 +1737,9 @@ What 0.9.6 changes:
 - **Every form.** A field that offered every record of a kind as one list, where
   there can be many, is searched as it is typed in, as the Location field is: the
   catalog entry of New item and of an item's details, and the successor of a catalog
-  entry, among them (P-200). New item offers to add a model that the search does not
+  entry, among them: each word typed is looked for in the PID, the model name and the
+  vendor's name, those with the most items first, each offered with its vendor beside its
+  PID. A list that stays a list is read to its end, past the first 1,000 (P-200). New item offers to add a model that the search does not
   find, within the page, and keeps what was typed (P-201). What is typed into a form
   after its Save, while the page reads the record again, stays (P-202). A page that has
   made a record says so, with a link to it (P-204).
@@ -1805,6 +1807,12 @@ One grid component is used on every list page.
   creates an override; clearing an override returns it to inheriting.
 - Archived and retired records are hidden until "Include archived" is on, then greyed.
 - Column layout and the last filter are remembered per user in `localStorage`.
+- Where a list was left, how far it was scrolled and the row opened from it, is kept
+  for the tab in `sessionStorage`, by the grid. Coming back to the list by Back or by a
+  link, under the same filter, sort and switches, shows the same rows with that row
+  marked; a new filter or sort begins at the top, and a link that brings a filter of
+  its own shows it from the top. A browser that refuses the storage shows the list from
+  its top (P-203).
 
 Cell-range selection and editing in the grid are LATER.
 

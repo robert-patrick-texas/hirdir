@@ -58,3 +58,61 @@ export function pickLabel(item: Pickable): string {
 export function offered<T extends Pickable>(found: readonly T[], taken: readonly string[]): T[] {
   return found.filter((item) => !taken.includes(item.hid));
 }
+
+// 0.9.6: a catalog entry is chosen by searching for it (P-200). An inventory may hold
+// hundreds of models, so they are never listed whole in a form.
+
+/** What a search needs to know of a catalog entry to offer it. */
+export interface PickableEntry {
+  hid: string;
+  pid: string;
+  model_name?: string | null;
+  vendor: { hid: string; name: string };
+  record_status?: string;
+}
+
+// The most words of what was typed that are looked for.
+const MOST_WORDS = 6;
+
+/**
+ * The filter that finds catalog entries by what was typed: each word is looked for in the
+ * PID, the model name and the vendor's name, and every word must be found in one of them.
+ * Blank text is no search.
+ */
+export function entrySearch(typed: string): FilterNode | null {
+  const words = typed.trim().slice(0, LONGEST).split(/\s+/).filter(Boolean).slice(0, MOST_WORDS);
+  if (words.length === 0) return null;
+  return all(
+    ...words.map((value) =>
+      any(
+        { field: "pid", op: "contains", value },
+        { field: "model_name", op: "contains", value },
+        { field: "vendor", op: "contains", value },
+      ),
+    ),
+  );
+}
+
+/** A catalog entry as a search offers it: its PID with its vendor beside it, then its model. */
+export function entryLabel(entry: {
+  pid: string;
+  model_name?: string | null;
+  vendor: string | { name: string };
+}): string {
+  const vendor = typeof entry.vendor === "string" ? entry.vendor : entry.vendor.name;
+  return [entry.pid, vendor, entry.model_name ?? ""].filter(Boolean).join(" · ");
+}
+
+// The catalog entries a search has offered in this page, by HID: a form that names an
+// entry by its vendor and PID, as a bulk edit does, finds the one chosen here.
+const seen = new Map<string, PickableEntry>();
+
+/** Note the catalog entries a search offered, or one that was read or made. */
+export function sawEntries(entries: readonly PickableEntry[]): void {
+  for (const entry of entries) seen.set(entry.hid, entry);
+}
+
+/** A catalog entry a search has offered, by its HID. */
+export function entrySeen(hid: string): PickableEntry | undefined {
+  return seen.get(hid);
+}
