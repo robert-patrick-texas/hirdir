@@ -174,7 +174,7 @@ test("the box in the heading ticks the rows read so far, and shows all ticked on
   // A hundred of 130 are ticked: the box shows the half mark, not all ticked.
   await expect(all).not.toBeChecked();
   await expect.poll(half).toBe(true);
-  await expect(all).toHaveAccessibleName("Clear the 100 rows read so far");
+  await expect(all).toHaveAccessibleName("Clear the 100 rows ticked");
 
   // The second block is read as the list is scrolled to its end: its rows come unticked.
   await page
@@ -191,7 +191,149 @@ test("the box in the heading ticks the rows read so far, and shows all ticked on
   await expect(copy).toHaveText("Copy (130)");
   await expect(all).toBeChecked();
   await expect.poll(half).toBe(false);
+  await expect(all).toHaveAccessibleName("Clear the 130 rows ticked");
+
+  // Sorted, the list is read again from its top, a hundred rows; the 130 stay ticked, and
+  // the box says it clears the 130, as it does.
+  await page.getByRole("columnheader", { name: "Name" }).click();
+  await page.getByRole("columnheader", { name: "Name" }).click();
+  await expect(copy).toHaveText("Copy (130)");
+  await expect(all).toHaveAccessibleName("Clear the 130 rows ticked");
   await all.click();
   await expect(copy).toHaveText("Copy");
+  await expect(page.getByTestId("grid-selected")).toHaveCount(0);
+  await expectClean(page, seen);
+});
+
+test("Shift with a press or with Space ticks the rows from the one last pressed to this one, and unticks nothing", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  const shift = mark("ticked");
+  const names = Array.from(
+    { length: 12 },
+    (_, at) => `Example Shift ${shift} ${String(at).padStart(2, "0")}`,
+  );
+  await signIn(page, account);
+  await importFile(
+    page,
+    "vendors",
+    `vendors-${shift}.csv`,
+    ["name"],
+    names.map((name) => [name]),
+  );
+  const seen = await watch(page.context());
+  await page.goto(`./vendors?filter=${encodeURIComponent(`name:contains:${shift}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("12 vendors");
+  await page.getByRole("columnheader", { name: "Name" }).click();
+  const row = (at: number) => gridRow(page, names[at] ?? "");
+  const press = (at: number, modifiers: ("Shift" | "ControlOrMeta")[] = []) =>
+    row(at).locator('[col-id="review_status"]').click({ modifiers });
+  /** The rows ticked, by their place in the list. */
+  const ticked = () =>
+    page
+      .getByTestId(grid)
+      .locator(".ag-row-selected[row-index]")
+      .evaluateAll((rows) =>
+        [...new Set(rows.map((one) => Number(one.getAttribute("row-index"))))].sort(
+          (one, other) => one - other,
+        ),
+      );
+  const clear = async () => {
+    await page.getByRole("button", { name: "Clear selection" }).click();
+    await expect.poll(ticked).toEqual([]);
+  };
+  await expect(row(0)).toHaveAttribute("row-index", "0");
+
+  // Rows 0 and 9 ticked; 3 ticked and unticked; Shift with a press on 6: 3 to 6 join them.
+  await press(0);
+  await press(9);
+  await press(3);
+  await press(3);
+  await press(6, ["Shift"]);
+  await expect.poll(ticked).toEqual([0, 3, 4, 5, 6, 9]);
+  await clear();
+
+  // 1 to 6 by Shift; 4 unticked by a press; Shift with a press on 8: 4 to 8, and 1 to 3 stay.
+  await press(1);
+  await press(6, ["Shift"]);
+  await press(4);
+  await expect.poll(ticked).toEqual([1, 2, 3, 5, 6]);
+  await press(8, ["Shift"]);
+  await expect.poll(ticked).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  await clear();
+
+  // The keyboard the same: Space unticks 4, Shift with Space on 7 ticks 4 to 7.
+  await press(1);
+  await press(6, ["Shift"]);
+  await row(4).locator('[col-id="review_status"]').focus();
+  await page.keyboard.press("Space");
+  await expect.poll(ticked).toEqual([1, 2, 3, 5, 6]);
+  for (let step = 0; step < 3; step += 1) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Shift+Space");
+  await expect.poll(ticked).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  await clear();
+
+  // Within a range, Shift with a press on a box shortens nothing: 0, 2 to 6 and 9 stay.
+  await press(9);
+  await press(0);
+  await press(2);
+  await press(6, ["Shift"]);
+  await expect.poll(ticked).toEqual([0, 2, 3, 4, 5, 6, 9]);
+  await row(4)
+    .locator(".ag-selection-checkbox input")
+    .click({ modifiers: ["Shift"] });
+  await expect.poll(ticked).toEqual([0, 2, 3, 4, 5, 6, 9]);
+  await expect(page.getByTestId("grid-selected")).toContainText("7 selected");
+  await expectClean(page, seen);
+});
+
+test("Shift across rows not read yet ticks the rows read and the row pressed, and says the rest were not", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(180_000);
+  const far = mark("ticked");
+  const names = Array.from(
+    { length: 250 },
+    (_, at) => `Example Far ${far} ${String(at).padStart(3, "0")}`,
+  );
+  await signIn(page, account);
+  await importFile(
+    page,
+    "vendors",
+    `vendors-${far}.csv`,
+    ["name"],
+    names.map((name) => [name]),
+  );
+  const seen = await watch(page.context());
+  await page.goto(`./vendors?filter=${encodeURIComponent(`name:contains:${far}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("250 vendors");
+  const row = (at: number) => gridRow(page, names[at] ?? "");
+  await expect(row(3)).toHaveAttribute("row-index", "3");
+  await row(3).locator('[col-id="review_status"]').click();
+
+  // To the end at once: the block of rows 100 to 199 is never read.
+  await page
+    .getByTestId(grid)
+    .locator(".ag-grid-viewport, .ag-body-viewport")
+    .first()
+    .evaluate((rows) => {
+      rows.scrollTop = rows.scrollHeight;
+    });
+  await row(245)
+    .locator('[col-id="review_status"]')
+    .click({ modifiers: ["Shift"] });
+  // 3 to 99 and 200 to 245 are ticked, the row pressed among them; 100 rows were not read.
+  await expect(row(245).locator(".ag-selection-checkbox input")).toBeChecked();
+  await expect(page.getByTestId("grid-selected")).toContainText("143 selected");
+  await expect(page.getByTestId("grid-range-unread")).toHaveText(
+    " · 100 rows between were not read yet, and so not ticked: scroll through them, then press again with Shift",
+  );
+  // The next press without Shift lets the words go.
+  await row(247).locator('[col-id="review_status"]').click();
+  await expect(page.getByTestId("grid-range-unread")).toHaveCount(0);
+  await expect(page.getByTestId("grid-selected")).toContainText("144 selected");
   await expectClean(page, seen);
 });

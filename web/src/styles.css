@@ -2742,6 +2742,18 @@ a.value-link:focus-visible,
   width: 100%;
 }
 
+/* The column of boxes is as narrow as a box: 16 px, and 4 px either side, in place of the
+   grid's padding of a cell and the space it keeps after a box for a value that follows. */
+.ag-cell[col-id="ag-Grid-SelectionColumn"],
+.ag-header-cell[col-id="ag-Grid-SelectionColumn"] {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.ag-cell[col-id="ag-Grid-SelectionColumn"] .ag-selection-checkbox {
+  margin-right: 0;
+}
+
 .grid-tick-all input {
   margin: 0;
   width: 1rem;

@@ -68,7 +68,7 @@ import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/g
 import { type GridLayout, GridStore, mergeLayout, withoutFilters } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
 import { useSite } from "../../lib/product";
-import { withCount } from "../../lib/selection";
+import { shiftRange, unreadText, withCount } from "../../lib/selection";
 import { browserStorage } from "../../lib/session";
 import {
   type Chosen,
@@ -320,6 +320,10 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const minorChosen = useRef(start.includeMinor);
   // What the cell that has the focus has to say: the reasons of a health, a value's source.
   const [note, setNote] = useState("");
+  // The row a press or Space was last on without Shift, where a Shift range starts (0.9.7).
+  const anchor = useRef<number | null>(null);
+  // What is said when a Shift range crossed rows not read yet, until the next press.
+  const [rangeNote, setRangeNote] = useState("");
   const [grid, setGrid] = useState<GridApi<T> | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(
     () => new Set(start.columns.filter((column) => column.hide).map((column) => column.id)),
@@ -485,9 +489,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         suppressHeaderMenuButton: true,
         sortable: false,
         resizable: false,
-        width: 44,
-        minWidth: 44,
-        maxWidth: 44,
+        // As narrow as its box: 16 px and 4 px either side (styles.css), so that a list's
+        // columns stay in view at 1280 px as they were before the boxes (0.9.5, P-193).
+        width: 24,
+        minWidth: 24,
+        maxWidth: 24,
       },
       rowClassRules: {
         "row-dim": (params) => params.data !== undefined && isDimmed(params.data),
@@ -504,6 +510,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         if (count > 0) setAllMatching(false);
       },
       onSortChanged: (event) => {
+        // The rows are in another order: a Shift range starts again from the next press.
+        anchor.current = null;
         if (viewChanged(event.api)) toTop();
         remember(event.api);
       },
@@ -552,6 +560,58 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       },
     });
     made = api;
+
+    // 0.9.7: Shift with a press, or with Space, ticks the rows from the one last pressed
+    // to this one, and unticks nothing. AG Grid's own Shift starts again from the row
+    // pressed last when that row is unticked, and unticks every row outside its range, so
+    // the gesture is taken here before the grid sees it. A press on a link is the link's.
+    const rowIndexOf = (target: EventTarget | null): number | null => {
+      if (!(target instanceof Element) || target.closest("a")) return null;
+      const row = target.closest(".ag-row[row-index]");
+      if (!row || !element.contains(row) || row.closest(".ag-header")) return null;
+      const index = Number(row.getAttribute("row-index"));
+      return Number.isInteger(index) ? index : null;
+    };
+    const tickRange = (to: number) => {
+      const [first, last] = shiftRange(anchor.current, to);
+      const nodes = [];
+      // Rows not read yet cannot be ticked: they are counted, and the list says so.
+      let unread = 0;
+      for (let at = first; at <= last; at += 1) {
+        const node = api.getDisplayedRowAtIndex(at);
+        if (node?.data !== undefined) nodes.push(node);
+        else unread += 1;
+      }
+      if (nodes.length > 0) api.setNodesSelected({ nodes, newValue: true });
+      setRangeNote(unreadText(unread));
+    };
+    const onPress = (event: MouseEvent) => {
+      const index = rowIndexOf(event.target);
+      if (index === null || event.button !== 0) return;
+      if (!event.shiftKey) {
+        anchor.current = index;
+        setRangeNote("");
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      tickRange(index);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== " ") return;
+      const index = rowIndexOf(event.target);
+      if (index === null) return;
+      if (!event.shiftKey) {
+        anchor.current = index;
+        setRangeNote("");
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      tickRange(index);
+    };
+    element.addEventListener("click", onPress, true);
+    element.addEventListener("keydown", onKey, true);
     // Back where the list was left, if it shows what it showed then (P-203).
     shownView.current = viewNow(api);
     const back = placeFor(kept.current ?? null, shownView.current);
@@ -559,6 +619,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     opened.current = back?.opened ?? null;
     setGrid(api);
     return () => {
+      element.removeEventListener("click", onPress, true);
+      element.removeEventListener("keydown", onKey, true);
       setGrid(null);
       api.destroy();
     };
@@ -597,6 +659,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     const pending = new Set<() => void>();
     grid.deselectAll();
     setAllMatching(false);
+    // Other rows: a Shift range starts again from the next row pressed.
+    anchor.current = null;
+    setRangeNote("");
     // The rows to tick again as they come, as those a Retire refused (P-228).
     const toTick = new Set(tickAfter(wanted.reloadKey));
     // Another filter or switch: the list begins at its top (P-203).
@@ -1051,8 +1116,10 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             </span>
           )}
           {!allMatching && selected > 0 && (
-            <span data-testid="grid-selected"> · {selected} selected</span>
+            <span data-testid="grid-selected"> · {selected.toLocaleString("en-US")} selected</span>
           )}
+          {/* 0.9.7: a Shift range that crossed rows not read yet says so. */}
+          {rangeNote && <span data-testid="grid-range-unread"> · {rangeNote}</span>}
         </p>
         <fieldset className="grid-selected-actions" disabled={!grid}>
           <legend className="visually-hidden">The selected rows</legend>
@@ -1145,11 +1212,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       </p>
       <p className="hint">
         Click a heading to sort, and hold Shift to sort by a further column. Click a row, or the box
-        at its left, to tick it or untick it: the other rows stay as they are. Shift with a click
-        ticks the rows between. A click on a link follows it and ticks nothing. The box in the
-        heading ticks the rows read so far, and clears them. A double click opens the row. With the
-        keyboard: Enter on a heading sorts, Ctrl+Enter opens its filter, Space selects a row, and
-        Enter opens it, or on a value that names another record opens that record.
+        at its left, to tick it or untick it: the other rows stay as they are. Shift with a click,
+        or with Space, ticks the rows from the one clicked last to this one, and unticks nothing. A
+        click on a link follows it and ticks nothing. The box in the heading ticks the rows read so
+        far, and clears them. A double click opens the row. With the keyboard: Enter on a heading
+        sorts, Ctrl+Enter opens its filter, Space selects a row, and Enter opens it, or on a value
+        that names another record opens that record.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
         {entity &&

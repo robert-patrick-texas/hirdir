@@ -23,6 +23,25 @@ export function withCount(label: string, chosen: ChosenCount, rowsOnly = false):
   return label;
 }
 
+/**
+ * The rows that Shift with a press, or with Space, ticks: from the row last pressed
+ * without Shift to this one, whichever comes first; this one alone where none was.
+ */
+export function shiftRange(anchor: number | null, to: number): [first: number, last: number] {
+  if (anchor === null) return [to, to];
+  return anchor <= to ? [anchor, to] : [to, anchor];
+}
+
+/**
+ * What the list says when a Shift range crossed rows the grid has not read: they cannot
+ * be ticked unread, and the rest of the range is ticked without them.
+ */
+export function unreadText(unread: number): string {
+  if (unread <= 0) return "";
+  const rows = unread === 1 ? "1 row" : `${unread.toLocaleString("en-US")} rows`;
+  return `${rows} between ${unread === 1 ? "was" : "were"} not read yet, and so not ticked: scroll through them, then press again with Shift`;
+}
+
 /** What the box in the heading shows: no row ticked, some, or every row of the list. */
 export type TickState = "none" | "some" | "all";
 
@@ -37,7 +56,11 @@ export function tickState(read: number, ticked: number, total: number | null): T
 }
 
 /** What the box of the heading does when pressed, as its name says it. */
-export function tickName(read: number, everyReadTicked: boolean): string {
-  const rows = `${read.toLocaleString("en-US")} ${read === 1 ? "row" : "rows"} read so far`;
-  return everyReadTicked ? `Clear the ${rows}` : `Tick the ${rows}`;
+export function tickName(read: number, everyReadTicked: boolean, ticked = read): string {
+  // Pressed when every row read is ticked, it clears every row ticked, as after a sort
+  // more than the rows read now: its name counts those.
+  if (everyReadTicked) {
+    return `Clear the ${ticked.toLocaleString("en-US")} ${ticked === 1 ? "row" : "rows"} ticked`;
+  }
+  return `Tick the ${read.toLocaleString("en-US")} ${read === 1 ? "row" : "rows"} read so far`;
 }
