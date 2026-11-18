@@ -1933,7 +1933,17 @@ What 0.9.6 changes:
   removed and what it is now.
   Ending a membership of a stack asks What becomes
   of it: to the spare pool with a new name and place, to be returned to the
-  manufacturer, excess, or nothing now, saved with the end (P-218). The position offered
+  manufacturer, excess, or nothing now, saved with the end (P-218). Nothing now is
+  chosen when the form opens, and sends nothing of the item. The item is read when the
+  form opens, for its state and disposition; each other choice fills Hostname, FQDN,
+  Location, Lifecycle state (As it is, or a state its rule lets it move to), Reason (the
+  published reasons, for a move), Disposition and Expected online (as the rule of the
+  state allows), which the person may change, and a field left blank or As it is is not
+  sent: to the spare pool fills Spare and not expected online, the state as it is, and
+  leaves the name and the place to be typed; to be returned fills Pending-Removal for the
+  reason RMA, not expected online; excess fills Pending-Removal for the reason Retired,
+  Excess, not expected online. The ended row stays among the members, marked Ended,
+  until the page is left, and the answer says what was sent and names the item as a link. The position offered
   is the lowest that is free, and one that a current member holds is refused (P-219):
   the first member added is offered the stack's `next_position`, and each further one of
   the same request the next that neither a current member nor another row holds; a

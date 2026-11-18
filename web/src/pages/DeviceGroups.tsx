@@ -18,6 +18,7 @@ import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
+import { LEAVING_FIELDS, WhatBecomesOfIt } from "../components/LeaveStack";
 import { MemberPicker } from "../components/MemberPicker";
 import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
@@ -80,12 +81,24 @@ import { pickLabel } from "../lib/pick";
 import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
-import { joinedText, MEMBER_FIELDS, refusedRows } from "../lib/stacks";
+import {
+  joinedText,
+  type LeavingBody,
+  leavingText,
+  MEMBER_FIELDS,
+  refusedRows,
+} from "../lib/stacks";
 import { registeredWith } from "../lib/systems";
 import { MEMBERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 
 const MEMBERS_PAGE = 100;
+
+/** What the page says of a change, with the record it names as a link (P-218). */
+interface Said {
+  text: string;
+  link?: { to: string; text: string };
+}
 
 function groupPath(hid: string): string {
   return `/groups/${encodeURIComponent(hid)}`;
@@ -735,12 +748,12 @@ export function DeviceGroupDetail() {
   const group = useLoad(`device-group ${hid}`, (signal) =>
     api.request("get", "/api/v1/device-groups/{hid}", { path: { hid }, signal }),
   );
-  const [done, setDone] = useState("");
+  const [done, setDone] = useState<Said>({ text: "" });
   const record = group.data;
   useTitle(record ? record.name : "Group");
 
-  function changed(text: string) {
-    setDone(text);
+  function changed(text: string, link?: Said["link"]) {
+    setDone(link ? { text, link } : { text });
     group.reload();
   }
 
@@ -758,7 +771,7 @@ export function DeviceGroupDetail() {
         )}
       </h1>
       <Problem error={group.error} />
-      <Notice text={done} />
+      <Notice {...done} />
       {group.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
@@ -1154,7 +1167,7 @@ function GroupHealth({ group, health, mayEdit, onChanged, onReload }: GroupHealt
 interface MembersProps {
   group: DeviceGroup;
   mayEdit: boolean;
-  onChanged: (text: string) => void;
+  onChanged: (text: string, link?: Said["link"]) => void;
   onReload: () => void;
 }
 
@@ -1170,6 +1183,9 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   const [turn, setTurn] = useState(0);
   const [editing, setEditing] = useState<{ hid: string; what: "change" | "end" } | null>(null);
   const [adding, setAdding] = useState(false);
+  // 0.9.6: the memberships ended on this page, which stay in view, marked ended, until the
+  // page is left (P-218).
+  const [endedHere, setEndedHere] = useState<readonly Member[]>([]);
   const action = useAction();
   // The server sorts the members, over all of them: another order starts at its first page.
   const sort = useServerSort<Member>({ fields: MEMBERS_SORT, onChange: () => setOffset(0) });
@@ -1188,18 +1204,22 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
       }),
     ),
   );
-  const rows = members.data?.items ?? [];
-  const current = rows.filter((member) => member.left_on === null);
+  const read = members.data?.items ?? [];
+  const current = read.filter((member) => member.left_on === null);
+  const rows = [
+    ...read,
+    ...endedHere.filter((ended) => !read.some((member) => member.hid === ended.hid)),
+  ];
   // Every current member is on show: what a stack would be with more can be said early.
   const whole = offset === 0 && current.length === group.member_count;
   const open = rows.find((member) => member.hid === editing?.hid) ?? null;
-  const holdsAll = members.data !== undefined && members.data.total <= rows.length;
+  const holdsAll = members.data !== undefined && members.data.total <= read.length;
 
-  function changed(text: string) {
+  function changed(text: string, link?: Said["link"]) {
     setEditing(null);
     setAdding(false);
     setTurn((count) => count + 1);
-    onChanged(text);
+    onChanged(text, link);
   }
 
   async function markMaster(member: Member) {
@@ -1299,6 +1319,7 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
                     <td>{member.position ?? <Dash />}</td>
                     <th scope="row">
                       <Link to={itemPath(member.item_hid)}>{name}</Link>
+                      {ended && <span className="badge badge-plain">Ended</span>}
                     </th>
                     <td>{member.item.pid || <Dash />}</td>
                     <td className="mono">{member.item.serial_number || <Dash />}</td>
@@ -1379,7 +1400,16 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
           key={`${open.hid} ${open.row_version}`}
           group={group}
           member={open}
-          onEnded={(day) => changed(`The membership of ${itemName(open.item)} ended on ${day}.`)}
+          onEnded={(ended, item) => {
+            setEndedHere((was) => [...was.filter((one) => one.hid !== ended.hid), ended]);
+            // 0.9.6: the answer names the item as a link, and says what became of it (P-218).
+            const what = item ? leavingText(item) : "";
+            const name = item?.hostname ?? itemName(open.item);
+            changed(
+              `The membership of ${itemName(open.item)} ended on ${ended.left_on ?? ""}${what ? `; it was ${what}` : ""}. The item:`,
+              { to: itemPath(ended.item_hid), text: name },
+            );
+          }}
           onReload={() => setTurn((count) => count + 1)}
           onClose={() => setEditing(null)}
         />
@@ -1732,29 +1762,36 @@ function ChangeMember({
   );
 }
 
-/** End a membership on a day. It is kept, with its dates; nothing is removed. */
+/**
+ * End a membership on a day. It is kept, with its dates; nothing is removed. 0.9.6: a
+ * member of a stack is given what becomes of it in the same change (P-218).
+ */
 function EndMembership({
   group,
   member,
   onEnded,
   onReload,
   onClose,
-}: OneMemberProps & { onEnded: (day: string) => void }) {
+}: OneMemberProps & { onEnded: (ended: Member, item: LeavingBody | null) => void }) {
   const [day, setDay] = useState(() => today());
+  // What is sent as the item's, or null for nothing.
+  const [item, setItem] = useState<LeavingBody | null>(null);
   const action = useAction();
-  const known = ["left_on"];
+  const stack = group.type === "stack";
+  const known = ["left_on", ...(stack ? LEAVING_FIELDS : [])];
   const refused = fieldErrors(action.error, known).shown;
   const name = itemName(member.item);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const sent = item && Object.keys(item).length > 0 ? item : null;
     const result = await action.run(() =>
       api.request("patch", "/api/v1/device-groups/{hid}/members/{member_hid}", {
         path: { hid: group.hid, member_hid: member.hid },
-        body: { row_version: member.row_version, left_on: day },
+        body: { row_version: member.row_version, left_on: day, ...(sent ? { item: sent } : {}) },
       }),
     );
-    if (result.ok) onEnded(day);
+    if (result.ok) onEnded(result.value, sent);
   }
 
   return (
@@ -1779,6 +1816,14 @@ function EndMembership({
             hint={`Not before the day it joined, ${member.joined_on}`}
           />
         </div>
+        {stack && (
+          <WhatBecomesOfIt
+            itemHid={member.item_hid}
+            errors={refused}
+            onChange={setItem}
+            disabled={action.busy}
+          />
+        )}
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || day === ""}>
             End membership
