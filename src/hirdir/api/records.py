@@ -1193,7 +1193,7 @@ class ItemRef(Model):
 
 
 ContractStatus = Literal["active", "renewal_pending", "expired", "pending", "cancelled"]
-RegistrationStatus = Literal["registered", "pending", "removed"]
+RegistrationStatus = Literal["registered", "pending", "removed", "not_reported"]
 
 
 class ContractRef(Model):
@@ -1365,7 +1365,7 @@ class EffectiveOperator(EffectiveReference):
 # --- why a value: the walk that finds it (P-176) --------------------------------------
 
 ResolutionLevel = Literal[
-    "own", "device_group", "parent_item", "catalog", "setting", "location", "site", "region"
+    "own", "device_group", "parent_item", "host", "catalog", "setting", "location", "site", "region"
 ]
 ResolutionOutcome = Literal["decides", "passed_over", "nothing", "retired", "raises"]
 # A value of the walk: the HID of a reference, a decimal or a date as text, or a flag.
@@ -1425,6 +1425,47 @@ class CircuitConnection(Model):
     record_status: RecordStatus = Field(description="That of the circuit.")
 
 
+# --- what runs on a host (P-246, P-249) -----------------------------------------------
+
+ReviewReasonName = Literal["no_host", "host_gone", "not_reported"]
+
+
+class HostRef(Model):
+    """What an item runs on, as a person names it: an item, or a stack or a cluster.
+    One of `item_hid` and `group_hid` is given, as a device of a circuit names one."""
+
+    item_hid: str | None = Field(description="The item it runs on, where it is an item.")
+    group_hid: str | None = Field(description="The stack or the cluster, where it is a group.")
+    name: str = Field(description="What it is called: an item's name, a group's name.")
+    type: str | None = Field(description="Of a group: `stack` or `cluster`. Null for an item.")
+    pid: str | None = Field(description="Of an item: the PID of its model.")
+    lifecycle_state: str | None = Field(description="Of an item: its own lifecycle state.")
+    record_status: RecordStatus
+
+
+class ReviewAbout(Model):
+    """The record a reason to look at an item is about: its host, or a system."""
+
+    hid: str
+    record_type: Literal["item", "device_group", "external_system"]
+    label: str = Field(description="What it is known by: its name.")
+
+
+class ReviewReason(Model):
+    """One reason a person should look at an item (P-249). A mark: it refuses nothing."""
+
+    reason: ReviewReasonName = Field(
+        description=(
+            "`no_host`: of a kind that runs on a host, and names none; `host_gone`: the host "
+            "it names is retired, or has left the team's hands; `not_reported`: a system it "
+            "is registered with reports it no more."
+        )
+    )
+    about: ReviewAbout | None = Field(
+        description="The host or the system the reason is about. Null for `no_host`."
+    )
+
+
 class ItemEffective(Model):
     """The values in force of the fields an item inherits: the amounts and the dates
     from its catalog entry, and for a minor item the owner, the location and the
@@ -1456,6 +1497,12 @@ class ItemEffective(Model):
     ldos: EffectiveValue
     do_not_renew: EffectiveValue = Field(
         description="Whether its support is not to be renewed: its own word, or its model's."
+    )
+    serial_number: EffectiveValue = Field(
+        description=(
+            "Its own serial number; for a virtual context with none, that of the item it runs "
+            "on, with the source `host` (P-246). Shown, and never matched by."
+        )
     )
 
 
@@ -1505,6 +1552,25 @@ class ItemOut(Model):
     parent_item_hid: str | None
     parent: ItemRef | None = Field(description="The item a minor item is in.")
     position: str | None = Field(description="Where in its parent a minor item is.")
+    # What it runs on, and what runs on it (P-246, P-249).
+    host_item_hid: str | None = Field(description="The item it runs on, as a person names it.")
+    host_group_hid: str | None = Field(
+        description="The stack or the cluster it runs on, as a person names it."
+    )
+    host: HostRef | None = Field(description="What it runs on, as a person names it.")
+    observed_host_hid: str | None = Field(description="The item it was seen to run on.")
+    observed_host: ItemRef | None
+    host_observed_at: datetime | None = Field(description="When it was seen there.")
+    host_differs: bool | None = Field(
+        description=(
+            "The item it was seen on is neither the host named nor a current member of the "
+            "stack or cluster named. No fault. Null where either is not known."
+        )
+    )
+    hosted_count: int = Field(description="How many items not retired name it as their host.")
+    review: list[ReviewReason] = Field(
+        description="The reasons a person should look at it. Empty where there is none."
+    )
     purchase_line_hid: str | None
     purchase_line: PurchaseLineRef | None = Field(
         description="The line of a purchase request it arrived on."
@@ -1590,6 +1656,21 @@ class ItemOut(Model):
     updated_by: str | None
 
 
+class HostedItem(Model):
+    """An item that runs on a record, or on what runs on it."""
+
+    depth: int = Field(description="1 for what runs on the record itself, 2 for what runs on that.")
+    host_hid: str = Field(description="The item or the group it names as its host.")
+    item: ItemOut
+
+
+class HostedList(Model):
+    """What runs on an item or a group, and beneath that, each after its host."""
+
+    total: int
+    items: list[HostedItem]
+
+
 class ItemCreate(Model):
     """A new item. Only what identifies it is needed: a serial number with a catalog
     entry, or an asset tag, a name or a hostname. Everything else may be left blank."""
@@ -1633,6 +1714,17 @@ class ItemCreate(Model):
     )
     position: ShortText | None = Field(
         default=None, description="Where in its parent: PS-A, Slot 3."
+    )
+    host_item_hid: Hid | None = Field(
+        default=None,
+        description="The item it runs on. Only an item of a kind that runs on a host has one.",
+    )
+    host_group_hid: Hid | None = Field(
+        default=None, description="The stack or the cluster it runs on. Not with host_item_hid."
+    )
+    observed_host_hid: Hid | None = Field(default=None, description="The item it was seen on.")
+    host_observed_at: datetime | None = Field(
+        default=None, description="When it was seen there. Left out, now. With observed_host_hid."
     )
     purchase_line_hid: Hid | None = Field(
         default=None, description="The line of a purchase request it arrived on."
@@ -1690,6 +1782,18 @@ class ItemPatch(Model):
         default=None, description="Null takes a minor item out of its parent."
     )
     position: ShortText | None = None
+    host_item_hid: Hid | None = Field(
+        default=None,
+        description="The item it runs on. Only an item of a kind that runs on a host has one.",
+    )
+    host_group_hid: Hid | None = Field(
+        default=None, description="The stack or the cluster it runs on. Not with host_item_hid."
+    )
+    observed_host_hid: Hid | None = Field(default=None, description="The item it was seen on.")
+    host_observed_at: datetime | None = Field(
+        default=None,
+        description="When it was seen there. Left out, now. Null with observed_host_hid.",
+    )
     purchase_line_hid: Hid | None = None
     procured_on: date | None = None
     delivered_on: date | None = None
@@ -2025,6 +2129,9 @@ class DeviceGroupOut(Model):
         description="False when the master that is seen is not the one intended. Not a fault."
     )
     member_count: int = Field(description="How many current members it has.")
+    hosted_count: int = Field(
+        description="How many items not retired name it as their host (P-246)."
+    )
     next_position: int | None = Field(
         description=(
             "A stack: the lowest position from 1 that no current member holds, which a "
