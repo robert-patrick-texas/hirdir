@@ -71,6 +71,10 @@ export function stepKind(step: ResolutionStep): string {
     }
     case "parent_item":
       return "Item it is in";
+    case "host":
+      return step.type
+        ? `What it runs on · ${groupTypeLabel(step.type).toLowerCase()}`
+        : "What it runs on";
     case "catalog":
       return "Catalog entry";
     case "setting":
@@ -93,6 +97,8 @@ export function stepPath(step: ResolutionStep): string | null {
       return `/groups/${hid}`;
     case "parent_item":
       return `/items/${hid}`;
+    case "host":
+      return step.type ? `/groups/${hid}` : `/items/${hid}`;
     case "catalog":
       return `/catalog/${hid}`;
     case "location":

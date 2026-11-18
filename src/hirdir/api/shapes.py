@@ -61,6 +61,7 @@ from hirdir.domain import (
     geography,
     groups,
     health,
+    hosting,
     inheritance,
     operators,
     purchases,
@@ -939,6 +940,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     connected = circuit_shapes.connections_out(db, "item_hid", hids)
     arrived_on = _line_refs(db, {item.purchase_line_hid for item in items})
     figures = weights.in_force(db)
+    on_hosts = _Hosting(db, items, entries)
     out = []
     for item in items:
         entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
@@ -1028,7 +1030,9 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 group_registrations=through_groups[item.hid],
                 circuits=connected[item.hid],
                 tags=labels[item.hid],
+                **on_hosts.fields(item),
                 effective=shapes.ItemEffective(
+                    serial_number=on_hosts.serial(item),
                     operator_hid=marks.in_force(looked_after[item.hid], holders),
                     owner_hid=shapes.EffectiveReference(
                         value=effective["owner_hid"].value,
@@ -1051,6 +1055,11 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
 
 
 _ITEM_SHAPED = (
+    "host",
+    "observed_host",
+    "host_differs",
+    "hosted_count",
+    "review",
     "health",
     "catalog",
     "owner",
@@ -1088,6 +1097,97 @@ def item_out(db: Session, item: Item) -> shapes.ItemOut:
     return items_out(db, [item])[0]
 
 
+# --- what runs on a host (P-246, P-249) -----------------------------------------------
+
+
+class _Hosting:
+    """What a page of items runs on, was seen on, has running on it, and is to be looked
+    at for, read once for the page."""
+
+    def __init__(self, db: Session, items: list[Item], entries: dict[str, CatalogEntry]) -> None:
+        self.hosts = hosting.hosts_of(db, items)
+        named = [self.hosts.items[hid] for hid in self.hosts.items]
+        self.refs = item_refs(db, named)
+        self.pids = {hid: ref.pid for hid, ref in self.refs.items()}
+        self.counts = hosting.hosted_counts(db, Item.host_item_hid, [item.hid for item in items])
+        kinds = {hid: entry.kind for hid, entry in entries.items()}
+        self.kinds = {item.hid: kinds.get(item.catalog_entry_hid or "") for item in items}
+        self.marks = hosting.reviews(db, items, kinds, self.hosts)
+
+    def host(self, item: Item) -> shapes.HostRef | None:
+        if item.host_item_hid is not None and item.host_item_hid in self.hosts.items:
+            host = self.hosts.items[item.host_item_hid]
+            return shapes.HostRef(
+                item_hid=host.hid,
+                group_hid=None,
+                name=item_rules.shown_name(host),
+                type=None,
+                pid=self.pids.get(host.hid),
+                lifecycle_state=host.lifecycle_state,
+                record_status=host.record_status,
+            )
+        if item.host_group_hid is not None and item.host_group_hid in self.hosts.groups:
+            group = self.hosts.groups[item.host_group_hid]
+            return shapes.HostRef(
+                item_hid=None,
+                group_hid=group.hid,
+                name=group.name,
+                type=group.type,
+                pid=None,
+                lifecycle_state=None,
+                record_status=group.record_status,
+            )
+        return None
+
+    def fields(self, item: Item) -> dict[str, Any]:
+        seen = item.observed_host_hid
+        return {
+            "host": self.host(item),
+            "observed_host": self.refs.get(seen) if seen else None,
+            "host_differs": hosting.differs(item, self.hosts),
+            "hosted_count": self.counts[item.hid],
+            "review": [
+                shapes.ReviewReason(
+                    reason=mark.reason,
+                    about=None
+                    if mark.about_hid is None or mark.about_type is None
+                    else shapes.ReviewAbout(
+                        hid=mark.about_hid,
+                        record_type=mark.about_type,
+                        label=mark.about_label or mark.about_hid,
+                    ),
+                )
+                for mark in self.marks[item.hid]
+            ],
+        }
+
+    def serial(self, item: Item) -> shapes.EffectiveValue:
+        """Its own serial number, or a virtual context's host's (P-246)."""
+        if item.serial_number is not None:
+            return shapes.EffectiveValue(
+                value=item.serial_number, source="own", source_hid=item.hid
+            )
+        host = self.hosts.items.get(item.host_item_hid or "")
+        kind = self.kinds.get(item.hid)
+        if host is not None and kind == "virtual_context" and host.serial_number is not None:
+            return shapes.EffectiveValue(
+                value=host.serial_number, source="host", source_hid=host.hid
+            )
+        return shapes.EffectiveValue(value=None, source="none", source_hid=None)
+
+
+def hosted_out(db: Session, found: list[tuple[int, str, Item]]) -> shapes.HostedList:
+    """Return what runs on a record, each with its depth and its host."""
+    shaped = items_out(db, [item for _, _, item in found])
+    return shapes.HostedList(
+        total=len(found),
+        items=[
+            shapes.HostedItem(depth=depth, host_hid=host_hid, item=one)
+            for (depth, host_hid, _), one in zip(found, shaped, strict=True)
+        ],
+    )
+
+
 def replacement_out(db: Session, replacement: ItemReplacement) -> shapes.ReplacementOut:
     """Return a replacement with both of its items."""
     old, new = items_out(
@@ -1123,6 +1223,8 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
             if group.parent_group_hid is not None:
                 nested[group.parent_group_hid].append(_group_ref(group))
     counts = groups.member_counts(db, hids)
+    # How many items run on each (P-246).
+    hosting_counts = hosting.hosted_counts(db, Item.host_group_hid, hids)
     numbered = groups.next_positions(db, found)
     registered = _registration_refs(db, "group_hid", hids)
     # The circuits each is connected to (P-147).
@@ -1197,6 +1299,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 if observed is None or master is None
                 else observed.hid == master.hid,
                 member_count=counts[group.hid],
+                hosted_count=hosting_counts[group.hid],
                 next_position=numbered[group.hid],
                 addresses=its_addresses[group.hid],
                 registrations=registered[group.hid],
@@ -1225,6 +1328,7 @@ _GROUP_SHAPED = (
     "serial_number",
     "master",
     "member_count",
+    "hosted_count",
     "next_position",
     "addresses",
     "registrations",

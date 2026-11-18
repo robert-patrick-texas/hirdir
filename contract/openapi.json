@@ -9211,6 +9211,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -9280,6 +9281,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -11839,6 +11841,11 @@
             "title": "Hid",
             "type": "string"
           },
+          "hosted_count": {
+            "description": "How many items not retired name it as their host (P-246).",
+            "title": "Hosted Count",
+            "type": "integer"
+          },
           "hostname": {
             "anyOf": [
               {
@@ -12212,6 +12219,7 @@
           "master_observed_at",
           "master_as_intended",
           "member_count",
+          "hosted_count",
           "next_position",
           "addresses",
           "registrations",
@@ -12827,6 +12835,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -12966,6 +12975,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -13131,6 +13141,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -13274,6 +13285,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -13343,6 +13355,7 @@
               "own",
               "catalog",
               "parent_item",
+              "host",
               "device_group",
               "location",
               "site",
@@ -14415,7 +14428,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -14588,6 +14602,146 @@
           "reasons"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "HostRef": {
+        "additionalProperties": false,
+        "description": "What an item runs on, as a person names it: an item, or a stack or a cluster.\nOne of `item_hid` and `group_hid` is given, as a device of a circuit names one.",
+        "properties": {
+          "group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stack or the cluster, where it is a group.",
+            "title": "Group Hid"
+          },
+          "item_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it runs on, where it is an item.",
+            "title": "Item Hid"
+          },
+          "lifecycle_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an item: its own lifecycle state.",
+            "title": "Lifecycle State"
+          },
+          "name": {
+            "description": "What it is called: an item's name, a group's name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an item: the PID of its model.",
+            "title": "Pid"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a group: `stack` or `cluster`. Null for an item.",
+            "title": "Type"
+          }
+        },
+        "required": [
+          "item_hid",
+          "group_hid",
+          "name",
+          "type",
+          "pid",
+          "lifecycle_state",
+          "record_status"
+        ],
+        "title": "HostRef",
+        "type": "object"
+      },
+      "HostedItem": {
+        "additionalProperties": false,
+        "description": "An item that runs on a record, or on what runs on it.",
+        "properties": {
+          "depth": {
+            "description": "1 for what runs on the record itself, 2 for what runs on that.",
+            "title": "Depth",
+            "type": "integer"
+          },
+          "host_hid": {
+            "description": "The item or the group it names as its host.",
+            "title": "Host Hid",
+            "type": "string"
+          },
+          "item": {
+            "$ref": "#/components/schemas/ItemOut"
+          }
+        },
+        "required": [
+          "depth",
+          "host_hid",
+          "item"
+        ],
+        "title": "HostedItem",
+        "type": "object"
+      },
+      "HostedList": {
+        "additionalProperties": false,
+        "description": "What runs on an item or a group, and beneath that, each after its host.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HostedItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "items"
+        ],
+        "title": "HostedList",
         "type": "object"
       },
       "ImportCreated": {
@@ -15267,6 +15421,45 @@
             ],
             "title": "Fqdn"
           },
+          "host_group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stack or the cluster it runs on. Not with host_item_hid.",
+            "title": "Host Group Hid"
+          },
+          "host_item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it runs on. Only an item of a kind that runs on a host has one.",
+            "title": "Host Item Hid"
+          },
+          "host_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was seen there. Left out, now. With observed_host_hid.",
+            "title": "Host Observed At"
+          },
           "hostname": {
             "anyOf": [
               {
@@ -15364,6 +15557,19 @@
             ],
             "description": "Left out, now. Given with observed_status only.",
             "title": "Observed At"
+          },
+          "observed_host_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it was seen on.",
+            "title": "Observed Host Hid"
           },
           "observed_status": {
             "anyOf": [
@@ -15613,6 +15819,10 @@
             "$ref": "#/components/schemas/EffectiveLocation",
             "description": "Where it is going, by its own plan or by that of what it is in."
           },
+          "serial_number": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "Its own serial number; for a virtual context with none, that of the item it runs on, with the source `host` (P-246). Shown, and never matched by."
+          },
           "support_weight": {
             "$ref": "#/components/schemas/EffectiveWeight",
             "description": "Its own, or its model's; for a major item then the setting `default_item_weight`, raised to `minimum_item_weight` where it is below it."
@@ -15633,7 +15843,8 @@
           "end_of_sw_support",
           "end_of_hw_support",
           "ldos",
-          "do_not_renew"
+          "do_not_renew",
+          "serial_number"
         ],
         "title": "ItemEffective",
         "type": "object"
@@ -15933,6 +16144,71 @@
             "title": "Hid",
             "type": "string"
           },
+          "host": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HostRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What it runs on, as a person names it."
+          },
+          "host_differs": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it was seen on is neither the host named nor a current member of the stack or cluster named. No fault. Null where either is not known.",
+            "title": "Host Differs"
+          },
+          "host_group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stack or the cluster it runs on, as a person names it.",
+            "title": "Host Group Hid"
+          },
+          "host_item_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it runs on, as a person names it.",
+            "title": "Host Item Hid"
+          },
+          "host_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was seen there.",
+            "title": "Host Observed At"
+          },
+          "hosted_count": {
+            "description": "How many items not retired name it as their host.",
+            "title": "Hosted Count",
+            "type": "integer"
+          },
           "hostname": {
             "anyOf": [
               {
@@ -16046,6 +16322,28 @@
               }
             ],
             "title": "Observed At"
+          },
+          "observed_host": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observed_host_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it was seen to run on.",
+            "title": "Observed Host Hid"
           },
           "observed_status": {
             "anyOf": [
@@ -16271,6 +16569,14 @@
             ],
             "description": "The item whose place this one took."
           },
+          "review": {
+            "description": "The reasons a person should look at it. Empty where there is none.",
+            "items": {
+              "$ref": "#/components/schemas/ReviewReason"
+            },
+            "title": "Review",
+            "type": "array"
+          },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
@@ -16407,6 +16713,15 @@
           "parent_item_hid",
           "parent",
           "position",
+          "host_item_hid",
+          "host_group_hid",
+          "host",
+          "observed_host_hid",
+          "observed_host",
+          "host_observed_at",
+          "host_differs",
+          "hosted_count",
+          "review",
           "purchase_line_hid",
           "purchase_line",
           "purchase_line_mismatch",
@@ -16640,6 +16955,45 @@
             ],
             "title": "Fqdn"
           },
+          "host_group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stack or the cluster it runs on. Not with host_item_hid.",
+            "title": "Host Group Hid"
+          },
+          "host_item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it runs on. Only an item of a kind that runs on a host has one.",
+            "title": "Host Item Hid"
+          },
+          "host_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was seen there. Left out, now. Null with observed_host_hid.",
+            "title": "Host Observed At"
+          },
           "hostname": {
             "anyOf": [
               {
@@ -16724,6 +17078,19 @@
               }
             ],
             "title": "Observed At"
+          },
+          "observed_host_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item it was seen on.",
+            "title": "Observed Host Hid"
           },
           "observed_status": {
             "anyOf": [
@@ -25687,7 +26054,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -25790,7 +26158,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -25864,7 +26233,8 @@
                 "enum": [
                   "registered",
                   "pending",
-                  "removed"
+                  "removed",
+                  "not_reported"
                 ],
                 "type": "string"
               },
@@ -25917,7 +26287,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -26759,6 +27130,7 @@
               "own",
               "device_group",
               "parent_item",
+              "host",
               "catalog",
               "setting",
               "location",
@@ -26960,6 +27332,70 @@
           "missing"
         ],
         "title": "RetiredMany",
+        "type": "object"
+      },
+      "ReviewAbout": {
+        "additionalProperties": false,
+        "description": "The record a reason to look at an item is about: its host, or a system.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: its name.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_type": {
+            "enum": [
+              "item",
+              "device_group",
+              "external_system"
+            ],
+            "title": "Record Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "record_type",
+          "label"
+        ],
+        "title": "ReviewAbout",
+        "type": "object"
+      },
+      "ReviewReason": {
+        "additionalProperties": false,
+        "description": "One reason a person should look at an item (P-249). A mark: it refuses nothing.",
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewAbout"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The host or the system the reason is about. Null for `no_host`."
+          },
+          "reason": {
+            "description": "`no_host`: of a kind that runs on a host, and names none; `host_gone`: the host it names is retired, or has left the team's hands; `not_reported`: a system it is registered with reports it no more.",
+            "enum": [
+              "no_host",
+              "host_gone",
+              "not_reported"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "about"
+        ],
+        "title": "ReviewReason",
         "type": "object"
       },
       "RoleContacts": {
@@ -37305,6 +37741,61 @@
         ]
       }
     },
+    "/api/v1/device-groups/{hid}/hosted": {
+      "get": {
+        "description": "List what runs on a stack or a cluster, and beneath each what runs on that (P-246).",
+        "operationId": "group_hosted_api_v1_device_groups__hid__hosted_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List the retired ones too.",
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "List the retired ones too.",
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostedList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Group Hosted",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
     "/api/v1/device-groups/{hid}/members": {
       "get": {
         "description": "List the members of a group by position, the current ones first, unless a sort\nsays otherwise.",
@@ -39653,6 +40144,61 @@
           }
         },
         "summary": "Item History",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
+    "/api/v1/items/{hid}/hosted": {
+      "get": {
+        "description": "List what runs on an item, and beneath each what runs on that (P-246).",
+        "operationId": "item_hosted_api_v1_items__hid__hosted_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List the retired ones too.",
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "List the retired ones too.",
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostedList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Hosted",
         "tags": [
           "Items"
         ]

@@ -9,6 +9,8 @@ type Choice = Schemas["ChoiceOut"];
 export const CATALOG_KINDS: readonly Option[] = [
   { value: "hardware", label: "Hardware" },
   { value: "virtual_machine", label: "Virtual machine" },
+  { value: "virtual_context", label: "Virtual context" },
+  { value: "container", label: "Container" },
   { value: "software", label: "Software" },
   { value: "service", label: "Service" },
 ];
