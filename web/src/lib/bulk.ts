@@ -6,6 +6,7 @@
 // The server works out what that does to each row and stores it as a preview.
 
 import type { Schemas } from "../api/client";
+import { bulkHost } from "./hosting";
 import { type FieldSpec, type FormValue, read } from "./patch";
 import type { Chosen, GridView } from "./transfer";
 
@@ -23,6 +24,8 @@ export const NOT_IN_BULK: readonly string[] = [
 
 /** The line of the form that names a catalog entry. It sets two columns: vendor and PID. */
 export const CATALOG_ENTRY = "catalog_entry";
+/** 0.9.8: the line that gives the rows another host (P-250). It sets `host` or `host_group`. */
+export const HOST = "host";
 export const LIFECYCLE_STATE = "lifecycle_state";
 
 /** A field a bulk edit may change. */
@@ -86,6 +89,8 @@ export function buildBulk(
   draft: BulkDraft,
   rows: Rows,
   entries: Readonly<Record<string, EntryRef>> = {},
+  /** The names of the stacks and clusters a host line may name, by what the form holds. */
+  hostNames: Readonly<Record<string, string>> = {},
 ): BuiltBulk {
   const set: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
@@ -96,8 +101,11 @@ export function buildBulk(
       continue;
     }
     if (line.clear) {
-      if (field.clearable) set[field.name] = null;
-      else errors[field.name] = "This field cannot be cleared.";
+      if (!field.clearable) errors[field.name] = "This field cannot be cleared.";
+      else if (field.name === HOST) {
+        set.host = null;
+        set.host_group = null;
+      } else set[field.name] = null;
       continue;
     }
     const result = read(field, line.value);
@@ -107,6 +115,11 @@ export function buildBulk(
       errors[field.name] = field.clearable
         ? "Give a value, or choose to clear the field."
         : "Give a value.";
+    } else if (field.name === HOST) {
+      const value = String(result.value);
+      const host = bulkHost(value, hostNames[value]);
+      if (host) Object.assign(set, host);
+      else errors[field.name] = "Choose a host.";
     } else if (field.name === CATALOG_ENTRY) {
       const entry = entries[String(result.value)];
       if (entry) {
