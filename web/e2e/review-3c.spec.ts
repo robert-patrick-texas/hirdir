@@ -162,6 +162,16 @@ test("P-209: Receive opens in the window, ready to type, with the locations of t
   await form.getByLabel("Location they were put in").fill(label("Mill Store"));
   await offered.getByRole("button", { name: new RegExp(label("Mill Store")) }).click();
   await expect(form.getByTestId("chosen-location_hid")).toContainText(label("Mill Store"));
+
+  // Ticked again, Only at cannot hold a location elsewhere: the choice is cleared, and
+  // the field says so in words, never by a bare HID.
+  await form.getByLabel(`Only at ${label("Harbor Yard")}`).check();
+  await expect(form.getByTestId("chosen-location_hid")).toHaveText("Not said");
+  await expect(offered.getByRole("button")).toHaveCount(2);
+  await form.getByLabel(`Only at ${label("Harbor Yard")}`).uncheck();
+  await form.getByLabel("Location they were put in").fill(label("Mill Store"));
+  await offered.getByRole("button", { name: new RegExp(label("Mill Store")) }).click();
+  await expect(form.getByTestId("chosen-location_hid")).toContainText(label("Mill Store"));
   await form.getByRole("button", { name: "Receive 2 items" }).click();
   const arrived = page.getByTestId("arrived");
   await expect(arrived.locator("tr", { hasText: `TW${upper}01` })).toContainText(

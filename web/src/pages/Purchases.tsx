@@ -1289,7 +1289,15 @@ function Receive({
                 label={`Only at ${site.name}`}
                 name="only_at_site"
                 checked={onlyThere}
-                onChange={setOnlyThere}
+                onChange={(checked) => {
+                  setOnlyThere(checked);
+                  // A location chosen elsewhere cannot stand under Only at the site: the
+                  // field is as it was opened, the site's one location if it has one.
+                  if (checked) {
+                    setLocation("");
+                    setTouched(false);
+                  }
+                }}
                 disabled={action.busy}
                 hint="Clear it to choose a location at any other site."
               />
