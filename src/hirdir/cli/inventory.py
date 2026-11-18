@@ -1200,9 +1200,7 @@ def set_(
 # How many one request retires or deletes, at most, as the server takes them.
 AT_ONCE = 1000
 OUTCOMES = ("retired", "already", "refused", "missing")
-Records = Annotated[
-    list[str], typer.Argument(help="Each by its HID, or as the other commands name one.")
-]
+NAMED = "Each by its HID, or as the other commands name one."
 Yes = Annotated[bool, typer.Option("--yes", help="Go on without asking. For a script.")]
 
 
@@ -1235,9 +1233,9 @@ def _depends(one: dict[str, Any]) -> str:
     )
 
 
-def _retire_many(path: str, find: Any, plural: str) -> Any:
+def _retire_many(path: str, find: Any, plural: str, metavar: str) -> Any:
     def retire(
-        records: Records,
+        records: Annotated[list[str], typer.Argument(metavar=metavar, help=NAMED)],
         format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
         url: Url = None,
         token: Token = None,
@@ -1266,9 +1264,9 @@ def _retire_many(path: str, find: Any, plural: str) -> Any:
     return retire
 
 
-def _delete_many(path: str, find: Any, plural: str) -> Any:
+def _delete_many(path: str, find: Any, plural: str, metavar: str) -> Any:
     def delete(
-        records: Records,
+        records: Annotated[list[str], typer.Argument(metavar=metavar, help=NAMED)],
         reason: Annotated[
             str | None, typer.Option(help="Why they are deleted: kept in the audit trail.")
         ] = None,
@@ -1330,10 +1328,10 @@ def _delete_many(path: str, find: Any, plural: str) -> Any:
     return delete
 
 
-items.command("retire")(_retire_many("/items", find_item, "items"))
-items.command("delete")(_delete_many("/items", find_item, "items"))
-groups.command("retire")(_retire_many("/device-groups", find_group, "device groups"))
-groups.command("delete")(_delete_many("/device-groups", find_group, "device groups"))
+items.command("retire")(_retire_many("/items", find_item, "items", "ITEM..."))
+items.command("delete")(_delete_many("/items", find_item, "items", "ITEM..."))
+groups.command("retire")(_retire_many("/device-groups", find_group, "device groups", "GROUP..."))
+groups.command("delete")(_delete_many("/device-groups", find_group, "device groups", "GROUP..."))
 
 
 # --- places --------------------------------------------------------------------------
