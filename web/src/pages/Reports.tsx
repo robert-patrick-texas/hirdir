@@ -26,7 +26,8 @@ import { decimalValue, type SortColumns } from "../lib/sort";
 import {
   type By,
   byLabel,
-  healthHrefOf,
+  type CountHref,
+  countHref,
   isBy,
   isByPlace,
   isManagementBy,
@@ -167,6 +168,20 @@ function viewOf<B extends string>(
   };
 }
 
+/**
+ * Where each count of a report on show leads (P-206): by the conditions of its answer and
+ * the switches of its view, and nowhere while the answer is being read, since the one on
+ * show may then be of the view before.
+ */
+function viewHref(
+  conditions: Parameters<typeof countHref>[0],
+  view: ReportView<string>,
+  loading: boolean,
+): CountHref {
+  if (loading || !conditions) return () => null;
+  return countHref(conditions, view);
+}
+
 function paramsOf(view: ReportView<string>): Record<string, string> {
   return {
     ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
@@ -299,20 +314,10 @@ export function Summary() {
   const data = summary.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
-  // Each total of health leads to the items it counts, within this view (P-195), once
-  // the answer on show is the one of this view.
-  const read = parseFilter(view.filter, ITEM_WORDS);
-  const healthHref =
-    read.ok && !summary.loading
-      ? healthHrefOf(
-          {
-            filter: read.filter,
-            include_archived: view.includeArchived,
-            include_drafts: view.includeDrafts,
-          },
-          settings.data,
-        )
-      : undefined;
+  // 0.9.6: each count leads to the items it counts, by the filter the server gave with it
+  // and the condition it gave for the count (P-206), once the answer on show is the one
+  // of this view, whose switches the item list is sent with.
+  const hrefOf = viewHref(data?.conditions, view, summary.loading);
   const sorting = useSorting(
     data?.rows,
     {
@@ -364,9 +369,13 @@ export function Summary() {
               totals={data.totals}
               countKinds={settingList(settings.data, "count_kinds")}
               ranked
-              {...(healthHref ? { healthHref } : {})}
+              countHref={hrefOf}
             />
-            <ConditionTotals conditions={data.totals.by_condition} choices={choices.data} />
+            <ConditionTotals
+              conditions={data.totals.by_condition}
+              choices={choices.data}
+              countHref={hrefOf}
+            />
             <p className="hint">
               Health is worked out from the condition of an item, what is observed of it and whether
               it is expected online. The counts by health and by condition are of the components:
@@ -424,10 +433,20 @@ export function Summary() {
                           />
                         </th>
                         <td className="number" data-measure="items">
-                          <Counted ranking={ranked} column="items" row={row} />
+                          <Counted
+                            ranking={ranked}
+                            column="items"
+                            row={row}
+                            href={hrefOf(row, "items", row.items)}
+                          />
                         </td>
                         <td className="number" data-measure="components">
-                          <Counted ranking={ranked} column="component_count" row={row} />
+                          <Counted
+                            ranking={ranked}
+                            column="component_count"
+                            row={row}
+                            href={hrefOf(row, "component_count", row.component_count)}
+                          />
                         </td>
                         <td className="number" data-measure="nodes">
                           <Counted ranking={ranked} column="managed_node_count" row={row} />
@@ -437,7 +456,16 @@ export function Summary() {
                         </td>
                         {HEALTHS.map((health) => (
                           <td className="number" key={health.value} data-health={health.value}>
-                            <Counted ranking={ranked} column={`health.${health.value}`} row={row} />
+                            <Counted
+                              ranking={ranked}
+                              column={`health.${health.value}`}
+                              row={row}
+                              href={hrefOf(
+                                row,
+                                `health.${health.value}`,
+                                row.by_health[health.value],
+                              )}
+                            />
                           </td>
                         ))}
                       </tr>
@@ -492,6 +520,8 @@ export function ManagementReport() {
   const data = report.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
+  // 0.9.6: the counts lead to what they count, the sums of money nowhere (P-206).
+  const hrefOf = viewHref(data?.conditions, view, report.loading);
   const sorting = useSorting(
     data?.rows,
     {
@@ -539,7 +569,7 @@ export function ManagementReport() {
         <>
           <section aria-labelledby="management-totals">
             <h2 id="management-totals">Totals</h2>
-            <ManagementTotals totals={data.totals} currency={currency} />
+            <ManagementTotals totals={data.totals} currency={currency} countHref={hrefOf} />
           </section>
           {by !== "" && (
             <section aria-labelledby="management-rows">
@@ -583,10 +613,20 @@ export function ManagementReport() {
                           />
                         </th>
                         <td className="number" data-measure="items">
-                          <Counted ranking={ranked} column="items" row={row} />
+                          <Counted
+                            ranking={ranked}
+                            column="items"
+                            row={row}
+                            href={hrefOf(row, "items", row.items)}
+                          />
                         </td>
                         <td className="number" data-measure="components">
-                          <Counted ranking={ranked} column="component_count" row={row} />
+                          <Counted
+                            ranking={ranked}
+                            column="component_count"
+                            row={row}
+                            href={hrefOf(row, "component_count", row.component_count)}
+                          />
                         </td>
                         <td className="number" data-measure="value">
                           <Counted ranking={ranked} column="est_value" row={row} />

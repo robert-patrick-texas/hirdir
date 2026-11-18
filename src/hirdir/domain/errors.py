@@ -1,5 +1,7 @@
 """What can go wrong in a rule, in terms the interfaces turn into answers."""
 
+from dataclasses import dataclass
+
 
 class DomainError(Exception):
     """The base of every error a rule raises."""
@@ -9,15 +11,35 @@ class NotFound(DomainError):
     """There is no such record."""
 
 
+@dataclass(frozen=True)
+class Existing:
+    """The record that already has a value another may not have too (P-207).
+
+    `record_type` is its kind as the audit trail names it, `item` or `catalog_entry`,
+    and `label` what a person knows it by.
+    """
+
+    record_type: str
+    hid: str
+    label: str
+
+
 class Conflict(DomainError):
     """The change collides with the present state: a duplicate, or a rule it would break.
 
-    `fields` names the field that collides, where there is one.
+    `fields` names the field that collides, where there is one, and `existing` the
+    record that has the value already, where the collision is with one.
     """
 
-    def __init__(self, message: str, fields: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        fields: dict[str, str] | None = None,
+        existing: Existing | None = None,
+    ) -> None:
         super().__init__(message)
         self.fields = fields or {}
+        self.existing = existing
 
 
 class StaleVersion(Conflict):

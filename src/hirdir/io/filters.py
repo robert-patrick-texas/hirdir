@@ -7,9 +7,10 @@ joined by AND. A list route says which fields it allows; this module checks a fi
 against them and turns it into SQL.
 """
 
+import difflib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -28,6 +29,10 @@ MAX_CONDITIONS = 100
 MAX_LIST = 1000
 MAX_TEXT = 1000
 BIGGEST = 2**63 - 1
+# The most fields a refusal of a field the list does not have offers in its place.
+MAX_NEAREST = 3
+# How alike two names are, from 0 to 1, for one to be offered for the other.
+NEAR_SPELLING = 0.6
 
 COMPARING = ("eq", "ne", "in", "empty")
 ORDERING = ("lt", "lte", "gt", "gte", "between")
@@ -111,6 +116,39 @@ Node = Condition | Branch
 def refuse(message: str) -> Invalid:
     """Return the error for a filter that is not acceptable."""
     return Invalid("the filter is not acceptable", {"filter": message})
+
+
+def nearest(name: str, known: Iterable[str]) -> list[str]:
+    """Return the fields a list has that are nearest a name it does not have (P-207).
+
+    The same name under a related record comes first, `catalog.type` for `type`, in the
+    order the list gives its fields; then the names spelt nearly alike, the nearest
+    first. At most three, and none where nothing is near.
+    """
+    names = [one for one in known if one != name]
+    under = [one for one in names if one.endswith(f".{name}")]
+    alike = difflib.get_close_matches(name, names, n=MAX_NEAREST, cutoff=NEAR_SPELLING)
+    found = list(dict.fromkeys([*under, *alike]))
+    return found[:MAX_NEAREST]
+
+
+def _in_words(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def not_a_field(name: str, doing: str, known: Iterable[str]) -> str:
+    """Say that a list cannot be filtered or sorted by a name, and which fields are near."""
+    said = f"{name} is not a field this list can be {doing} by"
+    near = nearest(name, known)
+    if not near:
+        return said
+    if len(near) == 1:
+        return f"{said}; the nearest field it has is {near[0]}"
+    return f"{said}; the nearest fields it has are {_in_words(near)}"
+
+
+def _filtered_by(field: Field) -> bool:
+    return field.expression is not None or field.test is not None
 
 
 # --- reading a filter ----------------------------------------------------------------
@@ -230,6 +268,63 @@ def where(field: str, op: str, value: Any) -> dict[str, Any]:
     return {"field": field, "op": op, "value": value}
 
 
+def _short_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return ",".join(_short_value(part) for part in value)
+    return "" if value is None else str(value)
+
+
+def _as_read(node: Node) -> list[tuple[str, str, Any]]:
+    """Return the conditions of an AND of conditions, each value as the short form reads it."""
+    parts = (node,) if isinstance(node, Condition) else node.parts
+    read: list[tuple[str, str, Any]] = []
+    for part in parts:
+        if not isinstance(part, Condition):
+            return []
+        value = part.value
+        held = [_short_value(one) for one in value] if isinstance(value, list) else value
+        read.append((part.field, part.op, held if isinstance(held, list) else _short_value(held)))
+    return read
+
+
+def as_text(tree: dict[str, Any] | None) -> str:
+    """Return a filter as `filter=` takes it, for a link to a list (P-206): the short form
+    where it says the same conditions, and otherwise the tree in JSON. No filter is blank.
+
+    The short form has no OR and no nesting, and a value that holds a comma in a list, a
+    space at either end or what looks like a condition is not read back as it was.
+    """
+    if tree is None:
+        return ""
+    node = from_tree(tree)
+    if isinstance(node, Branch) and node.joined_by != "and":
+        return json.dumps(tree, ensure_ascii=False)
+    conditions = _as_read(node)
+    if conditions:
+        short = " ".join(f"{field}:{op}:{_short_value(value)}" for field, op, value in conditions)
+        try:
+            back = _as_read(from_short(short))
+        except Invalid:
+            back = []
+        if back == conditions:
+            return short
+    return json.dumps(tree, ensure_ascii=False)
+
+
+def size(tree: dict[str, Any] | None) -> tuple[int, int]:
+    """Return how many conditions a filter holds and how deep it nests: 0 deep for one
+    condition, 1 for an AND or an OR of them."""
+    if tree is None:
+        return 0, 0
+    for joined_by in ("and", "or"):
+        if joined_by in tree:
+            parts = [size(part) for part in tree[joined_by]]
+            return sum(one for one, _ in parts), 1 + max((deep for _, deep in parts), default=0)
+    return 1, 0
+
+
 # --- turning a filter into SQL -------------------------------------------------------
 
 
@@ -326,8 +421,9 @@ def _condition(
 ) -> ColumnElement[bool]:
     name, op, value = condition.field, condition.op, condition.value
     field = fields.get(name)
-    if field is None or (field.expression is None and field.test is None):
-        raise refuse(f"{name} is not a field this list can be filtered by")
+    if field is None or not _filtered_by(field):
+        known = (key for key, one in fields.items() if _filtered_by(one))
+        raise refuse(not_a_field(name, "filtered", known))
     if op not in OPERATORS:
         raise refuse(f"{op} is not an operator; the operators are {', '.join(OPERATORS)}")
     if op not in KINDS[field.kind]:
@@ -465,9 +561,9 @@ def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[So
             name = name.lstrip("+-").strip()
             field = fields.get(name)
             if field is None or not sorted_by(field):
+                known = (key for key, one in fields.items() if sorted_by(one))
                 raise Invalid(
-                    "the sort is not acceptable",
-                    {"sort": f"{name} is not a field this list can be sorted by"},
+                    "the sort is not acceptable", {"sort": not_a_field(name, "sorted", known)}
                 )
             if all(key.field != name for key in keys):
                 keys.append(SortKey(name, descending))

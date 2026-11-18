@@ -8464,7 +8464,7 @@
             "description": "The user this contact is, where it is one."
           },
           "uses": {
-            "description": "How many places and owners it is assigned to, and operators it stands behind.",
+            "description": "How many records name it: the places and owners it is assigned to, the operators it stands behind, and the agreements, contracts, vendors and circuits that name it. `GET /contacts/{hid}/uses` lists them.",
             "title": "Uses",
             "type": "integer"
           }
@@ -8683,6 +8683,59 @@
           "record_status"
         ],
         "title": "ContactRef",
+        "type": "object"
+      },
+      "ContactUses": {
+        "additionalProperties": false,
+        "description": "Every record that names a contact, by kind (P-205): what `uses` of the contact\ncounts, listed.",
+        "properties": {
+          "agreements": {
+            "$ref": "#/components/schemas/NamedRecords"
+          },
+          "circuits": {
+            "$ref": "#/components/schemas/NamedRecords"
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "contracts": {
+            "$ref": "#/components/schemas/NamedRecords"
+          },
+          "operators": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The operators it stands behind."
+          },
+          "owners": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The owners it is one of the people of."
+          },
+          "places": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The regions, sites and locations it is assigned to."
+          },
+          "total": {
+            "description": "How many records name it: `uses` of the contact.",
+            "title": "Total",
+            "type": "integer"
+          },
+          "vendors": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The vendors, carriers among them, that name it."
+          }
+        },
+        "required": [
+          "contact_hid",
+          "total",
+          "places",
+          "owners",
+          "operators",
+          "agreements",
+          "contracts",
+          "vendors",
+          "circuits"
+        ],
+        "title": "ContactUses",
         "type": "object"
       },
       "ContractContactAdd": {
@@ -10668,6 +10721,33 @@
         "title": "ControllerRef",
         "type": "object"
       },
+      "CountConditions": {
+        "additionalProperties": false,
+        "description": "What each count adds to a `filter` of the answer, joined to it by AND, to keep\nexactly what it counts (P-206). Each is a filter of `GET /items`, written as a\n`filter` of the answer is.",
+        "properties": {
+          "by_health": {
+            "$ref": "#/components/schemas/HealthConditions",
+            "description": "The components of each health, as `by_health` counts them."
+          },
+          "component_count": {
+            "description": "The components among the items, as `component_count` counts them.",
+            "title": "Component Count",
+            "type": "string"
+          },
+          "component_count_by_kind": {
+            "description": "For an entry of `by_kind`: the major items in hand, of whatever kind, as its `component_count` counts them.",
+            "title": "Component Count By Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_count",
+          "component_count_by_kind",
+          "by_health"
+        ],
+        "title": "CountConditions",
+        "type": "object"
+      },
       "Counted": {
         "additionalProperties": false,
         "description": "The items and the components that share one value: a kind, or a condition.",
@@ -10676,6 +10756,18 @@
             "description": "The components among them. By kind, the major items in hand of that kind, also where the headline count leaves the kind out.",
             "title": "Component Count",
             "type": "integer"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may.",
+            "title": "Filter"
           },
           "items": {
             "title": "Items",
@@ -10708,7 +10800,8 @@
           "key",
           "label",
           "items",
-          "component_count"
+          "component_count",
+          "filter"
         ],
         "title": "Counted",
         "type": "object"
@@ -14187,6 +14280,36 @@
           "status"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "HealthConditions": {
+        "additionalProperties": false,
+        "description": "What a count of each health adds to a filter of the answer: its components of that health.",
+        "properties": {
+          "degraded": {
+            "title": "Degraded",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "string"
+          },
+          "good": {
+            "title": "Good",
+            "type": "string"
+          },
+          "unknown": {
+            "title": "Unknown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "good",
+          "degraded",
+          "failed",
+          "unknown"
+        ],
+        "title": "HealthConditions",
         "type": "object"
       },
       "HealthCount": {
@@ -18454,6 +18577,22 @@
         "title": "LocationRef",
         "type": "object"
       },
+      "ManagementConditions": {
+        "additionalProperties": false,
+        "description": "What a count of components adds to a `filter` of the answer (P-206).",
+        "properties": {
+          "component_count": {
+            "description": "The components among the items, as `component_count` counts them.",
+            "title": "Component Count",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_count"
+        ],
+        "title": "ManagementConditions",
+        "type": "object"
+      },
       "ManagementMeasures": {
         "additionalProperties": false,
         "description": "What the management report counts of a set of items.",
@@ -18478,6 +18617,18 @@
             "title": "Est Value",
             "type": "string"
           },
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may.",
+            "title": "Filter"
+          },
           "items": {
             "description": "Every item of the set, major and minor.",
             "title": "Items",
@@ -18488,7 +18639,8 @@
           "items",
           "component_count",
           "est_value",
-          "annual_support_cost"
+          "annual_support_cost",
+          "filter"
         ],
         "title": "ManagementMeasures",
         "type": "object"
@@ -18516,6 +18668,9 @@
             "title": "By",
             "type": "string"
           },
+          "conditions": {
+            "$ref": "#/components/schemas/ManagementConditions"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/ManagementRow"
@@ -18530,7 +18685,8 @@
         "required": [
           "by",
           "totals",
-          "rows"
+          "rows",
+          "conditions"
         ],
         "title": "ManagementOut",
         "type": "object"
@@ -18558,6 +18714,18 @@
             "pattern": "^\\d+\\.\\d{2}$",
             "title": "Est Value",
             "type": "string"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may.",
+            "title": "Filter"
           },
           "from_group": {
             "anyOf": [
@@ -18748,6 +18916,7 @@
           "component_count",
           "est_value",
           "annual_support_cost",
+          "filter",
           "key",
           "label"
         ],
@@ -19268,6 +19437,134 @@
           "contact"
         ],
         "title": "NamedContact",
+        "type": "object"
+      },
+      "NamedRecord": {
+        "additionalProperties": false,
+        "description": "A record that names a contact, and the role the contact has there (P-205).",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an operator: the colour of its label.",
+            "title": "Colour"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: a place by its path, a contract by its number and its vendor, a circuit by its enterprise circuit ID or its name, any other by its name or label.",
+            "title": "Label",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the record orders the contacts it names.",
+            "title": "Priority"
+          },
+          "record_status": {
+            "description": "A retired record is listed as any other.",
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "record_type": {
+            "description": "Its kind, as the audit trail names it.",
+            "enum": [
+              "region",
+              "site",
+              "location",
+              "owner",
+              "operator",
+              "agreement",
+              "contract",
+              "vendor",
+              "circuit"
+            ],
+            "title": "Record Type",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The role the contact has there: a value of `contact_role` for a place and for a side of a circuit, `primary` or `alternate` for an owner, `account_manager` or `support_contact` for an agreement, a contract, a vendor and the carrier of a circuit. Null for an operator, which the contact stands behind.",
+            "title": "Role"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a circuit: the side the contact is named for; null for its carrier.",
+            "title": "Side"
+          }
+        },
+        "required": [
+          "hid",
+          "record_type",
+          "label",
+          "record_status",
+          "role",
+          "priority",
+          "side",
+          "colour"
+        ],
+        "title": "NamedRecord",
+        "type": "object"
+      },
+      "NamedRecords": {
+        "additionalProperties": false,
+        "description": "The records of one kind that name a contact: how many, and at most 100 of them,\nby what each is known by.",
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/NamedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "records"
+        ],
+        "title": "NamedRecords",
         "type": "object"
       },
       "NetworkCreate": {
@@ -22566,6 +22863,17 @@
             "title": "Errors",
             "type": "array"
           },
+          "existing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem."
+          },
           "status": {
             "title": "Status",
             "type": "integer"
@@ -22605,6 +22913,33 @@
           "message"
         ],
         "title": "ProblemField",
+        "type": "object"
+      },
+      "ProblemRecord": {
+        "additionalProperties": false,
+        "description": "The record that already has the value a change was refused for (P-207).",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: an item by its host name, name, asset tag or serial number, a model by its vendor and PID, any other by its name or label.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_type": {
+            "description": "Its kind, as the audit trail names it: `item`, `catalog_entry`, `vendor`.",
+            "title": "Record Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "record_type",
+          "label"
+        ],
+        "title": "ProblemRecord",
         "type": "object"
       },
       "PurchaseLineAdd": {
@@ -27926,6 +28261,9 @@
             ],
             "title": "By"
           },
+          "conditions": {
+            "$ref": "#/components/schemas/CountConditions"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/SummaryRow"
@@ -27940,7 +28278,8 @@
         "required": [
           "by",
           "totals",
-          "rows"
+          "rows",
+          "conditions"
         ],
         "title": "SummaryOut",
         "type": "object"
@@ -27955,6 +28294,18 @@
           "component_count": {
             "title": "Component Count",
             "type": "integer"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may.",
+            "title": "Filter"
           },
           "from_group": {
             "anyOf": [
@@ -28175,6 +28526,7 @@
           "managed_node_count",
           "support_weight",
           "by_health",
+          "filter",
           "key",
           "label",
           "operators"
@@ -28207,6 +28559,18 @@
             "title": "Component Count",
             "type": "integer"
           },
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may.",
+            "title": "Filter"
+          },
           "items": {
             "description": "Every item of the set, major and minor.",
             "title": "Items",
@@ -28231,6 +28595,7 @@
           "managed_node_count",
           "support_weight",
           "by_health",
+          "filter",
           "by_condition",
           "by_kind"
         ],
@@ -34582,6 +34947,49 @@
           }
         },
         "summary": "Retire Contact",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/contacts/{hid}/uses": {
+      "get": {
+        "description": "List every record that names a contact, by kind, with the role it has there\n(P-205): at most 100 of each kind, by what each is known by, and how many in all.",
+        "operationId": "contact_uses_api_v1_contacts__hid__uses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactUses"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Contact Uses",
         "tags": [
           "People"
         ]

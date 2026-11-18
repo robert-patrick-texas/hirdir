@@ -21,7 +21,7 @@ from hirdir.db import dialect
 from hirdir.db.models import Circuit, CircuitGroup, CircuitGroupMember, Owner
 from hirdir.domain import audit, circuit_records, circuits, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "circuit_group"
 MEMBER_TYPE = "circuit_group_member"
@@ -178,6 +178,7 @@ def _checked(db: Session, fields: dict[str, Any], group: CircuitGroup | None) ->
             raise Conflict(
                 f"there is already a circuit group {taken.name}",
                 {"name": "another circuit group has this name"},
+                Existing(RECORD_TYPE, taken.hid, taken.name),
             )
         values["name"], values["name_key"] = name, records.key(name)
     for name in ("description", "notes"):

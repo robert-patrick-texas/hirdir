@@ -269,6 +269,21 @@ describe("problem documents", () => {
     const error = await thrownBy(() => client.request("get", "/api/v1/about"));
     expect(error.message).toBe("The server answered 500");
     expect(error.fields).toEqual({});
+    expect(error.existing).toBeNull();
+  });
+
+  it("carry the record that has the value already, where one is named whole (P-207)", async () => {
+    const existing = { hid: "i-1", record_type: "item", label: "ex-sw-01.example.net" };
+    const named = setup(() => json(409, { title: "Conflict", status: 409, existing }));
+    const error = await thrownBy(() => named.client.request("post", "/api/v1/items", { body: {} }));
+    expect(error.existing).toEqual(existing);
+    const partial = setup(() =>
+      json(409, { title: "Conflict", status: 409, existing: { hid: "i-1", label: 3 } }),
+    );
+    const other = await thrownBy(() =>
+      partial.client.request("post", "/api/v1/items", { body: {} }),
+    );
+    expect(other.existing).toBeNull();
   });
 });
 

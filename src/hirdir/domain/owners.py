@@ -14,7 +14,7 @@ from hirdir.db import dialect
 from hirdir.db.models import Contact, Owner, OwnerMember
 from hirdir.domain import audit, records, tags
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "owner"
 MEMBER_TYPE = "owner_member"
@@ -44,6 +44,7 @@ def _checked(db: Session, fields: dict[str, Any], owner: Owner | None) -> dict[s
             raise Conflict(
                 f"there is already an owner {taken.label}",
                 {"label": "another owner has this label"},
+                Existing(RECORD_TYPE, taken.hid, taken.label),
             )
         values["label"] = label
         values["label_key"] = records.key(label)

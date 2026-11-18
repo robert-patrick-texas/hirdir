@@ -33,6 +33,7 @@ function row(key: string | null, items: number, more: Partial<ScoreRow> = {}): S
     support_weight: `${items}.00`,
     by_health: { good: items, degraded: 0, failed: 0, unknown: 0 },
     operators: null,
+    filter: "",
     ...more,
   };
 }

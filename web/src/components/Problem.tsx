@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useEffectEvent, useState } from "
 import { Link } from "react-router";
 import type { ApiError } from "../api/client";
 import { hearChanges } from "../lib/hooks";
-import { fieldErrors, fieldLine, sentence } from "../lib/problems";
+import { existingLead, existingPath, fieldErrors, fieldLine, sentence } from "../lib/problems";
 
 /**
  * What else than another person may have changed the record a page shows, said where a
@@ -38,6 +38,9 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
     visible && visible.detail !== "" && visible.status !== 429 && visible.status !== 0
       ? visible.title
       : "";
+  // 0.9.6: the record that has the value already, as a link to it (P-207).
+  const existing = visible && !visible.stale ? visible.existing : null;
+  const existingTo = existing ? existingPath(existing) : null;
   return (
     <div className="live" aria-live="assertive" aria-atomic="true">
       {visible && (
@@ -52,6 +55,16 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
             <p>
               {heading && <strong>{sentence(heading)} </strong>}
               {sentence(visible.message)}
+            </p>
+          )}
+          {existing && (
+            <p>
+              {existingLead(existing)}{" "}
+              {existingTo ? (
+                <Link to={existingTo}>{existing.label}</Link>
+              ) : (
+                <strong>{existing.label}</strong>
+              )}
             </p>
           )}
           {others.length > 0 && (

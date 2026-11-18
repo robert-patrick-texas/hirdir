@@ -17,7 +17,7 @@ from hirdir.db import dialect
 from hirdir.db.models import DeviceGroup, DeviceGroupMember, ExternalSystem, Item, Registration
 from hirdir.domain import audit, choices, health, records, settings
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "external_system"
 REGISTRATION_TYPE = "registration"
@@ -87,6 +87,7 @@ def _checked(db: Session, fields: dict[str, Any], system: ExternalSystem | None)
             raise Conflict(
                 f"there is already an external system {taken.name}",
                 {"name": "another external system has this name"},
+                Existing(RECORD_TYPE, taken.hid, taken.name),
             )
         values["name"] = name
         values["name_key"] = records.key(name)

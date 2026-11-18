@@ -16,7 +16,7 @@ from hirdir import ids
 from hirdir.db.models import Address, DeviceGroup, Item, Network
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 NETWORK_TYPE = "network"
 RECORD_TYPE = "address"
@@ -106,6 +106,7 @@ def _checked_network(
             raise Conflict(
                 f"there is already a network {taken.label}",
                 {"label": "another network has this label"},
+                Existing(NETWORK_TYPE, taken.hid, taken.label),
             )
         values["label"] = label
         values["label_key"] = records.key(label)

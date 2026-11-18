@@ -34,7 +34,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import audit, choices, descent, file_kinds, items, records, settings
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 from hirdir.domain.geography import Atlas, Place
 from hirdir.io import store as stores
 from hirdir.io.store import Incoming, Store
@@ -275,6 +275,7 @@ def _refuse_twice(
             raise Conflict(
                 f"this file is on that record already, as {there.title}",
                 {"file": f"the same content is reference {there.hid}, {there.title}"},
+                Existing(RECORD, there.hid, there.title),
             )
 
 

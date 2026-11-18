@@ -26,15 +26,22 @@ def problem(
     detail: str = "",
     fields: dict[str, str] | None = None,
     headers: Mapping[str, str] | None = None,
+    existing: errors.Existing | None = None,
 ) -> JSONResponse:
-    """Build a problem response."""
-    body = {
+    """Build a problem response. `existing` is the record that has the value already."""
+    body: dict[str, object] = {
         "type": "about:blank",
         "title": title,
         "status": status,
         "detail": detail,
         "errors": [{"field": name, "message": text} for name, text in (fields or {}).items()],
     }
+    if existing is not None:
+        body["existing"] = {
+            "hid": existing.hid,
+            "record_type": existing.record_type,
+            "label": existing.label,
+        }
     return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE, headers=headers)
 
 
@@ -65,7 +72,7 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(errors.Conflict)
     async def _conflict(_: Request, error: errors.Conflict) -> JSONResponse:
         title = "Stale version" if isinstance(error, errors.StaleVersion) else "Conflict"
-        return problem(409, title, str(error), error.fields)
+        return problem(409, title, str(error), error.fields, existing=error.existing)
 
     @app.exception_handler(StaleDataError)
     async def _stale(_: Request, error: StaleDataError) -> JSONResponse:

@@ -2647,6 +2647,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/contacts/{hid}/uses": {
+    /**
+     * List every record that names a contact, by kind, with the role it has there
+     * (P-205): at most 100 of each kind, by what each is known by, and how many in all.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContactUses"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/contract-coverage": {
     /**
      * List coverage under every contract: that of one item with `item_hid` in the
@@ -9448,7 +9478,7 @@ export interface components {
       updated_at: string;
       /** The user this contact is, where it is one. */
       user: components["schemas"]["UserBrief"] | null;
-      /** How many places and owners it is assigned to, and operators it stands behind. */
+      /** How many records name it: the places and owners it is assigned to, the operators it stands behind, and the agreements, contracts, vendors and circuits that name it. `GET /contacts/{hid}/uses` lists them. */
       uses: number;
     };
     /** Fields of a contact to change, and the version they were read at. */
@@ -9472,6 +9502,26 @@ export interface components {
       phone: string | null;
       phone2: string | null;
       record_status: "draft" | "active" | "retired";
+    };
+    /**
+     * Every record that names a contact, by kind (P-205): what `uses` of the contact
+     * counts, listed.
+     */
+    ContactUses: {
+      agreements: components["schemas"]["NamedRecords"];
+      circuits: components["schemas"]["NamedRecords"];
+      contact_hid: string;
+      contracts: components["schemas"]["NamedRecords"];
+      /** The operators it stands behind. */
+      operators: components["schemas"]["NamedRecords"];
+      /** The owners it is one of the people of. */
+      owners: components["schemas"]["NamedRecords"];
+      /** The regions, sites and locations it is assigned to. */
+      places: components["schemas"]["NamedRecords"];
+      /** How many records name it: `uses` of the contact. */
+      total: number;
+      /** The vendors, carriers among them, that name it. */
+      vendors: components["schemas"]["NamedRecords"];
     };
     /** A contact record to name for an agreement or a contract, in a role. */
     ContractContactAdd: {
@@ -9784,10 +9834,25 @@ export interface components {
       pid: string | null;
       serial_number: string | null;
     };
+    /**
+     * What each count adds to a `filter` of the answer, joined to it by AND, to keep
+     * exactly what it counts (P-206). Each is a filter of `GET /items`, written as a
+     * `filter` of the answer is.
+     */
+    CountConditions: {
+      /** The components of each health, as `by_health` counts them. */
+      by_health: components["schemas"]["HealthConditions"];
+      /** The components among the items, as `component_count` counts them. */
+      component_count: string;
+      /** For an entry of `by_kind`: the major items in hand, of whatever kind, as its `component_count` counts them. */
+      component_count_by_kind: string;
+    };
     /** The items and the components that share one value: a kind, or a condition. */
     Counted: {
       /** The components among them. By kind, the major items in hand of that kind, also where the headline count leaves the kind out. */
       component_count: number;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       items: number;
       key: string | null;
       label: string | null;
@@ -10349,6 +10414,13 @@ export interface components {
     Health: {
       detail?: string;
       status: string;
+    };
+    /** What a count of each health adds to a filter of the answer: its components of that health. */
+    HealthConditions: {
+      degraded: string;
+      failed: string;
+      good: string;
+      unknown: string;
     };
     /** The components of each health. */
     HealthCount: {
@@ -10970,11 +11042,18 @@ export interface components {
       site: string;
       site_hid: string;
     };
+    /** What a count of components adds to a `filter` of the answer (P-206). */
+    ManagementConditions: {
+      /** The components among the items, as `component_count` counts them. */
+      component_count: string;
+    };
     /** What the management report counts of a set of items. */
     ManagementMeasures: {
       annual_support_cost: string;
       component_count: number;
       est_value: string;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** Every item of the set, major and minor. */
       items: number;
     };
@@ -10982,6 +11061,7 @@ export interface components {
     ManagementOut: {
       /** What the rows are by: the site, unless asked. */
       by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "tag";
+      conditions: components["schemas"]["ManagementConditions"];
       rows: components["schemas"]["ManagementRow"][];
       totals: components["schemas"]["ManagementMeasures"];
     };
@@ -10990,6 +11070,8 @@ export interface components {
       annual_support_cost: string;
       component_count: number;
       est_value: string;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** By operator: items that have it from a group. */
       from_group?: number | null;
       /** By operator: minor items that have it from the item they are in. */
@@ -11120,6 +11202,32 @@ export interface components {
       /** The order in which they are listed, from 1. */
       priority: number;
       role: string;
+    };
+    /** A record that names a contact, and the role the contact has there (P-205). */
+    NamedRecord: {
+      /** Of an operator: the colour of its label. */
+      colour: string | null;
+      hid: string;
+      /** What it is known by: a place by its path, a contract by its number and its vendor, a circuit by its enterprise circuit ID or its name, any other by its name or label. */
+      label: string;
+      /** Where the record orders the contacts it names. */
+      priority: number | null;
+      /** A retired record is listed as any other. */
+      record_status: "draft" | "active" | "retired";
+      /** Its kind, as the audit trail names it. */
+      record_type: "region" | "site" | "location" | "owner" | "operator" | "agreement" | "contract" | "vendor" | "circuit";
+      /** The role the contact has there: a value of `contact_role` for a place and for a side of a circuit, `primary` or `alternate` for an owner, `account_manager` or `support_contact` for an agreement, a contract, a vendor and the carrier of a circuit. Null for an operator, which the contact stands behind. */
+      role: string | null;
+      /** Of a circuit: the side the contact is named for; null for its carrier. */
+      side: "a" | "z" | null;
+    };
+    /**
+     * The records of one kind that name a contact: how many, and at most 100 of them,
+     * by what each is known by.
+     */
+    NamedRecords: {
+      records: components["schemas"]["NamedRecord"][];
+      total: number;
     };
     /** A new network label. */
     NetworkCreate: {
@@ -11714,6 +11822,8 @@ export interface components {
     Problem: {
       detail?: string;
       errors?: components["schemas"]["ProblemField"][];
+      /** On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem. */
+      existing?: components["schemas"]["ProblemRecord"] | null;
       status: number;
       title: string;
       type?: string;
@@ -11722,6 +11832,14 @@ export interface components {
     ProblemField: {
       field: string;
       message: string;
+    };
+    /** The record that already has the value a change was refused for (P-207). */
+    ProblemRecord: {
+      hid: string;
+      /** What it is known by: an item by its host name, name, asset tag or serial number, a model by its vendor and PID, any other by its name or label. */
+      label: string;
+      /** Its kind, as the audit trail names it: `item`, `catalog_entry`, `vendor`. */
+      record_type: string;
     };
     /**
      * A new line of a purchase request: a model, or a part number for what is not
@@ -12570,6 +12688,7 @@ export interface components {
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
       by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+      conditions: components["schemas"]["CountConditions"];
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };
@@ -12577,6 +12696,8 @@ export interface components {
     SummaryRow: {
       by_health: components["schemas"]["HealthCount"];
       component_count: number;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** By operator: items that have it from a group. */
       from_group?: number | null;
       /** By operator: minor items that have it from the item they are in. */
@@ -12620,6 +12741,8 @@ export interface components {
       by_health: components["schemas"]["HealthCount"];
       by_kind: components["schemas"]["Counted"][];
       component_count: number;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** Every item of the set, major and minor. */
       items: number;
       managed_node_count: number;

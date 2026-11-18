@@ -11,7 +11,10 @@ import { useSettings } from "../lib/lists";
 import { assignmentPath, OPEN, UNASSIGNED, unassignedComponents } from "../lib/operators";
 import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
-import { healthHrefOf, settingList } from "../lib/summary";
+import { countHref, settingList } from "../lib/summary";
+
+// The view of the headline: the inventory as a list shows it by default.
+const PLAIN_VIEW = { includeArchived: false, includeDrafts: false };
 
 /**
  * What nobody of the team is assigned to look after, and what is under a label with
@@ -95,7 +98,7 @@ function Headline() {
         <HeadlineTotals
           totals={summary.data.totals}
           countKinds={settingList(settings.data, "count_kinds")}
-          healthHref={healthHrefOf({ filter: null }, settings.data)}
+          countHref={countHref(summary.data.conditions, PLAIN_VIEW)}
         />
       )}
       {!summary.loading && <Assigned />}

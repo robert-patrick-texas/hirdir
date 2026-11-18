@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from hirdir.db.models import CatalogEntry, Vendor
 from hirdir.domain import choices, not_renewed, records, settings, tags
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 VENDOR_FIELDS = ("name", "aliases", "notes", "review_status")
 KINDS = settings.CATALOG_KINDS
@@ -95,6 +95,7 @@ def _checked_vendor(db: Session, fields: dict[str, Any], vendor: Vendor | None) 
             raise Conflict(
                 f"{name} is already the vendor {taken.name}",
                 {field: f"{name} is a name of the vendor {taken.name}"},
+                Existing("vendor", taken.hid, taken.name),
             )
     if "notes" in fields:
         values["notes"] = records.clean(fields["notes"])
@@ -190,9 +191,13 @@ def _checked_entry(
             )
         )
         if taken is not None and (entry is None or taken.hid != entry.hid):
+            vendor = db.get(Vendor, taken.vendor_hid)
             raise Conflict(
                 f"this vendor already has the PID {taken.pid}: {taken.hid}",
                 {"pid": "this vendor already has an entry with this PID"},
+                Existing(
+                    RECORD_TYPE, taken.hid, f"{vendor.name} {taken.pid}" if vendor else taken.pid
+                ),
             )
     for name in TEXTS:
         if name in fields:

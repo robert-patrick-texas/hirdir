@@ -23,7 +23,7 @@ and CLI's types are generated from it.
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
 | Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
-| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
+| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
@@ -38,7 +38,7 @@ and CLI's types are generated from it.
 | Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}` |
 | Addresses | `/networks`, `/addresses` |
 | Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening` |
-| People | `/contacts`, `POST /contacts/{hid}/retire`, `/operators`, `GET /operators/{hid}/assignments`, `POST /operators/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
+| People | `/contacts`, `POST /contacts/{hid}/retire`, `GET /contacts/{hid}/uses`, `/operators`, `GET /operators/{hid}/assignments`, `POST /operators/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
 | Contracts | `/agreements`, `POST /agreements/{hid}/renew`, `POST /agreements/{hid}/retire`, `GET /agreements/{hid}/terms`, `/contracts`, `POST /contracts/{hid}/retire`, `POST /contracts/{hid}/renew`, `GET /contracts/{hid}/terms`, `GET` and `POST /contracts/{hid}/coverage`, `PATCH` and `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `GET /contract-coverage`; `GET` and `POST /agreements/{hid}/contacts`, `PATCH` and `DELETE /agreements/{hid}/contacts/{link_hid}`, and the same under `/contracts/{hid}` |
 | Purchases | `/purchase-requests`, `GET` and `POST /purchase-requests/{hid}/lines`, `GET /purchase-lines`, `GET` and `PATCH /purchase-lines/{hid}`, `POST /purchase-lines/{hid}/receive` |
 | External systems | `/external-systems`, `POST /external-systems/{hid}/retire`, `/registrations`, `DELETE /registrations/{hid}` |
@@ -150,6 +150,23 @@ An operator answers `contact` with that contact's `email`, `phone` and `phone2`;
 `null` where nobody is behind the label, no contact or one that is retired; and
 `user`, the user that contact is, where it is one. `GET /operators` filters and sorts
 by `scope`.
+
+`GET /contacts/{hid}/uses`, which every role reads, lists every record that names a
+contact, by kind (P-205): `places`, the regions, sites and locations it is assigned to;
+`owners`, those it is one of the people of; `operators`, those it stands behind; and
+`agreements`, `contracts`, `vendors` and `circuits`, those that name it. Each kind has
+`total` and `records`, at most 100 of them, in the order of what each is known by. A
+record has its `hid`; `record_type`, as the audit trail names a kind; `label`, a place by
+its path, a contract by its number in force and its vendor, `EX-1001 (Example
+Carrier)`, a circuit by its enterprise circuit ID or its name, and any other by its name
+or label; `record_status`, a retired record being listed as the count counts it;
+`role`, the role the contact has there, a value of `contact_role` for a place and for a
+side of a circuit, `primary` or `alternate` for an owner, `account_manager` or
+`support_contact` for an agreement, a contract, a vendor and the carrier of a circuit,
+and null for an operator; `priority`; `side`, of a circuit, `a` or `z`, and null for its
+carrier; and `colour`, of an operator. A record that names the contact in two roles is
+listed twice. `total` of the answer is `uses` of the contact, and the totals of the kinds
+add up to it: both are counted from one list of what names a contact.
 
 ### Why a value, and what an operator is on
 
@@ -290,7 +307,7 @@ record has them. The lists of regions, sites and locations have
 `support_weight`, the place's own, and the list of sites `effective.support_weight`, the
 weight a site counts at: its own or `default_site_weight`, raised to
 `minimum_site_weight`. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
-A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. Every comparison
+A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. A field the list does not have is refused with the nearest fields it has, at most three: the same name under a related record first, `catalog.type` for `type` on the item list, then the names spelt nearly alike, and none where nothing is near (P-207). Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
 
@@ -312,7 +329,8 @@ operator; the JSON form takes any value. `filter=` also takes the JSON form.
 in a URL. Text sorts without regard to case, blank values come last in either
 direction, and rows that tie keep a steady order, so paging never repeats or skips one.
 On the item list, `name` filters and sorts by the hostname when the name is blank. A
-field the route is not sorted by is a `422`.
+field the route is not sorted by is a `422`, which names the nearest fields it is sorted
+by as a filter does: `location.name` for `location` (P-207).
 
 A list is sorted by any field it is filtered by, with two exceptions. A field that
 takes `within` is a place, and a list is sorted by the name of the place and not by
@@ -348,7 +366,7 @@ what is worked out, the field is sorted by and not filtered by:
 | Device groups | Intended master | `master.name` | the name that item is shown by: its name, or else its hostname, serial number or asset tag |
 | Device groups | Master seen | `observed_master.name` | likewise |
 | Device groups | Members | `member_count` | the number of current members |
-| Contacts | Assigned | `uses` | how many places, owners and operators name it, as the record counts them |
+| Contacts | Assigned | `uses` | how many records name it, as the record counts them and `GET /contacts/{hid}/uses` lists them: places, owners, operators, agreements, contracts, vendors and circuits |
 | Operators | Given to | `uses` | how many items, groups and places are given it |
 | Catalog | Items | `items` | how many items are of that model, as the item list counts them (P-180) |
 | Vendors | Also known as | `aliases` | the first alias without regard to case |
@@ -659,6 +677,41 @@ and labelled with its vendor and PID, `Cisco C9300-48P`, beside `vendor`, `pid`,
 row of the owner, state and disposition in force for it. An item with several tags is
 in the row of each, and the totals count it once. A stack whose members fall in two
 rows is a managed node in both, and one in the totals.
+
+**What a count lists** (P-206). In both, `totals`, each row and each entry of
+`by_kind` and `by_condition` has `filter`: the filter of the item list that keeps
+exactly the items its `items` counts, within the view asked for. It holds the request's
+own filter and the condition of the row, and is sent to `GET /items` with the same
+`include_archived` and `include_drafts`, the minor items asked for. It is written in
+the short form where the short form says it, `catalog.type:eq:switch site_hid:eq:…`, and
+otherwise as the filter tree in JSON, as `filter=` takes either: the row of the kind
+`hardware`, which holds the items with no kind as well, has an OR. It is blank on the
+totals of a view with no filter, and null where it, with a condition below joined to it,
+would hold more conditions or nest deeper than a filter may. The answer has
+`conditions` once, each a filter written as a `filter` is, which joined by AND to a
+`filter` of the answer keeps what one of its counts counts: `component_count`, the
+components; `component_count_by_kind`, for an entry of `by_kind`, the major items in
+hand of whatever kind; and, in the summary, `by_health`, the components of each health.
+So each count of items, of components and of health opens as the list of what it
+counts, and the rule of what is counted stays here. `managed_node_count` counts devices
+on the network, not items, and `support_weight`, `est_value` and `annual_support_cost`
+are sums: none of them is a list. A row is kept by:
+
+| `by` | A row | The blank row |
+|---|---|---|
+| `vendor`, `model`, `type`, `function` | `catalog.vendor_hid`, `catalog_entry_hid`, `catalog.type`, `catalog.function` `eq` its key | the same field `empty` |
+| `kind` | `catalog.kind` `eq` its key, and for `hardware` or `catalog.kind` `empty` | none |
+| `owner`, `operator` | `effective.owner_hid`, `effective.operator_hid` `eq` its key | the same field `empty` |
+| `site` | `site_hid` `eq` its key | `site_hid` `empty` |
+| `region` | `location` `within` its key | `region_hid` `empty` |
+| `contract` | `contract.hid` `eq` its key | `covered` `eq` false |
+| `group` | `group` `within` its key | `group` `empty` |
+| `lifecycle_state`, `disposition` | `effective.lifecycle_state`, `effective.disposition` `eq` its key | the same field `empty` |
+| `condition`, `health` | `condition`, `health` `eq` its key | the same field `empty` |
+| `tag` | `tags` `has` its label | `tags` `empty` |
+
+Every grouping can be opened. A test holds, for every row and total of the examples,
+that the item list asked with its filter counts what the report says.
 
 `GET /reports/duplicates` lists each address that is held more than once under one
 network, with the unlabelled address space as one network of its own: the address, the
@@ -1584,7 +1637,7 @@ refused leaves the others as they went.
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
-| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |
+| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. The table leaves out the filter of each row; `--format json` holds it, with the conditions of the counts, to give to `hirdir items list --filter` (P-206). `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |
 | The balance over time | `hirdir capacity record` records the balance as it is now, in place of this week's record, with `--note` to say why. `hirdir capacity records` lists the records, one week to a row, the oldest first, each with the demand, the supply, the balance and the coverage of both views, whether it was corrected, and its note; `--format csv` and `json` write all of them |
 | A contract | `hirdir contracts show` takes the HID or the number, and prints the contract with the items it covers. `hirdir contracts cover CONTRACT` covers the items of a `--filter`, or the items named after it, from `--from` to `--to` or for the contract's own dates: a preview unless `--apply` is given. It sends them as many at a time as the setting `max_items_per_request` says. `hirdir contracts renew CONTRACT` gives it a new `--number` and a new period, `--from` and `--to`, in one change, and says how many items follow; a period that begins after today is kept as the next term, which `--withdraw` withdraws. `hirdir agreements renew AGREEMENT` does the same for a support agreement, with `--member CONTRACT=same`, `CONTRACT=new:NUMBER` or `CONTRACT=ends` for each contract that shares its period and is to do other than keep its number, and `hirdir agreements show AGREEMENT` prints it with the terms it had before. An earlier term of a contract marks a date that was its agreement's |
 | Contacts of a contract | `hirdir contracts show` and `hirdir agreements show` print the account managers and the support contacts in force, each with how to reach them, a retired one marked so, and on a contract those it has from its agreement marked `(agreement)`. `hirdir contracts add-contact CONTRACT CONTACT --role ROLE` names a contact, with `--priority` for its place in the list, and `hirdir contracts remove-contact CONTRACT CONTACT --role ROLE` removes one; `hirdir agreements add-contact` and `remove-contact` do the same for an agreement. A contact is named by its email address, a name that one contact alone has, or its HID |
@@ -1673,7 +1726,7 @@ Accounts and settings are not touched.
 | Circuits | The grid of circuits, with Name, Enterprise ID, Type, Speed, Carrier, Carrier's number, A side, Z side, Monthly cost, Annual cost, Owner and Tags shown at first and the rest in the column chooser, filtered, sorted and exported by the server. A circuit has a page of its own: its fields, each side with its location's path, or its note where it has none, and its site contacts with the level each came from; its carriers with their numbers; the carrier's account team and support desk with where they came from, and those it names of its own; the devices on each side; its cost lines, with the monthly and annual totals; its groups; Files and links, its own references; and the forms to change it, to switch the side it counts at, and to retire it. A speed is entered as the port, and the rates down and up left blank for the full rate, and shown short, `1G / 200M / 20M`. Circuit groups have a list, with how many circuits each has and what they cost, and a page each, with its circuits to add and take out |
 | Addresses | Every address, with the item or group that has it; the networks |
 | Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it. Files and links lists a place's own references and then those of the places above it, each under the place it is on. A place shows its own support weight, a site the default where it has none and the minimum where it was raised, and a location's page lists the circuits that have a side there |
-| Contacts, Owners | Contacts: the list of people, each marked where it is a user, and a contact with where it is assigned, the user it is and the operators it stands behind. Owners: the list, and an owner with its people, the primary first |
+| Contacts, Owners | Contacts: the list of people, each marked where it is a user, and a contact with the user it is and, under Where it is named, every record that names it, by kind under a heading of each, each record a link with the role the contact has there: the places, owners, operators it stands behind, agreements, contracts, vendors and circuits (P-205). Owners: the list, and an owner with its people, the primary first |
 | Operators | The labels, each with its colour, the person behind it, internal where that person is a user and external where not, the person's email and two numbers, and how much it is on. An operator's page draws what it is on as a tree of boxes: the operator, then its places, its groups and its own items, each box with its counts and the exceptions within it, joined by lines, every count a link (P-177). Hand a label over to another person, a contact that is a user, another contact or a new person, leave it open, release it and bring it back. The email and the numbers are changed there, on the person's contact. Wherever an operator is shown, in a grid, on a page or in a report, it is the label in its colour, as a link to this page, with the person's name beside it or on hover and a mark when it is open |
 | Contracts | The support agreements, each with the contracts grouped into it, and the contracts that stand by themselves. An agreement has a page of its own: its fields, its contracts with what each has from it and what each overrides, shown as an inherited value is shown everywhere, and the terms it had before, its purchase history, as a contract has its own. An override says what the agreement gives in its place, as the server answers it, and where the two are the same it says so: it stays as it is when the agreement's changes. A contract is put into an agreement, and taken out of one, on its own page. The list of contracts with how many items each covers. A contract has a page of its own: its fields and tags, and the items it covers, each with its dates, to add to several at a time and to end. **Renew** asks for the new number and the new period, says how many items follow, and changes the one record; a renewal that is still to begin is shown as the next term, and can be withdrawn; the terms it had before are listed beneath, each with the dates it had in force, a date it had from its agreement shown as inherited. Renewing an agreement is the same, and lists every contract that shares its period, each with a choice: keep its number, the default, take a new number that begins with the new term, or end with this term, and with the status it is to have, which the operator confirms there for the members that move forward: one, some or all of them are selected and given a choice and a status at once, and nothing else in the renewal changes a member's status. The answer says what was done with each, which members are to review, and how many items not to be renewed were left behind. An agreement's page lists its contracts, to select one, some or all and change them at once: their status, taken out of the agreement, or retired; and its members to review. A number that waits on the agreement's next term is shown as the contract's next term, with the agreement's dates. A contract may be marked not to be renewed, the team's note, which changes nothing by itself and is shown as such. The earlier terms of a contract are the parts of its history, each with its days and what began it: a renewal, joining an agreement or leaving one. **Renewals**, under Contracts, is the worklist: the counts of each list first, by vendor and agreement, each count leading to its rows when it is opened, and the rows of a list with their end, how long a renewal has been pending, marked when overdue, and how many items each covers. A change of a contract or an agreement that is refused as stale says, where it has a next term, that the term may have begun since the page was read. A contract that has lapsed is marked, and so is one whose renewal is pending, with the account manager to go through. A coverage that was a mistake is removed, and one that was ended because its item left is marked until the vendor has been told. The gaps and the expiries are the coverage report |
 | Purchases | The requests, each with its lines and what is still to come. A request has a page of its own: its lines, and for each the items that arrived on it, and where some of them are of another model than the line's, which 0.6.0 let in, how many, leading to them in the item grid. The list of lines has Of another model in its column chooser. Receiving a line asks for the serial numbers, the asset tags or the names of what arrived, or how many arrived that nothing is known of yet, the day and the location |
@@ -1747,12 +1800,16 @@ What 0.9.6 changes:
   it was scrolled to, with the row that was opened marked; a new filter or sort begins
   at the top (P-203). The preview of a bulk edit speaks of the bulk edit, and the export
   of the item list as it first stands holds the host name (P-204).
-- **Contacts.** A contact's page lists every record that names the contact, by kind,
-  each a link, with the role the contact has there, from `GET /contacts/{hid}/uses`
-  (P-205).
-- **Reports.** Every count of the summary and of the management report is a link to
-  the items it counts, by the filter the server gives with it; Home's totals of health
-  use the same (P-206).
+- **Contacts.** A contact's page lists, under Where it is named, every record that names
+  the contact, by kind under a heading of each, each a link, with the role the contact
+  has there, from `GET /contacts/{hid}/uses`, in place of the sentence of P-197 (P-205).
+  Where a kind names it more than 100 times, the page says how many of how many it lists.
+- **Reports.** Every count of items, of components and of health of the summary and
+  of the management report, in the totals and in each row, is a link to the items it
+  counts, by the filter the server gives with it and the condition it gives for the
+  count; Home's totals use the same, and the page builds no such filter of its own
+  (P-206). A count of none is no link, and neither is a count of managed nodes, a support
+  weight or a sum of money.
 - **A refusal.** Where a record is refused because another has its serial number, asset
   tag, PID or name, the page names that record as a link; a filter refused for a field
   its list does not have names the nearest one it has (P-207).
@@ -1841,7 +1898,11 @@ away when the next change on that page is sent, stays away if that change is ref
 and once it is done the page says what it says of it, the same words again after a
 second save of the same record. Room is kept for it at the top of the window, so
 that a field the keyboard moves to, or a row a form opens under, does not come to rest
-beneath it.
+beneath it. A change refused because another record has the value says, under the
+server's sentence, which record that is, "The item that has it:", with the record as a
+link to its page by what it is known by (P-207); a record whose kind has no page, a tag
+or a choice, is named without a link, and so is a user or a user group to anyone but an
+Admin.
 
 A field that finds a record by what is typed searches again when Enter is pressed, when
 the same text is typed again, and when the person comes back to the tab with a search

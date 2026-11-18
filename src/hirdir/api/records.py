@@ -759,7 +759,9 @@ class ContactOut(Model):
     user: UserBrief | None = Field(description="The user this contact is, where it is one.")
     uses: int = Field(
         description=(
-            "How many places and owners it is assigned to, and operators it stands behind."
+            "How many records name it: the places and owners it is assigned to, the "
+            "operators it stands behind, and the agreements, contracts, vendors and circuits "
+            "that name it. `GET /contacts/{hid}/uses` lists them."
         )
     )
     row_version: int
@@ -863,6 +865,58 @@ class AssignmentOut(Model):
     row_version: int
     created_at: datetime
     updated_at: datetime
+
+
+NamedType = Literal[
+    "region", "site", "location", "owner", "operator", "agreement", "contract", "vendor", "circuit"
+]
+
+
+class NamedRecord(Model):
+    """A record that names a contact, and the role the contact has there (P-205)."""
+
+    hid: str
+    record_type: NamedType = Field(description="Its kind, as the audit trail names it.")
+    label: str = Field(
+        description="What it is known by: a place by its path, a contract by its number and "
+        "its vendor, a circuit by its enterprise circuit ID or its name, any other by its "
+        "name or label."
+    )
+    record_status: RecordStatus = Field(description="A retired record is listed as any other.")
+    role: str | None = Field(
+        description="The role the contact has there: a value of `contact_role` for a place "
+        "and for a side of a circuit, `primary` or `alternate` for an owner, "
+        "`account_manager` or `support_contact` for an agreement, a contract, a vendor and "
+        "the carrier of a circuit. Null for an operator, which the contact stands behind."
+    )
+    priority: int | None = Field(description="Where the record orders the contacts it names.")
+    side: Literal["a", "z"] | None = Field(
+        description="Of a circuit: the side the contact is named for; null for its carrier."
+    )
+    colour: str | None = Field(description="Of an operator: the colour of its label.")
+
+
+class NamedRecords(Model):
+    """The records of one kind that name a contact: how many, and at most 100 of them,
+    by what each is known by."""
+
+    total: int
+    records: list[NamedRecord]
+
+
+class ContactUses(Model):
+    """Every record that names a contact, by kind (P-205): what `uses` of the contact
+    counts, listed."""
+
+    contact_hid: str
+    total: int = Field(description="How many records name it: `uses` of the contact.")
+    places: NamedRecords = Field(description="The regions, sites and locations it is assigned to.")
+    owners: NamedRecords = Field(description="The owners it is one of the people of.")
+    operators: NamedRecords = Field(description="The operators it stands behind.")
+    agreements: NamedRecords
+    contracts: NamedRecords
+    vendors: NamedRecords = Field(description="The vendors, carriers among them, that name it.")
+    circuits: NamedRecords
 
 
 class AssignmentCreate(Model):
@@ -3720,6 +3774,21 @@ ManagementBy = Literal[
 ]
 
 
+ItemsFilter = Annotated[
+    str | None,
+    Field(
+        description=(
+            "The filter of `GET /items` that keeps exactly the items `items` counts, within "
+            "the view asked for, to be sent with its `include_archived` and "
+            "`include_drafts` and with the minor items asked for (P-206): the short form "
+            "where it can say it, and otherwise the filter tree as JSON, as `filter=` takes "
+            "either. Blank for every item. Null where it, with a condition of `conditions` "
+            "joined to it, would hold more conditions or nest deeper than a filter may."
+        )
+    ),
+]
+
+
 class HealthCount(Model):
     """The components of each health."""
 
@@ -3741,6 +3810,7 @@ class Counted(Model):
             "also where the headline count leaves the kind out."
         )
     )
+    filter: ItemsFilter
 
 
 class Measures(Model):
@@ -3751,6 +3821,35 @@ class Measures(Model):
     managed_node_count: int
     support_weight: WeightSum
     by_health: HealthCount
+    filter: ItemsFilter
+
+
+class HealthConditions(Model):
+    """What a count of each health adds to a filter of the answer: its components of that health."""
+
+    good: str
+    degraded: str
+    failed: str
+    unknown: str
+
+
+class CountConditions(Model):
+    """What each count adds to a `filter` of the answer, joined to it by AND, to keep
+    exactly what it counts (P-206). Each is a filter of `GET /items`, written as a
+    `filter` of the answer is."""
+
+    component_count: str = Field(
+        description="The components among the items, as `component_count` counts them."
+    )
+    component_count_by_kind: str = Field(
+        description=(
+            "For an entry of `by_kind`: the major items in hand, of whatever kind, as its "
+            "`component_count` counts them."
+        )
+    )
+    by_health: HealthConditions = Field(
+        description="The components of each health, as `by_health` counts them."
+    )
 
 
 class SummaryTotals(Measures):
@@ -3827,6 +3926,15 @@ class SummaryOut(Model):
     by: SummaryBy | None
     totals: SummaryTotals
     rows: list[SummaryRow]
+    conditions: CountConditions
+
+
+class ManagementConditions(Model):
+    """What a count of components adds to a `filter` of the answer (P-206)."""
+
+    component_count: str = Field(
+        description="The components among the items, as `component_count` counts them."
+    )
 
 
 class ManagementMeasures(Model):
@@ -3836,6 +3944,7 @@ class ManagementMeasures(Model):
     component_count: int
     est_value: MoneySum
     annual_support_cost: MoneySum
+    filter: ItemsFilter
 
 
 class ManagementRow(ManagementMeasures, RowRecord):
@@ -3851,6 +3960,7 @@ class ManagementOut(Model):
     by: ManagementBy = Field(description="What the rows are by: the site, unless asked.")
     totals: ManagementMeasures
     rows: list[ManagementRow]
+    conditions: ManagementConditions
 
 
 class AddressHolder(Model):

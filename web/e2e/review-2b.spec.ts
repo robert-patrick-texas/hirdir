@@ -1,7 +1,9 @@
 // The browser scenarios of lane B of the second review of the web UI: a place's contacts
 // first and one click to call or write (P-194), Home sooner and counts that open
-// (P-195), plain words find a record (P-187), find a place (P-188), the Scoreboard at
-// size (P-196) and a contact named elsewhere (P-197).
+// (P-195), plain words find a record (P-187), find a place (P-188) and the Scoreboard at
+// size (P-196). 0.9.6: the sentence of a contact named elsewhere (P-197) is gone, and its
+// scenario with it: the page lists every record that names a contact, which
+// review-3b.spec.ts holds (P-205).
 //
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
 // mark is in every name it gives a record: the region, the sites and their codes, the
@@ -531,47 +533,5 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
   await expect(sitesHeading).toBeFocused();
   await expect(sitesHeading).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-  await expectClean(page, seen);
-});
-
-test("P-197: a contact named for an agreement is not said to be assigned nowhere", async ({
-  page,
-  account,
-  request,
-}) => {
-  test.setTimeout(120_000);
-  const headers = await places(request, account);
-  const vendor = await make(request, headers, "/vendors", { name: label("Larkspur Networks") });
-  const agreement = await make(request, headers, "/agreements", {
-    name: label("Field support"),
-    vendor_hid: vendor.hid,
-  });
-  const manager = await make(request, headers, "/contacts", { name: label("Imogen Hale") });
-  const idle = await make(request, headers, "/contacts", { name: label("Tobias Wren") });
-  await make(request, headers, `/agreements/${agreement.hid}/contacts`, {
-    contact_hid: manager.hid,
-    role: "account_manager",
-  });
-  // Rowan, a contact of the site, is the support contact of the agreement as well.
-  await make(request, headers, `/agreements/${agreement.hid}/contacts`, {
-    contact_hid: made.contact,
-    role: "support_contact",
-  });
-  const seen = await watch(page.context());
-  await signIn(page, account);
-
-  const where = page.getByRole("region", { name: "Where it is assigned" });
-  await page.goto(`./contacts/${manager.hid}`);
-  await expect(where.getByTestId("contact-elsewhere")).toHaveText(
-    "This contact is named 1 time, in agreements, contracts, vendors or circuits, which this page does not list yet.",
-  );
-  await expect(where.getByText("This contact is assigned nowhere.")).toHaveCount(0);
-
-  await page.goto(`./contacts/${made.contact}`);
-  await expect(where.getByTestId("contact-elsewhere")).toContainText("named 1 more time");
-
-  await page.goto(`./contacts/${idle.hid}`);
-  await expect(where.getByText("This contact is assigned nowhere.")).toBeVisible();
-  await expect(where.getByTestId("contact-elsewhere")).toHaveCount(0);
   await expectClean(page, seen);
 });

@@ -5,7 +5,8 @@
 // collides with another record (409 "Conflict"), and one or more fields are not
 // acceptable (422, with the fields named in `errors`).
 
-import type { ApiError } from "../api/client";
+import type { ApiError, ExistingRecord } from "../api/client";
+import { kindPath } from "./preview";
 
 export type Refusal =
   /** Someone else changed the record. Nothing was saved, and nothing is sent again. */
@@ -92,4 +93,48 @@ export function fieldLine(
   const label = labels[field];
   if (label === "") return sentence(message);
   return `${label ?? field}: ${message}`;
+}
+
+/** Each kind of record a refusal may name, as a person calls it (P-207). */
+const KIND_WORDS: Readonly<Record<string, string>> = {
+  item: "item",
+  catalog_entry: "catalog entry",
+  vendor: "vendor",
+  owner: "owner",
+  device_group: "device group",
+  operator: "operator",
+  contact: "contact",
+  circuit: "circuit",
+  circuit_group: "circuit group",
+  agreement: "agreement",
+  contract: "contract",
+  purchase_request: "purchase request",
+  external_system: "external system",
+  capacity_line: "capacity line",
+  region: "region",
+  site: "site",
+  location: "location",
+  user: "user",
+  user_group: "user group",
+  tag: "tag",
+  choice: "value",
+  network: "network",
+  reference_file: "reference",
+};
+
+/**
+ * What is said before the record a duplicate is refused for: "The item that has it:".
+ * A kind the page has no word for is a record.
+ */
+export function existingLead(existing: Pick<ExistingRecord, "record_type">): string {
+  return `The ${KIND_WORDS[existing.record_type] ?? "record"} that has it:`;
+}
+
+/**
+ * The page of the record a duplicate is refused for, where its kind has one. A user and
+ * a user group are refused only to an Admin, who alone may change them, so their pages
+ * are offered: the server holds the role.
+ */
+export function existingPath(existing: Pick<ExistingRecord, "record_type" | "hid">): string | null {
+  return kindPath(existing.record_type, existing.hid, true);
 }

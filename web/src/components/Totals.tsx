@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import type { Schemas } from "../api";
 import { ranking } from "../lib/rank";
 import type { SortColumns } from "../lib/sort";
@@ -5,6 +6,7 @@ import {
   amountText,
   COUNTED_COUNTS,
   type Counted,
+  type CountHref,
   conditionLabel,
   countText,
   kindLabel,
@@ -28,8 +30,16 @@ interface HeadlineTotalsProps {
    * (P-180). The first page shows the same headline, and is no report.
    */
   ranked?: boolean;
-  /** Where each total of health leads: the items it counts, or null for no link (P-195). */
-  healthHref?: (health: string) => string | null;
+  /**
+   * Where each count leads: the items it counts, by the filter and the condition the
+   * server gave for it (P-206). Left out, no count is a link.
+   */
+  countHref?: CountHref;
+}
+
+/** A count, as a link to what it counts where it leads anywhere. */
+function CountLink({ text, href }: { text: string; href: string | null }) {
+  return href ? <Link to={href}>{text}</Link> : text;
 }
 
 /**
@@ -42,8 +52,9 @@ export function HeadlineTotals({
   totals,
   countKinds,
   ranked = false,
-  healthHref,
+  countHref,
 }: HeadlineTotalsProps) {
+  const hrefOf: CountHref = countHref ?? (() => null);
   const kinds = kindsShown(totals.by_kind, countKinds);
   // What the count takes first, as before, until a header is pressed. The entries with
   // no kind are a row like the others, and sort by what the row is called.
@@ -63,7 +74,12 @@ export function HeadlineTotals({
       <dl className="totals">
         <div>
           <dt>Components</dt>
-          <dd data-testid="total-components">{countText(totals.component_count)}</dd>
+          <dd data-testid="total-components">
+            <CountLink
+              text={countText(totals.component_count)}
+              href={hrefOf(totals, "component_count", totals.component_count)}
+            />
+          </dd>
         </div>
         <div>
           <dt>Managed nodes</dt>
@@ -75,11 +91,19 @@ export function HeadlineTotals({
         </div>
         <div>
           <dt>Items, major and minor</dt>
-          <dd data-testid="total-items">{countText(totals.items)}</dd>
+          <dd data-testid="total-items">
+            <CountLink
+              text={countText(totals.items)}
+              href={hrefOf(totals, "items", totals.items)}
+            />
+          </dd>
         </div>
       </dl>
       <h3>Components by health</h3>
-      <HealthCounts counts={totals.by_health} {...(healthHref ? { href: healthHref } : {})} />
+      <HealthCounts
+        counts={totals.by_health}
+        href={(health) => hrefOf(totals, `health.${health}`, 1)}
+      />
       {totals.by_kind.length > 0 && (
         <div className="scroll">
           <table className="narrow" data-testid="totals-by-kind">
@@ -114,16 +138,32 @@ export function HeadlineTotals({
                   <th scope="row">{kindLabel(kind.key)}</th>
                   <td className="number" data-measure="items">
                     {ranked ? (
-                      <CountedBar ranking={rank} column="items" row={kind} />
+                      <CountedBar
+                        ranking={rank}
+                        column="items"
+                        row={kind}
+                        href={hrefOf(kind, "items", kind.items)}
+                      />
                     ) : (
-                      countText(kind.items)
+                      <CountLink
+                        text={countText(kind.items)}
+                        href={hrefOf(kind, "items", kind.items)}
+                      />
                     )}
                   </td>
                   <td className="number" data-measure="components">
                     {ranked ? (
-                      <CountedBar ranking={rank} column="components" row={kind} />
+                      <CountedBar
+                        ranking={rank}
+                        column="components"
+                        row={kind}
+                        href={hrefOf(kind, "component_count_by_kind", kind.component_count)}
+                      />
                     ) : (
-                      countText(kind.component_count)
+                      <CountLink
+                        text={countText(kind.component_count)}
+                        href={hrefOf(kind, "component_count_by_kind", kind.component_count)}
+                      />
                     )}
                   </td>
                   {countKinds !== null && (
@@ -146,10 +186,14 @@ export function HeadlineTotals({
 export function ConditionTotals({
   conditions,
   choices,
+  countHref,
 }: {
   conditions: readonly Counted[];
   choices: readonly Choice[] | undefined;
+  /** Where each count leads, as on the headline (P-206). */
+  countHref?: CountHref;
 }) {
+  const hrefOf: CountHref = countHref ?? (() => null);
   // The components of which nobody has said are a row like the others, and sort by what
   // the row is called.
   const sorting = useSorting(conditions, {
@@ -188,10 +232,20 @@ export function ConditionTotals({
                   {conditionLabel(condition, choices)}
                 </th>
                 <td className="number" data-measure="items">
-                  <CountedBar ranking={rank} column="items" row={condition} />
+                  <CountedBar
+                    ranking={rank}
+                    column="items"
+                    row={condition}
+                    href={hrefOf(condition, "items", condition.items)}
+                  />
                 </td>
                 <td className="number" data-measure="components">
-                  <CountedBar ranking={rank} column="components" row={condition} />
+                  <CountedBar
+                    ranking={rank}
+                    column="components"
+                    row={condition}
+                    href={hrefOf(condition, "component_count", condition.component_count)}
+                  />
                 </td>
               </tr>
             ))}
@@ -217,14 +271,17 @@ interface ManagementTotalsProps {
   totals: ManagementMeasures;
   /** The installation's currency, a label only. */
   currency: string;
+  /** Where each count leads (P-206). The sums of money lead nowhere. */
+  countHref?: CountHref;
 }
 
 /**
  * The totals of the management report: the estimated value and the annual support cost
  * of the items in view, beside how many they are.
  */
-export function ManagementTotals({ totals, currency }: ManagementTotalsProps) {
+export function ManagementTotals({ totals, currency, countHref }: ManagementTotalsProps) {
   const money = currency ? ` (${currency})` : "";
+  const hrefOf: CountHref = countHref ?? (() => null);
   return (
     <dl className="totals" data-testid="management-totals">
       <div>
@@ -237,11 +294,18 @@ export function ManagementTotals({ totals, currency }: ManagementTotalsProps) {
       </div>
       <div>
         <dt>Components</dt>
-        <dd data-testid="total-components">{countText(totals.component_count)}</dd>
+        <dd data-testid="total-components">
+          <CountLink
+            text={countText(totals.component_count)}
+            href={hrefOf(totals, "component_count", totals.component_count)}
+          />
+        </dd>
       </div>
       <div>
         <dt>Items, major and minor</dt>
-        <dd data-testid="total-items">{countText(totals.items)}</dd>
+        <dd data-testid="total-items">
+          <CountLink text={countText(totals.items)} href={hrefOf(totals, "items", totals.items)} />
+        </dd>
       </div>
     </dl>
   );

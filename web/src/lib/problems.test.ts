@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
-import { fieldErrors, fieldLine, refusalOf, sentence } from "./problems";
+import {
+  existingLead,
+  existingPath,
+  fieldErrors,
+  fieldLine,
+  refusalOf,
+  sentence,
+} from "./problems";
 
 describe("what a refusal says of a field that has no input", () => {
   it("names the field as the page calls it", () => {
@@ -115,5 +122,21 @@ describe("fieldErrors", () => {
     expect(fieldErrors(stale, known)).toEqual({ shown: {}, rest: [] });
     expect(fieldErrors(conflict, known)).toEqual({ shown: {}, rest: [] });
     expect(fieldErrors(null, known)).toEqual({ shown: {}, rest: [] });
+  });
+});
+
+describe("the record a duplicate is refused for (P-207)", () => {
+  it("is named by its kind as a person calls it", () => {
+    expect(existingLead({ record_type: "item" })).toBe("The item that has it:");
+    expect(existingLead({ record_type: "catalog_entry" })).toBe("The catalog entry that has it:");
+    expect(existingLead({ record_type: "something_new" })).toBe("The record that has it:");
+  });
+
+  it("leads to its page, where its kind has one", () => {
+    expect(existingPath({ record_type: "item", hid: "i 1" })).toBe("/items/i%201");
+    expect(existingPath({ record_type: "vendor", hid: "v-1" })).toBe("/vendors/v-1");
+    expect(existingPath({ record_type: "site", hid: "s-1" })).toBe("/geography/site/s-1");
+    expect(existingPath({ record_type: "user", hid: "u-1" })).toBe("/admin/users/u-1");
+    expect(existingPath({ record_type: "tag", hid: "t-1" })).toBeNull();
   });
 });

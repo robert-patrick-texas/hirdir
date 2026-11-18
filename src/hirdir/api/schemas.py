@@ -28,6 +28,19 @@ class ProblemField(Model):
     message: str
 
 
+class ProblemRecord(Model):
+    """The record that already has the value a change was refused for (P-207)."""
+
+    hid: str
+    record_type: str = Field(
+        description="Its kind, as the audit trail names it: `item`, `catalog_entry`, `vendor`."
+    )
+    label: str = Field(
+        description="What it is known by: an item by its host name, name, asset tag or "
+        "serial number, a model by its vendor and PID, any other by its name or label."
+    )
+
+
 class Problem(Model):
     """An error, as an RFC 9457 problem document."""
 
@@ -36,6 +49,11 @@ class Problem(Model):
     status: int
     detail: str = ""
     errors: list[ProblemField] = []
+    existing: ProblemRecord | None = Field(
+        default=None,
+        description="On a 409 for a value another record has, such as a serial number, an "
+        "asset tag, a PID or a name: that record. Left out of every other problem.",
+    )
 
 
 class GroupRef(Model):

@@ -27,6 +27,7 @@ from hirdir.domain import audit, contacts
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import (
     Conflict,
+    Existing,
     Invalid,
     NotFound,
     SignInDelayed,
@@ -168,6 +169,7 @@ def _checked_username(db: Session, username: str, user: User | None) -> str:
         raise Conflict(
             f"there is already a user named {taken.username}",
             {"username": "another user has this username"},
+            Existing("user", taken.hid, taken.username),
         )
     return username
 
@@ -189,6 +191,7 @@ def _checked_contact(db: Session, hid: str, user: User | None, service: bool) ->
         raise Conflict(
             f"{contact.name} is already the contact of the user {other.username}",
             {"contact_hid": "this contact is another user's"},
+            Existing("user", other.hid, other.username),
         )
     return contact
 
@@ -385,7 +388,11 @@ def _checked_group_name(db: Session, name: str, except_hid: str | None = None) -
         raise Invalid("the group name is not acceptable", {"name": "1 to 100 characters"})
     other = db.scalar(select(UserGroup).where(UserGroup.name_key == _key(name)))
     if other is not None and other.hid != except_hid:
-        raise Conflict(f"there is already a group named {name}")
+        raise Conflict(
+            f"there is already a group named {name}",
+            {"name": "another group has this name"},
+            Existing("user_group", other.hid, other.name),
+        )
     return name
 
 

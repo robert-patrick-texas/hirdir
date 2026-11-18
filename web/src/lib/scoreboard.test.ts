@@ -63,6 +63,7 @@ function row(
     support_weight: weight,
     by_health: { good: components, degraded: 0, failed: 0, unknown: 0 },
     operators,
+    filter: "",
   };
 }
 

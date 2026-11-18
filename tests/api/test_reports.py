@@ -40,12 +40,15 @@ def test_an_empty_inventory_counts_nothing(make: Maker) -> None:
         "by_health": {"good": 0, "degraded": 0, "failed": 0, "unknown": 0},
         "by_condition": [],
         "by_kind": [],
+        # 0.9.6: the filter of the item list for what it counts, every item (P-206).
+        "filter": "",
     }
     assert make.get("/reports/management")["totals"] == {
         "items": 0,
         "component_count": 0,
         "est_value": "0.00",
         "annual_support_cost": "0.00",
+        "filter": "",
     }
 
 
@@ -70,7 +73,17 @@ def test_components_are_major_items_in_hand_and_weight_is_carried_in_service(mak
     assert _money(make) == (Decimal("108900"), Decimal("8700"))
     assert make.get("/reports/management")["totals"]["est_value"] == "108900.00"
     assert totals["by_kind"] == [
-        {"key": "hardware", "label": "hardware", "items": 7, "component_count": 4}
+        {
+            "key": "hardware",
+            "label": "hardware",
+            "items": 7,
+            "component_count": 4,
+            # What has no kind is counted as hardware, and its filter says so (P-206).
+            "filter": (
+                '{"or": [{"field": "catalog.kind", "op": "eq", "value": "hardware"}, '
+                '{"field": "catalog.kind", "op": "empty", "value": true}]}'
+            ),
+        }
     ]
 
 

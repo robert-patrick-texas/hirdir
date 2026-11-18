@@ -115,6 +115,9 @@ interface LooseOptions {
 
 const STALE_TITLE = "Stale version";
 
+/** The record that already has the value a change was refused for (P-207). */
+export type ExistingRecord = Schemas["ProblemRecord"];
+
 /** A request the server refused, or that never reached it (status 0). */
 export class ApiError extends Error {
   readonly status: number;
@@ -124,6 +127,8 @@ export class ApiError extends Error {
   readonly fields: Readonly<Record<string, string>>;
   /** Seconds to wait before trying again, when the server said. */
   readonly retryAfter: number | null;
+  /** The record that has the value already, where the server named one. */
+  readonly existing: ExistingRecord | null;
 
   constructor(init: {
     status: number;
@@ -131,6 +136,7 @@ export class ApiError extends Error {
     detail?: string;
     fields?: Record<string, string>;
     retryAfter?: number | null;
+    existing?: ExistingRecord | null;
   }) {
     const detail = init.detail ?? "";
     let text = detail || init.title;
@@ -145,6 +151,7 @@ export class ApiError extends Error {
     this.detail = detail;
     this.fields = init.fields ?? {};
     this.retryAfter = retryAfter;
+    this.existing = init.existing ?? null;
   }
 
   /** The record changed since it was read: read it again before changing it. */
@@ -192,7 +199,18 @@ export async function problemOf(response: Response): Promise<ApiError> {
     detail: typeof problem.detail === "string" ? problem.detail : "",
     fields,
     retryAfter: retryAfterOf(response),
+    existing: existingOf(problem.existing),
   });
+}
+
+/** The record a problem names as having the value already, where it names one whole. */
+function existingOf(given: unknown): ExistingRecord | null {
+  if (typeof given !== "object" || given === null) return null;
+  const { hid, record_type, label } = given as Partial<ExistingRecord>;
+  if (typeof hid !== "string" || typeof record_type !== "string" || typeof label !== "string") {
+    return null;
+  }
+  return { hid, record_type, label };
 }
 
 export interface ClientDeps {

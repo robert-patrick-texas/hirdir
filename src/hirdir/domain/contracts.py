@@ -56,7 +56,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import audit, not_renewed, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
 
 RECORD_TYPE = "contract"
@@ -464,6 +464,7 @@ def _checked_agreement(
             raise Conflict(
                 f"there is already an agreement {taken.name}",
                 {"name": "another agreement has this name"},
+                Existing(AGREEMENT_TYPE, taken.hid, taken.name),
             )
         values["name"] = name
         values["name_key"] = records.key(name)
@@ -968,6 +969,7 @@ def _check_number(
             raise Conflict(
                 f"this vendor already has a contract {number}",
                 {field: "another contract of this vendor has this number"},
+                Existing(RECORD_TYPE, taken.hid, taken.number),
             )
 
 

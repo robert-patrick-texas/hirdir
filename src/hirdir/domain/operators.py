@@ -19,7 +19,7 @@ from hirdir import ids
 from hirdir.db.models import Contact, DeviceGroup, Item, Location, Operator, Region, Site, User
 from hirdir.domain import descent, geography, records, tags
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
 
 RECORD_TYPE = "operator"
@@ -96,6 +96,7 @@ def _checked(db: Session, fields: dict[str, Any], operator: Operator | None) -> 
             raise Conflict(
                 f"there is already an operator {taken.label}",
                 {"label": "another operator has this label"},
+                Existing(RECORD_TYPE, taken.hid, taken.label),
             )
         values["label"] = label
         values["label_key"] = records.key(label)

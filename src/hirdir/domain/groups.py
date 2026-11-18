@@ -24,7 +24,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import geography, health, items, records, settings, tags
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "device_group"
 MEMBER_TYPE = "device_group_member"
@@ -382,6 +382,7 @@ def _checked(
             raise Conflict(
                 f"there is already a device group {taken.name}",
                 {"name": "another device group has this name"},
+                Existing(RECORD_TYPE, taken.hid, taken.name),
             )
         values["name"] = name
         values["name_key"] = records.key(name)

@@ -22,7 +22,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 LISTS = (
     "catalog_type",
@@ -143,6 +143,7 @@ def create_choice(
         raise Conflict(
             f"{list_name} already has the value {value}",
             {"value": "the list already has this value"},
+            Existing("choice", taken.hid, taken.label or taken.value),
         )
     choice = Choice(
         list_name=list_name,

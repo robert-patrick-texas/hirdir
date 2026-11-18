@@ -6,6 +6,7 @@ outward: nothing is copied down. A user and an operator are each a part that a c
 plays, and read its name, email and numbers when they are read (P-172).
 """
 
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -14,18 +15,26 @@ from sqlalchemy.orm import Session
 from hirdir import ids
 from hirdir.db import dialect
 from hirdir.db.models import (
+    Agreement,
+    Circuit,
     CircuitContact,
     Contact,
     ContactAssignment,
+    Contract,
     ContractContact,
+    Location,
     Operator,
+    Owner,
     OwnerMember,
+    Region,
+    Site,
     User,
+    Vendor,
     VendorContact,
 )
-from hirdir.domain import audit, choices, geography, records, tags
+from hirdir.domain import audit, choices, contracts, geography, records, tags
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "contact"
 ASSIGNMENT_TYPE = "contact_assignment"
@@ -45,19 +54,38 @@ PLACES = {
     "location_hid": geography.LOCATION,
 }
 MAX_PRIORITY = 1000
-# What names a contact, for counting what it is assigned to: a place, an owner, and an
-# operator it stands behind. `hirdir.io.fields` counts by the same, to sort by.
-USED_BY: tuple[Any, ...] = (
-    ContactAssignment.contact_hid,
-    OwnerMember.contact_hid,
-    Operator.contact_hid,
-    # Named for an agreement or a contract (D-183): counted, so that a person about to
-    # retire a contact sees every place it is named.
-    ContractContact.contact_hid,
-    # Named for a carrier or for a circuit (P-149), for the same reason.
-    VendorContact.contact_hid,
-    CircuitContact.contact_hid,
+
+
+@dataclass(frozen=True)
+class Naming:
+    """One kind of record that names a contact (P-205): the column of the link that
+    holds the contact, and what tells a link of this kind from the others of its table."""
+
+    kind: str
+    contact: Any
+    where: tuple[Any, ...] = ()
+
+
+# What names a contact: a place and an owner it is assigned to, an operator it stands
+# behind, and, so that a person about to retire a contact sees every record it is named
+# by, an agreement and a contract (D-183), a carrier and a circuit (P-149). What a
+# contact's record counts and what `GET /contacts/{hid}/uses` lists are both by these.
+NAMINGS: tuple[Naming, ...] = (
+    Naming("places", ContactAssignment.contact_hid),
+    Naming("owners", OwnerMember.contact_hid),
+    Naming("operators", Operator.contact_hid),
+    Naming(
+        "agreements", ContractContact.contact_hid, (ContractContact.agreement_hid.is_not(None),)
+    ),
+    Naming("contracts", ContractContact.contact_hid, (ContractContact.contract_hid.is_not(None),)),
+    Naming("vendors", VendorContact.contact_hid),
+    Naming("circuits", CircuitContact.contact_hid),
 )
+# The columns that name a contact, each once: `hirdir.io.fields` counts by them, to sort
+# by. A link of an agreement and one of a contract are one table, and either names one.
+USED_BY: tuple[Any, ...] = tuple(dict.fromkeys(naming.contact for naming in NAMINGS))
+# The most records of one kind that the uses of a contact list, as a page of a list.
+MAX_NAMED = 100
 
 
 def get_contact(db: Session, hid: str) -> Contact:
@@ -148,6 +176,7 @@ def _checked(db: Session, fields: dict[str, Any], contact: Contact | None) -> di
                 raise Conflict(
                     f"{taken.name} already has the email address {taken.email}",
                     {"email": "another contact has this email address"},
+                    Existing(RECORD_TYPE, taken.hid, taken.name),
                 )
         values["email"] = email
         values["email_key"] = records.key(email) if email else None
@@ -199,19 +228,240 @@ def retire_contact(db: Session, context: AuditContext, hid: str, row_version: in
     return contact
 
 
+def _counts(db: Session, naming: Naming, hids: list[str]) -> dict[str, int]:
+    """Return how many records of one kind name each of the contacts."""
+    column = naming.contact
+    counted = db.execute(
+        select(column, func.count()).where(column.in_(hids), *naming.where).group_by(column)
+    )
+    return {hid: count for hid, count in counted if hid is not None}
+
+
 def uses(db: Session, hids: list[str]) -> dict[str, int]:
-    """Return how many places and owners each of the contacts is assigned to, and how
-    many operators it stands behind."""
+    """Return how many records name each of the contacts: the places and owners it is
+    assigned to, the operators it stands behind, and the agreements, contracts, vendors
+    and circuits that name it. A retired record counts as any other."""
     counts = dict.fromkeys(hids, 0)
     if hids:
-        for column in USED_BY:
-            counted = db.execute(
-                select(column, func.count()).where(column.in_(hids)).group_by(column)
-            )
-            for hid, count in counted:
-                if hid is not None:
-                    counts[hid] += count
+        for naming in NAMINGS:
+            for hid, count in _counts(db, naming, hids).items():
+                counts[hid] += count
     return counts
+
+
+@dataclass(frozen=True)
+class Named:
+    """One record that names a contact, and how (P-205)."""
+
+    # Its kind as the audit trail names it: `site`, `owner`, `agreement`.
+    record_type: str
+    hid: str
+    # What it is known by: a place by its path, a contract by its number and its vendor.
+    label: str
+    record_status: str
+    # The role the contact has there: of the `contact_role` list for a place and a side of
+    # a circuit, `primary` or `alternate` for an owner, `account_manager` or
+    # `support_contact` for an agreement, a contract, a carrier and a circuit's carrier,
+    # and none for an operator, which the contact stands behind.
+    role: str | None = None
+    priority: int | None = None
+    # The side of a circuit, `a` or `z`, a contact of that side names; none for the carrier.
+    side: str | None = None
+    # The colour of an operator's label.
+    colour: str | None = None
+
+
+@dataclass(frozen=True)
+class NamedBy:
+    """The records of one kind that name a contact: how many, and at most `MAX_NAMED`."""
+
+    total: int
+    records: list[Named]
+
+
+def named_by(db: Session, hid: str, limit: int = MAX_NAMED) -> dict[str, NamedBy]:
+    """Return, for each kind in `NAMINGS`, the records that name a contact, by what each
+    is known by, with how many there are: what `uses` counts, listed (P-205)."""
+    get_contact(db, hid)
+    found: dict[str, NamedBy] = {}
+    for naming in NAMINGS:
+        total = _counts(db, naming, [hid]).get(hid, 0)
+        records_ = _LISTED[naming.kind](db, hid, limit) if total else []
+        found[naming.kind] = NamedBy(total, records_)
+    return found
+
+
+def _places(db: Session, hid: str, limit: int) -> list[Named]:
+    """The places a contact is assigned to, each by its path, in the order of their names."""
+    rows = db.execute(
+        select(ContactAssignment, Region, Site, Location)
+        .outerjoin(Region, Region.hid == ContactAssignment.region_hid)
+        .outerjoin(Site, Site.hid == ContactAssignment.site_hid)
+        .outerjoin(Location, Location.hid == ContactAssignment.location_hid)
+        .where(ContactAssignment.contact_hid == hid)
+        .order_by(
+            func.coalesce(Region.name_key, Site.name_key, Location.name_key),
+            ContactAssignment.role,
+            ContactAssignment.hid,
+        )
+        .limit(limit)
+    ).all()
+    atlas = geography.Atlas(db)
+    atlas.take(place for row in rows for place in row[1:] if place is not None)
+    atlas.read_locations(row[0].location_hid for row in rows)
+    named = []
+    for assignment, region, site, location in rows:
+        if region is not None:
+            level, place, path = geography.REGION, region, atlas.region_path(region.hid)
+        elif site is not None:
+            level, place, path = geography.SITE, site, atlas.site_path(site.hid)
+        else:
+            level, place, path = geography.LOCATION, location, atlas.location_path(location.hid)
+        named.append(
+            Named(
+                level,
+                place.hid,
+                path,
+                place.record_status,
+                role=assignment.role,
+                priority=assignment.priority,
+            )
+        )
+    return sorted(named, key=lambda one: (records.key(one.label), one.role or "", one.hid))
+
+
+def _owners(db: Session, hid: str, limit: int) -> list[Named]:
+    rows = db.execute(
+        select(OwnerMember, Owner)
+        .join(Owner, Owner.hid == OwnerMember.owner_hid)
+        .where(OwnerMember.contact_hid == hid)
+        .order_by(Owner.label_key, OwnerMember.hid)
+        .limit(limit)
+    ).all()
+    return [
+        Named(
+            "owner",
+            owner.hid,
+            owner.label,
+            owner.record_status,
+            role=member.role,
+            priority=member.priority,
+        )
+        for member, owner in rows
+    ]
+
+
+def _operators(db: Session, hid: str, limit: int) -> list[Named]:
+    found = db.scalars(
+        select(Operator)
+        .where(Operator.contact_hid == hid)
+        .order_by(Operator.label_key, Operator.hid)
+        .limit(limit)
+    )
+    return [
+        Named("operator", one.hid, one.label, one.record_status, colour=one.colour) for one in found
+    ]
+
+
+def _agreements(db: Session, hid: str, limit: int) -> list[Named]:
+    rows = db.execute(
+        select(ContractContact, Agreement)
+        .join(Agreement, Agreement.hid == ContractContact.agreement_hid)
+        .where(ContractContact.contact_hid == hid)
+        .order_by(Agreement.name_key, ContractContact.role, ContractContact.hid)
+        .limit(limit)
+    ).all()
+    return [
+        Named(
+            "agreement",
+            agreement.hid,
+            agreement.name,
+            agreement.record_status,
+            role=link.role,
+            priority=link.priority,
+        )
+        for link, agreement in rows
+    ]
+
+
+def _contracts(db: Session, hid: str, limit: int) -> list[Named]:
+    number = contracts.term_value(Contract, "number")
+    rows = db.execute(
+        select(ContractContact, Contract, number, Vendor.name)
+        .join(Contract, Contract.hid == ContractContact.contract_hid)
+        .join(Vendor, Vendor.hid == Contract.vendor_hid)
+        .where(ContractContact.contact_hid == hid)
+        .order_by(func.lower(number), Vendor.name_key, ContractContact.role, ContractContact.hid)
+        .limit(limit)
+    ).all()
+    return [
+        Named(
+            "contract",
+            contract.hid,
+            f"{held} ({vendor})",
+            contract.record_status,
+            role=link.role,
+            priority=link.priority,
+        )
+        for link, contract, held, vendor in rows
+    ]
+
+
+def _vendors(db: Session, hid: str, limit: int) -> list[Named]:
+    # A vendor is never retired: it is active while it is there.
+    rows = db.execute(
+        select(VendorContact, Vendor)
+        .join(Vendor, Vendor.hid == VendorContact.vendor_hid)
+        .where(VendorContact.contact_hid == hid)
+        .order_by(Vendor.name_key, VendorContact.role, VendorContact.hid)
+        .limit(limit)
+    ).all()
+    return [
+        Named(
+            "vendor",
+            vendor.hid,
+            vendor.name,
+            "active",
+            role=link.role,
+            priority=link.priority,
+        )
+        for link, vendor in rows
+    ]
+
+
+def _circuits(db: Session, hid: str, limit: int) -> list[Named]:
+    known = func.coalesce(Circuit.enterprise_circuit_id_key, Circuit.name_key)
+    rows = db.execute(
+        select(CircuitContact, Circuit)
+        .join(Circuit, Circuit.hid == CircuitContact.circuit_hid)
+        .where(CircuitContact.contact_hid == hid)
+        .order_by(known, CircuitContact.side, CircuitContact.role, CircuitContact.hid)
+        .limit(limit)
+    ).all()
+    return [
+        Named(
+            "circuit",
+            circuit.hid,
+            circuit.enterprise_circuit_id or circuit.name,
+            circuit.record_status,
+            role=link.role,
+            priority=link.priority,
+            side=link.side,
+        )
+        for link, circuit in rows
+    ]
+
+
+# How the records of each kind of `NAMINGS` are listed.
+_LISTED = {
+    "places": _places,
+    "owners": _owners,
+    "operators": _operators,
+    "agreements": _agreements,
+    "contracts": _contracts,
+    "vendors": _vendors,
+    "circuits": _circuits,
+}
 
 
 def users_of(db: Session, hids: list[str]) -> dict[str, User]:
