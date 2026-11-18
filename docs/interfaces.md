@@ -233,9 +233,11 @@ memberships made.
 
 `PATCH /device-groups/{hid}/members/{member_hid}` that gives `left_on` may carry `item`
 (P-218): what the item is to have from the end, any of `hostname`, `fqdn`,
-`location_hid`, `lifecycle_state`, `state_reason`, `disposition` and `expected_online`.
-A field left out stays as it is, and `null` clears `hostname`, `fqdn` and
-`location_hid`, as on `PATCH /items/{hid}`. The membership is ended first and the item
+`location_hid`, `lifecycle_state`, `state_reason`, `disposition`, `expected_online` and
+`condition`, a value of the `item_condition` list (P-245), which nothing sets by a rule:
+a failed member is marked so where a person says it. A field left out stays as it is,
+and `null` clears `hostname`, `fqdn`, `location_hid` and `condition`, as on `PATCH
+/items/{hid}`. The membership is ended first and the item
 is changed after, in the same change, so that the item's rules see an item that has
 left: its location in force is no longer the group's. `lifecycle_state` moves the item as
 `POST /items/{hid}/transition` does, by a move the rules list and never by force, with
@@ -348,16 +350,17 @@ recorded, with `POST /item-replacements/{hid}/remove` (P-238):
 
 `reason` is required, and is refused blank, a `422`. The answer is `204`, as the
 removal of a coverage that was a mistake answers. The audit event of the removal,
-`delete` of the replacement, holds its reason and every field of the replacement as it
-was, and each of the two items has an event `replacement_removed` in its history, whose
-`changes` hold `replaced_by` or `replaces`, the other item, as `old`, and the reason as
-`new` of `reason`. What the replacement handed over stays as it is, the
+`delete` of the replacement, holds every field of the replacement as it was, each as
+`old`, and the Admin's reason as `new` of `removal_reason`; each of the two items has
+an event `replacement_removed` in its history, whose `changes` hold `replaced_by` or
+`replaces`, the other item, as `old`, `replacement`, the HID of the replacement, as
+`old`, and `removal_reason`. Both items' versions move with it. What the replacement handed over stays as it is, the
 memberships of groups and the connections of circuits, each a fact of its own that is
 put right on the page of its group or its circuit; and neither item is changed but in
 its version. The two items are then as any other: each is deleted by `POST
 /items/delete`, or refused, by the rule of P-227, as if the replacement had never been.
-Nothing else removes a replacement. A replacement that was deleted answers `404`, as a
-deleted record does.
+Nothing else removes a replacement. A replacement that is not there, or was removed,
+answers `404`.
 
 ### Making a stack of a switch that stands alone
 
@@ -384,19 +387,24 @@ is in none, and puts the item into it as its first member, at position 1 (P-243)
 - `members` are more members, each as `POST /device-groups/{hid}/members` takes one,
   `drop_identity`, `disposition` and `expected_online` among them (P-217), added after
   the first by the rules of that route: a member given no position takes the lowest
-  free one, 2 for the first. A refusal of one names it by its place in the list, from 0:
-  `members.0.item_hid`, `members.0.disposition`.
+  free one, 2 for the first. A refusal of one names its field under `members`: by its
+  place in the list, from 0, where that route names it so, `members.0.disposition`,
+  and otherwise as `members.item_hid`, `members.position`.
+- The item is a member with the role `member`: the intended master is marked on the
+  page of the stack, as for any member.
 - It is refused, a `422` on `item_hid`, for a minor item, for an item that is retired,
   and for one that has left the team's hands, in Released or Archived; and, a `409` on
   `item_hid`, for one that is a current member of a stack already, naming that stack as
-  `existing`. A refusal of any part leaves no stack made and the item as it was.
+  `existing`; and, a `422` on `name`, where neither the request nor the item gives a
+  name. A refusal of any part leaves no stack made and the item as it was.
 - The answer, `201`, is the new device group, as `POST /device-groups` answers. The
   audit trail holds the stack made, the membership, the change of the item, its host
   name, its FQDN and the four it gives up, and each address moved, as an `update` of
   the address whose `item_hid` and `group_hid` change. Each of these but the stack's own
   creation holds among its `changes` the entry `joining_group`, with the HID of the
-  stack as `new`, and is found by `GET /audit-events?record_hid=` from the item, the
-  stack and the address alike.
+  stack as `new`. All of them share the request ID of the request: from the stack's
+  `create`, found by `GET /audit-events?record_hid=` with the stack's HID, and from the
+  item's history, each event leads to the others by `request_id`.
 
 ### Retiring several, and deleting
 

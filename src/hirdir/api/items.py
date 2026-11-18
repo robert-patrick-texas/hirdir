@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
@@ -10,7 +10,7 @@ from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
-from hirdir.domain import items, removal, replacements, resolution
+from hirdir.domain import groups, items, removal, replacements, resolution
 from hirdir.domain.lifecycle import UNSET
 from hirdir.io import bulk, fields, imports, tables
 
@@ -202,6 +202,10 @@ def replace_item(
         new_item=body.new_item.model_dump() if body.new_item is not None else None,
         reference=body.reference,
         replaced_on=body.replaced_on,
+        drop_identity=body.drop_identity,
+        disposition=body.disposition,
+        expected_online=body.expected_online,
+        old_item=body.old_item.model_dump(exclude_unset=True) if body.old_item else None,
     )
     return shapes.replacement_out(db, replacement)
 
@@ -216,7 +220,15 @@ def make_stack(
     location, owner and operator it has of its own, which the item gives up in the same
     change and has from the stack from then on (P-243). `members` are added after it.
     """
-    raise HTTPException(status_code=501, detail="not built yet")
+    group = groups.make_stack(
+        db,
+        context,
+        hid,
+        body.row_version,
+        name=body.name,
+        members=[member.model_dump() for member in body.members],
+    )
+    return shapes.group_out(db, group)
 
 
 @replaced.post("/{hid}/remove", status_code=204)
@@ -228,7 +240,7 @@ def remove_replacement(
     The audit event of the removal holds what it was, and each of the two items has an
     event of it. What it handed over, memberships and connections of circuits, stays.
     """
-    raise HTTPException(status_code=501, detail="not built yet")
+    replacements.remove_replacement(db, context, hid, body.reason)
 
 
 @router.get("/{hid}/resolution")

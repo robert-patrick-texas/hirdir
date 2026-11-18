@@ -617,7 +617,7 @@ management address, and its members usually carry neither.
 |---|---|---|
 | `networks.label` | text, unique | "Red", "Black", "Tenant1" |
 | `networks.kind` | choice | `vrf`, `network`, `other`. Left out, `network` |
-| `addresses.item_hid` or `addresses.group_hid` | reference | exactly one of the two, and not changed afterwards |
+| `addresses.item_hid` or `addresses.group_hid` | reference | exactly one of the two, and not changed afterwards, but where a switch that stands alone is made a stack, which takes its addresses as they are, in one change of each that names both holders (P-243) |
 | `addresses.address` | IPv4 or IPv6 | stored in canonical form, no prefix length |
 | `addresses.network_hid` | reference | blank is the unlabelled address space |
 | `addresses.role` | choice | `management`, `loopback`, `secondary`, `virtual`. Left out, `management` |
