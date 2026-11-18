@@ -187,6 +187,36 @@ export function joinStanding(
   return { disposition: "Production", online: intents.includes(true) ? "true" : "" };
 }
 
+/**
+ * What the answer to an add says was done to one member (P-217): where it joined, and for
+ * one that took the stack's name and place, what was removed and what it is now.
+ */
+export function joinedText(
+  group: string,
+  name: string,
+  position: number | null,
+  sent: { drop_identity?: boolean; disposition?: string | null; expected_online?: boolean | null },
+  has: Joining | undefined,
+): string {
+  const where = position === null ? "" : ` as member ${position}`;
+  const said = [`${name} was added to ${group}${where}.`];
+  if (sent.drop_identity) {
+    const drops = dropsOf(has ?? {});
+    said.push(
+      drops.length > 0
+        ? `It takes the stack's name and place: ${listed(drops)} removed.`
+        : "It takes the stack's name and place.",
+    );
+  }
+  const now = [
+    ...(sent.disposition ? [sent.disposition] : []),
+    ...(sent.expected_online === true ? ["expected online"] : []),
+    ...(sent.expected_online === false ? ["not expected online"] : []),
+  ];
+  if (now.length > 0) said.push(`It is ${listed(now)} now.`);
+  return said.join(" ");
+}
+
 /** An intent of a form, as it is sent: blank is left out. */
 export function onlineValue(online: string): boolean | undefined {
   if (online === "true") return true;

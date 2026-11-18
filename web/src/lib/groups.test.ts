@@ -83,6 +83,36 @@ describe("buildMembers", () => {
     ]);
   });
 
+  it("sends the stack's name and place, and the standing, only for a member of a stack ticked (P-217)", () => {
+    const spare = {
+      ...pending(ONE, "member", "5"),
+      drop: true,
+      disposition: "Production",
+      online: "true",
+    };
+    expect(buildMembers("stack", [spare]).members).toEqual([
+      {
+        item_hid: ONE,
+        role: "member",
+        position: 5,
+        drop_identity: true,
+        disposition: "Production",
+        expected_online: true,
+      },
+    ]);
+    // Unticked, nothing of the item is sent; and a cluster has no box.
+    expect(buildMembers("stack", [{ ...spare, drop: false }]).members).toEqual([
+      { item_hid: ONE, role: "member", position: 5 },
+    ]);
+    expect(buildMembers("cluster", [{ ...spare, position: "" }]).members).toEqual([
+      { item_hid: ONE, role: "member" },
+    ]);
+    // Blank is as it is.
+    expect(buildMembers("stack", [{ ...spare, disposition: "", online: "" }]).members).toEqual([
+      { item_hid: ONE, role: "member", position: 5, drop_identity: true },
+    ]);
+  });
+
   it("leaves a blank position out, and names the day when one was given", () => {
     const built = buildMembers("controller_domain", [pending(ONE, "endpoint")], "2026-11-02");
     expect(built.members).toEqual([{ item_hid: ONE, role: "endpoint", joined_on: "2026-11-02" }]);

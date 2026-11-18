@@ -1921,7 +1921,17 @@ What 0.9.6 changes:
   and the disposition Spare in force, minor items included (P-216).
 - **Stacks.** Add members on a stack's page has a box, ticked from the start: the
   switch takes the stack's name and place, which sends `drop_identity` with the member,
-  and Production for a spare (P-217). Ending a membership of a stack asks What becomes
+  and Production for a spare (P-217). The box stands under the members chosen, one for
+  each with its name, and under it one line of exactly what it removes from that switch,
+  read from the switch as it was chosen: its host name, its FQDN, each address and its own
+  location; unticked, the line says that nothing of it is changed, and nothing of the
+  item is sent. A switch whose disposition is Spare is offered Production and expected
+  online, as Disposition and Expected online, each with As it is, among what the rule of
+  its state allows. New group has no box: its first members keep their names. Join a
+  stack on a switch's page has the same box, and the position the stack offers. After the
+  add, the answer at the top of the page says for each member its position, what was
+  removed and what it is now.
+  Ending a membership of a stack asks What becomes
   of it: to the spare pool with a new name and place, to be returned to the
   manufacturer, excess, or nothing now, saved with the end (P-218). The position offered
   is the lowest that is free, and one that a current member holds is refused (P-219):

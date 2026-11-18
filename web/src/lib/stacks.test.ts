@@ -4,6 +4,7 @@ import {
   dropsOf,
   dropsText,
   groupWords,
+  joinedText,
   joinStanding,
   type LeavingRules,
   leavingBody,
@@ -95,6 +96,23 @@ describe("what joining a stack removes (P-217)", () => {
       disposition: "",
       online: "",
     });
+  });
+
+  it("says what the add did: the position, what was removed and what it is now", () => {
+    expect(
+      joinedText(
+        "cw07-idf03-acc1",
+        "spare-sw-017",
+        5,
+        { drop_identity: true, disposition: "Production", expected_online: true },
+        { hostname: "spare-sw-017", addresses: [{ address: "192.0.2.17" }] },
+      ),
+    ).toBe(
+      "spare-sw-017 was added to cw07-idf03-acc1 as member 5. It takes the stack's name and place: the host name spare-sw-017 and the address 192.0.2.17 removed. It is Production and expected online now.",
+    );
+    expect(joinedText("lab-stack", "FCW0000X001", null, {}, undefined)).toBe(
+      "FCW0000X001 was added to lab-stack.",
+    );
   });
 
   it("lists words as they are said", () => {

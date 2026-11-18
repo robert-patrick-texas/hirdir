@@ -64,7 +64,7 @@ import {
 } from "../lib/groups";
 import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { useGroupOptions, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
+import { useGroupOptions, useOwnerOptions, useRules, useTags, withCurrent } from "../lib/lists";
 import { markOf, operatorHint, operatorOptionLabel, operatorPath } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
@@ -80,7 +80,7 @@ import { pickLabel } from "../lib/pick";
 import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
-import { MEMBER_FIELDS, refusedRows } from "../lib/stacks";
+import { joinedText, MEMBER_FIELDS, refusedRows } from "../lib/stacks";
 import { registeredWith } from "../lib/systems";
 import { MEMBERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
@@ -1412,7 +1412,7 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
           current={whole ? current : null}
           taken={current.map((member) => member.item_hid)}
           onCancel={() => setAdding(false)}
-          onAdded={(count) => changed(`${plural(count, "member")} added to ${group.name}.`)}
+          onAdded={changed}
         />
       )}
     </section>
@@ -1535,11 +1535,13 @@ interface AddMembersProps {
   current: readonly Member[] | null;
   taken: readonly string[];
   onCancel: () => void;
-  onAdded: (count: number) => void;
+  /** What was done, in words: who joined, and for a stack what each took and lost (P-217). */
+  onAdded: (text: string) => void;
 }
 
 /** Add several members by one request, so that the group is checked once they are all in. */
 function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProps) {
+  const rules = useRules();
   const [pending, setPending] = useState<PendingMember[]>([]);
   const [joined, setJoined] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -1577,7 +1579,27 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
         body: { members: built.members },
       }),
     );
-    if (result.ok) onAdded(built.members.length);
+    if (!result.ok) return;
+    if (group.type !== "stack") {
+      onAdded(`${plural(built.members.length, "member")} added to ${group.name}.`);
+      return;
+    }
+    // 0.9.6: each member as the server made it, with what it took and lost (P-217).
+    onAdded(
+      result.value
+        .map((made) => {
+          const row = pending.find((one) => one.item_hid === made.item_hid);
+          const sentOne = built.members.find((one) => one.item_hid === made.item_hid) ?? {};
+          return joinedText(
+            group.name,
+            row?.name ?? itemName(made.item),
+            made.position,
+            sentOne,
+            row?.joining,
+          );
+        })
+        .join(" "),
+    );
   }
 
   return (
@@ -1595,6 +1617,8 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
           next={group.next_position}
           errors={{ ...answered.errors, ...rowErrors }}
           holders={answered.holders}
+          joins={group.type === "stack"}
+          rules={rules.data ?? []}
           disabled={action.busy}
         />
         <div className="fields">
