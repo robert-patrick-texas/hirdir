@@ -134,3 +134,43 @@ def test_a_filter_too_large_to_join_a_count_to_is_given_as_none(stocked: Maker) 
     ).json()
     assert answer["totals"]["filter"] is None
     assert {row["filter"] for row in answer["rows"]} == {None}
+
+
+def test_a_filter_too_long_to_send_with_a_count_is_given_as_none(stocked: Maker) -> None:
+    # Few conditions, each long: within the conditions and the depth a filter may have,
+    # and as long as a filter may be once a count's condition is joined to it.
+    def view(length: int) -> str:
+        return filters.as_text(
+            {
+                "and": [
+                    filters.where("hostname", "ne", f"{place:02d}" + "x" * length)
+                    for place in range(30)
+                ]
+            }
+        )
+
+    def asked(text: str) -> dict[str, Any]:
+        answer = stocked.client.get(
+            "/api/v1/reports/summary",
+            params={"filter": text, "by": "vendor"},
+            headers=stocked.headers,
+        )
+        assert answer.status_code == 200, answer.text
+        return answer.json()
+
+    long = view(240)
+    assert filters.MAX_FILTER_LENGTH - 600 < len(long) <= filters.MAX_FILTER_LENGTH
+    answer = asked(long)
+    assert answer["totals"]["filter"] is None
+    assert {row["filter"] for row in answer["rows"]} == {None}
+
+    # One that leaves room is answered, and every count of it can be sent to the list.
+    answer = asked(view(150))
+    assert answer["totals"]["filter"] is not None
+    for when in (
+        answer["conditions"]["component_count"],
+        *answer["conditions"]["by_health"].values(),
+    ):
+        text = joined(answer["totals"]["filter"], when)
+        assert len(text) <= filters.MAX_FILTER_LENGTH
+        listed(stocked, text, {})

@@ -805,6 +805,10 @@ def _component(db: Session) -> dict[str, Any]:
     return filters.both(_in_hand(db), kind) or NOTHING
 
 
+# What a condition written in a tree takes more than in the short form, at the most.
+_TREE_ROOM = 48
+
+
 class _Lists:
     """The filters of the item list for what a report over one view counts (P-206)."""
 
@@ -821,18 +825,29 @@ class _Lists:
             by_health={value: filters.as_text(tree) for value, tree in by_health.items()},
         )
         # The most a count adds to a filter, so that each filter it is joined to stays
-        # within what a filter may be.
+        # within what a filter may be: in its conditions and its depth, and in its length
+        # as it is written, which is what `GET /items` reads.
         self._most = max(by_health.values(), key=filters.size)
+        self._added = [component, _in_hand(db), *by_health.values()]
+        self._longest = max(len(filters.as_text(tree)) for tree in self._added)
 
     def of(self, condition: dict[str, Any] | None = None) -> str | None:
         """Return the filter of the items of the view that meet a condition: blank for
         every item of the view, and None where it, with what a count adds to it, would
-        hold more conditions or nest deeper than a filter may."""
+        hold more conditions, nest deeper or be longer than a filter may."""
         joined = filters.both(self.view, condition)
         count, deep = filters.size(filters.both(joined, self._most))
         if count > filters.MAX_CONDITIONS or deep > filters.MAX_DEPTH:
             return None
-        return filters.as_text(joined)
+        text = filters.as_text(joined)
+        # Joined to a count's condition it is written as a tree, each condition some
+        # thirty characters longer than in the short form: only a filter that long
+        # is measured as it would be sent.
+        if len(text) + self._longest + _TREE_ROOM * max(count, 1) > filters.MAX_FILTER_LENGTH:
+            for tree in self._added:
+                if len(filters.as_text(filters.both(joined, tree))) > filters.MAX_FILTER_LENGTH:
+                    return None
+        return text
 
 
 def summary(

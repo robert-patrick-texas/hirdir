@@ -155,7 +155,8 @@ by `scope`.
 contact, by kind (P-205): `places`, the regions, sites and locations it is assigned to;
 `owners`, those it is one of the people of; `operators`, those it stands behind; and
 `agreements`, `contracts`, `vendors` and `circuits`, those that name it. Each kind has
-`total` and `records`, at most 100 of them, in the order of what each is known by. A
+`total` and `records`, at most 100 of them, in the order of what each is known by, a
+place by its own name and not by its path. A
 record has its `hid`; `record_type`, as the audit trail names a kind; `label`, a place by
 its path, a contract by its number in force and its vendor, `EX-1001 (Example
 Carrier)`, a circuit by its enterprise circuit ID or its name, and any other by its name
@@ -330,7 +331,8 @@ in a URL. Text sorts without regard to case, blank values come last in either
 direction, and rows that tie keep a steady order, so paging never repeats or skips one.
 On the item list, `name` filters and sorts by the hostname when the name is blank. A
 field the route is not sorted by is a `422`, which names the nearest fields it is sorted
-by as a filter does: `location.name` for `location` (P-207).
+by as a filter does: `location_hid`, `location.name` and `location.kind` for `location`
+(P-207).
 
 A list is sorted by any field it is filtered by, with two exceptions. A field that
 takes `within` is a place, and a list is sorted by the name of the place and not by
@@ -1940,8 +1942,8 @@ second save of the same record. Room is kept for it at the top of the window, so
 that a field the keyboard moves to, or a row a form opens under, does not come to rest
 beneath it. A change refused because another record has the value says, under the
 server's sentence, which record that is, "The item that has it:", with the record as a
-link to its page by what it is known by (P-207); a record whose kind has no page, a tag
-or a choice, is named without a link, and so is a user or a user group to anyone but an
+link to its page by what it is known by (P-207); a record whose kind has no page, a tag,
+a choice, a network or a reference file, is named without a link, and so is a user or a user group to anyone but an
 Admin.
 
 A field that finds a record by what is typed searches again when Enter is pressed, when

@@ -327,7 +327,9 @@ def _places(db: Session, hid: str, limit: int) -> list[Named]:
                 priority=assignment.priority,
             )
         )
-    return sorted(named, key=lambda one: (records.key(one.label), one.role or "", one.hid))
+    # In the order they were taken in, by the place's own name: the first of many are
+    # then the first by name, as the page says of them.
+    return named
 
 
 def _owners(db: Session, hid: str, limit: int) -> list[Named]:
@@ -435,7 +437,14 @@ def _circuits(db: Session, hid: str, limit: int) -> list[Named]:
         select(CircuitContact, Circuit)
         .join(Circuit, Circuit.hid == CircuitContact.circuit_hid)
         .where(CircuitContact.contact_hid == hid)
-        .order_by(known, CircuitContact.side, CircuitContact.role, CircuitContact.hid)
+        # The carrier's contact has no side: blank, so that it stands first in every
+        # database, which place a null where they please.
+        .order_by(
+            known,
+            func.coalesce(CircuitContact.side, ""),
+            CircuitContact.role,
+            CircuitContact.hid,
+        )
         .limit(limit)
     ).all()
     return [
