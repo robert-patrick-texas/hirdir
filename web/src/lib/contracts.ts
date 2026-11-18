@@ -574,6 +574,26 @@ export function flaggedFilter(contractHid: string): FilterNode {
   };
 }
 
+/**
+ * 0.9.6 (P-214): what the renewal form says of the items it covers today that are marked
+ * not to be renewed, by their count, the server's, and the last day of the present term,
+ * blank for a term that names none. It says what the count is, and the server's rule as
+ * a rule, since the two differ at the edges: an item whose coverage ends before that day,
+ * or that has left service, is not left behind, and one whose coverage begins later
+ * within the term is. `link` is the words that lead to those items, `text` what follows.
+ */
+export function flaggedWords(flagged: number, end: string): { link: string | null; text: string } {
+  if (flagged === 0) {
+    return { link: null, text: "None of the items it covers today is marked not to be renewed." };
+  }
+  const until = end === "" ? "the day before the new term begins" : end;
+  const one = flagged === 1;
+  return {
+    link: `${flagged} ${one ? "item" : "items"} it covers today`,
+    text: ` ${one ? "is" : "are"} marked not to be renewed; the renewal leaves behind those whose coverage runs to ${until}, and its answer says how many it left.`,
+  };
+}
+
 /** 0.9.6 (P-214): those items in the item grid, minor items among them. */
 export function flaggedItemsPath(contractHid: string): string {
   return `/items?filter=${encodeURIComponent(filterText(flaggedFilter(contractHid)))}&minor=1`;

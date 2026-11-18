@@ -785,7 +785,7 @@ export function ContractDetail() {
                   term. The term it has now is kept beneath, as its history.
                 </p>
               }
-              scope={<RenewScope contract={record} />}
+              scope={<RenewScope contract={record} turn={turn} />}
               submitLabel={`Renew for ${plural(record.items_in_scope, "item")}`}
               note={
                 record.agreement ? (

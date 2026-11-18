@@ -1854,9 +1854,12 @@ What 0.9.6 changes:
   end is its agreement's, or that has a term to come, begins with its dates as they are.
   The purchase reference begins blank. Under the button of a contract's renewal, each
   counted by the server: the coverages that have the contract's period and follow, the
-  items it covers today that are marked not to be renewed and stay behind, as a link to
-  them, the coverages that begin after the present term, with the new one, and those
-  that end on a day of their own by then (P-214). An agreement's page has the
+  items it covers today that are marked not to be renewed, as a link to them, with the
+  rule the renewal keeps (it leaves behind those whose coverage runs to the last day of
+  the present term), the coverages that begin after the present term, with the new one,
+  and those that end on a day of their own by then; for a term that names no end, the
+  items in scope and those marked. The counts are read again when a coverage is changed
+  on the page (P-214). An agreement's page has the
   annual cost of each of its contracts, which is always the contract's own, and a row
   of their total, beside the agreement's own figure and not in place of it: a contract
   with no cost counts as none, and the row says how many have none; a draft is not

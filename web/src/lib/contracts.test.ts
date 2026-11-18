@@ -23,6 +23,7 @@ import {
   endedText,
   flaggedFilter,
   flaggedItemsPath,
+  flaggedWords,
   followingPeriod,
   followsOnEnd,
   INHERITED,
@@ -745,6 +746,22 @@ describe("the renewal form starts from what follows (P-214)", () => {
     });
     expect(decodeURIComponent(flaggedItemsPath("CT-0001"))).toBe(
       "/items?filter=contract.hid:eq:CT-0001 effective.do_not_renew:eq:true&minor=1",
+    );
+  });
+});
+
+describe("what the renewal form says of the items marked not to be renewed (P-214)", () => {
+  it("says what is counted, and the rule the server keeps, never that it ends them all", () => {
+    expect(flaggedWords(0, "2027-12-31")).toEqual({
+      link: null,
+      text: "None of the items it covers today is marked not to be renewed.",
+    });
+    expect(flaggedWords(1, "2027-12-31")).toEqual({
+      link: "1 item it covers today",
+      text: " is marked not to be renewed; the renewal leaves behind those whose coverage runs to 2027-12-31, and its answer says how many it left.",
+    });
+    expect(flaggedWords(3, "").text).toBe(
+      " are marked not to be renewed; the renewal leaves behind those whose coverage runs to the day before the new term begins, and its answer says how many it left.",
     );
   });
 });

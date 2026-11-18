@@ -258,7 +258,7 @@ test("P-214: the renewal form starts from what follows, and says what follows, s
   );
   await expect(follows.getByTestId("renew-flagged")).toHaveAttribute("data-count", "1");
   await expect(follows.getByTestId("renew-flagged")).toContainText(
-    "1 item it covers today is marked not to be renewed, and stays behind",
+    `1 item it covers today is marked not to be renewed; the renewal leaves behind those whose coverage runs to ${ends}`,
   );
   await expect(follows.getByTestId("renew-begin")).toContainText(
     `1 coverage begins after ${ends}, with the new term.`,
@@ -329,7 +329,7 @@ test("P-214: for a term that names no end, the renewal form says how many items 
   );
   await expect(follows.getByTestId("renew-flagged")).toHaveAttribute("data-count", "1");
   await expect(follows.getByTestId("renew-flagged")).toContainText(
-    "1 item it covers today is marked not to be renewed, and stays behind",
+    "1 item it covers today is marked not to be renewed; the renewal leaves behind those whose coverage runs to the day before the new term begins",
   );
   await expect(follows.getByRole("link", { name: "1 item it covers today" })).toBeVisible();
   await expectClean(page, seen);
