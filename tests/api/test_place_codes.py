@@ -7,11 +7,14 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import update
+from sqlalchemy.orm import Session
 
 from hirdir.app import create_app
 from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
+from hirdir.db.models import Site
 from hirdir.domain import accounts, audit
 from hirdir.io import examples
 from hirdir.io.entities import LOAD_ORDER
@@ -81,7 +84,7 @@ def test_a_step_of_a_path_is_a_name_or_else_a_code(
 
 
 def test_a_name_wins_over_a_code_and_a_shared_first_code_finds_neither(
-    make: Maker, coded: dict[str, dict[str, Any]]
+    make: Maker, coded: dict[str, dict[str, Any]], db: Session
 ) -> None:
     # A region at the top named as the site's code is what the first step finds.
     named = make.region("S2")
@@ -90,10 +93,69 @@ def test_a_name_wins_over_a_code_and_a_shared_first_code_finds_neither(
     # Within the site, a location named as another's code is the one found.
     beside = make.location("R102", coded["site"])
     assert _root(make, "Americas > Central > Site-2 > R102") == beside["hid"]
-    # A code that a region and a site both have begins no path.
+    # A code that a region and a site both have, from before it was refused (P-237),
+    # begins no path.
     make.region("Other", code="SHARED")
-    make.site("Site-9", coded["central"], code="SHARED")
+    site = make.site("Site-9", coded["central"])
+    _hold_code(db, Site, site["hid"], "SHARED")
     _root(make, "SHARED", 422)
+
+
+def _hold_code(db: Session, model: Any, hid: str, code: str) -> None:
+    """Give a place a code by writing to the database, as a release before P-237 let it."""
+    db.execute(update(model).where(model.hid == hid).values(code=code, code_key=code.lower()))
+    db.commit()
+
+
+def test_a_code_a_region_has_is_refused_for_a_site_and_the_reverse(
+    make: Maker, files: Files, coded: dict[str, dict[str, Any]], db: Session
+) -> None:
+    # A site given the code of a region, and a region the code of a site, by the API.
+    problem = make.post("/sites", {"name": "Site-9", "region_hid": coded["central"]["hid"],
+                                   "code": "cen"}, 409)  # fmt: skip
+    assert problem["existing"] == {
+        "hid": coded["central"]["hid"],
+        "record_type": "region",
+        "label": "Central",
+    }
+    assert [one["field"] for one in problem["errors"]] == ["code"]
+    problem = make.post("/regions", {"name": "Europe", "code": "S2"}, 409)
+    assert problem["existing"]["hid"] == coded["site"]["hid"]
+    problem = make.patch(
+        f"/regions/{coded['americas']['hid']}",
+        {"row_version": coded["americas"]["row_version"], "code": "S2"},
+        409,
+    )
+    assert problem["existing"]["record_type"] == "site"
+    # And by a file alike.
+    refused = files.preview("regions", "name,code\nEurope,S2\n")
+    assert [reason["field"] for row in refused["rows"] for reason in row["reasons"]] == ["code"]
+    # A location may have a code that a region has: it is found after its site.
+    make.location("Room CEN", coded["site"], code="CEN")
+
+
+def test_a_region_and_a_site_that_hold_one_code_from_before_stay_so(
+    make: Maker, coded: dict[str, dict[str, Any]], db: Session
+) -> None:
+    site = make.site("Site-9", coded["central"])
+    _hold_code(db, Site, site["hid"], "CEN")
+    # A change of anything else of either goes through, and so does the code they hold.
+    site = make.get(f"/sites/{site['hid']}")
+    make.patch(f"/sites/{site['hid']}", {"row_version": site["row_version"], "notes": "kept"})
+    central = make.get(f"/regions/{coded['central']['hid']}")
+    changed = make.patch(
+        f"/regions/{central['hid']}",
+        {"row_version": central["row_version"], "notes": "kept", "code": "CEN"},
+    )
+    assert changed["code"] == "CEN"
+    site = make.get(f"/sites/{site['hid']}")
+    assert site["code"] == "CEN"
+    # A path that begins with that code still finds neither.
+    _root(make, "CEN", 422)
+    # Changing the code of one ends it, and giving it back is refused.
+    make.patch(f"/sites/{site['hid']}", {"row_version": site["row_version"], "code": "S9"})
+    site = make.get(f"/sites/{site['hid']}")
+    make.patch(f"/sites/{site['hid']}", {"row_version": site["row_version"], "code": "CEN"}, 409)
 
 
 def test_a_file_a_filter_and_a_command_take_a_place_by_one_rule(
