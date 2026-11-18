@@ -9,7 +9,7 @@ import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "../components/grid/itemColumns";
 import { madeLink, NewItem } from "../components/NewItem";
 import { Notice, Problem } from "../components/Problem";
-import { useTickedRemoval } from "../components/Removal";
+import { useDeletedNote, useTickedRemoval } from "../components/Removal";
 import { ITEM_MAC_FIELD, ITEM_QUICK_FIELDS } from "../lib/filter";
 import { queryBody } from "../lib/gridQuery";
 import { useTitle } from "../lib/hooks";
@@ -62,6 +62,8 @@ export function Items() {
   const columns = useMemo(() => itemColumns(choices.data, states), [choices.data, states]);
   // 0.9.7: the rows ticked retired, and deleted by an Admin (P-227, P-228).
   const removal = useTickedRemoval<Item>("item");
+  // What a deletion on an item's page said, as it came back to the list.
+  const deletedNote = useDeletedNote();
   const reloadKey = reloads + removal.turn;
   const actions: GridAction<Item>[] = [
     ...removal.actions,
@@ -85,6 +87,7 @@ export function Items() {
       </div>
       <Problem error={choices.error ?? rules.error} />
       <Notice text={done} {...(made && done === "Created" ? { link: madeLink(made) } : {})} />
+      <Notice text={deletedNote} />
       {removal.shown}
       {adding && (
         <NewItem

@@ -57,6 +57,10 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
               {sentence(visible.message)}
             </p>
           )}
+          {/* 0.9.7: a record that was deleted: the detail says when and by whom (P-227). */}
+          {visible.deleted?.reason && (
+            <p data-testid="deleted-reason">The reason given: {visible.deleted.reason}</p>
+          )}
           {existing && (
             <p>
               {existingLead(existing)}{" "}

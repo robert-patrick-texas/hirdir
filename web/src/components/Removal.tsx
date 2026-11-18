@@ -324,7 +324,10 @@ export function useTickedRemoval<T>(kind: RemovalKind): TickedRemoval<T> {
       if (chosen.kind === "rows") ask(what, chosen.hids);
     },
   });
-  const actions: GridAction<T>[] = [...(allows(user.role, "inventory") ? [button("retire")] : [])];
+  const actions: GridAction<T>[] = [
+    ...(allows(user.role, "inventory") ? [button("retire")] : []),
+    ...(allows(user.role, "admin") ? [button("delete")] : []),
+  ];
   const shown = (
     <>
       <RemovalOutcome kind={kind} outcome={outcome} />

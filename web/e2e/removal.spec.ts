@@ -5,6 +5,11 @@
 //   and says how many, says what the answer did, and keeps ticked the rows it refused.
 //   A View-only person sees no Retire; Inventory sees Retire and no Delete.
 //
+//   Delete, for an Admin, on the same lists and on the page of an item and of a group: it
+//   asks first with what the server's dry run answers, how many will be deleted and which
+//   are refused with what depends on each, as links; a reason is typed; a record deleted
+//   from its page shows its list with a message, and its page then says it was deleted.
+//
 // The file keeps the rules of support.ts: an Admin of its own, an Inventory and a
 // View-only account of its own, its mark in every name, and every list filtered down to
 // its own records before anything is counted.
@@ -24,7 +29,8 @@ const pid = `EN-9300-48P-${suffix}`;
 const prefix = `site7-sw-rm-${suffix}`;
 const hosts = [1, 2, 3, 4, 5].map((place) => `${prefix}-0${place}`);
 const groupPrefix = `site7-grp-rm-${suffix}`;
-const groupNames = [1, 2, 3].map((place) => `${groupPrefix}-0${place}`);
+// The fourth is nested in the third, which a deletion of the third alone is refused for.
+const groupNames = [1, 2, 3, 4].map((place) => `${groupPrefix}-0${place}`);
 
 function host(at: number): string {
   return hosts[at] ?? "";
@@ -93,8 +99,8 @@ test("the switches and the groups of this file are loaded, with an Inventory and
     page,
     "device_groups",
     `device-groups-${suffix}.csv`,
-    ["name", "type"],
-    groupNames.map((name) => [name, "custom"]),
+    ["name", "type", "parent"],
+    groupNames.map((name, place) => [name, "custom", place === 3 ? groupName(2) : ""]),
   );
   others.inventory = await createAccount(request, `e2e-${suffix}-ivy`, "inventory");
   others.viewer = await createAccount(request, `e2e-${suffix}-viewer`, "viewer");
@@ -149,6 +155,13 @@ test("Inventory: the items ticked are retired at once, after saying how many, an
   await expect(retire).toHaveText("Retire");
   await page.getByRole("button", { name: "Clear selection" }).click();
   await page.getByLabel("Include archived").uncheck();
+  // Nor on an item's page.
+  await gridRow(page, "grid-items", host(4))
+    .getByRole("link", { name: host(4) })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: host(4) })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retire item" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
   await expectClean(page, seen);
   await context.close();
 });
@@ -202,7 +215,131 @@ test("Inventory: the groups ticked are retired at once", async ({ browser }) => 
   await expect(dialog.getByRole("heading", { name: "Retire 2 groups?" })).toBeVisible();
   await dialog.getByRole("button", { name: "Retire 2 groups" }).click();
   await expect(page.getByTestId("removal-outcome")).toHaveText("Retired 2 groups.");
-  await expect(page.getByTestId("grid-total")).toHaveText("1 group");
+  await expect(page.getByTestId("grid-total")).toHaveText("2 groups");
   await expectClean(page, seen);
   await context.close();
+});
+
+test("Admin: the items ticked that were a mistake are deleted, after the dry run and a reason", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItems(page, 2);
+  await page.getByLabel("Include archived").check();
+  await expect(page.getByTestId("grid-total")).toHaveText("5 items");
+  await rowBox(page, "grid-items", host(0)).check();
+  await rowBox(page, "grid-items", host(1)).check();
+  await page.getByRole("button", { name: "Delete (2)" }).click();
+  const dialog = page.getByTestId("removal-dialog");
+  await expect(dialog.getByRole("heading", { name: "Delete 2 items?" })).toBeVisible();
+  await expect(dialog.getByTestId("delete-said")).toHaveText("2 items will be deleted.");
+  const go = dialog.getByRole("button", { name: "Delete 2 items" });
+  // A reason is typed first, and spaces alone are none.
+  await expect(go).toBeDisabled();
+  await dialog.getByLabel("Reason").fill("   ");
+  await expect(go).toBeDisabled();
+  await dialog.getByLabel("Reason").fill(`a wrong file ${suffix}`);
+  await go.click();
+  await expect(page.getByTestId("removal-outcome")).toHaveText("Deleted 2 items.");
+  await expect(page.getByTestId("grid-total")).toHaveText("3 items");
+  await expect(gridRow(page, "grid-items", host(0))).toHaveCount(0);
+  await page.getByLabel("Include archived").uncheck();
+  await expectClean(page, seen);
+});
+
+test("Admin: an item deleted from its page shows the list, saying so, and its page then says it was deleted", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItems(page, 2);
+  await gridRow(page, "grid-items", host(4))
+    .getByRole("link", { name: host(4) })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: host(4) })).toBeVisible();
+  const address = page.url();
+  await page.getByRole("button", { name: "Delete item" }).click();
+  const dialog = page.getByTestId("removal-dialog");
+  await expect(dialog.getByTestId("delete-said")).toHaveText("1 item will be deleted.");
+  await dialog.getByLabel("Reason").fill(`a wrong file ${suffix}`);
+  await dialog.getByRole("button", { name: "Delete 1 item" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  expect(new URL(page.url()).pathname.endsWith("/items")).toBe(true);
+  await expect(page.getByText(`Item ${host(4)} was deleted.`)).toBeVisible();
+
+  // The page of the HID says what the server's 404 says: deleted, when, by whom, why.
+  await page.goto(address);
+  const problem = page.locator(".alert-error");
+  await expect(problem).toContainText("deleted");
+  await expect(problem).toContainText(account.username);
+  await expect(page.getByTestId("deleted-reason")).toHaveText(
+    `The reason given: a wrong file ${suffix}`,
+  );
+  await expectClean(page, seen, ["404 GET"]);
+});
+
+test("Admin: a group that a group is nested in is refused, naming it as a link, and stays ticked", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openGroups(page, 2);
+  await page.getByLabel("Include retired").check();
+  await expect(page.getByTestId("grid-total")).toHaveText("4 groups");
+  const dialog = page.getByTestId("removal-dialog");
+
+  // The third alone: the fourth is nested in it, and nothing can be deleted.
+  await rowBox(page, "grid-device-groups", groupName(2)).check();
+  await page.getByRole("button", { name: "Delete (1)" }).click();
+  await expect(dialog.getByTestId("delete-said")).toHaveText(
+    "No groups can be deleted. 1 group refused, while what depends on each is there:",
+  );
+  const refused = dialog.getByTestId("delete-refused").getByRole("listitem");
+  await expect(refused).toContainText(groupName(2));
+  await expect(refused.getByRole("link", { name: groupName(3) })).toBeVisible();
+  await expect(dialog.getByLabel("Reason")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /^Delete \d/ })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // With a retired group beside it: that one is deleted, and the third stays ticked.
+  await rowBox(page, "grid-device-groups", groupName(0)).check();
+  await page.getByRole("button", { name: "Delete (2)" }).click();
+  await expect(dialog.getByTestId("delete-said")).toHaveText(
+    "1 group will be deleted. 1 group refused, while what depends on each is there:",
+  );
+  await dialog.getByLabel("Reason").fill(`a wrong file ${suffix}`);
+  await dialog.getByRole("button", { name: "Delete 1 group" }).click();
+  const outcome = page.getByTestId("removal-outcome");
+  await expect(outcome).toContainText("Deleted 1 group. 1 group refused, still ticked:");
+  await expect(outcome.getByRole("link", { name: groupName(3) })).toBeVisible();
+  await expect(page.getByTestId("grid-total")).toHaveText("3 groups");
+  await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
+  await expect(rowBox(page, "grid-device-groups", groupName(2))).toBeChecked();
+  await page.getByLabel("Include retired").uncheck();
+  await expectClean(page, seen);
+});
+
+test("Admin: a group deleted from its page shows the list of groups, saying so", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openGroups(page, 2);
+  await gridRow(page, "grid-device-groups", groupName(3))
+    .getByRole("link", { name: groupName(3) })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: groupName(3) })).toBeVisible();
+  await page.getByRole("button", { name: "Delete group" }).click();
+  const dialog = page.getByTestId("removal-dialog");
+  await expect(dialog.getByTestId("delete-said")).toHaveText("1 group will be deleted.");
+  await dialog.getByLabel("Reason").fill(`a wrong file ${suffix}`);
+  await dialog.getByRole("button", { name: "Delete 1 group" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Groups" })).toBeVisible();
+  await expect(page.getByText(`Group ${groupName(3)} was deleted.`)).toBeVisible();
+  await expectClean(page, seen);
 });
