@@ -1092,6 +1092,12 @@ def export(
     include_sources: Annotated[
         bool, typer.Option("--include-sources", help="Add where each inherited value came from.")
     ] = False,
+    place_codes: Annotated[
+        bool,
+        typer.Option(
+            "--place-codes", help="Write each place by the codes of its site and its own."
+        ),
+    ] = False,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
     url: Url = None,
@@ -1110,6 +1116,7 @@ def export(
         output=output,
         own_values=own_values,
         include_sources=include_sources,
+        place_codes=place_codes,
         include_archived=include_archived,
         include_drafts=include_drafts,
     )

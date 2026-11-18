@@ -1111,7 +1111,7 @@ class Locations(_Places):
             if (parent is None or parent.level != geography.LOCATION) and site is not None:
                 # Named from the site down. A region or a site that answers to the
                 # same words from the top is not what is in this site.
-                parent = geography.find_within(run.db, site, parent_text)
+                parent = geography.find_within(run.db, site, parent_text, codes=True)
             if parent is None or parent.level != geography.LOCATION:
                 raise Invalid(
                     "there is no such location", {"parent": f"there is no location {parent_text}"}
