@@ -100,8 +100,12 @@ def test_a_code_is_unique_when_present(make: Maker) -> None:
     assert "code" in errors(make.location("Annex", first, code="b1", expect=409))
     # A code is unique within its site, and another site may use it.
     make.location("Building 1", second, code="B1")
-    # A region and a site may share a code: each is unique among its own kind.
-    make.site("Site-3", emea, code="AMER")
+    # A region and a site do not share a code, so that a path that begins with it leads
+    # to one place (P-237).
+    problem = make.post(
+        "/sites", {"name": "Site-3", "region_hid": emea["hid"], "code": "AMER"}, 409
+    )
+    assert problem["existing"]["hid"] == americas["hid"]
 
 
 def test_no_place_is_ever_within_itself_and_locations_nest_so_deep(make: Maker) -> None:

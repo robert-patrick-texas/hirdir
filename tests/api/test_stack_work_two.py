@@ -509,6 +509,12 @@ def test_an_item_whose_only_tie_was_the_replacement_is_then_deleted(
         assert response.status_code == 200, response.text
         return response.json()
 
+    # An item in several replacements is refused naming each (P-241).
+    third = make.item(name="ex-wrong-third")
+    other = _replace(make, new, new_item_hid=third["hid"])
+    ties = delete([new["hid"]])["refused"][0]["depends_on"]
+    assert sorted(tie["hid"] for tie in ties) == sorted([made["hid"], other["hid"]])
+    _remove(client, admin, other["hid"], reason="a wrong press")
     refused = delete([old["hid"]])["refused"]
     assert [tie["hid"] for tie in refused[0]["depends_on"]] == [made["hid"]]
     _remove(client, admin, made["hid"], reason="a wrong press")
