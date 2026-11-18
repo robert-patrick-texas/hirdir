@@ -22,6 +22,7 @@ import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem, StaleCause } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Renew } from "../components/Renew";
+import { RenewScope } from "../components/RenewScope";
 import { Retire } from "../components/Retire";
 import { ContractTerms } from "../components/Terms";
 import { Time } from "../components/Time";
@@ -738,11 +739,13 @@ export function ContractDetail() {
               follows={
                 <p>
                   A renewal gives the contract its new number and its new period. It changes this
-                  one record: <strong>{plural(record.items_in_scope, "item")}</strong> in scope{" "}
-                  {record.items_in_scope === 1 ? "follows" : "follow"}, and nothing is written to
-                  any of them. The term it has now is kept beneath, as its history.
+                  one record: <strong>{plural(record.items_in_scope, "item")}</strong>{" "}
+                  {record.items_in_scope === 1 ? "is" : "are"} in scope, their coverage not ended,
+                  and nothing is written to any of them. The form says how many follow into the new
+                  term. The term it has now is kept beneath, as its history.
                 </p>
               }
+              scope={<RenewScope contract={record} />}
               submitLabel={`Renew for ${plural(record.items_in_scope, "item")}`}
               note={
                 record.agreement ? (

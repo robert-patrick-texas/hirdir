@@ -20,6 +20,9 @@ import {
   coveringStatuses,
   endable,
   endedText,
+  flaggedFilter,
+  flaggedItemsPath,
+  followingPeriod,
   followsOnEnd,
   INHERITED,
   inForce,
@@ -36,11 +39,13 @@ import {
   renewBody,
   renewPeriodProblem,
   renewProblem,
+  renewScopeFilters,
+  renewStart,
   STANDALONE,
   staleCause,
   startsLater,
 } from "./contracts";
-import { parseShort } from "./filter";
+import { filterText, parseShort } from "./filter";
 import { buildPatch } from "./patch";
 
 const AGREEMENT = "0193a1f4-0000-7000-8000-00000000a001";
@@ -646,6 +651,99 @@ describe("ending a coverage on the contract's own last day (P-213)", () => {
     const some = endedText(day, [{ ends_on: day }, { ends_on: null }]);
     expect(some).toMatch(
       /^1 coverage was ended on 2026-12-31\. Nothing was removed\. 1 was not ended: /,
+    );
+  });
+});
+
+describe("the renewal form starts from what follows (P-214)", () => {
+  it("follows a calendar year with the next", () => {
+    expect(followingPeriod("2026-12-31")).toEqual({
+      starts_on: "2027-01-01",
+      ends_on: "2027-12-31",
+    });
+  });
+
+  it("gives a year from the day after, whatever the length of the term before", () => {
+    // Seven months, ending in the middle of a month.
+    expect(followingPeriod("2026-07-14")).toEqual({
+      starts_on: "2026-07-15",
+      ends_on: "2027-07-14",
+    });
+    // The end of a month that has fewer days in the year after.
+    expect(followingPeriod("2026-03-30")).toEqual({
+      starts_on: "2026-03-31",
+      ends_on: "2027-03-30",
+    });
+  });
+
+  it("keeps to the calendar about the leap day", () => {
+    // A term that begins on the 29th of February runs to the 28th the year after.
+    expect(followingPeriod("2028-02-28")).toEqual({
+      starts_on: "2028-02-29",
+      ends_on: "2029-02-28",
+    });
+    // One that begins on the 1st of March of the year before runs over the leap day.
+    expect(followingPeriod("2027-02-28")).toEqual({
+      starts_on: "2027-03-01",
+      ends_on: "2028-02-29",
+    });
+    // A term that ends on the leap day is followed from the 1st of March.
+    expect(followingPeriod("2028-02-29")).toEqual({
+      starts_on: "2028-03-01",
+      ends_on: "2029-02-28",
+    });
+  });
+
+  it("gives nothing for a term with no end, or a day that is no day", () => {
+    expect(followingPeriod(null)).toBeNull();
+    expect(followingPeriod(undefined)).toBeNull();
+    expect(followingPeriod("")).toBeNull();
+    expect(followingPeriod("2026-02-30")).toBeNull();
+    expect(followingPeriod("31/12/2026")).toBeNull();
+  });
+
+  it("begins with those dates and a blank purchase reference", () => {
+    const form = { number: "EX-1", starts_on: "2026-01-01", ends_on: "2026-12-31" };
+    const record = { ends_on: "2026-12-31", next_term: null };
+    expect(renewStart(record, { ...form, purchase_reference: "REQ-0001" })).toEqual({
+      number: "EX-1",
+      starts_on: "2027-01-01",
+      ends_on: "2027-12-31",
+      purchase_reference: "",
+    });
+  });
+
+  it("leaves the dates as they are for an end that is the agreement's, or a term to come", () => {
+    const form = { starts_on: "", ends_on: "", purchase_reference: "REQ-0002" };
+    expect(renewStart({ ends_on: null, next_term: null }, form)).toEqual({
+      starts_on: "",
+      ends_on: "",
+      purchase_reference: "",
+    });
+    const waiting = { ends_on: "2026-12-31", next_term: { starts_on: "2027-01-01" } };
+    expect(renewStart(waiting, { ...form, ends_on: "2026-12-31" })).toEqual({
+      starts_on: "",
+      ends_on: "2026-12-31",
+      purchase_reference: "",
+    });
+  });
+
+  it("counts what follows by filters the server reads", () => {
+    const filters = renewScopeFilters("2026-12-31", "2026-11-17");
+    expect(filters.begin).toEqual({ field: "starts_on", op: "gt", value: "2026-12-31" });
+    expect(parseShort(filterText(filters.ownEnd))).toEqual({
+      ok: true,
+      filter: filters.ownEnd,
+    });
+    expect(JSON.stringify(filters.follow)).toContain('"op":"empty"');
+    expect(flaggedFilter("CT-0001")).toEqual({
+      and: [
+        { field: "contract.hid", op: "eq", value: "CT-0001" },
+        { field: "effective.do_not_renew", op: "eq", value: true },
+      ],
+    });
+    expect(decodeURIComponent(flaggedItemsPath("CT-0001"))).toBe(
+      "/items?filter=contract.hid:eq:CT-0001 effective.do_not_renew:eq:true&minor=1",
     );
   });
 });

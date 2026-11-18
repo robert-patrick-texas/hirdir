@@ -1773,8 +1773,14 @@ What 0.9.6 changes:
   change nothing before it is sent, with how to leave an item out of a renewal, and
   after an End the page says what the server kept, never that a coverage it kept open
   was ended (P-213). Renew begins with the dates
-  that follow the present term and a blank purchase reference, and says how many items
-  follow, stay behind and begin with the new term (P-214). An agreement's page has the
+  that follow the present term, from the day after it ends for a year whatever its
+  length, with a button, Keep the present period, for a new number alone; a record whose
+  end is its agreement's, or that has a term to come, begins with its dates as they are.
+  The purchase reference begins blank. Under the button of a contract's renewal, each
+  counted by the server: the coverages that have the contract's period and follow, the
+  items it covers today that are marked not to be renewed and stay behind, as a link to
+  them, the coverages that begin after the present term, with the new one, and those
+  that end on a day of their own by then (P-214). An agreement's page has the
   annual cost of each of its contracts and their total (P-215).
 - **A minor item.** Under its heading, what it is, its position in the item it is in
   and the site, and a link to the spares of its model there (P-216).

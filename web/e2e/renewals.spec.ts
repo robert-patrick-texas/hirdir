@@ -249,6 +249,10 @@ test("P-130: a contract's history in parts, by a renewal, by joining and by leav
   await region(page, "Renew").getByRole("button", { name: "Renew", exact: true }).click();
   const form = page.getByTestId("renew-form");
   await form.getByLabel("New number").fill(historyRenewed);
+  // 0.9.6 (P-214): the form begins with the period that follows; a new number alone
+  // keeps the present one.
+  await form.getByRole("button", { name: "Keep the present period" }).click();
+  await expect(form.getByLabel("New period: starts on")).toHaveValue(starts);
   await form.getByRole("button", { name: "Renew for 0 items" }).click();
   await expect(page.getByRole("heading", { level: 1, name: historyRenewed })).toBeVisible();
   const terms = page.getByTestId("contract-terms");

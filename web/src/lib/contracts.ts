@@ -6,7 +6,7 @@
 
 import type { Schemas } from "../api/client";
 import { type FilterNode, filterText } from "./filter";
-import type { FieldSpec, Option } from "./patch";
+import type { FieldSpec, FormValue, Option } from "./patch";
 
 export type Agreement = Schemas["AgreementOut"];
 export type Contract = Schemas["ContractOut"];
@@ -256,6 +256,57 @@ export const RENEW_SPECS: readonly FieldSpec[] = [
   { name: "support_level", label: "Support level", kind: "text", maxLength: 200 },
 ];
 
+/** A day written as YYYY-MM-DD, as a moment at noon UTC, or null for anything else. */
+function dayOf(text: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return null;
+  const moment = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+  return moment.toISOString().slice(0, 10) === text ? moment : null;
+}
+
+function written(moment: Date): string {
+  return moment.toISOString().slice(0, 10);
+}
+
+/**
+ * 0.9.6 (P-214): the period that follows a term that ends on `ends`: from the day after,
+ * for a year, less a day, so that 2026-01-01 to 2026-12-31 is followed by 2027-01-01 to
+ * 2027-12-31. It is a year whatever the length of the term before, a term of three
+ * years or of seven months among them, since a renewal is most often bought for a year;
+ * the form shows both days to be changed. A year from the 29th of February ends on the
+ * 28th of the next. Null for a term that names no end, or a day that cannot be read.
+ */
+export function followingPeriod(
+  ends: string | null | undefined,
+): { starts_on: string; ends_on: string } | null {
+  const end = typeof ends === "string" ? dayOf(ends) : null;
+  if (!end) return null;
+  const starts = new Date(end);
+  starts.setUTCDate(starts.getUTCDate() + 1);
+  // A year on, by the calendar: the 29th of February of a year that has none is the 1st
+  // of March, and a day less is the 28th of February.
+  const year = new Date(
+    Date.UTC(starts.getUTCFullYear() + 1, starts.getUTCMonth(), starts.getUTCDate(), 12),
+  );
+  year.setUTCDate(year.getUTCDate() - 1);
+  return { starts_on: written(starts), ends_on: written(year) };
+}
+
+/**
+ * 0.9.6 (P-214): what the form of a renewal begins with. Its number and its terms are
+ * as the record has them; the purchase reference is blank, since the new term is saved
+ * with the one typed and no more; and the period is the one that follows the present
+ * term, where the record has an end of its own and no term still to come. A contract
+ * whose end is its agreement's begins with its dates blank, which keeps the agreement's.
+ */
+export function renewStart(
+  record: { ends_on: string | null; next_term: unknown } & Readonly<Record<string, unknown>>,
+  from: Readonly<Record<string, FormValue>>,
+): Record<string, FormValue> {
+  const following = record.next_term ? null : followingPeriod(record.ends_on);
+  return { ...from, purchase_reference: "", ...(following ?? {}) };
+}
+
 /**
  * Why a renewal cannot be sent as it stands, or blank when it can: it gives the contract
  * a new number, a new period, or both, and the server refuses one that gives neither.
@@ -473,4 +524,57 @@ export function coveringStatuses(coverage: readonly CoverageRef[]): string {
 /** True for an item that a contract covers today while the renewal of that contract is pending. */
 export function renewalPending(coverage: readonly CoverageRef[]): boolean {
   return coverage.some((one) => one.in_force && one.contract.status === RENEWAL_PENDING);
+}
+
+/**
+ * 0.9.6 (P-214): the filters of the coverages of a contract that the form of a renewal
+ * counts under its button, by the last day of the present term, `end`, and `today`:
+ * those that have the contract's period and begin by that day, which follow; those that
+ * begin after it, with the new term; and those that end on a day of their own that has
+ * not passed, by that day, which do not follow. The server counts each, from
+ * `GET /contracts/{hid}/coverage`.
+ */
+export function renewScopeFilters(
+  end: string,
+  today: string,
+): { follow: FilterNode; begin: FilterNode; ownEnd: FilterNode } {
+  return {
+    follow: {
+      and: [
+        { field: "ends_on", op: "empty", value: true },
+        {
+          or: [
+            { field: "starts_on", op: "empty", value: true },
+            { field: "starts_on", op: "lte", value: end },
+          ],
+        },
+      ],
+    },
+    begin: { field: "starts_on", op: "gt", value: end },
+    ownEnd: {
+      and: [
+        { field: "ends_on", op: "gte", value: today },
+        { field: "ends_on", op: "lte", value: end },
+      ],
+    },
+  };
+}
+
+/**
+ * 0.9.6 (P-214): the items a contract covers today whose flag not to be renewed is in
+ * force, as the filter of the item list. A renewal leaves behind each of them whose
+ * coverage runs to the end of the term (D-182), and its answer counts them.
+ */
+export function flaggedFilter(contractHid: string): FilterNode {
+  return {
+    and: [
+      { field: "contract.hid", op: "eq", value: contractHid },
+      { field: "effective.do_not_renew", op: "eq", value: true },
+    ],
+  };
+}
+
+/** 0.9.6 (P-214): those items in the item grid, minor items among them. */
+export function flaggedItemsPath(contractHid: string): string {
+  return `/items?filter=${encodeURIComponent(filterText(flaggedFilter(contractHid)))}&minor=1`;
 }

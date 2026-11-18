@@ -180,3 +180,102 @@ test("P-213: the items a contract covers are found by plain words, and an end on
   ).toHaveText(earlier);
   await expectClean(page, seen);
 });
+
+/** The version of a record as the API reads it now. */
+async function versionOf(request: APIRequestContext, headers: Headers, path: string) {
+  const answer = await request.get(`./api/v1${path}`, { headers });
+  expect(answer.ok(), `get ${path}`).toBe(true);
+  return ((await answer.json()) as { row_version: number }).row_version;
+}
+
+async function patch(request: APIRequestContext, headers: Headers, path: string, data: object) {
+  const answer = await request.patch(`./api/v1${path}`, {
+    headers,
+    data: { row_version: await versionOf(request, headers, path), ...data },
+  });
+  expect(answer.ok(), `patch ${path}: ${await answer.text()}`).toBe(true);
+}
+
+test("P-214: the renewal form starts from what follows, and says what follows, stays behind and begins with it", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const number = `EFC-${upper}-14`;
+  const ends = `${year + 1}-12-31`;
+  const hosts = ["one", "two", "flagged", "ending"].map((side) => `sw-${side}-${id}`);
+  const contract = await contractOver(request, headers, number, hosts, {
+    starts: `${year}-01-01`,
+    ends,
+  });
+  await patch(request, headers, `/contracts/${contract.hid}`, {
+    purchase_reference: `REQ-${upper}-OLD`,
+  });
+  // One item is marked not to be renewed; one coverage ends on a day of its own.
+  const [, , flagged, ending] = contract.items;
+  await patch(request, headers, `/items/${flagged}`, { do_not_renew: true });
+  const rows = await request.get(`./api/v1/contracts/${contract.hid}/coverage`, {
+    headers,
+    params: { filter: `item_hid:eq:${ending}` },
+  });
+  const [row] = ((await rows.json()) as { items: { hid: string; row_version: number }[] }).items;
+  const ended = await request.patch(`./api/v1/contracts/${contract.hid}/coverage/${row?.hid}`, {
+    headers,
+    data: { row_version: row?.row_version, ends_on: `${year + 1}-06-30` },
+  });
+  expect(ended.ok(), await ended.text()).toBe(true);
+  // And one item is put under it from the day the next term begins.
+  const { model } = await vendorAndModel(request, headers);
+  const later = await make(request, headers, "/items", {
+    catalog_entry_hid: model,
+    hostname: `sw-later-${id}`,
+    serial_number: `EFS${upper}149`,
+    lifecycle_state: "Prod",
+  });
+  const added = await request.post(`./api/v1/contracts/${contract.hid}/coverage`, {
+    headers,
+    data: { items: [{ item_hid: later.hid, starts_on: `${year + 2}-01-01` }] },
+  });
+  expect(added.ok(), await added.text()).toBe(true);
+
+  await signIn(page, account);
+  await openContractPage(page, contract.hid, number);
+  const renew = page.getByRole("region", { name: "Renew" });
+  await renew.getByRole("button", { name: "Renew", exact: true }).click();
+  const form = page.getByTestId("renew-form");
+  // The period that follows the present term, a year from the day after it ends.
+  await expect(form.getByLabel("New period: starts on")).toHaveValue(`${year + 2}-01-01`);
+  await expect(form.getByLabel("New period: ends on")).toHaveValue(`${year + 2}-12-31`);
+  await expect(form.getByLabel("Purchase reference")).toHaveValue("");
+  // Under the button: what follows, what stays behind, what begins with the new term.
+  const follows = form.getByTestId("renew-follows");
+  await expect(follows.getByTestId("renew-follow")).toHaveAttribute("data-count", "3");
+  await expect(follows.getByTestId("renew-follow")).toContainText(
+    "3 coverages have the contract's period and follow into the new term, but for those of the items marked not to be renewed.",
+  );
+  await expect(follows.getByTestId("renew-flagged")).toHaveAttribute("data-count", "1");
+  await expect(follows.getByTestId("renew-flagged")).toContainText(
+    "1 item it covers today is marked not to be renewed, and stays behind",
+  );
+  await expect(follows.getByTestId("renew-begin")).toContainText(
+    `1 coverage begins after ${ends}, with the new term.`,
+  );
+  await expect(follows.getByTestId("renew-own-end")).toContainText(
+    `1 coverage ends on a day of its own by ${ends}, and does not follow.`,
+  );
+  // The count of what stays behind leads to those items.
+  await expect(follows.getByRole("link", { name: "1 item it covers today" })).toHaveAttribute(
+    "href",
+    /effective\.do_not_renew/,
+  );
+  // Nothing more is typed than the new reference: the renewal is kept as the next term.
+  await form.getByLabel("Purchase reference").fill(`REQ-${upper}-NEW`);
+  await form.getByRole("button", { name: /^Renew for \d+ items?$/ }).click();
+  await expect(page.getByText(/^The renewal is kept as the next term\./)).toBeVisible();
+  await expect(page.getByTestId("next-term")).toHaveAttribute("data-starts", `${year + 2}-01-01`);
+  await expect(page.getByTestId("next-term")).toContainText(`REQ-${upper}-NEW`);
+  await expectClean(page, seen);
+});
