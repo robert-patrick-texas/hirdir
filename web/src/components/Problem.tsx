@@ -99,7 +99,19 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
  * what the page says of it, which may be the very words it said before, as after a
  * second save of the same record.
  */
-export function Notice({ text, link }: { text: string; link?: { to: string; text: string } }) {
+export function Notice({
+  text,
+  link,
+  parts,
+}: {
+  text: string;
+  link?: { to: string; text: string };
+  /**
+   * 0.9.8: what is said in parts, each words or a record as a link, as a replacement
+   * names both of its items (P-242). `text` is then the same words, all of them.
+   */
+  parts?: ReadonlyArray<string | { to: string; text: string }>;
+}) {
   // The words taken away, while they are what the page would say.
   const [away, setAway] = useState<string | null>(null);
   const heard = useEffectEvent((what: "sent" | "done" | "refused") => {
@@ -112,7 +124,7 @@ export function Notice({ text, link }: { text: string; link?: { to: string; text
     <div className="live" role="status" aria-live="polite">
       {shown && (
         <p className="alert alert-ok">
-          {shown}
+          {parts ? <Parts parts={parts} /> : shown}
           {/* 0.9.5: what was made, as a link to it (P-192). */}
           {link && (
             <>
@@ -123,5 +135,29 @@ export function Notice({ text, link }: { text: string; link?: { to: string; text
         </p>
       )}
     </div>
+  );
+}
+
+/** Words and links in their order, each known by where its words begin. */
+function Parts({ parts }: { parts: ReadonlyArray<string | { to: string; text: string }> }) {
+  let at = 0;
+  const placed = parts.map((part) => {
+    const words = typeof part === "string" ? part : part.text;
+    const one = { part, key: `${at}` };
+    at += words.length + 1;
+    return one;
+  });
+  return (
+    <>
+      {placed.map(({ part, key }) =>
+        typeof part === "string" ? (
+          <span key={key}>{part}</span>
+        ) : (
+          <Link key={key} to={part.to}>
+            {part.text}
+          </Link>
+        ),
+      )}
+    </>
   );
 }

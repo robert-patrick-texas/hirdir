@@ -2303,7 +2303,10 @@ What 0.9.6 changes:
   location; unticked, the line says that nothing of it is changed, and nothing of the
   item is sent. A switch whose disposition is Spare is offered Production and expected
   online, as Disposition and Expected online, each with As it is, among what the rule of
-  its state allows. New group has no box: its first members keep their names. Join a
+  its state allows. New group has the same box under each member chosen for a stack,
+  ticked from the start, with Production for a spare, sent on each of its `members`
+  (P-244); a member chosen while the type was another keeps what the box needs, so the
+  box is there when the type is made a stack, and the other types have none. Join a
   stack on a switch's page has the same box, and the position the stack offers. After the
   add, the answer at the top of the page says for each member its position, what was
   removed and what it is now.
@@ -2317,7 +2320,9 @@ What 0.9.6 changes:
   state allows), which the person may change, and a field left blank or As it is is not
   sent: to the spare pool fills Spare and not expected online, the state as it is, and
   leaves the name and the place to be typed; to be returned fills Pending-Removal for the
-  reason RMA, not expected online; excess fills Pending-Removal for the reason Retired,
+  reason RMA, not expected online, and the Condition Failed, a field of the
+  `item_condition` list beside them that the others leave as it is, sent as
+  `item.condition` with the end and said in the answer as marked Failed (P-245); excess fills Pending-Removal for the reason Retired,
   Excess, not expected online. The ended row stays among the members, marked Ended,
   until the page is left, and the answer says what was sent and names the item as a link. The position offered
   is the lowest that is free, and one that a current member holds is refused (P-219):
@@ -2352,6 +2357,49 @@ What 0.9.6 changes:
   change the item, on a major item that is not retired, not in Released or Archived and
   in no stack: the stack is searched for by its name among the stacks, the next position
   is offered, and the answer is said at the top of the page, which reads the item again.
+  The row of a current member of any group has Replace beside End, for the Inventory
+  role (P-242), and each of the three forms of a member's row, Change, End and Replace,
+  opens under its row, across the table, as the forms of rows do since 0.9.3 (P-171).
+  Replace reads the item that leaves when it opens, for its version and its groups, and
+  asks: what takes its place, an item in the inventory, searched for by the picker of
+  members of P-221 (the spares first, each with where it stands; in a stack, major items,
+  one in another stack shown and not to be chosen), or a new item created there; in a
+  stack, under it, the box of the stack's name and place with the line of what it
+  removes, ticked from the start, and Disposition and Expected online for a spare, as
+  Add members has them, sending `drop_identity`, `disposition` and `expected_online`;
+  Reason, of the `replacement_reason` list, Reference and Replaced on; and What becomes
+  of it for the item that leaves, the four choices of End with the same fields and a
+  Condition, of the `item_condition` list, which To be returned to the manufacturer starts
+  at Failed (P-245), sent as `old_item`. What becomes of it is asked of every
+  replacement, in a group or not, since the item that leaves is the one a person moves
+  next; Nothing now is chosen when it opens and sends nothing. It is one request, `POST
+  /items/{hid}/replace`; a refusal is said beside the field it names, as
+  `old_item.condition`, and what was typed stays. The answer at the top of the page names
+  the item that left and the one that came, each as a link, the position and the stack,
+  what the box removed, what the one that came is now and what became of the one that
+  left; the members are read again, and the new member's row stands at the position
+  that was the old one's. Replace this item on an item's page is the same form, offered
+  whether or not the item was replaced before (P-241). Above it, the section Replacement
+  lists the item's `replacements`, the latest first, one line each: Replaced by, where
+  this item left, or Took the place of, where it came, the other item as a link, the day,
+  the reason and the reference. For an Admin each line has Remove (P-238), which opens
+  under the line a question that says the removal is for a replacement that never
+  happened and that what it handed over stays, with a Reason that must be typed before
+  Remove replacement may be pressed; it calls `POST /item-replacements/{hid}/remove`, and
+  the page says the replacement was removed and reads the item again. Beside Join a
+  stack, an item that may join one has Make it a stack (P-243), for the same people:
+  its form, in the same place, has Name of the stack, the item's own name, or its host
+  name, from the start, which the person may change; one sentence of what goes to the
+  stack, each only where the item has it of its own, its host name, its FQDN, its
+  address or how many addresses, its location, planned location, owner and operator,
+  and of what stays its own; and More members, the picker of members with the item as
+  member 1 and the next offered 2, each chosen with the box of P-217 and Production for
+  a spare. Make the stack sends `POST /items/{hid}/make-stack`, the name left out when
+  blank; a refusal of the name, of the item or of a member is said beside it, by its row
+  for a member. Afterwards the stack's page is shown, which says at the top that the
+  stack was made of the item, member 1, and how many more members it has. No other page
+  reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
+  each replacement.
 
 ### The grid
 
@@ -2507,7 +2555,8 @@ the audit trail links each change to the page of its record, where it has one (P
 A record that an event on show deleted is named as text, by each of its events, and said
 to be deleted; one deleted in an event not on show is a link, to a page that says it was
 deleted, when, by whom and why. The user who made the change is a link to the user's
-page for an Admin, and text for everyone else (P-240).
+page for an Admin, and text for everyone else (P-240); so is Who in the History of an
+item, where the event was made by a user.
 
 The menu bar has a box, Find an item, on every page: what is typed there opens the list
 of items with those words, minor items among them (P-187). Text the list cannot read is

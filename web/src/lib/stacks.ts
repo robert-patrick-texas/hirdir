@@ -244,6 +244,8 @@ export interface LeavingValues {
   state_reason: string;
   disposition: string;
   online: string;
+  /** 0.9.8: a value of the item_condition list, blank to leave it as it is (P-245). */
+  condition: string;
 }
 
 /** What the lifecycle rules and the published choices allow, for the presets to keep to. */
@@ -254,7 +256,12 @@ export interface LeavingRules {
   dispositions: (state: string) => readonly string[];
   /** The reasons for a state that the server publishes. */
   reasons: readonly string[];
+  /** 0.9.8: the conditions the server publishes, the item_condition list (P-245). */
+  conditions?: readonly string[];
 }
+
+/** The condition a return to the manufacturer starts at, which the person may change. */
+export const FAILED = "failed";
 
 const PENDING_REMOVAL = "Pending-Removal";
 
@@ -268,6 +275,9 @@ const PENDING_REMOVAL = "Pending-Removal";
  * - To be returned to the manufacturer: Pending-Removal for the reason rma, not
  *   expected online, the disposition as it is.
  * - Excess: Pending-Removal for the reason retired, disposition Excess, not expected online.
+ *
+ * 0.9.8: To be returned to the manufacturer starts the condition at Failed, where the list
+ * has it; the others leave it as it is (P-245). No condition follows from an end by a rule.
  */
 export function leavingPreset(
   choice: Leaving,
@@ -283,6 +293,7 @@ export function leavingPreset(
     state_reason: "",
     disposition: "",
     online: "false",
+    condition: "",
   };
   const reason = (wanted: string) => (rules.reasons.includes(wanted) ? wanted : "");
   if (choice === "pool") {
@@ -292,7 +303,12 @@ export function leavingPreset(
   const moves = rules.next.includes(PENDING_REMOVAL);
   const to = moves ? PENDING_REMOVAL : "";
   if (choice === "returned") {
-    return { ...blank, lifecycle_state: to, state_reason: moves ? reason("rma") : "" };
+    return {
+      ...blank,
+      lifecycle_state: to,
+      state_reason: moves ? reason("rma") : "",
+      condition: (rules.conditions ?? []).includes(FAILED) ? FAILED : "",
+    };
   }
   const allowed = rules.dispositions(to || (state ?? ""));
   return {
@@ -312,6 +328,7 @@ export interface LeavingBody {
   state_reason?: string;
   disposition?: string;
   expected_online?: boolean;
+  condition?: string;
 }
 
 /** What is sent as `item` with the end: the fields filled, those left blank left out. */
@@ -328,11 +345,15 @@ export function leavingBody(values: LeavingValues): LeavingBody {
     ...(values.lifecycle_state && values.state_reason ? { state_reason: values.state_reason } : {}),
     ...(values.disposition ? { disposition: values.disposition } : {}),
     ...(online === undefined ? {} : { expected_online: online }),
+    ...(values.condition ? { condition: values.condition } : {}),
   };
 }
 
 /** What the answer says the end did to the item: "moved to Pending-Removal and given ...". */
-export function leavingText(body: LeavingBody): string {
+export function leavingText(
+  body: LeavingBody,
+  conditionLabel: (value: string) => string = (value) => value,
+): string {
   return listed([
     ...(body.hostname ? [`named ${body.hostname}`] : []),
     ...(body.location_hid ? ["given its place"] : []),
@@ -340,5 +361,110 @@ export function leavingText(body: LeavingBody): string {
     ...(body.disposition ? [`given the disposition ${body.disposition}`] : []),
     ...(body.expected_online === true ? ["expected online"] : []),
     ...(body.expected_online === false ? ["not expected online"] : []),
+    ...(body.condition ? [`marked ${conditionLabel(body.condition)}`] : []),
   ]);
+}
+
+/** A part of what a page says: words, or a record as a link. */
+export type SaidPart = string | { to: string; text: string };
+
+/** What the answer to a replacement is to say, from what was sent and what was read. */
+export interface Replaced {
+  /** The item that left, and the item that took its place, each as a link. */
+  old: { text: string; to: string };
+  came: { text: string; to: string };
+  /** The group the place was taken in, and the position, where there is one. */
+  group?: string | null;
+  position?: number | null;
+  sent: { drop_identity?: boolean; disposition?: string | null; expected_online?: boolean | null };
+  /** What the item that came had, read when it was chosen: what the box removed. */
+  joining?: Joining | undefined;
+  /** What was sent of the item that left. */
+  leaving?: LeavingBody | null | undefined;
+  conditionLabel?: (value: string) => string;
+}
+
+/**
+ * 0.9.8: the answer to Replace (P-242): both items as links, the place taken, what the
+ * one that came took and lost, and what became of the one that left.
+ */
+export function replacedText(replaced: Replaced): SaidPart[] {
+  const { old, came, group, position, sent, joining, leaving } = replaced;
+  const where = group
+    ? position === null || position === undefined
+      ? ` in ${group}`
+      : ` as member ${position} of ${group}`
+    : "";
+  const after: string[] = [];
+  if (sent.drop_identity) {
+    const drops = dropsOf(joining ?? {});
+    after.push(
+      drops.length > 0
+        ? `It takes the stack's name and place: ${listed(drops)} removed.`
+        : "It takes the stack's name and place.",
+    );
+  }
+  const now = [
+    ...(sent.disposition ? [sent.disposition] : []),
+    ...(sent.expected_online === true ? ["expected online"] : []),
+    ...(sent.expected_online === false ? ["not expected online"] : []),
+  ];
+  if (now.length > 0) after.push(`It is ${listed(now)} now.`);
+  const left = leaving ? leavingText(leaving, replaced.conditionLabel) : "";
+  const parts: SaidPart[] = [old, " was replaced by ", came, `${where}.`];
+  if (after.length > 0) parts.push(` ${after.join(" ")}`);
+  if (left) parts.push(` The item that left was ${left}.`);
+  return parts;
+}
+
+/** The words of what a page says, its links as their text. */
+export function saidWords(parts: readonly SaidPart[]): string {
+  return parts.map((part) => (typeof part === "string" ? part : part.text)).join("");
+}
+
+/** What of a switch that stands alone goes to the stack made of it (P-243): its own alone. */
+export interface StandsAlone {
+  hostname?: string | null;
+  fqdn?: string | null;
+  addresses?: ReadonlyArray<unknown>;
+  location?: { path: string } | null;
+  planned_location?: { path: string } | null;
+  owner?: { label: string } | null;
+  operator?: { label: string } | null;
+}
+
+/**
+ * What goes from the switch to the stack made of it, each only where the switch has it:
+ * the host name, the FQDN, how many addresses, the place, the planned place, the owner
+ * and the operator (P-243).
+ */
+export function makeStackGoes(item: StandsAlone): string[] {
+  const count = item.addresses?.length ?? 0;
+  return [
+    ...(item.hostname ? [`the host name ${item.hostname}`] : []),
+    ...(item.fqdn ? [`the FQDN ${item.fqdn}`] : []),
+    ...(count > 0 ? [count === 1 ? "its address" : `its ${count} addresses`] : []),
+    ...(item.location ? [`the location ${item.location.path}`] : []),
+    ...(item.planned_location ? [`the planned location ${item.planned_location.path}`] : []),
+    ...(item.owner ? [`the owner ${item.owner.label}`] : []),
+    ...(item.operator ? [`the operator ${item.operator.label}`] : []),
+  ];
+}
+
+/** The sentence of the form of Make it a stack: what goes to the stack, and what stays. */
+export function makeStackText(name: string, item: StandsAlone): string {
+  const goes = makeStackGoes(item);
+  const stays =
+    "Its serial number, model, asset tag, state, tags, coverage, registrations and circuits stay its own.";
+  if (goes.length === 0) {
+    return `${name} has no host name, FQDN, address, place, owner or operator of its own: the stack starts with none. ${stays}`;
+  }
+  return `To the stack from ${name}: ${listed(goes)}. ${name} gives them up and has them from the stack from then on. ${stays}`;
+}
+
+/** What the stack's page says once the stack is made (P-243). */
+export function madeStackText(stack: string, name: string, more: number): string {
+  const others =
+    more === 0 ? "" : more === 1 ? ", with 1 more member" : `, with ${more} more members`;
+  return `The stack ${stack} was made of ${name}, member 1${others}.`;
 }

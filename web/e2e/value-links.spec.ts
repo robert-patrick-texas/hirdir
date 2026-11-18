@@ -76,6 +76,12 @@ test("a stack is made of a switch of this file's own", async ({ page, account })
   await form.getByLabel("Name (required)").fill(stack);
   await form.getByLabel("Type").selectOption("stack");
   await pick(form, "Find an item to add", host, host);
+  // 0.9.8: each member chosen for a stack has the box of a member that joins, ticked
+  // (P-244); this one keeps its own name, by which the file finds it.
+  await form
+    .getByRole("group", { name: host })
+    .getByLabel("It takes the stack's name and place")
+    .uncheck();
   await form.getByRole("button", { name: "Create group" }).click();
   await expect(page.getByRole("heading", { level: 1, name: stack })).toBeVisible();
   await expectClean(page, seen);

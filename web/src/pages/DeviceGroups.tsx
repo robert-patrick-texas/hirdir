@@ -1,5 +1,5 @@
 import { type FormEvent, Fragment, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
@@ -26,6 +26,8 @@ import { Notice, Problem } from "../components/Problem";
 import { EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
 import { DeleteRecord, useDeletedNote, useTickedRemoval } from "../components/Removal";
+import { ReplaceMember } from "../components/ReplaceItem";
+import { FormRow } from "../components/RowForm";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { ValueLink } from "../components/ValueLink";
@@ -65,11 +67,18 @@ import {
   stackProblem,
   takesTheMark,
 } from "../lib/groups";
-import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
+import { CONDITION_LIST, healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { useGroupOptions, useOwnerOptions, useRules, useTags, withCurrent } from "../lib/lists";
+import {
+  useChoices,
+  useGroupOptions,
+  useOwnerOptions,
+  useRules,
+  useTags,
+  withCurrent,
+} from "../lib/lists";
 import { markOf, operatorHint, operatorOptionLabel, operatorPath } from "../lib/operators";
-import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
+import { choiceLabel, optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import {
   buildCreate,
@@ -89,6 +98,8 @@ import {
   leavingText,
   MEMBER_FIELDS,
   refusedRows,
+  type SaidPart,
+  saidWords,
 } from "../lib/stacks";
 import { registeredWith } from "../lib/systems";
 import { MEMBERS_SORT } from "../lib/tableSorts";
@@ -98,9 +109,18 @@ import { oneLink, page, systemLinks } from "../lib/valueLinks";
 const MEMBERS_PAGE = 100;
 
 /** What the page says of a change, with the record it names as a link (P-218). */
+/** What a page that made this group said, as it was reached (P-243). */
+function madeNote(state: unknown): string {
+  if (typeof state !== "object" || state === null || !("made" in state)) return "";
+  const { made } = state as { made: unknown };
+  return typeof made === "string" ? made : "";
+}
+
 interface Said {
   text: string;
   link?: { to: string; text: string };
+  /** 0.9.8: the words in parts, records among them as links (P-242). */
+  parts?: SaidPart[];
 }
 
 function groupPath(hid: string): string {
@@ -692,9 +712,18 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
   const [pending, setPending] = useState<PendingMember[]>([]);
   const [found, setFound] = useState<Record<string, string>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  // 0.9.8: the first members of a stack have the box of a member that joins (P-244); the
+  // members last sent, to put what the server refused of each beside its row.
+  const rules = useRules();
+  const [sent, setSent] = useState<readonly MemberAdd[]>([]);
   const action = useAction();
   const names = specs.map((spec) => spec.name);
+  const rowFields = sent.flatMap((_, index) =>
+    MEMBER_FIELDS.map((field) => `members.${index}.${field}`),
+  );
+  const refusedAll = fieldErrors(action.error, [...names, ...rowFields]).shown;
   const refused = fieldErrors(action.error, names).shown;
+  const answered = refusedRows(sent, refusedAll, action.error?.existing ?? null);
   const problem = stackProblem(
     type,
     pending.map((row) => row.role),
@@ -730,6 +759,7 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
       action.clear();
       return;
     }
+    setSent(members.members);
     const body: Schemas["DeviceGroupCreate"] = {
       ...built.body,
       ...(members.members.length > 0 ? { members: members.members } : {}),
@@ -743,7 +773,7 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
       <h2 id="new-group">New group</h2>
       <Problem error={error} />
       <form onSubmit={submit} className="stack" noValidate>
-        <Problem error={action.error} shown={names} />
+        <Problem error={action.error} shown={[...names, ...rowFields]} />
         {type === "cluster" && <ManagedAsHelp />}
         <FormFields
           specs={specs}
@@ -764,7 +794,12 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
             type={type}
             pending={pending}
             onChange={setPending}
-            errors={rowErrors}
+            errors={{ ...answered.errors, ...rowErrors }}
+            holders={answered.holders}
+            // Each item chosen keeps what the box needs, so that a type changed to a stack
+            // afterwards offers it too; the box is shown for a stack alone.
+            joins
+            rules={rules.data ?? []}
             disabled={action.busy}
           />
           {problem && (
@@ -794,12 +829,14 @@ export function DeviceGroupDetail() {
   const group = useLoad(`device-group ${hid}`, (signal) =>
     api.request("get", "/api/v1/device-groups/{hid}", { path: { hid }, signal }),
   );
-  const [done, setDone] = useState<Said>({ text: "" });
+  // 0.9.8: reached from Make it a stack, the page says what was made (P-243).
+  const { state: reached } = useLocation();
+  const [done, setDone] = useState<Said>(() => ({ text: madeNote(reached) }));
   const record = group.data;
   useTitle(record ? record.name : "Group");
 
-  function changed(text: string, link?: Said["link"]) {
-    setDone(link ? { text, link } : { text });
+  function changed(text: string, link?: Said["link"], parts?: SaidPart[]) {
+    setDone({ text, ...(link ? { link } : {}), ...(parts ? { parts } : {}) });
     group.reload();
   }
 
@@ -1217,9 +1254,12 @@ function GroupHealth({ group, health, mayEdit, onChanged, onReload }: GroupHealt
 interface MembersProps {
   group: DeviceGroup;
   mayEdit: boolean;
-  onChanged: (text: string, link?: Said["link"]) => void;
+  onChanged: (text: string, link?: Said["link"], parts?: SaidPart[]) => void;
   onReload: () => void;
 }
+
+/** What a form under a member's row does. */
+type MemberForm = "change" | "end" | "replace";
 
 /**
  * Who is in the group, by position, and who was. Members are added several at a time,
@@ -1231,11 +1271,13 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   const [past, setPast] = useState(false);
   const [offset, setOffset] = useState(0);
   const [turn, setTurn] = useState(0);
-  const [editing, setEditing] = useState<{ hid: string; what: "change" | "end" } | null>(null);
+  const [editing, setEditing] = useState<{ hid: string; what: MemberForm } | null>(null);
   const [adding, setAdding] = useState(false);
   // 0.9.6: the memberships ended on this page, which stay in view, marked ended, until the
   // page is left (P-218).
   const [endedHere, setEndedHere] = useState<readonly Member[]>([]);
+  // What a condition given with an end is called (P-245).
+  const choices = useChoices();
   const action = useAction();
   // The server sorts the members, over all of them: another order starts at its first page.
   const sort = useServerSort<Member>({ fields: MEMBERS_SORT, onChange: () => setOffset(0) });
@@ -1262,14 +1304,66 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   ];
   // Every current member is on show: what a stack would be with more can be said early.
   const whole = offset === 0 && current.length === group.member_count;
-  const open = rows.find((member) => member.hid === editing?.hid) ?? null;
   const holdsAll = members.data !== undefined && members.data.total <= read.length;
 
-  function changed(text: string, link?: Said["link"]) {
+  function changed(text: string, link?: Said["link"], parts?: SaidPart[]) {
     setEditing(null);
     setAdding(false);
     setTurn((count) => count + 1);
-    onChanged(text, link);
+    onChanged(text, link, parts);
+  }
+
+  // 0.9.3: the form of a row opens under it, across the table (P-171).
+  const columns = 7 + (group.type === "stack" ? 1 : 0) + (mayEdit ? 1 : 0);
+
+  function formOf(member: Member) {
+    if (!mayEdit || editing?.hid !== member.hid) return null;
+    if (editing.what === "change") {
+      return (
+        <ChangeMember
+          key={`${member.hid} ${member.row_version}`}
+          group={group}
+          member={member}
+          onSaved={() => changed(`The membership of ${itemName(member.item)} was saved.`)}
+          onReload={() => setTurn((count) => count + 1)}
+          onClose={() => setEditing(null)}
+        />
+      );
+    }
+    if (editing.what === "replace") {
+      // 0.9.8: Replace on the row of a current member, one request (P-242).
+      return (
+        <ReplaceMember
+          itemHid={member.item_hid}
+          onReplaced={(parts) => changed(saidWords(parts), undefined, parts)}
+          onCancel={() => setEditing(null)}
+        />
+      );
+    }
+    return (
+      <EndMembership
+        key={`${member.hid} ${member.row_version}`}
+        group={group}
+        member={member}
+        onEnded={(ended, item) => {
+          setEndedHere((was) => [...was.filter((one) => one.hid !== ended.hid), ended]);
+          // 0.9.6: the answer names the item as a link, and says what became of it (P-218).
+          const what = item
+            ? leavingText(
+                item,
+                (value) => choiceLabel(choices.data, CONDITION_LIST, value) || value,
+              )
+            : "";
+          const name = item?.hostname ?? itemName(member.item);
+          changed(
+            `The membership of ${itemName(member.item)} ended on ${ended.left_on ?? ""}${what ? `; it was ${what}` : ""}. The item:`,
+            { to: itemPath(ended.item_hid), text: name },
+          );
+        }}
+        onReload={() => setTurn((count) => count + 1)}
+        onClose={() => setEditing(null)}
+      />
+    );
   }
 
   async function markMaster(member: Member) {
@@ -1357,77 +1451,97 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
                 const name = itemName(member.item);
                 const ended = member.left_on !== null;
                 const seen = !ended && group.observed_master_hid === member.item_hid;
+                const form = formOf(member);
                 return (
-                  <tr
-                    key={member.hid}
-                    data-item={member.item_hid}
-                    data-role={member.role}
-                    data-seen-master={seen ? "true" : "false"}
-                    data-current={ended ? "false" : "true"}
-                    className={ended ? "muted" : undefined}
-                  >
-                    <td>{member.position ?? <Dash />}</td>
-                    <th scope="row">
-                      <Link to={itemPath(member.item_hid)}>{name}</Link>
-                      {ended && <span className="badge badge-plain">Ended</span>}
-                    </th>
-                    <td>
-                      {member.item.pid ? (
-                        <ValueLink kind="catalog_entry" hid={member.item.catalog_entry_hid}>
-                          {member.item.pid}
-                        </ValueLink>
-                      ) : (
-                        <Dash />
-                      )}
-                    </td>
-                    <td className="mono">{member.item.serial_number || <Dash />}</td>
-                    <td>{roleLabel(member.role)}</td>
-                    {group.type === "stack" && <td>{seen ? "Seen as master" : ""}</td>}
-                    <td className="nowrap">{member.joined_on}</td>
-                    <td className="nowrap">{member.left_on ?? <Dash />}</td>
-                    {mayEdit && (
-                      <td className="row-actions">
-                        {!ended && group.type === "stack" && member.role !== MASTER && (
-                          <button
-                            type="button"
-                            disabled={action.busy}
-                            onClick={() => markMaster(member)}
-                            aria-label={`Mark ${name} as the intended master`}
-                          >
-                            Mark as intended master
-                          </button>
+                  <Fragment key={member.hid}>
+                    <tr
+                      data-item={member.item_hid}
+                      data-role={member.role}
+                      data-seen-master={seen ? "true" : "false"}
+                      data-current={ended ? "false" : "true"}
+                      className={ended ? "muted" : undefined}
+                    >
+                      <td>{member.position ?? <Dash />}</td>
+                      <th scope="row">
+                        <Link to={itemPath(member.item_hid)}>{name}</Link>
+                        {ended && <span className="badge badge-plain">Ended</span>}
+                      </th>
+                      <td>
+                        {member.item.pid ? (
+                          <ValueLink kind="catalog_entry" hid={member.item.catalog_entry_hid}>
+                            {member.item.pid}
+                          </ValueLink>
+                        ) : (
+                          <Dash />
                         )}
-                        <button
-                          type="button"
-                          disabled={action.busy}
-                          onClick={() => {
-                            setAdding(false);
-                            setEditing({ hid: member.hid, what: "change" });
-                          }}
-                          aria-label={
-                            ended
-                              ? `Correct the dates of ${name}`
-                              : `Change the membership of ${name}`
-                          }
-                        >
-                          {ended ? "Correct dates" : "Change"}
-                        </button>
-                        {!ended && (
+                      </td>
+                      <td className="mono">{member.item.serial_number || <Dash />}</td>
+                      <td>{roleLabel(member.role)}</td>
+                      {group.type === "stack" && <td>{seen ? "Seen as master" : ""}</td>}
+                      <td className="nowrap">{member.joined_on}</td>
+                      <td className="nowrap">{member.left_on ?? <Dash />}</td>
+                      {mayEdit && (
+                        <td className="row-actions">
+                          {!ended && group.type === "stack" && member.role !== MASTER && (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              onClick={() => markMaster(member)}
+                              aria-label={`Mark ${name} as the intended master`}
+                            >
+                              Mark as intended master
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={action.busy}
                             onClick={() => {
                               setAdding(false);
-                              setEditing({ hid: member.hid, what: "end" });
+                              setEditing({ hid: member.hid, what: "change" });
                             }}
-                            aria-label={`End the membership of ${name}`}
+                            aria-label={
+                              ended
+                                ? `Correct the dates of ${name}`
+                                : `Change the membership of ${name}`
+                            }
                           >
-                            End
+                            {ended ? "Correct dates" : "Change"}
                           </button>
-                        )}
-                      </td>
+                          {!ended && (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              onClick={() => {
+                                setAdding(false);
+                                setEditing({ hid: member.hid, what: "end" });
+                              }}
+                              aria-label={`End the membership of ${name}`}
+                            >
+                              End
+                            </button>
+                          )}
+                          {!ended && (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              onClick={() => {
+                                setAdding(false);
+                                setEditing({ hid: member.hid, what: "replace" });
+                              }}
+                              aria-label={`Replace ${name}`}
+                            >
+                              Replace
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                    {form && (
+                      <FormRow of={member.hid} columns={columns}>
+                        {form}
+                      </FormRow>
                     )}
-                  </tr>
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -1441,35 +1555,6 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
           offset={offset}
           noun="memberships"
           onChange={setOffset}
-        />
-      )}
-      {mayEdit && open && editing?.what === "change" && (
-        <ChangeMember
-          key={`${open.hid} ${open.row_version}`}
-          group={group}
-          member={open}
-          onSaved={() => changed(`The membership of ${itemName(open.item)} was saved.`)}
-          onReload={() => setTurn((count) => count + 1)}
-          onClose={() => setEditing(null)}
-        />
-      )}
-      {mayEdit && open && editing?.what === "end" && (
-        <EndMembership
-          key={`${open.hid} ${open.row_version}`}
-          group={group}
-          member={open}
-          onEnded={(ended, item) => {
-            setEndedHere((was) => [...was.filter((one) => one.hid !== ended.hid), ended]);
-            // 0.9.6: the answer names the item as a link, and says what became of it (P-218).
-            const what = item ? leavingText(item) : "";
-            const name = item?.hostname ?? itemName(open.item);
-            changed(
-              `The membership of ${itemName(open.item)} ended on ${ended.left_on ?? ""}${what ? `; it was ${what}` : ""}. The item:`,
-              { to: itemPath(ended.item_hid), text: name },
-            );
-          }}
-          onReload={() => setTurn((count) => count + 1)}
-          onClose={() => setEditing(null)}
         />
       )}
       {mayEdit && !adding && (
@@ -1878,6 +1963,8 @@ function EndMembership({
           <WhatBecomesOfIt
             itemHid={member.item_hid}
             errors={refused}
+            // 0.9.8: the condition is given with the end (P-245).
+            condition
             onChange={setItem}
             disabled={action.busy}
           />

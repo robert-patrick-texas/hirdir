@@ -2,34 +2,33 @@
 // is in and the minor items in it, the groups it is a member of with its controllers,
 // and the item it replaced or was replaced by.
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { effectiveLabel, effectiveText, isInherited, sourceHint } from "../lib/effective";
 import { itemsPath } from "../lib/filter";
-import { itemName, plural, today } from "../lib/format";
+import { itemName, plural } from "../lib/format";
 import { groupTypeLabel, membershipText } from "../lib/groups";
 import { useAction, useLoad } from "../lib/hooks";
-import { choiceLabel, choiceOptions } from "../lib/options";
-import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
+import { choiceLabel } from "../lib/options";
 import { pickLabel } from "../lib/pick";
 import { nameOf } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { dateValue, type SortColumns } from "../lib/sort";
+import { type SaidPart, saidWords } from "../lib/stacks";
 import { CHILDREN_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
-import { SelectField, TextField } from "./Field";
-import { FormFields } from "./FormFields";
+import { TextField } from "./Field";
 import { ItemPicker } from "./ItemPicker";
 import { NewItem } from "./NewItem";
 import { Pager } from "./Pager";
 import { Problem } from "./Problem";
+import { ReplaceItem } from "./ReplaceItem";
 import { SortTh } from "./SortTh";
 import { ValueLink } from "./ValueLink";
 
 type Item = Schemas["ItemOut"];
-type ItemRef = Schemas["ItemRef"];
 type Choice = Schemas["ChoiceOut"];
 
 const CHILDREN_PAGE = 100;
@@ -452,273 +451,172 @@ export function Memberships({ item }: { item: Item }) {
   );
 }
 
-function ReplacementFact({
-  label,
-  other,
-  choices,
-  testId,
-}: {
-  label: string;
-  other: Schemas["ReplacementRef"];
-  choices: readonly Choice[] | undefined;
-  testId: string;
-}) {
-  const named: ItemRef = {
-    hid: other.item_hid,
-    name: other.name,
-    serial_number: other.serial_number,
-    asset_tag: null,
-    catalog_entry_hid: null,
-    pid: null,
-  };
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd data-testid={testId}>
-        <Link to={itemPath(other.item_hid)}>{pickLabel(named)}</Link> on {other.replaced_on}, for{" "}
-        {choiceLabel(choices, "replacement_reason", other.reason)}
-        {other.reference && <span className="muted"> · {other.reference}</span>}
-      </dd>
-    </>
-  );
+type Entry = Schemas["ReplacementEntry"];
+
+/** What one line says the other item was to this one: "Replaced by", "Took the place of". */
+function partLabel(entry: Pick<Entry, "part">): string {
+  return entry.part === "left" ? "Replaced by" : "Took the place of";
 }
 
-interface ReplacementProps extends ChangeProps {
+interface ReplacementLineProps {
+  item: Item;
+  entry: Entry;
   choices: readonly Choice[] | undefined;
+  /** An Admin removes a replacement that was a mistake (P-238). */
+  mayRemove: boolean;
+  onRemoved: (text: string) => void;
 }
 
 /**
- * What this item replaced and what replaced it, and the Replace action. A replacement
- * links the two records and hands over the old item's place in every group it is a
- * current member of. It moves neither item in the lifecycle: that is a move of its own.
+ * One replacement the item is part of: whether it left or came, the other item as a
+ * link, the reason, the reference and the day; for an Admin, Remove, which asks first
+ * and takes a reason that must be typed.
  */
-export function Replacement({ item, choices, mayEdit, onChanged, onReload }: ReplacementProps) {
+function ReplacementLine({ item, entry, choices, mayRemove, onRemoved }: ReplacementLineProps) {
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const action = useAction();
+  const refused = fieldErrors(action.error, ["reason"]).shown;
+  const other = pickLabel(entry.item);
+  const name = itemName(item);
+  const otherName = itemName(entry.item);
+  const what =
+    entry.part === "left"
+      ? `the replacement of ${name} by ${otherName} on ${entry.replaced_on}`
+      : `the replacement of ${otherName} by ${name} on ${entry.replaced_on}`;
+
+  async function remove(event: FormEvent) {
+    event.preventDefault();
+    const typed = reason.trim();
+    if (typed === "") return;
+    const result = await action.run(() =>
+      api.request("post", "/api/v1/item-replacements/{hid}/remove", {
+        path: { hid: entry.hid },
+        body: { reason: typed },
+      }),
+    );
+    if (result.ok) onRemoved(`${what[0]?.toUpperCase() ?? ""}${what.slice(1)} was removed.`);
+  }
+
+  return (
+    <li data-testid={entry.part === "left" ? "replaced-by" : "replaces"} data-part={entry.part}>
+      <span className="replacement-part">{partLabel(entry)}</span>{" "}
+      <Link to={itemPath(entry.item.hid)}>{other}</Link> on {entry.replaced_on}, for{" "}
+      {choiceLabel(choices, "replacement_reason", entry.reason)}
+      {entry.reference && <span className="muted"> · {entry.reference}</span>}
+      {mayRemove && !asking && (
+        <>
+          {" "}
+          <button
+            type="button"
+            className="danger"
+            aria-label={`Remove ${what}`}
+            onClick={() => setAsking(true)}
+          >
+            Remove
+          </button>
+        </>
+      )}
+      {mayRemove && asking && (
+        <form
+          onSubmit={remove}
+          className="panel stack remove-replacement"
+          aria-label={`Remove ${what}`}
+          noValidate
+        >
+          <p>
+            Remove {what}? It is for a replacement that never happened, which a wrong file or a
+            wrong press recorded. The removal is kept in the audit trail with the replacement as it
+            was. What it handed over stays: a membership or a connection of a circuit is put right
+            on the page of its group or its circuit.
+          </p>
+          <Problem error={action.error} shown={["reason"]} />
+          <div className="fields">
+            <TextField
+              label="Reason"
+              name={`remove-reason-${entry.hid}`}
+              value={reason}
+              onChange={setReason}
+              required
+              maxLength={500}
+              autoComplete="off"
+              error={refused.reason}
+              hint="Why it was a mistake, kept with the removal"
+            />
+          </div>
+          <p className="actions">
+            <button type="submit" className="danger" disabled={action.busy || reason.trim() === ""}>
+              Remove replacement
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAsking(false);
+                action.clear();
+              }}
+              disabled={action.busy}
+            >
+              Cancel
+            </button>
+          </p>
+        </form>
+      )}
+    </li>
+  );
+}
+
+interface ReplacementProps extends Omit<ChangeProps, "onChanged"> {
+  choices: readonly Choice[] | undefined;
+  /** An Admin removes a replacement that was a mistake (P-238). */
+  mayRemove: boolean;
+  /** What was done, and the same in parts with both items as links (P-242). */
+  onChanged: (text: string, parts?: SaidPart[]) => void;
+}
+
+/**
+ * Every replacement the item is part of, the latest first, and the Replace action
+ * (P-241). A replacement links the two records and hands over the old item's place in
+ * every group it is a current member of; each item changes only as the request names.
+ */
+export function Replacement(props: ReplacementProps) {
+  const { item, choices, mayEdit, mayRemove, onChanged, onReload } = props;
   const [open, setOpen] = useState(false);
-  const { replaces, replaced_by: replacedBy } = item;
+  const entries = item.replacements;
   return (
     <section aria-labelledby="replacement">
       <h2 id="replacement">Replacement</h2>
-      {replaces || replacedBy ? (
-        <dl className="facts">
-          {replaces && (
-            <ReplacementFact
-              label="Took the place of"
-              other={replaces}
+      {entries.length > 0 ? (
+        <ul className="plain-list replacements" data-testid="replacements">
+          {entries.map((entry) => (
+            <ReplacementLine
+              key={entry.hid}
+              item={item}
+              entry={entry}
               choices={choices}
-              testId="replaces"
+              mayRemove={mayRemove}
+              onRemoved={(text) => onChanged(text)}
             />
-          )}
-          {replacedBy && (
-            <ReplacementFact
-              label="Replaced by"
-              other={replacedBy}
-              choices={choices}
-              testId="replaced-by"
-            />
-          )}
-        </dl>
+          ))}
+        </ul>
       ) : (
         <p className="muted">{itemName(item)} replaced no item, and was not replaced.</p>
       )}
-      {mayEdit && !replacedBy && !open && (
+      {/* 0.9.8: an item is replaced as often as that happens (P-241). */}
+      {mayEdit && !open && (
         <p className="actions">
           <button type="button" onClick={() => setOpen(true)}>
             Replace this item
           </button>
         </p>
       )}
-      {mayEdit && !replacedBy && open && (
-        <Replace
+      {mayEdit && open && (
+        <ReplaceItem
           item={item}
-          choices={choices}
           onCancel={() => setOpen(false)}
-          onChanged={onChanged}
+          onReplaced={(parts) => onChanged(saidWords(parts), parts)}
           onReload={onReload}
         />
       )}
-    </section>
-  );
-}
-
-interface ReplaceProps {
-  item: Item;
-  choices: readonly Choice[] | undefined;
-  onCancel: () => void;
-  onChanged: (text: string) => void;
-  onReload: () => void;
-}
-
-const WITH_NEW = "new";
-const WITH_EXISTING = "existing";
-
-function Replace({ item, choices, onCancel, onChanged, onReload }: ReplaceProps) {
-  const [how, setHow] = useState(WITH_EXISTING);
-  const [chosen, setChosen] = useState<Item | null>(null);
-  const [reason, setReason] = useState("");
-  const [reference, setReference] = useState("");
-  const [day, setDay] = useState("");
-  const specs = useMemo<FieldSpec[]>(
-    () => [
-      {
-        name: "catalog_entry_hid",
-        label: "Catalog entry",
-        // 0.9.6: searched for, not a list of every model, as in New item (P-200).
-        kind: "entry",
-        blank: "No catalog entry",
-        hint: "The vendor and PID. A serial number needs one.",
-      },
-      { name: "serial_number", label: "Serial number", kind: "text", maxLength: 100 },
-      { name: "asset_tag", label: "Asset tag", kind: "text", maxLength: 100 },
-      { name: "name", label: "Name", kind: "text", maxLength: 200 },
-      { name: "hostname", label: "Hostname", kind: "text", maxLength: 255 },
-    ],
-    [],
-  );
-  const [values, setValues] = useState<FormValues>(() => ({
-    ...formOf(specs),
-    // The same model, more often than not.
-    catalog_entry_hid: item.catalog_entry_hid ?? "",
-  }));
-  const [found, setFound] = useState<Record<string, string>>({});
-  const action = useAction();
-  const reasons = choiceOptions(choices, "replacement_reason");
-  const known = ["reason", "reference", "replaced_on", "new_item_hid"];
-  const names = specs.map((spec) => spec.name);
-  const errors = fieldErrors(action.error, [...known, ...names]);
-  const refused = errors.shown;
-  const name = itemName(item);
-
-  function change(field: string, value: FormValue) {
-    setValues((was) => ({ ...was, [field]: value }));
-    setFound((was) => {
-      const { [field]: _, ...rest } = was;
-      return rest;
-    });
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    const body: Schemas["Replace"] = { row_version: item.row_version, reason };
-    if (reference.trim()) body.reference = reference.trim();
-    if (day) body.replaced_on = day;
-    if (how === WITH_EXISTING) {
-      if (!chosen) return;
-      body.new_item_hid = chosen.hid;
-    } else {
-      const built = buildCreate<Schemas["ItemCreate"]>(specs, values);
-      setFound(built.errors);
-      if (Object.keys(built.errors).length > 0) return;
-      body.new_item = built.body;
-    }
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/items/{hid}/replace", { path: { hid: item.hid }, body }),
-    );
-    if (result.ok) {
-      onChanged(`${name} was replaced by ${itemName(result.value.new_item)}.`);
-    }
-  }
-
-  const ready = reason !== "" && (how === WITH_NEW || chosen !== null);
-  return (
-    <section className="panel" aria-labelledby="replace-item">
-      <h3 id="replace-item">Replace {name}</h3>
-      <p className="hint">
-        Both records stay, linked by the replacement. The item that takes the place takes over the
-        current memberships of {name}, with the same role and position, from the day of the
-        replacement. Neither item is moved in the lifecycle: move {name} to Pending-Removal, or
-        where it goes, by a move of its own.
-      </p>
-      <form onSubmit={submit} className="stack" noValidate>
-        <Problem error={action.error} shown={[...known, ...names]} onReload={onReload} />
-        <div className="fields">
-          <SelectField
-            label="Reason"
-            name="reason"
-            value={reason}
-            onChange={setReason}
-            required
-            error={refused.reason}
-          >
-            <option value="">Choose a reason</option>
-            {reasons.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </SelectField>
-          <TextField
-            label="Reference"
-            name="reference"
-            value={reference}
-            onChange={setReference}
-            maxLength={200}
-            autoComplete="off"
-            error={refused.reference}
-            hint="An RMA, service request or ticket number"
-          />
-          <TextField
-            label="Replaced on"
-            name="replaced_on"
-            type="date"
-            value={day}
-            onChange={setDay}
-            error={refused.replaced_on}
-            hint={`Left blank, today: ${today()}`}
-          />
-          <SelectField
-            label="What takes its place"
-            name="how"
-            value={how}
-            onChange={(next) => setHow(next === WITH_NEW ? WITH_NEW : WITH_EXISTING)}
-          >
-            <option value={WITH_EXISTING}>An item that is in the inventory</option>
-            <option value={WITH_NEW}>A new item, created now</option>
-          </SelectField>
-        </div>
-        {how === WITH_EXISTING &&
-          (chosen ? (
-            <p data-testid="chosen-replacement">
-              <strong>{pickLabel(chosen)}</strong> takes its place.{" "}
-              <button type="button" onClick={() => setChosen(null)} disabled={action.busy}>
-                Choose another
-              </button>
-            </p>
-          ) : (
-            <ItemPicker
-              label="The item that takes its place"
-              taken={[item.hid]}
-              onPick={setChosen}
-              disabled={action.busy}
-            />
-          ))}
-        {how === WITH_EXISTING && refused.new_item_hid && (
-          <p className="field-error">{refused.new_item_hid}</p>
-        )}
-        {how === WITH_NEW && (
-          <fieldset className="plain">
-            <legend>The new item</legend>
-            <FormFields
-              specs={specs}
-              values={values}
-              onChange={change}
-              errors={{ ...refused, ...found }}
-              disabled={action.busy}
-            />
-            <p className="hint">
-              It needs something to know it by: a serial number with a catalog entry, an asset tag,
-              a name or a hostname. The rest is filled in on its own page.
-            </p>
-          </fieldset>
-        )}
-        <p className="actions">
-          <button type="submit" className="primary" disabled={action.busy || !ready}>
-            Replace
-          </button>
-          <button type="button" onClick={onCancel} disabled={action.busy}>
-            Cancel
-          </button>
-        </p>
-      </form>
     </section>
   );
 }

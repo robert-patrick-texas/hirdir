@@ -1,10 +1,13 @@
 // 0.9.6: what becomes of a member that leaves a stack, in the form that ends its
 // membership (P-218). A person chooses; each choice fills the fields, which the person may
 // change; the lifecycle rules and the choices the server publishes say what is offered,
-// and the server decides. Nothing follows from the end by a rule.
+// and the server decides. Nothing follows from the end by a rule. 0.9.8: the same form says
+// what becomes of the item that leaves by a replacement (P-242), and either may give the
+// item its condition, which To be returned to the manufacturer starts at Failed (P-245).
 
 import { useId, useState } from "react";
 import { api } from "../api";
+import { CONDITION_LIST } from "../lib/health";
 import { useLoad } from "../lib/hooks";
 import { dispositionsIn, intentChoices, nextStates } from "../lib/lifecycle";
 import { useChoices, useRules } from "../lib/lists";
@@ -22,21 +25,36 @@ import { SelectField, TextField } from "./Field";
 import { LocationField } from "./LocationField";
 import { Problem } from "./Problem";
 
-/** The fields of `item` that a refusal names, as `item.hostname`. */
-export const LEAVING_FIELDS = [
-  "item.hostname",
-  "item.fqdn",
-  "item.location_hid",
-  "item.lifecycle_state",
-  "item.state_reason",
-  "item.disposition",
-  "item.expected_online",
+const LEAVING_NAMES = [
+  "hostname",
+  "fqdn",
+  "location_hid",
+  "lifecycle_state",
+  "state_reason",
+  "disposition",
+  "expected_online",
+  "condition",
 ];
+
+/**
+ * The fields of what the item is to have that a refusal names: `item.hostname` with the
+ * end of a membership, `old_item.hostname` with a replacement.
+ */
+export function leavingFields(prefix: string): string[] {
+  return LEAVING_NAMES.map((name) => `${prefix}.${name}`);
+}
+
+/** The fields of `item` that a refusal names, as `item.hostname`. */
+export const LEAVING_FIELDS = leavingFields("item");
 
 interface WhatBecomesOfItProps {
   itemHid: string;
-  /** What the server refused, by the names of LEAVING_FIELDS. */
+  /** What the server refused, by the names of `leavingFields(prefix)`. */
   errors: Readonly<Record<string, string>>;
+  /** What the server calls the fields: `item` with an end, `old_item` with a replacement. */
+  prefix?: string;
+  /** 0.9.8: the Condition field, of the item_condition list (P-245). */
+  condition?: boolean;
   /** What is to be sent as `item`, or null for nothing. */
   onChange: (body: LeavingBody | null) => void;
   disabled?: boolean;
@@ -47,7 +65,8 @@ interface WhatBecomesOfItProps {
  * nothing now, which is where it starts. The item is read when the form opens, for its
  * state and disposition.
  */
-export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBecomesOfItProps) {
+export function WhatBecomesOfIt(props: WhatBecomesOfItProps) {
+  const { itemHid, errors, onChange, disabled, prefix = "item", condition = false } = props;
   const id = useId();
   const item = useLoad(`leaving ${itemHid}`, (signal) =>
     api.request("get", "/api/v1/items/{hid}", { path: { hid: itemHid }, signal }),
@@ -61,6 +80,8 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
   const state = record?.lifecycle_state ?? null;
   const kept = record?.disposition ?? null;
   const reasons = choiceOptions(choices.data, "state_reason");
+  const conditions = choiceOptions(choices.data, CONDITION_LIST, record?.condition);
+  const said = (field: string) => errors[`${prefix}.${field}`];
   const ready = record !== undefined && rules.data !== undefined && choices.data !== undefined;
 
   function update(next: LeavingValues | null) {
@@ -75,6 +96,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
         next: nextStates(ruled, state),
         dispositions: (inState) => dispositionsIn(ruled, inState, kept),
         reasons: reasons.map((reason) => reason.value),
+        ...(condition ? { conditions: conditions.map((one) => one.value) } : {}),
       }),
     );
   }
@@ -131,7 +153,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             value={values.hostname}
             onChange={(value) => set("hostname", value)}
             disabled={disabled}
-            error={errors["item.hostname"]}
+            error={said("hostname")}
             hint={
               values.hostname === "" && !record?.hostname
                 ? "Its own name from now. Left blank, it has no name: it was known by the stack's."
@@ -144,7 +166,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             value={values.fqdn}
             onChange={(value) => set("fqdn", value)}
             disabled={disabled}
-            error={errors["item.fqdn"]}
+            error={said("fqdn")}
             hint="Blank, left as it is."
           />
           <LocationField
@@ -154,7 +176,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             onChange={(value) => set("location_hid", value)}
             blank="Left as it is"
             disabled={disabled}
-            error={errors["item.location_hid"]}
+            error={said("location_hid")}
             hint={
               values.location_hid === "" && !record?.location_hid
                 ? "Where it goes. Left as it is, it is nowhere: it has the stack's place no more."
@@ -167,7 +189,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             value={values.lifecycle_state}
             onChange={(value) => set("lifecycle_state", value)}
             disabled={disabled}
-            error={errors["item.lifecycle_state"]}
+            error={said("lifecycle_state")}
           >
             <option value="">As it is{state ? ` (${state})` : ""}</option>
             {nextStates(ruled, state).map((one) => (
@@ -183,7 +205,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
               value={values.state_reason}
               onChange={(value) => set("state_reason", value)}
               disabled={disabled}
-              error={errors["item.state_reason"]}
+              error={said("state_reason")}
             >
               <option value="">None</option>
               {reasons.map((reason) => (
@@ -199,7 +221,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             value={values.disposition}
             onChange={(value) => set("disposition", value)}
             disabled={disabled}
-            error={errors["item.disposition"]}
+            error={said("disposition")}
           >
             <option value="">As it is{kept ? ` (${kept})` : ""}</option>
             {dispositions.map((one) => (
@@ -214,7 +236,7 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             value={values.online}
             onChange={(value) => set("online", value)}
             disabled={disabled}
-            error={errors["item.expected_online"]}
+            error={said("expected_online")}
           >
             <option value="">As it is</option>
             {intents.map((one) => (
@@ -223,6 +245,29 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
               </option>
             ))}
           </SelectField>
+          {condition && (
+            <SelectField
+              label="Condition"
+              name="leaving-condition"
+              value={values.condition}
+              onChange={(value) => set("condition", value)}
+              disabled={disabled}
+              error={said("condition")}
+              hint="The state of the hardware as a person knows it."
+            >
+              <option value="">
+                As it is
+                {record?.condition
+                  ? ` (${conditions.find((one) => one.value === record.condition)?.label ?? record.condition})`
+                  : ""}
+              </option>
+              {conditions.map((one) => (
+                <option key={one.value} value={one.value}>
+                  {one.label}
+                </option>
+              ))}
+            </SelectField>
+          )}
         </div>
       )}
     </fieldset>

@@ -11,10 +11,15 @@ import {
   leavingPreset,
   leavingText,
   listed,
+  madeStackText,
+  makeStackGoes,
+  makeStackText,
   memberText,
   namedBy,
   offeredPosition,
   refusedRows,
+  replacedText,
+  saidWords,
   sameWords,
   stackOf,
 } from "./stacks";
@@ -139,6 +144,7 @@ describe("what becomes of a member that leaves (P-218)", () => {
       state_reason: "",
       disposition: "Spare",
       online: "false",
+      condition: "",
     });
   });
 
@@ -254,5 +260,112 @@ describe("memberText", () => {
   it("is blank for an item in no stack", () => {
     expect(memberText([custom])).toBe("");
     expect(stackOf([custom])).toBeUndefined();
+  });
+});
+
+describe("the condition of a member that leaves (P-245)", () => {
+  const rules: LeavingRules = {
+    next: ["Down", "Pending-Removal"],
+    dispositions: () => ["Production", "Spare", "Excess"],
+    reasons: ["rma", "retired"],
+    conditions: ["good", "failed", "dead"],
+  };
+
+  it("starts a return to the manufacturer at Failed, and the others as it is", () => {
+    expect(leavingPreset("returned", "Prod", rules)).toMatchObject({ condition: "failed" });
+    expect(leavingPreset("pool", "Prod", rules)).toMatchObject({ condition: "" });
+    expect(leavingPreset("excess", "Prod", rules)).toMatchObject({ condition: "" });
+  });
+
+  it("fills no condition the list does not publish, nor any where the form has no field", () => {
+    expect(leavingPreset("returned", "Prod", { ...rules, conditions: ["good"] })).toMatchObject({
+      condition: "",
+    });
+    const { conditions: _, ...without } = rules;
+    expect(leavingPreset("returned", "Prod", without)).toMatchObject({ condition: "" });
+  });
+
+  it("sends the condition chosen, and says it by its label", () => {
+    const returned = leavingPreset("returned", "Prod", rules);
+    expect(returned).not.toBeNull();
+    if (!returned) return;
+    const body = leavingBody(returned);
+    expect(body).toEqual({
+      lifecycle_state: "Pending-Removal",
+      state_reason: "rma",
+      expected_online: false,
+      condition: "failed",
+    });
+    expect(leavingText(body, (value) => (value === "failed" ? "Failed" : value))).toBe(
+      "moved to Pending-Removal, not expected online and marked Failed",
+    );
+    expect(leavingBody({ ...returned, condition: "" })).not.toHaveProperty("condition");
+  });
+});
+
+describe("what the answer to a replacement says (P-242)", () => {
+  const old = { text: "FCW0000X002", to: "/items/o-1" };
+  const came = { text: "FCW0000X091", to: "/items/n-1" };
+
+  it("names both items as links, the place taken, what the one that came lost and is", () => {
+    const parts = replacedText({
+      old,
+      came,
+      group: "site2-sw-stack9",
+      position: 2,
+      sent: { drop_identity: true, disposition: "Production", expected_online: true },
+      joining: { hostname: "spare-sw-091", addresses: [{ address: "192.0.2.91" }] },
+      leaving: { lifecycle_state: "Pending-Removal", condition: "failed" },
+      conditionLabel: () => "Failed",
+    });
+    expect(parts.slice(0, 3)).toEqual([old, " was replaced by ", came]);
+    expect(saidWords(parts)).toBe(
+      "FCW0000X002 was replaced by FCW0000X091 as member 2 of site2-sw-stack9. It takes the stack's name and place: the host name spare-sw-091 and the address 192.0.2.91 removed. It is Production and expected online now. The item that left was moved to Pending-Removal and marked Failed.",
+    );
+  });
+
+  it("is read as the words of its parts", () => {
+    expect(saidWords(["a ", { to: "/x", text: "b" }, "."])).toBe("a b.");
+  });
+
+  it("says no more than was sent, outside a stack", () => {
+    expect(saidWords(replacedText({ old, came, sent: {} }))).toBe(
+      "FCW0000X002 was replaced by FCW0000X091.",
+    );
+  });
+});
+
+describe("a switch that stands alone made a stack (P-243)", () => {
+  it("says what goes to the stack, each only where the switch has it", () => {
+    const item = {
+      hostname: "cw05-lab-sw1",
+      fqdn: "cw05-lab-sw1.example.net",
+      addresses: [{}, {}],
+      location: { path: "Campus > C05 > Lab" },
+      planned_location: null,
+      owner: { label: "Network Engineering" },
+      operator: null,
+    };
+    expect(makeStackGoes(item)).toEqual([
+      "the host name cw05-lab-sw1",
+      "the FQDN cw05-lab-sw1.example.net",
+      "its 2 addresses",
+      "the location Campus > C05 > Lab",
+      "the owner Network Engineering",
+    ]);
+    expect(makeStackGoes({ addresses: [{}] })).toEqual(["its address"]);
+    expect(makeStackText("cw05-lab-sw1", item)).toMatch(
+      /^To the stack from cw05-lab-sw1: the host name cw05-lab-sw1, .* and the owner Network Engineering\. cw05-lab-sw1 gives them up/,
+    );
+    expect(makeStackText("FCW1", {})).toMatch(
+      /^FCW1 has no host name, FQDN, address, place, owner or operator of its own/,
+    );
+  });
+
+  it("says what was made, with how many more members", () => {
+    expect(madeStackText("s1", "sw1", 0)).toBe("The stack s1 was made of sw1, member 1.");
+    expect(madeStackText("s1", "sw1", 1)).toBe(
+      "The stack s1 was made of sw1, member 1, with 1 more member.",
+    );
   });
 });

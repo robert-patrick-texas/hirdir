@@ -24,6 +24,7 @@ import { DeleteRecord } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
+import { ValueLink } from "../components/ValueLink";
 // 0.8.0: a default and a minimum of the support weight of a major item (P-155).
 import { Raised } from "../components/Weight";
 import { WhyEachValue } from "../components/WhyEachValue";
@@ -69,6 +70,7 @@ import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
+import type { SaidPart } from "../lib/stacks";
 import { HISTORY_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
@@ -150,12 +152,13 @@ export function ItemDetail() {
   );
   const choices = useChoices();
   const rules = useRules();
-  const [done, setDone] = useState("");
+  // 0.9.8: what was done, and the same in parts with records as links (P-242).
+  const [done, setDone] = useState<{ text: string; parts?: SaidPart[] }>({ text: "" });
   const states = useMemo(() => stateNames(rules.data ?? []), [rules.data]);
   useTitle(item.data ? itemName(item.data) : "Item");
 
-  function changed(text: string) {
-    setDone(text);
+  function changed(text: string, parts?: SaidPart[]) {
+    setDone(parts ? { text, parts } : { text });
     item.reload();
   }
 
@@ -177,7 +180,7 @@ export function ItemDetail() {
       {record && <SectionLinks version={`${record.hid} ${record.row_version}`} />}
       <Problem error={item.error} />
       <Problem error={choices.error ?? rules.error} />
-      <Notice text={done} />
+      <Notice {...done} />
       {item.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
@@ -273,6 +276,8 @@ export function ItemDetail() {
             item={record}
             choices={choices.data}
             mayEdit={mayEdit && record.record_status !== "retired"}
+            // 0.9.8: an Admin removes a replacement that was a mistake (P-238).
+            mayRemove={allows(user.role, "admin")}
             onChanged={changed}
             onReload={item.reload}
           />
@@ -1576,6 +1581,9 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
  * was and what is.
  */
 function History({ item }: { item: Item }) {
+  const { user } = useAuth();
+  // 0.9.8: the user who made a change opens the user's page, for an Admin (P-240).
+  const admin = allows(user.role, "admin");
   const [offset, setOffset] = useState(0);
   // The server sorts the events, over the whole history, each with its rows kept
   // together: another order starts at its first page.
@@ -1642,7 +1650,15 @@ function History({ item }: { item: Item }) {
                               <td className="nowrap" rowSpan={changes.length}>
                                 <Time at={event.at} />
                               </td>
-                              <td rowSpan={changes.length}>{event.actor_name ?? <Dash />}</td>
+                              <td rowSpan={changes.length}>
+                                {event.actor_name ? (
+                                  <ValueLink kind="user" hid={event.actor_hid} admin={admin}>
+                                    {event.actor_name}
+                                  </ValueLink>
+                                ) : (
+                                  <Dash />
+                                )}
+                              </td>
                               <td rowSpan={changes.length}>{event.action}</td>
                             </>
                           )}

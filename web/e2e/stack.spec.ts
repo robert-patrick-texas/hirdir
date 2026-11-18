@@ -156,6 +156,14 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
   }
   const pending = page.getByTestId("pending-members").locator("tbody tr");
   await expect(pending).toHaveCount(4);
+  // 0.9.8: each has the box of a member that joins, ticked (P-244). These switches keep
+  // names of their own, which the scenarios after this one read.
+  for (const host of stackHosts) {
+    await form
+      .getByRole("group", { name: host })
+      .getByLabel("It takes the stack's name and place")
+      .uncheck();
+  }
   // Each was given the next position. A stack needs no master: nothing is said of that.
   await expect(form.getByLabel(`Position of ${four}`)).toHaveValue("4");
   await expect(page.getByTestId("stack-problem")).toHaveCount(0);
@@ -507,8 +515,13 @@ test("S21: the master of the stack is replaced, and the stack stays the stack", 
   await expect(fresh.getByTestId("chosen-catalog_entry_hid")).toContainText(switchPid);
   await fresh.getByLabel("Serial number").fill(spareSerial);
   await fresh.getByLabel("Hostname").fill(spare);
+  // 0.9.8: the master is a member of a stack, and the box of a member that joins is there,
+  // ticked (P-242): this switch keeps a name of its own, as the stack's other members do.
+  await replace.getByLabel("It takes the stack's name and place").uncheck();
   await replace.getByRole("button", { name: "Replace", exact: true }).click();
-  await expect(page.getByText(`${master} was replaced by ${spare}.`)).toBeVisible();
+  await expect(
+    page.getByText(`${master} was replaced by ${spare} as member 1 of ${stack}.`),
+  ).toBeVisible();
 
   // Two item records, linked by the replacement. The one that left is in no group now.
   const replacedBy = page.getByTestId("replaced-by");
@@ -516,8 +529,8 @@ test("S21: the master of the stack is replaced, and the stack stays the stack", 
   await expect(replacedBy).toContainText("RMA");
   await expect(replacedBy).toContainText(`RMA-${upper}`);
   await expect(region(page, "Groups")).toContainText(`${master} is a member of no group.`);
-  // An item is replaced once: the action is no longer offered.
-  await expect(page.getByRole("button", { name: "Replace this item" })).toHaveCount(0);
+  // 0.9.8: an item is replaced as often as that happens: the action is still offered (P-241).
+  await expect(page.getByRole("button", { name: "Replace this item" })).toHaveCount(1);
   await replacedBy.getByRole("link").click();
   await expect(page.getByRole("heading", { level: 1, name: spare })).toBeVisible();
   await expect(page.getByTestId("replaces")).toContainText(master);

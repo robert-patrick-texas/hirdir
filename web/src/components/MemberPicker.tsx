@@ -40,8 +40,9 @@ interface MemberPickerProps {
   /** The member that holds the position a row was refused, as a link, by the HID of its item (P-219). */
   holders?: Readonly<Record<string, { to: string; label: string }>>;
   /**
-   * 0.9.6: the members join a stack that is there, by Add members: each has the box of
-   * the stack's name and place (P-217). The lifecycle rules say what a spare is offered.
+   * 0.9.6: the members join a stack, by Add members, and 0.9.8 by New group (P-244): each
+   * has the box of the stack's name and place (P-217), shown where the type is a stack.
+   * The lifecycle rules say what a spare is offered.
    */
   joins?: boolean;
   rules?: readonly Rule[];
@@ -110,7 +111,7 @@ export function MemberPicker(props: MemberPickerProps) {
     enabled: true,
   };
 
-  const waiting = numbered && joins && rules.length === 0;
+  const waiting = joins && rules.length === 0;
 
   function add(item: Item) {
     const used = [...positions, ...pending.map((row) => Number(row.position) || null)];
@@ -123,7 +124,8 @@ export function MemberPicker(props: MemberPickerProps) {
         position: numbered ? String(offeredPosition(nextFree, used)) : "",
         // 0.9.6: a switch that joins a stack takes its name and place, ticked from the
         // start, and a spare is offered Production and expected online (P-217).
-        ...(numbered && joins ? joining(item, rules) : {}),
+        // 0.9.8: New group keeps it for any type, and shows the box for a stack (P-244).
+        ...(joins ? joining(item, rules) : {}),
       },
     ]);
   }
