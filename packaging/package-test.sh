@@ -3936,8 +3936,8 @@ files() {
         "$(json 'sorted([c["key"] or "", c["component_count"]] for c in d["totals"]["by_condition"])')" \
         "$(json 'sorted([r["key"] or "", r["component_count"]] for r in d["rows"])')"
     api GET '/reports/management'
-    expect "pkg GET $prefix/api/v1/reports/management holds the money, and neither condition nor health: items, components, estimated value and annual support cost" \
-        "$status $(json 'sorted(d["totals"])')" '200 ["annual_support_cost", "component_count", "est_value", "items"]'
+    expect "pkg GET $prefix/api/v1/reports/management holds the money, and neither condition nor health: items, components, estimated value and annual support cost, with the filter of the items it counts (P-206)" \
+        "$status $(json 'sorted(d["totals"])')" '200 ["annual_support_cost", "component_count", "est_value", "filter", "items"]'
     api GET '/reports/management?by=health'
     expect "pkg and is not to be had by health" "$status $(json 'd["errors"][0]["field"]')" "422 query.by"
     # The one licence of the examples is of quantity 1: a quantity multiplies weight and

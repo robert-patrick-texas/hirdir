@@ -637,7 +637,8 @@ test("P-216: a minor item's page says what it is and where, and leads to the spa
   );
   await expect(line.getByRole("link", { name: switchName, exact: true })).toHaveAttribute(
     "href",
-    `/items/${chassis.hid}`,
+    // Under whatever path the app is served at: a link of the router.
+    new RegExp(`/items/${chassis.hid}$`),
   );
   await line.getByRole("link", { name: "Spares of this model here" }).click();
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
