@@ -233,9 +233,11 @@ memberships made.
 
 `PATCH /device-groups/{hid}/members/{member_hid}` that gives `left_on` may carry `item`
 (P-218): what the item is to have from the end, any of `hostname`, `fqdn`,
-`location_hid`, `lifecycle_state`, `state_reason`, `disposition` and `expected_online`.
-A field left out stays as it is, and `null` clears `hostname`, `fqdn` and
-`location_hid`, as on `PATCH /items/{hid}`. The membership is ended first and the item
+`location_hid`, `lifecycle_state`, `state_reason`, `disposition`, `expected_online` and
+`condition`, a value of the `item_condition` list (P-245), which nothing sets by a rule:
+a failed member is marked so where a person says it. A field left out stays as it is,
+and `null` clears `hostname`, `fqdn`, `location_hid` and `condition`, as on `PATCH
+/items/{hid}`. The membership is ended first and the item
 is changed after, in the same change, so that the item's rules see an item that has
 left: its location in force is no longer the group's. `lifecycle_state` moves the item as
 `POST /items/{hid}/transition` does, by a move the rules list and never by force, with

@@ -6,6 +6,7 @@ stack is the same stack, with the same HID, through the replacement of its maste
 in every circuit it was connected to.
 """
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
@@ -76,6 +77,33 @@ def _refuse_same_day(db: Session, old: Item, new: Item, day: date) -> None:
         )
 
 
+def _coming(
+    db: Session, old: Item, drop_identity: Any, disposition: Any, expected_online: Any
+) -> tuple[bool, dict[str, Any]]:
+    """Return whether the item that comes gives up its name and place, and what it is to
+    have, refusing `drop_identity` where the item that leaves is in no stack."""
+    if drop_identity is None:
+        drop_identity = False
+    if not isinstance(drop_identity, bool):
+        raise Invalid("drop_identity is not acceptable", {"drop_identity": "true or false"})
+    if drop_identity and not any(
+        group.type == "stack" for _, group in groups.memberships_of(db, [old.hid])[old.hid]
+    ):
+        raise Invalid(
+            f"{items.shown_name(old)} is a current member of no stack",
+            {
+                "drop_identity": "the item that comes takes a stack's name and place only "
+                "where the item that leaves is a current member of a stack"
+            },
+        )
+    named = {
+        name: value
+        for name, value in (("disposition", disposition), ("expected_online", expected_online))
+        if value is not None
+    }
+    return drop_identity, {**(dict.fromkeys(groups.IDENTITY) if drop_identity else {}), **named}
+
+
 def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: date) -> None:
     """Give the new item the old one's place in each group it is a current member of."""
     for member, group in groups.memberships_of(db, [old.hid])[old.hid]:
@@ -122,11 +150,21 @@ def replace(
     new_item: dict[str, Any] | None = None,
     reference: Any = None,
     replaced_on: date | None = None,
+    drop_identity: Any = False,
+    disposition: Any = None,
+    expected_online: Any = None,
+    old_item: Mapping[str, Any] | None = None,
 ) -> ItemReplacement:
     """Record that one item took the place of another, and hand over its memberships.
 
     The item that takes the place is one that exists, named by its HID, or is created
-    here from its fields. Neither item is moved in the lifecycle.
+    here from its fields. Neither item is moved by a rule: each is changed as the
+    request names alone (P-242). With `drop_identity`, where the old item is a current
+    member of a stack, the new one gives up its own name, addresses and place as a
+    member that joins a stack does, and `disposition` and `expected_online` are its own
+    from the change. `old_item` is what the old item is to have, as the end of a
+    membership gives it, once its memberships have ended. All of it is one change: a
+    refusal of any part leaves nothing done.
     """
     dialect.hold_other_writers(db)
     old = items.get_item(db, old_hid)
@@ -150,6 +188,13 @@ def replace(
             "the reference is too long", {"reference": f"at most {MAX_REFERENCE} characters"}
         )
     day = groups.today(db) if replaced_on is None else replaced_on
+    drop, coming = _coming(db, old, drop_identity, disposition, expected_online)
+    if old_item and day > groups.today(db):
+        # What becomes of the old item is done as the request is, and not on a day to come.
+        raise Invalid(
+            "the item that leaves is given what becomes of it on the day it is replaced",
+            {"replaced_on": "with old_item, a day that has come: today or before"},
+        )
     if new_item is not None:
         new = items.create_item(db, context, dict(new_item))
     else:
@@ -175,9 +220,20 @@ def replace(
         replaced_on=day,
     )
     records.created(db, context, RECORD_TYPE, replacement, FIELDS)
+    db.flush()
     _take_over(db, context, old, new, day)
     # And the circuits it was connected to, on the same sides (P-147).
     circuit_records.hand_over(db, context, old.hid, new.hid)
+    # Then what the request names of each item, by that item's rules, each change saying
+    # the replacement it came from (P-242).
+    replacing = audit.because(context, "replacing", None, replacement.hid)
+    if coming:
+        groups.take_on(db, replacing, new, drop, coming, "")
+    if old_item:
+        of_old = audit.because(
+            context, "replacing", None, replacement.hid, of=(items.RECORD_TYPE, old.hid)
+        )
+        groups.give_back(db, of_old, old.hid, old_item, "old_item.")
     # Both items say so in their own history, and a copy of either read before this is
     # stale from here on.
     for item, field, other in ((old, "replaced_by", new), (new, "replaces", old)):

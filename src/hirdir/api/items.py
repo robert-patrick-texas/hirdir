@@ -202,6 +202,10 @@ def replace_item(
         new_item=body.new_item.model_dump() if body.new_item is not None else None,
         reference=body.reference,
         replaced_on=body.replaced_on,
+        drop_identity=body.drop_identity,
+        disposition=body.disposition,
+        expected_online=body.expected_online,
+        old_item=body.old_item.model_dump(exclude_unset=True) if body.old_item else None,
     )
     return shapes.replacement_out(db, replacement)
 

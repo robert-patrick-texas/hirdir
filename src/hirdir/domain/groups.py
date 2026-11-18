@@ -765,26 +765,25 @@ def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator
         raise
 
 
-def _take_on(
+def take_on(
     db: Session,
-    context: AuditContext,
-    group: DeviceGroup,
+    caused: AuditContext,
     item: Item,
     drop: bool,
-    fields: dict[str, Any],
+    fields: Mapping[str, Any],
     where: str,
 ) -> None:
     """Give an item that joins a group what the request names for it, by the item's rules.
 
-    Each change is audited as the item's, or as the removal of its address, and says that
-    it was made by joining the group (P-217).
+    Each change is audited as the item's, or as the removal of its address, and says in
+    the cause of `caused` what it was made by: joining the group (P-217), or the
+    replacement whose item takes a member's place (P-242).
     """
-    joining = audit.because(context, "joining_group", None, group.hid)
     with _named_at(where):
-        items.update_item(db, joining, item.hid, item.row_version, dict(fields))
+        items.update_item(db, caused, item.hid, item.row_version, dict(fields))
         if drop:
             for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
-                addresses.delete_address(db, joining, address.hid)
+                addresses.delete_address(db, caused, address.hid)
 
 
 class _Positions:
@@ -942,7 +941,8 @@ def add_members(
         )
         records.created(db, context, MEMBER_TYPE, member, MEMBER_FIELDS)
         if taken_on:
-            _take_on(db, context, group, item, drop, taken_on, where)
+            joining = audit.because(context, "joining_group", None, group.hid)
+            take_on(db, joining, item, drop, taken_on, where)
         made.append(member)
     return made
 
@@ -1044,29 +1044,33 @@ def update_member(
         _forget_observed_master(db, context, group, member.item_hid)
     if back:
         # The membership has ended first, so that the item's rules see one that has left.
-        _give_back(db, context, group, member.item_hid, back)
+        leaving = audit.because(
+            context, "leaving_group", group.hid, None, of=(items.RECORD_TYPE, member.item_hid)
+        )
+        give_back(db, leaving, member.item_hid, back, "item.")
     return member
 
 
-# What an item that leaves a group may be given with the end, beside its standing.
-LEAVING = ("hostname", "fqdn", "location_hid")
+# What an item that leaves a group may be given with the end, beside its standing: its
+# condition among them, which follows from nothing by a rule (P-245).
+LEAVING = ("hostname", "fqdn", "location_hid", "condition")
 
 
-def _give_back(
-    db: Session, context: AuditContext, group: DeviceGroup, item_hid: str, given: Mapping[str, Any]
+def give_back(
+    db: Session, caused: AuditContext, item_hid: str, given: Mapping[str, Any], where: str
 ) -> None:
     """Give an item that has left a group what the request says it is to have (P-218).
 
     Each part is applied by the item's own rules, as a file of items applies them: a
     state that is not the item's moves it by a transition, with the reason as its why
     and the disposition and intent as named; otherwise these are an edit, and a reason
-    is refused. Each change is audited as the item's, and says it was made by leaving.
+    is refused. Each change is audited as the item's, and says in the cause of `caused`
+    what it was made by: leaving the group, or the replacement of the item (P-242). A
+    refusal names each field after `where`: `item.condition`, `old_item.condition`.
     """
     item = items.get_item(db, item_hid)
-    leaving = audit.because(
-        context, "leaving_group", group.hid, None, of=(items.RECORD_TYPE, item.hid)
-    )
-    with _named_at("item.", {"to": "lifecycle_state", "reason": "state_reason"}):
+    leaving = caused
+    with _named_at(where, {"to": "lifecycle_state", "reason": "state_reason"}):
         state = given.get("lifecycle_state")
         if "lifecycle_state" in given and state is None:
             raise Invalid(
