@@ -627,7 +627,11 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
   await page.goto(`./reports?${new URLSearchParams({ filter: own, by: "contract" }).toString()}`);
   const rows = page.getByTestId("summary-rows").locator("tbody tr");
   await expect(rows).toHaveCount(2);
-  await expect(rows.filter({ hasText: renewedNumber }).getByRole("link")).toBeVisible();
+  // 0.9.6: the name of the row is the link to the contract, and its counts open their
+  // items (P-206).
+  await expect(
+    rows.filter({ hasText: renewedNumber }).getByRole("rowheader").getByRole("link"),
+  ).toBeVisible();
   await expect(rows.filter({ hasText: "Under no contract" })).toHaveCount(1);
 
   // S30: the last day of support of the model is next year, so the two switches in the
