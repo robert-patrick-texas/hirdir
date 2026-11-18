@@ -65,19 +65,32 @@ class Kind:
     record_type: str
     model: Any
     label: Callable[[Any], str]
-    retire: Callable[[Session, AuditContext, str, int], Any]
+    # Retire one, telling the list what went with it because it ran on it (P-247).
+    retire: Callable[[Session, AuditContext, str, int, list[tuple[Item, str]]], Any]
 
 
 def _group_label(group: DeviceGroup) -> str:
     return group.name
 
 
+def _retire_item(
+    db: Session, context: AuditContext, hid: str, row_version: int, went: list[tuple[Item, str]]
+) -> Any:
+    return items.retire_item(db, context, hid, row_version, went)
+
+
+def _retire_group(
+    db: Session, context: AuditContext, hid: str, row_version: int, _: list[tuple[Item, str]]
+) -> Any:
+    return groups.retire_group(db, context, hid, row_version)
+
+
 def kind_of(record_type: str) -> Kind:
     """Return the kind of record that is retired or deleted several at a time."""
     if record_type == ITEM:
-        return Kind(ITEM, Item, items.shown_name, items.retire_item)
+        return Kind(ITEM, Item, items.shown_name, _retire_item)
     if record_type == DEVICE_GROUP:
-        return Kind(DEVICE_GROUP, DeviceGroup, _group_label, groups.retire_group)
+        return Kind(DEVICE_GROUP, DeviceGroup, _group_label, _retire_group)
     raise Invalid("this kind of record is not retired or deleted so", {"kind": "item or group"})
 
 
@@ -163,8 +176,13 @@ def retire_many(
 def _retire_each(
     db: Session, context: AuditContext, kind: Kind, named: list[str], done: Retired
 ) -> Retired:
-    """Retire each record named, in the order named, and say what became of each."""
+    """Retire each record named, in the order named, and say what became of each.
+
+    What runs on an item goes with it (P-247). One named that went with another named
+    before it is counted as retired by this request, and only once.
+    """
     found = read(db, kind.model, named)
+    went_with: dict[str, tuple[str, str, str]] = {}
     for hid in named:
         record = found.get(hid)
         if record is None:
@@ -172,17 +190,25 @@ def _retire_each(
             continue
         label = kind.label(record)
         if record.record_status == "retired":
-            done.already.append((hid, label))
+            if hid in went_with:
+                done.retired.append((hid, label))
+            else:
+                done.already.append((hid, label))
             continue
         savepoint = db.begin_nested()
+        went: list[tuple[Item, str]] = []
         try:
-            kind.retire(db, context, hid, record.row_version)
+            kind.retire(db, context, hid, record.row_version, went)
         except DomainError as error:
             savepoint.rollback()
             done.refused.append((hid, label, said(error), getattr(error, "depends_on", [])))
         else:
             savepoint.commit()
             done.retired.append((hid, label))
+            for one, host_hid in went:
+                went_with.setdefault(one.hid, (one.hid, items.shown_name(one), host_hid))
+    asked = set(named)
+    done.hosted = [one for hid, one in went_with.items() if hid not in asked]
     return done
 
 

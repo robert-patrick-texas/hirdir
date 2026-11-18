@@ -118,8 +118,8 @@ def test_one_that_is_refused_leaves_the_others_as_they_went(
     one, two = _switches(make, 2)
     retire = item_rules.retire_item
 
-    def refusing(db: Any, context: Any, hid: str, row_version: int) -> Any:
-        retire(db, context, hid, row_version)
+    def refusing(db: Any, context: Any, hid: str, row_version: int, went: Any = None) -> Any:
+        retire(db, context, hid, row_version, went)
         if hid == one["hid"]:
             # Refused after it had written: what it wrote is undone.
             raise domain_errors.Invalid("not now", {"record_status": "a rule says no"})
