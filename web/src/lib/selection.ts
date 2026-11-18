@@ -56,7 +56,11 @@ export function tickState(read: number, ticked: number, total: number | null): T
 }
 
 /** What the box of the heading does when pressed, as its name says it. */
-export function tickName(read: number, everyReadTicked: boolean): string {
-  const rows = `${read.toLocaleString("en-US")} ${read === 1 ? "row" : "rows"} read so far`;
-  return everyReadTicked ? `Clear the ${rows}` : `Tick the ${rows}`;
+export function tickName(read: number, everyReadTicked: boolean, ticked = read): string {
+  // Pressed when every row read is ticked, it clears every row ticked, as after a sort
+  // more than the rows read now: its name counts those.
+  if (everyReadTicked) {
+    return `Clear the ${ticked.toLocaleString("en-US")} ${ticked === 1 ? "row" : "rows"} ticked`;
+  }
+  return `Tick the ${read.toLocaleString("en-US")} ${read === 1 ? "row" : "rows"} read so far`;
 }

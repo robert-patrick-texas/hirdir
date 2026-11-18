@@ -56,7 +56,8 @@ describe("the box in the heading (P-233)", () => {
 
   it("says what it does, with how many rows read", () => {
     expect(tickName(100, false)).toBe("Tick the 100 rows read so far");
-    expect(tickName(1, true)).toBe("Clear the 1 row read so far");
+    expect(tickName(1, true)).toBe("Clear the 1 row ticked");
+    expect(tickName(100, true, 150)).toBe("Clear the 150 rows ticked");
     expect(tickName(1200, false)).toBe("Tick the 1,200 rows read so far");
   });
 });

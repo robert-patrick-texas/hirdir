@@ -39,7 +39,11 @@ export class TickHeader implements IHeaderComp {
     this.box.checked = state === "all";
     this.box.indeterminate = state === "some";
     this.box.disabled = rows.length === 0;
-    const name = tickName(rows.length, rows.length > 0 && ticked === rows.length);
+    const name = tickName(
+      rows.length,
+      rows.length > 0 && ticked === rows.length,
+      api.getSelectedNodes().length,
+    );
     this.box.setAttribute("aria-label", name);
     this.box.title = name;
   };

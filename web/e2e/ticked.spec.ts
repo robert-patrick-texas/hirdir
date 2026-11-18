@@ -174,7 +174,7 @@ test("the box in the heading ticks the rows read so far, and shows all ticked on
   // A hundred of 130 are ticked: the box shows the half mark, not all ticked.
   await expect(all).not.toBeChecked();
   await expect.poll(half).toBe(true);
-  await expect(all).toHaveAccessibleName("Clear the 100 rows read so far");
+  await expect(all).toHaveAccessibleName("Clear the 100 rows ticked");
 
   // The second block is read as the list is scrolled to its end: its rows come unticked.
   await page
@@ -191,8 +191,17 @@ test("the box in the heading ticks the rows read so far, and shows all ticked on
   await expect(copy).toHaveText("Copy (130)");
   await expect(all).toBeChecked();
   await expect.poll(half).toBe(false);
+  await expect(all).toHaveAccessibleName("Clear the 130 rows ticked");
+
+  // Sorted, the list is read again from its top, a hundred rows; the 130 stay ticked, and
+  // the box says it clears the 130, as it does.
+  await page.getByRole("columnheader", { name: "Name" }).click();
+  await page.getByRole("columnheader", { name: "Name" }).click();
+  await expect(copy).toHaveText("Copy (130)");
+  await expect(all).toHaveAccessibleName("Clear the 130 rows ticked");
   await all.click();
   await expect(copy).toHaveText("Copy");
+  await expect(page.getByTestId("grid-selected")).toHaveCount(0);
   await expectClean(page, seen);
 });
 

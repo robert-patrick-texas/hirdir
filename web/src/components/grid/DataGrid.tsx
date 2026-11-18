@@ -1114,7 +1114,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             </span>
           )}
           {!allMatching && selected > 0 && (
-            <span data-testid="grid-selected"> · {selected} selected</span>
+            <span data-testid="grid-selected"> · {selected.toLocaleString("en-US")} selected</span>
           )}
           {/* 0.9.7: a Shift range that crossed rows not read yet says so. */}
           {rangeNote && <span data-testid="grid-range-unread"> · {rangeNote}</span>}
