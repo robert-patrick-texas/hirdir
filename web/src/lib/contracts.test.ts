@@ -11,6 +11,7 @@ import {
   contractLabel,
   contractPath,
   contractsOfPath,
+  costCounted,
   costTotal,
   countedUnder,
   coverageDay,
@@ -23,6 +24,7 @@ import {
   endedText,
   flaggedFilter,
   flaggedItemsPath,
+  flaggedWords,
   followingPeriod,
   followsOnEnd,
   INHERITED,
@@ -749,7 +751,42 @@ describe("the renewal form starts from what follows (P-214)", () => {
   });
 });
 
+describe("what the renewal form says of the items marked not to be renewed (P-214)", () => {
+  it("says what is counted, and the rule the server keeps, never that it ends them all", () => {
+    expect(flaggedWords(0, "2027-12-31")).toEqual({
+      link: null,
+      text: "None of the items it covers today is marked not to be renewed.",
+    });
+    expect(flaggedWords(1, "2027-12-31")).toEqual({
+      link: "1 item it covers today",
+      text: " is marked not to be renewed; the renewal leaves behind those whose coverage runs to 2027-12-31, and its answer says how many it left.",
+    });
+    expect(flaggedWords(3, "").text).toBe(
+      " are marked not to be renewed; the renewal leaves behind those whose coverage runs to the day before the new term begins, and its answer says how many it left.",
+    );
+  });
+});
+
 describe("what an agreement's contracts cost a year (P-215)", () => {
+  it("counts the active contracts that are neither cancelled nor expired", () => {
+    const of = (hid: string, status: string, record_status = "active") => ({
+      hid,
+      status,
+      record_status,
+    });
+    const found = costCounted([
+      of("CT-1", "active"),
+      of("CT-2", "renewal_pending"),
+      of("CT-3", "pending"),
+      of("CT-4", "cancelled"),
+      of("CT-5", "expired"),
+      of("CT-6", "active", "draft"),
+    ]);
+    expect(found.counted.map((contract) => contract.hid)).toEqual(["CT-1", "CT-2", "CT-3"]);
+    expect(found.drafts).toBe(1);
+    expect(found.ended).toBe(2);
+  });
+
   it("adds the costs exactly, a contract with none counting as none", () => {
     expect(costTotal(["600000.00", "450000.00", "151500.00"])).toEqual({
       total: "1201500.00",

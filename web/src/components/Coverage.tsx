@@ -873,6 +873,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
   const [adding, setAdding] = useState(false);
   const [ending, setEnding] = useState<Coverage[] | null>(null);
   const [settling, setSettling] = useState<{ what: Settle; rows: Coverage[] } | null>(null);
+  const [renewing, setRenewing] = useState<{ what: Renewing; rows: Coverage[] } | null>(null);
   const [done, setDone] = useState("");
   const within = useMemo(
     () => ({ filter: { field: "contract_hid", op: "eq" as const, value: contract.hid } }),
@@ -885,6 +886,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
     setAdding(false);
     setEnding(null);
     setSettling(null);
+    setRenewing(null);
     setReloads((count) => count + 1);
     setDone("");
     onChanged(text);
@@ -909,6 +911,15 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
           onDone={changed}
           onClose={() => setSettling(null)}
           onReload={() => setReloads((count) => count + 1)}
+        />
+      )}
+      {open && renewing && (
+        <MarkRenewal
+          key={`${renewing.what} ${renewing.rows.map((one) => one.hid).join(" ")}`}
+          what={renewing.what}
+          coverages={renewing.rows}
+          onDone={changed}
+          onClose={() => setRenewing(null)}
         />
       )}
       {open && adding && (
@@ -974,6 +985,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
                     const still = rows.filter((row) => endable(row, day));
                     setAdding(false);
                     setSettling(null);
+                    setRenewing(null);
                     if (still.length === 0) {
                       setEnding(null);
                       setDone("The coverage selected has ended already.");
@@ -990,6 +1002,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
                     const left = rows.filter((row) => row.left_service);
                     setAdding(false);
                     setEnding(null);
+                    setRenewing(null);
                     if (left.length === 0) {
                       setSettling(null);
                       setDone("None of the coverage selected is marked as ended because it left.");
@@ -1005,10 +1018,23 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
                   run: (_chosen, _view, rows) => {
                     setAdding(false);
                     setEnding(null);
+                    setRenewing(null);
                     setDone("");
                     setSettling({ what: "remove", rows });
                   },
                 },
+                // 0.9.6 (P-224): the items' own mark, from the contract's page.
+                ...(["leave", "renew"] as const).map((what) => ({
+                  label: what === "leave" ? "Leave out of the renewal" : "Renew after all",
+                  rowsOnly: true,
+                  run: (_chosen: Chosen, _view: GridView, rows: Coverage[]) => {
+                    setAdding(false);
+                    setEnding(null);
+                    setSettling(null);
+                    setDone("");
+                    setRenewing({ what, rows });
+                  },
+                })),
               ],
             }
           : {})}
@@ -1128,6 +1154,103 @@ function SettleCoverage({ what, coverages, onDone, onClose, onReload }: SettleCo
           onClick={() => {
             if (settled > 0) onReload();
             onClose();
+          }}
+        >
+          Cancel
+        </button>
+      </p>
+    </section>
+  );
+}
+
+/** Whether the items selected are left out of the renewal, or renewed after all (P-224). */
+type Renewing = "leave" | "renew";
+
+interface MarkRenewalProps {
+  what: Renewing;
+  /** The coverages selected: their items, each once, are what is changed. */
+  coverages: readonly Coverage[];
+  onDone: (text: string) => void;
+  onClose: () => void;
+}
+
+/**
+ * 0.9.6 (P-224): Leave out of the renewal sets the item's own mark Not to be renewed on
+ * the items of the rows selected, and Renew after all takes it off, so that each has what
+ * its model says, as a blank in the item's details does. The mark is the item's, for
+ * every contract that covers it: that is said before anything is sent. Each item is read
+ * for its version and changed by itself, as on its page; the first that is refused stops
+ * the rest, and the page says how many were done.
+ */
+function MarkRenewal({ what, coverages, onDone, onClose }: MarkRenewalProps) {
+  const [made, setMade] = useState(0);
+  const action = useAction();
+  const leave = what === "leave";
+  const items = [...new Set(coverages.map((coverage) => coverage.item_hid))];
+  const count = items.length;
+  const doneText = (done: number) =>
+    leave
+      ? `${plural(done, "item was", "items were")} marked not to be renewed: the renewal leaves ${done === 1 ? "it" : "them"} behind.`
+      : `${plural(done, "item has", "items have")} no mark of ${done === 1 ? "its" : "their"} own not to be renewed any more: ${done === 1 ? "it has" : "each has"} what its model says.`;
+
+  async function run() {
+    let done = 0;
+    setMade(0);
+    const result = await action.run(async () => {
+      for (const hid of items) {
+        const item = await api.request("get", "/api/v1/items/{hid}", { path: { hid } });
+        await api.request("patch", "/api/v1/items/{hid}", {
+          path: { hid },
+          body: { row_version: item.row_version, do_not_renew: leave ? true : null },
+        });
+        done += 1;
+        setMade(done);
+      }
+    });
+    if (result.ok) onDone(doneText(done));
+  }
+
+  return (
+    <section className="panel" aria-labelledby="mark-renewal" data-testid="mark-renewal">
+      <h3 id="mark-renewal">
+        {leave
+          ? `Leave ${plural(count, "item")} out of the renewal`
+          : `Renew ${plural(count, "item")} after all`}
+      </h3>
+      <p className="warning" data-testid="mark-renewal-note">
+        {leave
+          ? "Not to be renewed is the item's own mark: it holds for every contract that covers the item, not for this one alone, until a person takes it off."
+          : "This takes off the item's own mark Not to be renewed, for every contract that covers the item: each then has what its model says."}
+      </p>
+      <ul className="plain-list">
+        {coverages
+          .filter(
+            (coverage, place) =>
+              coverages.findIndex((other) => other.item_hid === coverage.item_hid) === place,
+          )
+          .map((coverage) => (
+            <li key={coverage.item_hid}>{itemName(coverage.item)}</li>
+          ))}
+      </ul>
+      <Problem error={action.error} />
+      {action.error && made > 0 && (
+        <p className="warning">
+          {plural(made, "item was", "items were")} done before this one was refused.
+        </p>
+      )}
+      <p className="actions">
+        <button type="button" className="primary" disabled={action.busy} onClick={run}>
+          {leave
+            ? `Mark ${plural(count, "item")} not to be renewed`
+            : `Take the mark off ${plural(count, "item")}`}
+        </button>
+        <button
+          type="button"
+          disabled={action.busy}
+          onClick={() => {
+            // Some may have been done before a refusal: the counts are read again.
+            if (made > 0) onDone(doneText(made));
+            else onClose();
           }}
         >
           Cancel

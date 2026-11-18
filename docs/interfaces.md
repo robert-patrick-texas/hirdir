@@ -1856,7 +1856,10 @@ What 0.9.6 changes:
   vendor's name, those with the most items first, each offered with its vendor beside its
   PID. A list that stays a list is read to its end, past the first 1,000 (P-200). New item offers to add a model that the search does not
   find, within the page, and keeps what was typed (P-201). What is typed into a form
-  after its Save, while the page reads the record again, stays (P-202). A page that has
+  after its Save, while the page reads the record again, stays; where the record read
+  again has a new value in a field kept so, from someone else, the field says so beneath
+  it, "Changed meanwhile to …; saving replaces it", and a field not typed in takes the
+  new value without a word (P-202). A page that has
   made a record says so, with a link to it (P-204).
 - **Every grid.** Coming back to a list from a record shows the page it was on, where
   it was scrolled to, with the row that was opened marked; a new filter or sort begins
@@ -1880,7 +1883,8 @@ What 0.9.6 changes:
   the draft sites, marked; the table of a request's lines fits the window, with the
   part number and description as procurement gave them beneath the model where a line
   has them, and one link, Every item it brought, beside what was received, opens the
-  items that arrived on its lines, by `purchase_line_hid:in:` the lines received on; a
+  items that arrived on its lines, retired and draft ones among them, by
+  `purchase_line_hid:in:` the lines received on; a
   request received on in more than 100 lines is given in links of 100 lines each, so
   that no address is too long to send (P-208).
   Receive opens its form in the window with the keyboard in the box of what arrived,
@@ -1895,7 +1899,9 @@ What 0.9.6 changes:
 - **A vendor.** The table of models shows twenty, as it is sorted, and a button, Show
   all, with the number; sorted by a date, the models with none come last, whichever
   way. The vendor's items stand above its agreements and contracts, with the filter box
-  of the item list and its plain words, which narrow within the vendor's items (P-211).
+  of the item list and its plain words, which narrow within the vendor's items; what is
+  typed there is not remembered, so that it is never in force on another vendor's page,
+  and the same holds of the items a contract covers (P-211).
 - **Contracts.** The grid of every contract comes first, with the contracts that have
   lapsed counted above it, and the tables by agreement after it, folded closed behind a
   line that says how many agreements there are and read when it is opened; on Renewals
@@ -1911,13 +1917,22 @@ What 0.9.6 changes:
   end is its agreement's, or that has a term to come, begins with its dates as they are.
   The purchase reference begins blank. Under the button of a contract's renewal, each
   counted by the server: the coverages that have the contract's period and follow, the
-  items it covers today that are marked not to be renewed and stay behind, as a link to
-  them, the coverages that begin after the present term, with the new one, and those
-  that end on a day of their own by then (P-214). An agreement's page has the
+  items it covers today that are marked not to be renewed, as a link to them, with the
+  rule the renewal keeps (it leaves behind those whose coverage runs to the last day of
+  the present term), the coverages that begin after the present term, with the new one,
+  and those that end on a day of their own by then; for a term that names no end, the
+  items in scope and those marked. The counts are read again when a coverage is changed
+  on the page (P-214). On the grid of the items a contract covers, Leave out of the
+  renewal sets the item's own mark Not to be renewed on the items of the rows selected,
+  after a line that says the mark holds for every contract that covers the item, and
+  says how many were marked; Renew after all takes the item's own mark off, so that each
+  has what its model says. Both take particular rows, not all that match, and the counts
+  under the renewal form are read again after them (P-224). An agreement's page has the
   annual cost of each of its contracts, which is always the contract's own, and a row
   of their total, beside the agreement's own figure and not in place of it: a contract
   with no cost counts as none, and the row says how many have none; a draft is not
-  counted (P-215).
+  counted, nor is a contract cancelled or expired, and the row says how many were left
+  out for that (P-215).
 - **A minor item.** Under its heading, one line: its type and model, its position in
   the item it is in, that item as a link, and the site it has in force; and a link,
   Spares of this model here, to the item list filtered to its catalog entry, that site

@@ -66,6 +66,8 @@ export interface FieldSpec {
    * none. For a location: what to say while none is chosen.
    */
   blank?: string;
+  /** For a catalog entry: the HIDs a search does not offer, as an entry as its own successor. */
+  exclude?: readonly string[];
   /** A heading to put above this field, which starts a new group of fields. */
   heading?: string;
   /**

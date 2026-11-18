@@ -23,6 +23,8 @@ export interface PickFieldProps {
   hint?: string;
   error?: string | undefined;
   disabled?: boolean;
+  /** One must stay chosen: another may be chosen, and none is offered to clear it. */
+  required?: boolean;
 }
 
 interface SearchProps extends PickFieldProps {
@@ -59,6 +61,7 @@ interface SearchProps extends PickFieldProps {
  */
 export function PickField(props: SearchProps) {
   const { label, name, value, onChange, known = [], blank = "None", hint, error, disabled } = props;
+  const { required = false } = props;
   const { noun, how, find, none, after } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
@@ -111,7 +114,7 @@ export function PickField(props: SearchProps) {
         <span data-testid={`chosen-${name}`} className={chosen ? undefined : "muted"}>
           {chosen || blank}
         </span>
-        {chosen && (
+        {chosen && !required && (
           <button type="button" onClick={() => choose(null)} disabled={disabled}>
             Clear<span className="visually-hidden"> the {label.toLowerCase()}</span>
           </button>

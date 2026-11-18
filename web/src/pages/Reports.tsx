@@ -12,7 +12,7 @@ import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
 import { contractPath } from "../lib/contracts";
-import { ITEM_WORDS, itemsPath, parseFilter } from "../lib/filter";
+import { ITEM_WORDS, parseFilter } from "../lib/filter";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
 import { useLoad, useTitle } from "../lib/hooks";
@@ -286,9 +286,6 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
         >
           Clear
         </button>
-        {view.filter && !view.filter.startsWith("{") && (
-          <Link to={itemsPath(view.filter)}>These items in the grid</Link>
-        )}
       </p>
     </form>
   );

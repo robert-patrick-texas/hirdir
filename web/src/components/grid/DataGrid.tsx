@@ -61,7 +61,7 @@ import { all, type FilterNode, fieldsText, parseFilter, type QuickFields } from 
 import { plural } from "../../lib/format";
 import { type GridPlace, GridPlaces, placeFor, tabStorage, viewText } from "../../lib/gridPlace";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
-import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
+import { type GridLayout, GridStore, mergeLayout, withoutFilters } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
 import { useSite } from "../../lib/product";
 import { browserStorage } from "../../lib/session";
@@ -238,6 +238,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // The part of the list the grid is of, the same object until what it says changes.
   const withinText = JSON.stringify(props.within ?? {});
   const within = useMemo(() => JSON.parse(withinText) as GridWithin, [withinText]);
+  // A grid of one record's part of a list, under the same id on every record's page,
+  // remembers no filter: one typed on one record's page is not in force on another's.
+  const ofRecord = Boolean(within.filter);
   const { user } = useAuth();
   const { productName } = useSite();
   const navigate = useNavigate();
@@ -252,7 +255,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // filter is the only one, and the column filters remembered are not put back.
   const [fromLink] = useState(() => (props.startFilter ?? null) !== null);
   const [start] = useState(() => {
-    const layout = mergeLayout(defaults, store.load(id));
+    const merged = mergeLayout(defaults, store.load(id));
+    const layout = ofRecord ? withoutFilters(merged) : merged;
     const asked = props.startSwitches;
     const switched = {
       ...layout,
@@ -271,6 +275,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // was opened and is marked, and what the grid showed when the place was taken.
   const restoring = useRef<GridPlace | null>(null);
   const opened = useRef<{ id: string; index: number } | null>(null);
+  // The row opened, until the grid has it and it is drawn marked.
+  const marking = useRef<string | null>(null);
   const shownView = useRef<string | null>(null);
   const [draft, setDraft] = useState(start.short);
   const [short, setShort] = useState(start.short);
@@ -314,7 +320,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   /** Remember the layout as the grid has it now, with the filter box and the switches. */
   function saveLayout(api: GridApi<T>, view: View) {
     if (api.isDestroyed()) return;
-    store.save(id, layoutOf(api.getColumnState(), api.getFilterModel(), view));
+    const layout = layoutOf(api.getColumnState(), api.getFilterModel(), view);
+    store.save(id, ofRecord ? withoutFilters(layout) : layout);
   }
 
   const read = useEffectEvent(props.load);
@@ -385,7 +392,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const layout = mergeLayout(defaults, store.load(id));
+    const merged = mergeLayout(defaults, store.load(id));
+    const layout = ofRecord ? withoutFilters(merged) : merged;
     const base = routerBasename(document.baseURI);
     let made: GridApi<T> | null = null;
     const toTop = () => {
@@ -490,7 +498,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       setGrid(null);
       api.destroy();
     };
-  }, [columns, defaults, store, id, fromLink]);
+  }, [columns, defaults, store, id, fromLink, ofRecord]);
 
   // Give the grid its source of rows, and a new one whenever what is asked for changes.
   // A new source empties the grid's cache, so every row on show is read again.
@@ -560,6 +568,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             setTotal(page.total);
             params.successCallback(page.items, page.total);
             if (params.startRow === 0) arrived(grid, fromTop);
+            else if (marking.current !== null) requestAnimationFrame(() => markOpened(grid));
           },
           (thrown: unknown) => {
             if (controller.signal.aborted) return;
@@ -596,8 +605,30 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       if (rows) rows.scrollTop = place.top;
       window.scrollTo(0, place.windowY);
       restoring.current = null;
-      if (place.opened) setNote("Back where the list was left. The row opened last is marked.");
+      if (place.opened) {
+        setNote("Back where the list was left.");
+        marking.current = place.opened.id;
+        markOpened(api);
+      }
     });
+  });
+
+  /**
+   * The row opened last, once the grid has it: drawn again with its mark, and only then
+   * said to be marked. Its rows may come after the first, as the grid reads them.
+   */
+  const markOpened = useEffectEvent((api: GridApi<T>) => {
+    const rowId = marking.current;
+    if (rowId === null || api.isDestroyed()) return;
+    if (opened.current?.id !== rowId) {
+      marking.current = null;
+      return;
+    }
+    const node = api.getRowNode(rowId);
+    if (!node || node.data === undefined) return;
+    marking.current = null;
+    api.redrawRows({ rowNodes: [node] });
+    setNote("Back where the list was left. The row opened last is marked.");
   });
 
   function showShort(text: string) {

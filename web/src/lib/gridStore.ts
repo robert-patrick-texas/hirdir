@@ -137,6 +137,16 @@ export function mergeLayout(
   };
 }
 
+/**
+ * What is remembered of a grid of one record's part of a list, as a vendor's items or a
+ * contract's coverage: its columns, its sort and its switches, but no filter, neither the
+ * box's text nor a column's. The grid has the same id on every record's page, and a
+ * filter typed on one record's page is not in force on another's (P-211, P-213).
+ */
+export function withoutFilters(layout: GridLayout): GridLayout {
+  return { ...layout, filter: {}, short: "" };
+}
+
 /** The layouts of one user. A browser that refuses storage simply remembers nothing. */
 export class GridStore {
   private readonly storage: Store;

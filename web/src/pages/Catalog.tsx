@@ -276,6 +276,8 @@ function entrySpecs(lists: {
       kind: "entry",
       blank: "No successor",
       hint: "The model that replaces this one",
+      // A model does not replace itself: the server refuses it, and it is not offered.
+      ...(entry ? { exclude: [entry.hid] } : {}),
     },
     { name: "review_status", label: "Review status", kind: "choice", options: REVIEW_STATUSES },
     { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },

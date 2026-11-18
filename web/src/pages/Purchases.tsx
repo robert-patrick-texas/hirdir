@@ -15,7 +15,7 @@ import { effectiveLabel, effectiveText } from "../lib/effective";
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { EVERY, useEntryOptions } from "../lib/lists";
+import { EVERY } from "../lib/lists";
 import { optionLabel } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
@@ -918,9 +918,10 @@ function lineSpecs(
   const model: FieldSpec = {
     name: "catalog_entry_hid",
     label: "Model",
-    kind: "choice",
+    // 0.9.6: searched for, not a list of every model (P-200).
+    kind: "entry",
     options: entries ?? [],
-    ...(keeps ? {} : { blank: "None: the line is not tracked" }),
+    ...(keeps ? { required: true } : { blank: "None: the line is not tracked" }),
     hint: modelHint(line),
   };
   // Asked only where items have arrived on the line and its model is corrected.
@@ -998,15 +999,11 @@ interface AddLineProps {
 }
 
 function AddLine({ request, onCancel, onAdded, onAddedAnother }: AddLineProps) {
-  const entries = useEntryOptions();
   const sites = useLineSites();
-  const specs = useMemo(
-    () => lineSpecs(entries.data, sites.data, null),
-    [entries.data, sites.data],
-  );
+  const specs = useMemo(() => lineSpecs([], sites.data, null), [sites.data]);
   return (
     <>
-      <Problem error={entries.error ?? sites.error} />
+      <Problem error={sites.error} />
       <CreateForm<Schemas["PurchaseLineAdd"], PurchaseLine>
         title={`New line of ${request.reference}`}
         specs={specs}
@@ -1051,21 +1048,20 @@ function ChangeLine({
 }: LineFormProps & { onSaved: (text: string) => void }) {
   // What the change did, said once it is taken: the form knows only that it was.
   const said = useRef("");
-  const entries = useEntryOptions();
   const sites = useLineSites();
   const specs = useMemo(
     () =>
       lineSpecs(
-        withOwn(entries.data, line.catalog_entry_hid, lineModel(line)),
+        withOwn([], line.catalog_entry_hid, lineModel(line)),
         withOwn(sites.data, line.destination_site_hid, line.destination_site?.path),
         line,
       ),
-    [entries.data, sites.data, line],
+    [sites.data, line],
   );
   return (
     <section className="panel" aria-labelledby="change-line" data-testid="change-line">
       <h3 id="change-line">Change {line.name}</h3>
-      <Problem error={entries.error ?? sites.error} />
+      <Problem error={sites.error} />
       <EditForm<PurchaseLine, Schemas["PurchaseLinePatch"]>
         specs={specs}
         record={line}
@@ -1293,7 +1289,15 @@ function Receive({
                 label={`Only at ${site.name}`}
                 name="only_at_site"
                 checked={onlyThere}
-                onChange={setOnlyThere}
+                onChange={(checked) => {
+                  setOnlyThere(checked);
+                  // A location chosen elsewhere cannot stand under Only at the site: the
+                  // field is as it was opened, the site's one location if it has one.
+                  if (checked) {
+                    setLocation("");
+                    setTouched(false);
+                  }
+                }}
                 disabled={action.busy}
                 hint="Clear it to choose a location at any other site."
               />

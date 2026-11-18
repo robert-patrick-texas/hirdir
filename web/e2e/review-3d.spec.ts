@@ -258,7 +258,7 @@ test("P-214: the renewal form starts from what follows, and says what follows, s
   );
   await expect(follows.getByTestId("renew-flagged")).toHaveAttribute("data-count", "1");
   await expect(follows.getByTestId("renew-flagged")).toContainText(
-    "1 item it covers today is marked not to be renewed, and stays behind",
+    `1 item it covers today is marked not to be renewed; the renewal leaves behind those whose coverage runs to ${ends}`,
   );
   await expect(follows.getByTestId("renew-begin")).toContainText(
     `1 coverage begins after ${ends}, with the new term.`,
@@ -273,10 +273,126 @@ test("P-214: the renewal form starts from what follows, and says what follows, s
   );
   // Nothing more is typed than the new reference: the renewal is kept as the next term.
   await form.getByLabel("Purchase reference").fill(`REQ-${upper}-NEW`);
+  // The link to the items it covers goes down this page, and the form and what was typed
+  // stay.
+  await form.getByRole("link", { name: "The items it covers" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Items it covers" })).toBeInViewport();
+  expect(new URL(page.url()).pathname).toMatch(new RegExp(`/contracts/${contract.hid}$`));
+  await expect(page.getByRole("heading", { level: 1, name: number })).toBeVisible();
+  await expect(form.getByLabel("Purchase reference")).toHaveValue(`REQ-${upper}-NEW`);
   await form.getByRole("button", { name: /^Renew for \d+ items?$/ }).click();
   await expect(page.getByText(/^The renewal is kept as the next term\./)).toBeVisible();
   await expect(page.getByTestId("next-term")).toHaveAttribute("data-starts", `${year + 2}-01-01`);
   await expect(page.getByTestId("next-term")).toContainText(`REQ-${upper}-NEW`);
+  await expectClean(page, seen);
+});
+
+test("P-214: for a term that names no end, the renewal form says how many items are marked and stay behind", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const { vendor, model } = await vendorAndModel(request, headers);
+  const number = `EFC-${upper}-15`;
+  const contract = (await make(request, headers, "/contracts", { number, vendor_hid: vendor })).hid;
+  const items: string[] = [];
+  for (const side of ["kept", "marked"]) {
+    items.push(
+      (
+        await make(request, headers, "/items", {
+          catalog_entry_hid: model,
+          hostname: `sw-open-${side}-${id}`,
+          lifecycle_state: "Prod",
+        })
+      ).hid,
+    );
+  }
+  const covered = await request.post(`./api/v1/contracts/${contract}/coverage`, {
+    headers,
+    data: { items: items.map((item_hid) => ({ item_hid })) },
+  });
+  expect(covered.ok(), await covered.text()).toBe(true);
+  await patch(request, headers, `/items/${items[1]}`, { do_not_renew: true });
+
+  await signIn(page, account);
+  await openContractPage(page, contract, number);
+  await page
+    .getByRole("region", { name: "Renew" })
+    .getByRole("button", { name: "Renew", exact: true })
+    .click();
+  const follows = page.getByTestId("renew-form").getByTestId("renew-follows");
+  await expect(follows.getByTestId("renew-no-end")).toContainText(
+    "The present term names no end: 2 items in scope follow, but for those marked not to be renewed.",
+  );
+  await expect(follows.getByTestId("renew-flagged")).toHaveAttribute("data-count", "1");
+  await expect(follows.getByTestId("renew-flagged")).toContainText(
+    "1 item it covers today is marked not to be renewed; the renewal leaves behind those whose coverage runs to the day before the new term begins",
+  );
+  await expect(follows.getByRole("link", { name: "1 item it covers today" })).toBeVisible();
+  await expectClean(page, seen);
+});
+
+test("P-224: items are left out of the renewal from the contract's grid, and one is renewed after all", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const number = `EFC-${upper}-17`;
+  const hosts = ["a", "b", "c", "d"].map((side) => `sw-out-${side}-${id}`);
+  const contract = await contractOver(request, headers, number, hosts, {
+    starts: `${year}-01-01`,
+    ends: `${year + 1}-12-31`,
+  });
+  await signIn(page, account);
+  await openContractPage(page, contract.hid, number);
+  const grid = "grid-contract-coverage";
+  const section = page.getByRole("region", { name: "Items it covers" });
+  await expect(section.getByTestId("grid-total")).toHaveText("4 coverages");
+  // The renewal form is open, and its counts are read again after the marks below.
+  await page
+    .getByRole("region", { name: "Renew" })
+    .getByRole("button", { name: "Renew", exact: true })
+    .click();
+  const flagged = page.getByTestId("renew-form").getByTestId("renew-flagged");
+  await expect(flagged).toHaveAttribute("data-count", "0");
+
+  // Three rows selected: the mark is said to be the item's, for every contract, first.
+  for (const [at, hostname] of hosts.slice(0, 3).entries()) {
+    await gridRow(page, grid, hostname)
+      .locator('[col-id="item.pid"]')
+      .click(at === 0 ? {} : { modifiers: ["ControlOrMeta"] });
+  }
+  await section.getByRole("button", { name: "Leave out of the renewal" }).click();
+  const marking = page.getByTestId("mark-renewal");
+  await expect(marking.getByTestId("mark-renewal-note")).toContainText(
+    "it holds for every contract that covers the item",
+  );
+  await marking.getByRole("button", { name: "Mark 3 items not to be renewed" }).click();
+  await expect(
+    page.getByText("3 items were marked not to be renewed: the renewal leaves them behind."),
+  ).toBeVisible();
+  await expect(flagged).toHaveAttribute("data-count", "3");
+  await expect(flagged).toContainText("3 items it covers today are marked not to be renewed");
+  for (const item of contract.items.slice(0, 3)) {
+    const read = await request.get(`./api/v1/items/${item}`, { headers });
+    expect(((await read.json()) as { do_not_renew: boolean | null }).do_not_renew).toBe(true);
+  }
+
+  // One renewed after all: its own mark is taken off, and it has its model's again.
+  await gridRow(page, grid, hosts[1] ?? "")
+    .locator('[col-id="item.pid"]')
+    .click();
+  await section.getByRole("button", { name: "Renew after all" }).click();
+  await marking.getByRole("button", { name: "Take the mark off 1 item" }).click();
+  await expect(flagged).toHaveAttribute("data-count", "2");
+  const back = await request.get(`./api/v1/items/${contract.items[1]}`, { headers });
+  expect(((await back.json()) as { do_not_renew: boolean | null }).do_not_renew).toBeNull();
   await expectClean(page, seen);
 });
 
@@ -412,6 +528,18 @@ test("P-215: an agreement's page says what each of its contracts costs a year, a
       ...(cost ? { annual_cost: cost } : {}),
     });
   }
+  // A contract cancelled and one expired, with a cost each: neither is in the total.
+  for (const [number, status] of [
+    [`EFC-${upper}-34`, "cancelled"],
+    [`EFC-${upper}-35`, "expired"],
+  ] as const) {
+    await make(request, headers, "/contracts", {
+      number,
+      agreement_hid: agreementHid,
+      status,
+      annual_cost: "90000.00",
+    });
+  }
 
   await signIn(page, account);
   await page.goto(`./agreements/${agreementHid}`);
@@ -429,7 +557,7 @@ test("P-215: an agreement's page says what each of its contracts costs a year, a
   await expect(total.locator('[data-field="annual_cost"]')).toHaveText("1,201,500.00");
   await expect(total.locator("th")).toHaveText("What its 3 contracts cost a year");
   await expect(total.getByTestId("agreement-own-cost")).toHaveText(
-    "The agreement's own: 663,000.00. 1 contract has no cost, and counts as none.",
+    "The agreement's own: 663,000.00. 1 contract has no cost, and counts as none. 2 contracts are cancelled or expired, and not counted.",
   );
   await expectClean(page, seen);
 });

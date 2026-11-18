@@ -373,7 +373,7 @@ export function Contracts() {
         <h2 id="all-contracts">{startFilter === null ? "Every contract" : "Contracts"}</h2>
         {startFilter !== null && (
           <p>
-            <Link to="/contracts">Every contract, by agreement</Link>
+            <Link to="/contracts">Every contract</Link>
           </p>
         )}
         {startFilter === null && <Lapsed />}
@@ -785,7 +785,7 @@ export function ContractDetail() {
                   term. The term it has now is kept beneath, as its history.
                 </p>
               }
-              scope={<RenewScope contract={record} />}
+              scope={<RenewScope contract={record} turn={turn} />}
               submitLabel={`Renew for ${plural(record.items_in_scope, "item")}`}
               note={
                 record.agreement ? (

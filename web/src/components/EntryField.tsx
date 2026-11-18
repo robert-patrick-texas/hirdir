@@ -6,6 +6,7 @@
 
 import { useContext } from "react";
 import { api } from "../api";
+import { offeredEntries } from "../lib/entries";
 import { queryParams } from "../lib/gridQuery";
 import { useLoad } from "../lib/hooks";
 import type { Option } from "../lib/patch";
@@ -14,7 +15,11 @@ import { AddModel, addedOption, nextField, OffersNewModel } from "./AddModel";
 import { type Found, PickField, type PickFieldProps } from "./PickField";
 
 /** The first few catalog entries that match what was typed, the most used first. */
-async function findEntries(typed: string, signal: AbortSignal): Promise<Found | null> {
+async function findEntries(
+  typed: string,
+  signal: AbortSignal,
+  exclude: readonly string[] = [],
+): Promise<Found | null> {
   const filter = entrySearch(typed);
   if (filter === null) return null;
   const page = await api.request("get", "/api/v1/catalog-entries", {
@@ -30,14 +35,7 @@ async function findEntries(typed: string, signal: AbortSignal): Promise<Found | 
     signal,
   });
   sawEntries(page.items);
-  return {
-    options: page.items.map((entry) => ({
-      value: entry.hid,
-      label: entryLabel(entry),
-      draft: entry.record_status === "draft",
-    })),
-    total: page.total,
-  };
+  return offeredEntries(page, exclude);
 }
 
 /**
@@ -64,20 +62,23 @@ function useNamed(value: string, known: readonly Option[]): Option[] {
  * A field of a form that holds a catalog entry, chosen by searching for it (P-200). In New
  * item it offers to add a model the catalog does not have (P-201).
  */
-export function EntryField(props: PickFieldProps) {
+export function EntryField(props: PickFieldProps & { exclude?: readonly string[] }) {
+  const { exclude = [], ...field } = props;
   const known = useNamed(props.value, props.known ?? []);
   const offers = useContext(OffersNewModel);
   return (
     <PickField
-      {...props}
+      {...field}
       known={known}
       noun={["catalog entry", "catalog entries"]}
       how="To choose one, type words of its PID, of its model name or of its vendor's name. Those with the most items come first."
-      find={findEntries}
+      find={(typed, signal) => findEntries(typed, signal, exclude)}
       {...(offers && !props.disabled
         ? {
             after: ({ typed, nothing, choose }) => (
               <AddModel
+                // Closed again once an entry is chosen, by the search or here (P-201).
+                key={props.value}
                 typed={typed}
                 nothing={nothing}
                 onAdded={(entry, from) => {

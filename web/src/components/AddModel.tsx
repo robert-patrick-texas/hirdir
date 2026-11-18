@@ -2,15 +2,19 @@
 // search for its catalog entry: its vendor, PID, model name, kind and type, within the
 // page. The server makes the entry as the catalog page makes it, under the same role;
 // on success it is chosen for the item and the keyboard goes on to the item's next field,
-// and on a refusal the server's answer is shown and everything typed stays.
+// and on a refusal the server's answer is shown and everything typed stays. A refusal
+// because the catalog has the model already offers that entry, to be chosen with Use it,
+// and its page in a new tab, so that New item and what was typed stay.
 
 import { createContext, type KeyboardEvent, useRef, useState } from "react";
+import { Link } from "react-router";
 import { api, type Schemas } from "../api";
+import { ApiError } from "../api/client";
 import { useAction } from "../lib/hooks";
 import { useChoices, useVendorOptions } from "../lib/lists";
 import { CATALOG_KINDS, choiceOptions } from "../lib/options";
 import { entryLabel, sawEntries } from "../lib/pick";
-import { fieldErrors } from "../lib/problems";
+import { existingLead, existingPath, fieldErrors } from "../lib/problems";
 import { SelectField, TextField } from "./Field";
 import { Problem } from "./Problem";
 
@@ -108,6 +112,34 @@ function NewModel({ typed, onAdded, onCancel }: NewModelProps) {
   if (tried && vendor === "") missing.vendor_hid = "Choose the vendor.";
   if (tried && pid.trim() === "") missing.pid = "Give the PID.";
   const errors = { ...refused, ...missing };
+  // The catalog has the model already: that entry is offered, and the refusal says the
+  // rest without its link, which would leave the page.
+  const error = action.error;
+  const existing =
+    error && !error.stale && error.existing?.record_type === "catalog_entry"
+      ? error.existing
+      : null;
+  const existingTo = existing ? existingPath(existing) : null;
+  const said =
+    error && existing
+      ? new ApiError({
+          status: error.status,
+          title: error.title,
+          detail: error.detail,
+          fields: { ...error.fields },
+          retryAfter: error.retryAfter,
+        })
+      : error;
+
+  async function use(hid: string) {
+    const result = await action.run(() =>
+      api.request("get", "/api/v1/catalog-entries/{hid}", { path: { hid } }),
+    );
+    if (result.ok && group.current) {
+      sawEntries([result.value]);
+      onAdded(result.value, group.current);
+    }
+  }
 
   async function add() {
     setTried(true);
@@ -136,7 +168,23 @@ function NewModel({ typed, onAdded, onCancel }: NewModelProps) {
   return (
     <fieldset className="panel add-model-form" ref={group}>
       <legend>Add a model to the catalog</legend>
-      <Problem error={action.error} shown={FIELDS} />
+      <Problem error={said} shown={FIELDS} />
+      {existing && (
+        <p>
+          {existingLead(existing)}{" "}
+          {existingTo ? (
+            <Link to={existingTo} target="_blank" rel="noreferrer">
+              {existing.label}
+              <span className="visually-hidden"> (opens in a new tab)</span>
+            </Link>
+          ) : (
+            <strong>{existing.label}</strong>
+          )}{" "}
+          <button type="button" onClick={() => void use(existing.hid)} disabled={action.busy}>
+            Use it
+          </button>
+        </p>
+      )}
       <Problem error={vendors.error ?? choices.error} />
       <SelectField
         label="Vendor"

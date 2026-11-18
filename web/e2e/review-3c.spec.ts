@@ -113,6 +113,15 @@ async function setUp(request: APIRequestContext, account: Account): Promise<Made
   return made;
 }
 
+/** 0.9.6: the model of a line is chosen by searching for it, here by its PID (P-200). */
+async function chooseModel(form: Locator, pid: string) {
+  await form.getByLabel("Model", { exact: true }).fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid} ·`) })
+    .click();
+}
+
 function lineRow(page: Page, name: string): Locator {
   return page.getByTestId("purchase-lines").locator(`tr[data-line="${name}"]`);
 }
@@ -149,6 +158,16 @@ test("P-209: Receive opens in the window, ready to type, with the locations of t
   await expect(form.getByTestId("chosen-location_hid")).toHaveText("Not said");
 
   // Cleared, Only at searches every site: the person chooses another.
+  await form.getByLabel(`Only at ${label("Harbor Yard")}`).uncheck();
+  await form.getByLabel("Location they were put in").fill(label("Mill Store"));
+  await offered.getByRole("button", { name: new RegExp(label("Mill Store")) }).click();
+  await expect(form.getByTestId("chosen-location_hid")).toContainText(label("Mill Store"));
+
+  // Ticked again, Only at cannot hold a location elsewhere: the choice is cleared, and
+  // the field says so in words, never by a bare HID.
+  await form.getByLabel(`Only at ${label("Harbor Yard")}`).check();
+  await expect(form.getByTestId("chosen-location_hid")).toHaveText("Not said");
+  await expect(offered.getByRole("button")).toHaveCount(2);
   await form.getByLabel(`Only at ${label("Harbor Yard")}`).uncheck();
   await form.getByLabel("Location they were put in").fill(label("Mill Store"));
   await offered.getByRole("button", { name: new RegExp(label("Mill Store")) }).click();
@@ -229,11 +248,11 @@ test("P-208: the next line like the last, a draft site, the lines in the window 
   ).toBeVisible();
 
   // Two lines more, the second like the first: to the draft site, on the same day.
-  const modelLabel = `TW-2400-${upper} (Tidewater 2400)`;
+  const modelPid = `TW-2400-${upper}`;
   const draftSite = `${label("Saltmarsh")} > ${label("Ridge Annex")} (draft)`;
   await page.getByRole("button", { name: "Add a line" }).click();
   const form = page.getByRole("region", { name: `New line of ${reference}` });
-  await form.getByLabel("Model", { exact: true }).selectOption({ label: modelLabel });
+  await chooseModel(form, modelPid);
   await form.getByLabel("Quantity (required)").fill("5");
   await form.getByLabel("Destination site").selectOption({ label: draftSite });
   await form.getByLabel("Expected on").fill("2031-04-02");
@@ -243,7 +262,7 @@ test("P-208: the next line like the last, a draft site, the lines in the window 
   await expect(form.getByLabel("Model", { exact: true })).toBeFocused();
   await expect(form.getByLabel("Destination site")).toHaveValue(made?.annex ?? "");
   await expect(form.getByLabel("Expected on")).toHaveValue("2031-04-02");
-  await form.getByLabel("Model", { exact: true }).selectOption({ label: modelLabel });
+  await chooseModel(form, modelPid);
   await form.getByLabel("Quantity (required)").fill("6");
   await form.getByRole("button", { name: "Add line" }).click();
   const fourth = lineRow(page, `${reference}/4`);
@@ -406,5 +425,15 @@ test("P-211: a vendor's page shows twenty models, its items before its agreement
   await box.fill(`fb-edge-12-${id}`);
   await box.press("Enter");
   await expect(total).toHaveText("1 item");
+
+  // What was typed there is of this vendor's page alone: another vendor's items are not
+  // filtered by it, and it is not remembered for this vendor either.
+  await page.goto(`./vendors/${encodeURIComponent(made?.vendor ?? "")}`);
+  const other = page.getByRole("region", { name: "Its items" });
+  await expect(other.getByLabel("Filter", { exact: true })).toHaveValue("");
+  await expect(other.getByRole("link", { name: `fb-edge-99-${id}`, exact: true })).toBeVisible();
+  await page.goto(`./vendors/${encodeURIComponent(vendor)}`);
+  await expect(section.getByLabel("Filter", { exact: true })).toHaveValue("");
+  await expect(total).toHaveText("22 items");
   await expectClean(page, seen);
 });

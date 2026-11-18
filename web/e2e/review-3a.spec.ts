@@ -188,6 +188,74 @@ test("what is typed into an item's details after Save, while the page reads it a
   await expectClean(page, seen);
 });
 
+test("a kept field that someone else changed meanwhile says so under it, and a field not touched takes the new value (P-202)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await records(request, account);
+  const item = (
+    await make(request, headers, "/items", {
+      hostname: host("mill-sw-02"),
+      location_hid: made.location,
+    })
+  ).hid;
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto(`./items/${item}`);
+  await expect(page.getByRole("heading", { level: 1, name: host("mill-sw-02") })).toBeVisible();
+  const form = details(page);
+  const tag = form.getByLabel("Asset tag");
+  const save = form.getByRole("button", { name: "Save", exact: true });
+  const saved = page.getByRole("status").filter({ hasText: "The item was saved." });
+
+  const reread = await holdBack(page, `**/api/v1/items/${item}`, "GET");
+  await form.getByLabel("Serial number").fill(`SER2-${id}`);
+  await save.click();
+  await expect(saved).toBeVisible();
+  await expect.poll(reread.asked, "the page reads the item again").toBeGreaterThan(0);
+  await tag.fill(`MINE-${id}`);
+  // Another person saves the asset tag and the FQDN before the page has read the item.
+  const now = await read(request, headers, `/items/${item}`);
+  const other = await request.patch(`./api/v1/items/${item}`, {
+    headers,
+    data: {
+      row_version: now.row_version,
+      asset_tag: `THEIRS-${id}`,
+      fqdn: `${host("mill-sw-02")}.example.net`,
+    },
+  });
+  expect(other.status(), await other.text()).toBe(200);
+  const answered = page.waitForResponse(
+    (answer) =>
+      answer.url().endsWith(`/api/v1/items/${item}`) && answer.request().method() === "GET",
+  );
+  reread.release();
+  await answered;
+  await reread.done();
+
+  // What was typed stays, and the person is told what saving it replaces.
+  const note = `Changed meanwhile to “THEIRS-${id}”; saving replaces it.`;
+  await expect(form.getByLabel("FQDN")).toHaveValue(`${host("mill-sw-02")}.example.net`);
+  await expect(tag).toHaveValue(`MINE-${id}`);
+  await expect(form.getByText(note, { exact: true })).toBeVisible();
+  await expect(tag).toHaveAccessibleDescription(new RegExp(`THEIRS-${id}.*saving replaces it`));
+  await expect(form.getByRole("status").filter({ hasText: `Asset tag: ${note}` })).toHaveCount(1);
+  // The field the person did not touch takes the new value, and nothing is said of it.
+  await expect(form.getByLabel("FQDN")).not.toHaveAccessibleDescription(/meanwhile/);
+
+  // Saving replaces it, as the person was told, and the note goes.
+  await save.click();
+  await expect(saved).toBeVisible();
+  await expect
+    .poll(async () => (await read(request, headers, `/items/${item}`)).asset_tag)
+    .toBe(`MINE-${id}`);
+  await expect(form.getByText("Changed meanwhile", { exact: false })).toHaveCount(0);
+
+  await expectClean(page, seen);
+});
+
 /** The part of a grid whose rows scroll, and how far it is scrolled. */
 function scrolled(grid: Locator): Promise<number> {
   return grid.locator(".ag-grid-viewport").evaluate((rows) => Math.round(rows.scrollTop));
@@ -486,6 +554,52 @@ test("a model that is not in the catalog is added from New item, and what was ty
   await form.getByLabel("Catalog entry").fill(id);
   await expect(entriesFound(form).getByRole("button").first()).toBeVisible();
   await expect(form.getByRole("button", { name: "Add a model to the catalog" })).toBeVisible();
+
+  await expectClean(page, seen, ["409 POST"]);
+});
+
+test("a model the catalog has already is offered to be used, and the part that adds one closes once an entry is chosen (P-201)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = page.getByRole("region", { name: "New item", exact: true });
+  await form.getByLabel("Hostname").fill(host("new-model-02"));
+  const chosen = form.getByTestId("chosen-catalog_entry_hid");
+  const entryName = `${made.pid} · ${label("Sample Networks")} · ${label("Edge Switch")}`;
+
+  // The part that adds a model is open; an entry chosen from the search closes it.
+  await form.getByLabel("Catalog entry").fill(id);
+  await form.getByRole("button", { name: "Add a model to the catalog" }).click();
+  const add = form.getByRole("group", { name: "Add a model to the catalog" });
+  await expect(add).toBeVisible();
+  await entriesFound(form).getByRole("button", { name: entryName }).click();
+  await expect(chosen).toHaveText(entryName);
+  await expect(add).toHaveCount(0);
+  await form.getByRole("button", { name: "Clear the catalog entry" }).click();
+
+  // The PID the catalog has already: the refusal offers that entry, to use or to open
+  // in a new tab, and Use it chooses it with what was typed kept.
+  await form.getByLabel("Catalog entry").fill(`${id}-none`);
+  await expect(form.getByText("No catalog entry matches.")).toBeVisible();
+  await form.getByRole("button", { name: "Add this model to the catalog" }).click();
+  await add.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
+  await add.getByLabel("PID").fill(made.pid ?? "");
+  await add.getByRole("button", { name: "Add to the catalog" }).click();
+  await expect(add.getByText("The catalog entry that has it:")).toBeVisible();
+  const existing = add.getByRole("link", { name: /opens in a new tab/ });
+  await expect(existing).toHaveAttribute("target", "_blank");
+  await expect(existing).toHaveAttribute("href", new RegExp(`/catalog/${made.entry}$`));
+  await add.getByRole("button", { name: "Use it" }).click();
+  await expect(chosen).toHaveText(entryName);
+  await expect(add).toHaveCount(0);
+  await expect(form.getByLabel("Hostname")).toHaveValue(host("new-model-02"));
 
   await expectClean(page, seen, ["409 POST"]);
 });

@@ -169,6 +169,8 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             onChange={(next) => onChange(name, next)}
             known={spec.options ?? []}
             {...(spec.blank === undefined ? {} : { blank: spec.blank })}
+            {...(spec.exclude === undefined ? {} : { exclude: spec.exclude })}
+            {...(spec.required === undefined ? {} : { required: spec.required })}
           />
         );
       case "operator":
