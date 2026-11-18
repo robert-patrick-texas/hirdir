@@ -2179,7 +2179,12 @@ One grid component is used on every list page.
 - **Copy** puts the selected rows on the clipboard as tab-separated text with a header
   row. **Export** sends the current filter, sort and columns to `POST /exports`. With
   particular rows selected, copy, export and bulk edit all act on exactly those rows,
-  named by their HIDs, also when one of them no longer matches the filter.
+  named by their HIDs, also when one of them no longer matches the filter. Beside them,
+  on a list whose records name a place, items, groups, regions, sites, locations, the
+  contacts of places, capacity lines and circuits, a box **Places by code**, off when
+  the list is opened, sends `place_codes` with Copy and with Export while it is ticked,
+  so that each place is written the short way, `S2 > R102` (P-235). It is not
+  remembered.
 - **Edit** opens the record's form. **Bulk edit** opens a form for the selected rows,
   shows a before-and-after preview, and applies on confirmation, in the background as
   an import is: it shows how far the apply has got, and the rows left out as stale.

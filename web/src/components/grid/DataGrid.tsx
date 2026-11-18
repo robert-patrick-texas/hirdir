@@ -79,6 +79,7 @@ import {
   exportRequest,
   type FileFormat,
   type GridView,
+  namesPlaces,
 } from "../../lib/transfer";
 import { CheckField, TextField } from "../Field";
 import { Notice, Problem } from "../Problem";
@@ -322,6 +323,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const [done, setDone] = useState("");
   const [failure, setFailure] = useState<ApiError | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
+  // 0.9.7: Copy and Export write each place by its codes, while this is ticked (P-235).
+  const [placeCodes, setPlaceCodes] = useState(false);
+  const byCode = placeCodes && entity !== undefined && namesPlaces(entity);
   const refusedBox = useRef<HTMLTextAreaElement>(null);
 
   // Text the clipboard refused is shown selected, ready to be copied by hand.
@@ -828,6 +832,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       viewOf(grid),
       exportColumns(columns, grid.getColumnState()),
       chosen,
+      byCode,
     );
     began("copy");
     let count = 0;
@@ -861,6 +866,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       viewOf(grid),
       exportColumns(columns, grid.getColumnState()),
       chosen,
+      byCode,
     );
     began(format);
     try {
@@ -1035,6 +1041,15 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               <button type="button" onClick={() => exportAs("json")} disabled={!total || busy}>
                 {withCount("Export JSON", chosenCount)}
               </button>
+              {namesPlaces(entity) && (
+                <CheckField
+                  label="Places by code"
+                  name="place_codes"
+                  checked={placeCodes}
+                  onChange={setPlaceCodes}
+                  disabled={busy}
+                />
+              )}
             </>
           )}
           {onBulkEdit && (
@@ -1090,6 +1105,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         filter, Space selects a row and Enter opens it.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
+        {entity &&
+          namesPlaces(entity) &&
+          " With Places by code they write each place the short way, by the codes of its site and its own, as S2 > R102, which loads back to the same place."}
         {minor &&
           ` Until ${minor.label} is on, minor items are left out of the grid, and so of what is copied, exported and edited in bulk.`}
       </p>
