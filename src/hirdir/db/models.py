@@ -557,14 +557,17 @@ class ItemReplacement(Bookkeeping, Base):
     """One item that took the place of another. Both records remain."""
 
     __tablename__ = "item_replacements"
+    # An item is replaced, and takes a place, as often as that happens (P-241): what is
+    # unique is the two items with the day.
     __table_args__ = (
-        UniqueConstraint("old_item_hid", name="item_replacements_old"),
-        UniqueConstraint("new_item_hid", name="item_replacements_new"),
+        UniqueConstraint(
+            "old_item_hid", "new_item_hid", "replaced_on", name="item_replacements_pair_day"
+        ),
     )
 
     hid: Mapped[str] = _hid()
-    old_item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"))
-    new_item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"))
+    old_item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"), index=True)
+    new_item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"), index=True)
     reason: Mapped[str] = mapped_column(String(40))
     reference: Mapped[str | None] = mapped_column(String(200), default=None)
     replaced_on: Mapped[date] = mapped_column(Date)

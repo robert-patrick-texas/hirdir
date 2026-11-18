@@ -356,21 +356,51 @@ report by `operator`.
 | `replaced_on` | date | left out, today in the application's time zone |
 
 A replacement is made by `POST /items/{hid}/replace` on the item that leaves. The item
-that takes its place is one that exists, or is created by the same request. An item is
-replaced once, and takes the place of one item, never of one that in the end took its
-own. What is handed over is the role, the mark of the intended master with it; the
-master that was seen is not, because nobody has seen the new item as master. The new
-item takes over the old one's
-current memberships of groups, with the same role and position: each of the old ones
-ends on `replaced_on` and each of the new ones begins then, so a stack keeps its HID
-and its master through an RMA. The old membership ends before the new one begins, so
-the position it held is free for the new item (P-219). The replacement moves neither item in the lifecycle;
-that is done by a transition, with its own reason.
+that takes its place is one that exists, or is created by the same request. What is
+handed over is the role, the mark of the intended master with it; the master that was
+seen is not, because nobody has seen the new item as master. The new item takes over
+the old one's current memberships of groups, with the same role and position: each of
+the old ones ends on `replaced_on` and each of the new ones begins then, so a stack
+keeps its HID and its master through an RMA. The old membership ends before the new
+one begins, so the position it held is free for the new item (P-219).
+
+**An item is replaced, and takes another's place, as often as that happens** (P-241).
+A spare goes into a stack for a member that failed, is pulled a year later and goes
+back to the pool, and takes the place of another; the switch that came back from the
+manufacturer takes the place of the one that had taken its own. Two things are
+refused: an item does not take its own place, and one item does not take the place of
+the same other twice on one day, which is the uniqueness of the table: the two items
+with the day. An item's record lists its `replacements`, each with the other item,
+whether this one `left` or `came`, the reason, the reference and the day, the latest
+first, by the day and then by when it was entered; `replaces` and `replaced_by` are
+the latest of each, or null, and are what a list, a filter and an export show.
+
+**A replacement moves neither item by a rule, and changes of each what its request
+names** (P-242). With `drop_identity`, where the item that leaves is a current member
+of a stack, the item that comes gives up its own host name, FQDN, addresses and
+location as a member that joins does (P-217), and may be given a disposition and an
+intent. With `old_item` the item that left is given what becomes of it, as a member
+that leaves is (P-218): a host name and an FQDN, a location, a lifecycle state with its
+reason, a disposition, an intent and a condition (P-245). Each is checked by that
+item's own rules once the places are handed over, and audited as its change, which
+names the replacement it came from in `replacing`; where one is refused the
+replacement is not made. What becomes of the old item is done with the request, so it
+is given with a day that has come.
+
+**A replacement that was a mistake is removed by an Admin** (P-238), with a reason:
+`POST /item-replacements/{hid}/remove`. The audit event, `delete`, holds the
+replacement as it was, and each of the two items has an event of it in its history.
+What the replacement handed over, memberships and the connections of circuits, stays
+as it is: each is a fact of its own, put right on the page of its group or its
+circuit. Nothing else removes a replacement, and an item that is part of none may be
+deleted by the rule of every other (P-227).
 
 The record arrives in release 0.4.0. From 0.6.0 replacements travel in files, as
 `item_replacements`, and `GET /reports/replacements` lists them with the count of each
-reason. A row of a file is matched by the item that left: an item is replaced once, so
-a row that names another new item for it is rejected.
+reason. A row of a file is matched by its HID, or else by its two items and its day. A
+row that gives no day is the one replacement of those two items where there is one,
+and a new one, of today, where there is none; where there are several it is rejected,
+and asks for the day.
 
 ### `device_groups` and `device_group_members`
 
@@ -431,9 +461,25 @@ Rules, checked on every write:
   request names.
 - **A member that leaves is given what becomes of it in the same step** (P-218). The
   end of a membership may carry a host name and an FQDN, a location, a lifecycle state
-  with its reason, a disposition and an intent for the item, each checked by the item's
-  own rules once the membership has ended, and refused with the end where one of them
-  is refused.
+  with its reason, a disposition, an intent and a condition (P-245) for the item, each
+  checked by the item's own rules once the membership has ended, and refused with the
+  end where one of them is refused.
+- **A switch that stands alone is made a stack** (P-243). `POST
+  /items/{hid}/make-stack` makes a stack and puts the item into it as its first member,
+  at position 1, in one change. The stack has the name the request gives, the item's
+  own where it gives none, and takes from the item what a stack holds for its members:
+  the host name and the FQDN; the addresses, each moved to the stack as it is, with its
+  network, its role and whether it is the primary one; and the location, the planned
+  location, the owner and the operator that the item has of its own. The item gives
+  each up in the same change, and has those four from the stack from then on, resolved
+  when read as for any member: nothing is held twice. Everything else of the item
+  stays its own: its serial number, model and asset tag, its state, its tags, its
+  coverage, its registrations and the circuits connected to it. The request may name
+  more members, each added as any member of a stack is (P-217). Each part is audited,
+  and each change of the item and each address moved says the stack it was made for,
+  in `joining_group`. It is refused for a minor item, for an item that is retired or
+  has left the team's hands, for one that is a current member of a stack, and where a
+  group has the name.
 - An item is a current member of one group at most once, and of at most one stack and
   at most one cluster among the groups that are not retired. The members of a stack
   and of a cluster are major items.
@@ -508,7 +554,11 @@ types it a second time.
 `name` is required and holds no `>`. Within one region, a site and a region directly
 beneath it do not share a name, so that a path names one record. `code` is optional, a short name such as `CEN` or
 `S2`, and is unique when present: among regions, among sites, and within its site for a
-location. `latitude` and `longitude` are decimal degrees with up to six places, given
+location. A code that a region has is refused for a site, and a site's for a region,
+naming the record that has it, so that a path that begins with a code leads to one
+place (P-237); a region and a site that hold one code from before stay as they are
+until the code of one is changed, and a change of anything else of either goes
+through. `latitude` and `longitude` are decimal degrees with up to six places, given
 together or not at all. All three records take tags, and links (see "Links"), which a
 place does not pass down to the places beneath it. The answer of a site and of a
 location holds `map_url`, the address of a map at its coordinates, made of the setting
