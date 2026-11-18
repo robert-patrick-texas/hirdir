@@ -23,7 +23,17 @@ from hirdir.db.models import (
     Operator,
     Owner,
 )
-from hirdir.domain import addresses, audit, geography, health, items, records, settings, tags
+from hirdir.domain import (
+    addresses,
+    audit,
+    geography,
+    health,
+    items,
+    lifecycle,
+    records,
+    settings,
+    tags,
+)
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -737,13 +747,19 @@ def _joining(
 
 
 @contextmanager
-def _named_at(where: str) -> Generator[None]:
-    """Name each field of a refusal as the member it is about: `members.0.disposition`."""
+def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[None]:
+    """Name each field of a refusal as the member it is about: `members.0.disposition`.
+
+    `renamed` gives the name the request has for a field the rule names otherwise.
+    """
     try:
         yield
     except (Invalid, Conflict) as error:
         if where:
-            error.fields = {f"{where}{name}": message for name, message in error.fields.items()}
+            error.fields = {
+                f"{where}{(renamed or {}).get(name, name)}": message
+                for name, message in error.fields.items()
+            }
         raise
 
 
@@ -882,11 +898,25 @@ def update_member(
     Marking a member as the intended master of a stack takes the mark from the member
     that had it, in the same change. No rule stops a member leaving, the master among
     them: a stack may be left with no intended master, and with none that is seen.
+
+    `item`, given with the end of a current membership, is what the item is to have
+    from the end: it is changed by its own rules once the membership has ended (P-218).
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
     member = get_member(db, group_hid, member_hid)
     ended = member.left_on is not None
+    back = fields.get("item")
+    if back is not None and ended:
+        raise Invalid(
+            "this membership has ended",
+            {"item": "what becomes of the item is given as it leaves; change it on its own page"},
+        )
+    if back is not None and fields.get("left_on") is None:
+        raise Invalid(
+            "what becomes of the item is given with the end",
+            {"item": "give left_on with it"},
+        )
     values: dict[str, Any] = {}
     if "role" in fields:
         values["role"] = _checked_role(group, fields["role"])
@@ -915,7 +945,59 @@ def update_member(
     records.apply(db, context, MEMBER_TYPE, member, row_version, values)
     if leaving:
         _forget_observed_master(db, context, group, member.item_hid)
+    if back:
+        # The membership has ended first, so that the item's rules see one that has left.
+        _give_back(db, context, group, member.item_hid, back)
     return member
+
+
+# What an item that leaves a group may be given with the end, beside its standing.
+LEAVING = ("hostname", "fqdn", "location_hid")
+
+
+def _give_back(
+    db: Session, context: AuditContext, group: DeviceGroup, item_hid: str, given: Mapping[str, Any]
+) -> None:
+    """Give an item that has left a group what the request says it is to have (P-218).
+
+    Each part is applied by the item's own rules, as a file of items applies them: a
+    state that is not the item's moves it by a transition, with the reason as its why
+    and the disposition and intent as named; otherwise these are an edit, and a reason
+    is refused. Each change is audited as the item's, and says it was made by leaving.
+    """
+    leaving = audit.because(context, "leaving_group", group.hid, None)
+    item = items.get_item(db, item_hid)
+    with _named_at("item.", {"to": "lifecycle_state", "reason": "state_reason"}):
+        state = given.get("lifecycle_state")
+        if "lifecycle_state" in given and state is None:
+            raise Invalid(
+                "a lifecycle state is not cleared",
+                {"lifecycle_state": "an item leaves a state by moving to another"},
+            )
+        moving = state is not None and lifecycle.state_name(state) != item.lifecycle_state
+        reason = given.get("state_reason")
+        fields = {name: given[name] for name in LEAVING if name in given}
+        if not moving:
+            if reason is not None and records.key(reason) != records.key(item.state_reason or ""):
+                raise Invalid(
+                    "a reason is given with a move",
+                    {"state_reason": "a reason is taken with a move to another lifecycle state"},
+                )
+            fields.update({name: given[name] for name in STANDING if name in given})
+        if fields:
+            items.update_item(db, leaving, item.hid, item.row_version, fields)
+        if moving:
+            items.transition(
+                db,
+                leaving,
+                item.hid,
+                item.row_version,
+                to=state,
+                role=None,
+                reason=reason,
+                disposition=given.get("disposition", lifecycle.UNSET),
+                expected_online=given.get("expected_online", lifecycle.UNSET),
+            )
 
 
 def leave_all(db: Session, context: AuditContext, item_hid: str) -> None:

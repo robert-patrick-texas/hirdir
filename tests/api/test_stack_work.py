@@ -11,6 +11,8 @@ from tests.api.inventory import Maker, errors
 from tests.api.test_files import Files, counts, table
 
 STACK = "cw07-idf03-acc1"
+# A day after whichever day the test runs on, when a member joins "today".
+LATER = "2099-01-01"
 
 
 @pytest.fixture
@@ -322,3 +324,186 @@ def test_a_file_of_members_says_what_each_switch_gives_up(make: Maker, files: Fi
     assert "drop_identity" not in files.export("device_group_members").splitlines()[0]
     rows = table(files.export("device_group_members", columns=["item", "drop_identity"]))
     assert {row["drop_identity"] for row in rows} == {""}
+
+
+# --- leaving with what becomes of it (P-218) -----------------------------------------
+
+
+def _end(
+    make: Maker, stack: dict[str, Any], whose: dict[str, Any], expect: int = 200, **body: Any
+) -> dict[str, Any]:
+    """Change the current membership of an item in a stack as the body says: end it."""
+    member = next(one for one in make.members(stack) if one["item_hid"] == whose["hid"])
+    return make.patch(
+        f"/device-groups/{stack['hid']}/members/{member['hid']}",
+        {"row_version": member["row_version"], **body},
+        expect,
+    )
+
+
+def _in_service(make: Maker, room: dict[str, Any]) -> tuple[dict, list[dict]]:
+    """A stack of three switches in service, which have nothing of their own."""
+    switches = [
+        _switch(make, number, disposition="Production", expected_online=True)
+        for number in (1, 2, 3)
+    ]
+    return _stack(make, room, *switches), switches
+
+
+def test_a_member_pulled_to_the_spare_pool_is_given_a_name_and_a_place_with_the_end(
+    make: Maker,
+) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    pulled = switches[2]
+    assert _item(make, pulled)["effective"]["location_hid"]["source_hid"] == stack["hid"]
+
+    ended = _end(
+        make,
+        stack,
+        pulled,
+        left_on=LATER,
+        item={
+            "hostname": "spare-sw-901",
+            "fqdn": "spare-sw-901.example.net",
+            "location_hid": places["depot"]["hid"],
+            "disposition": "Spare",
+            "expected_online": False,
+        },
+    )
+
+    assert ended["left_on"] == LATER
+    spare = _item(make, pulled)
+    assert (spare["hostname"], spare["fqdn"], spare["location_hid"]) == (
+        "spare-sw-901",
+        "spare-sw-901.example.net",
+        places["depot"]["hid"],
+    )
+    assert (spare["lifecycle_state"], spare["disposition"], spare["expected_online"]) == (
+        "Prod",
+        "Spare",
+        False,
+    )
+    assert spare["groups"] == []
+    # One change of the item, audited as its own and as made by leaving the stack, with
+    # the request of the end.
+    event = make.audit(record_type="item", record_hid=pulled["hid"])[0]
+    end = make.audit(record_type="device_group_member", record_hid=ended["hid"])[0]
+    assert (event["action"], event["request_id"]) == ("update", end["request_id"])
+    assert _changed(event)["location_hid"] == (None, places["depot"]["hid"])
+    assert _cause(event) == [{"field": "leaving_group", "old": stack["hid"], "new": None}]
+    assert _cause(end) == []
+
+
+def test_a_failed_member_is_moved_for_return_or_as_excess_with_the_end(make: Maker) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    failed, worn = switches[1], switches[2]
+
+    _end(
+        make,
+        stack,
+        failed,
+        left_on=LATER,
+        item={"lifecycle_state": "Pending-Removal", "state_reason": "rma"},
+    )
+    returned = _item(make, failed)
+    assert (returned["lifecycle_state"], returned["state_reason"]) == ("Pending-Removal", "rma")
+    # Pending-Removal keeps the disposition it came with, and is not expected online.
+    assert (returned["disposition"], returned["expected_online"]) == ("Production", False)
+    move = make.audit(record_type="item", record_hid=failed["hid"])[0]
+    assert move["action"] == "transition"
+    assert _changed(move)["lifecycle_state"] == ("Prod", "Pending-Removal")
+    assert _cause(move) == [{"field": "leaving_group", "old": stack["hid"], "new": None}]
+
+    _end(
+        make,
+        stack,
+        worn,
+        left_on=LATER,
+        item={
+            "lifecycle_state": "Pending-Removal",
+            "state_reason": "retired",
+            "disposition": "Excess",
+        },
+    )
+    excess = _item(make, worn)
+    assert (excess["lifecycle_state"], excess["disposition"]) == ("Pending-Removal", "Excess")
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
+
+
+def test_an_item_that_leaves_for_good_does_not_collide_with_its_other_groups(
+    make: Maker,
+) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    failed = switches[1]
+    lab = make.group("lab-kit", "custom", [(failed, "member")])
+    make.move(_item(make, failed), "Pending-Removal", reason="rma")
+
+    # A move to Released ends the memberships the item has: the stack's has ended first,
+    # on its own day, and the other group's ends today, as any such move ends it.
+    _end(
+        make,
+        stack,
+        failed,
+        left_on=LATER,
+        item={"lifecycle_state": "Released", "state_reason": "returned"},
+    )
+    gone = _item(make, failed)
+    assert (gone["lifecycle_state"], gone["groups"]) == ("Released", [])
+    past = make.members(stack, include_past="true")
+    assert [one["left_on"] for one in past if one["item_hid"] == failed["hid"]] == [LATER]
+    assert make.members(lab) == []
+    assert make.get(f"/device-groups/{lab['hid']}")["member_count"] == 0
+
+
+def test_a_refused_part_of_what_becomes_of_it_leaves_the_membership_and_the_item(
+    make: Maker,
+) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    member = switches[2]
+    day = LATER
+
+    refusals = [
+        # A disposition its state does not allow, given with a name that would be taken.
+        ({"hostname": "spare-sw-902", "disposition": "Excess"}, "item.disposition"),
+        # Production in Prod is expected online.
+        ({"disposition": "Production", "expected_online": False}, "item.expected_online"),
+        # A move the rules do not list, which is never forced here.
+        ({"lifecycle_state": "Delivered"}, "item.lifecycle_state"),
+        ({"lifecycle_state": "Nowhere"}, "item.lifecycle_state"),
+        # A reason is taken with a move.
+        ({"state_reason": "rma"}, "item.state_reason"),
+        (
+            {"lifecycle_state": "Pending-Removal", "state_reason": "no-such-reason"},
+            "item.state_reason",
+        ),
+        ({"location_hid": "01900000-0000-7000-8000-000000000000"}, "item.location_hid"),
+    ]
+    for given, field in refusals:
+        problem = _end(make, stack, member, 422, left_on=day, item=given)
+        assert set(errors(problem)) == {field}, given
+    # What becomes of the item is given with the end of a current membership.
+    problem = _end(make, stack, member, 422, item={"hostname": "spare-sw-902"})
+    assert set(errors(problem)) == {"item"}
+
+    still = _item(make, member)
+    assert (still["hostname"], still["disposition"], still["lifecycle_state"]) == (
+        None,
+        "Production",
+        "Prod",
+    )
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 3
+    assert make.audit(record_type="item", record_hid=member["hid"])[0]["action"] == "create"
+
+    # Once it has ended, the item is changed on its own page.
+    _end(make, stack, member, left_on=day)
+    ended = make.members(stack, include_past="true")[-1]
+    problem = make.patch(
+        f"/device-groups/{stack['hid']}/members/{ended['hid']}",
+        {"row_version": ended["row_version"], "left_on": day, "item": {"hostname": "late"}},
+        422,
+    )
+    assert set(errors(problem)) == {"item"}
