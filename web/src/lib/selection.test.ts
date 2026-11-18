@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tickName, tickState, withCount } from "./selection";
+import { shiftRange, tickName, tickState, withCount } from "./selection";
 
 describe("the buttons that act on the rows chosen say how many (P-233)", () => {
   it("counts the rows ticked", () => {
@@ -21,6 +21,14 @@ describe("the buttons that act on the rows chosen say how many (P-233)", () => {
     );
     expect(withCount("Retire", { ticked: 0, allMatching: true, total: 12 }, true)).toBe("Retire");
     expect(withCount("Copy", { ticked: 0, allMatching: true, total: null })).toBe("Copy");
+  });
+});
+
+describe("Shift with a press or with Space (P-233)", () => {
+  it("takes the rows from the one last pressed to this one, either way", () => {
+    expect(shiftRange(3, 6)).toEqual([3, 6]);
+    expect(shiftRange(8, 4)).toEqual([4, 8]);
+    expect(shiftRange(null, 5)).toEqual([5, 5]);
   });
 });
 

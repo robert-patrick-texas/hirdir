@@ -195,3 +195,87 @@ test("the box in the heading ticks the rows read so far, and shows all ticked on
   await expect(copy).toHaveText("Copy");
   await expectClean(page, seen);
 });
+
+test("Shift with a press or with Space ticks the rows from the one last pressed to this one, and unticks nothing", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  const shift = mark("ticked");
+  const names = Array.from(
+    { length: 12 },
+    (_, at) => `Example Shift ${shift} ${String(at).padStart(2, "0")}`,
+  );
+  await signIn(page, account);
+  await importFile(
+    page,
+    "vendors",
+    `vendors-${shift}.csv`,
+    ["name"],
+    names.map((name) => [name]),
+  );
+  const seen = await watch(page.context());
+  await page.goto(`./vendors?filter=${encodeURIComponent(`name:contains:${shift}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("12 vendors");
+  await page.getByRole("columnheader", { name: "Name" }).click();
+  const row = (at: number) => gridRow(page, names[at] ?? "");
+  const press = (at: number, modifiers: ("Shift" | "ControlOrMeta")[] = []) =>
+    row(at).locator('[col-id="review_status"]').click({ modifiers });
+  /** The rows ticked, by their place in the list. */
+  const ticked = () =>
+    page
+      .getByTestId(grid)
+      .locator(".ag-row-selected[row-index]")
+      .evaluateAll((rows) =>
+        [...new Set(rows.map((one) => Number(one.getAttribute("row-index"))))].sort(
+          (one, other) => one - other,
+        ),
+      );
+  const clear = async () => {
+    await page.getByRole("button", { name: "Clear selection" }).click();
+    await expect.poll(ticked).toEqual([]);
+  };
+  await expect(row(0)).toHaveAttribute("row-index", "0");
+
+  // Rows 0 and 9 ticked; 3 ticked and unticked; Shift with a press on 6: 3 to 6 join them.
+  await press(0);
+  await press(9);
+  await press(3);
+  await press(3);
+  await press(6, ["Shift"]);
+  await expect.poll(ticked).toEqual([0, 3, 4, 5, 6, 9]);
+  await clear();
+
+  // 1 to 6 by Shift; 4 unticked by a press; Shift with a press on 8: 4 to 8, and 1 to 3 stay.
+  await press(1);
+  await press(6, ["Shift"]);
+  await press(4);
+  await expect.poll(ticked).toEqual([1, 2, 3, 5, 6]);
+  await press(8, ["Shift"]);
+  await expect.poll(ticked).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  await clear();
+
+  // The keyboard the same: Space unticks 4, Shift with Space on 7 ticks 4 to 7.
+  await press(1);
+  await press(6, ["Shift"]);
+  await row(4).locator('[col-id="review_status"]').focus();
+  await page.keyboard.press("Space");
+  await expect.poll(ticked).toEqual([1, 2, 3, 5, 6]);
+  for (let step = 0; step < 3; step += 1) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Shift+Space");
+  await expect.poll(ticked).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  await clear();
+
+  // Within a range, Shift with a press on a box shortens nothing: 0, 2 to 6 and 9 stay.
+  await press(9);
+  await press(0);
+  await press(2);
+  await press(6, ["Shift"]);
+  await expect.poll(ticked).toEqual([0, 2, 3, 4, 5, 6, 9]);
+  await row(4)
+    .locator(".ag-selection-checkbox input")
+    .click({ modifiers: ["Shift"] });
+  await expect.poll(ticked).toEqual([0, 2, 3, 4, 5, 6, 9]);
+  await expect(page.getByTestId("grid-selected")).toContainText("7 selected");
+  await expectClean(page, seen);
+});

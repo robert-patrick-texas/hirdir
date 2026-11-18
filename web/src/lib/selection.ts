@@ -23,6 +23,15 @@ export function withCount(label: string, chosen: ChosenCount, rowsOnly = false):
   return label;
 }
 
+/**
+ * The rows that Shift with a press, or with Space, ticks: from the row last pressed
+ * without Shift to this one, whichever comes first; this one alone where none was.
+ */
+export function shiftRange(anchor: number | null, to: number): [first: number, last: number] {
+  if (anchor === null) return [to, to];
+  return anchor <= to ? [anchor, to] : [to, anchor];
+}
+
 /** What the box in the heading shows: no row ticked, some, or every row of the list. */
 export type TickState = "none" | "some" | "all";
 

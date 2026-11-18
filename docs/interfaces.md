@@ -2224,7 +2224,10 @@ One grid component is used on every list page.
 - Select whole rows: one, a range with Shift, several one by one, or "all that match the
   filter", which is shown as a count and sent to the server as the filter, not as a list
   of rows. Pressing a row ticks it or unticks it, and unticks nothing else, so that a
-  stray press costs one tick and not forty; Shift with a press takes the rows between.
+  stray press costs one tick and not forty. Shift with a press, on a row or on its box,
+  or with Space, ticks the rows from the one last pressed without Shift to this one, and
+  unticks nothing, whether the row last pressed was ticked or unticked by that press;
+  the web takes the gesture itself, since the grid's own would untick the rest.
   A press on a link in a row follows the link and changes no tick; Ctrl or the middle
   button on a link opens it in a new tab, as a browser does.
 - Rows are ticked (P-233). Every list whose rows are selected has a column of boxes at
