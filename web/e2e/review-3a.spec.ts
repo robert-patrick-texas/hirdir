@@ -59,6 +59,7 @@ const made: {
   vendor?: string;
   pid?: string;
   entry?: string;
+  second?: string;
   item?: string;
 } = {};
 
@@ -307,4 +308,118 @@ test("a list shows its rows where the browser refuses session storage (P-203)", 
   await expect(grid.locator(".ag-row[row-index='0']")).toBeVisible();
   await expectClean(page, seen);
   await context.close();
+});
+
+/** The list a search for a catalog entry offers in a form. */
+function entriesFound(form: Locator): Locator {
+  return form.getByRole("list", { name: "Catalog entries that match" });
+}
+
+/** A second model of the file's vendor, made once. */
+async function secondEntry(request: APIRequestContext, headers: Headers): Promise<string> {
+  if (made.second === undefined) {
+    made.second = (
+      await make(request, headers, "/catalog-entries", {
+        vendor_hid: made.vendor,
+        pid: `SN-24T-${id}`,
+        model_name: label("Access Switch"),
+      })
+    ).hid;
+  }
+  return made.second;
+}
+
+test("a catalog entry is chosen by searching for it, in New item, in an item's details and as a successor (P-200)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await records(request, account);
+  const second = await secondEntry(request, headers);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = page.getByRole("region", { name: "New item", exact: true });
+  const entry = form.getByLabel("Catalog entry");
+  const serial = form.getByLabel("Serial number");
+  const hostname = form.getByLabel("Hostname");
+
+  // The search answers late, as a busy server does: it is said, and the answer comes.
+  await page.route("**/api/v1/catalog-entries?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue().catch(() => {});
+  });
+  // Each word is looked for in the PID, the model name and the vendor's name.
+  await entry.fill(`${id} access`);
+  await expect(form.getByText("Searching…")).toBeVisible();
+  const offered = entriesFound(form).getByRole("button");
+  await expect(offered).toHaveCount(1);
+  await expect(offered).toHaveText(
+    `SN-24T-${id} · ${label("Sample Networks")} · ${label("Access Switch")}`,
+  );
+  await page.unroute("**/api/v1/catalog-entries?*");
+  // Enter in the search box searches, and makes no item.
+  await entry.press("Enter");
+  await expect(form).toBeVisible();
+  await expect(page).toHaveURL(/\/items$/);
+  await offered.click();
+  await expect(form.getByTestId("chosen-catalog_entry_hid")).toHaveText(
+    `SN-24T-${id} · ${label("Sample Networks")} · ${label("Access Switch")}`,
+  );
+
+  // Create and add another like it keeps the model, and a scanner's Enter makes the next.
+  await serial.fill(`SER-${id}-N1`);
+  await hostname.fill(host("new-01"));
+  await form.getByRole("button", { name: "Create and add another like it" }).click();
+  await expect(serial).toBeFocused();
+  await expect(form.getByTestId("chosen-catalog_entry_hid")).toContainText(`SN-24T-${id}`);
+  await hostname.fill(host("new-02"));
+  await serial.fill(`SER-${id}-N2`);
+  await serial.press("Enter");
+  await expect(serial).toHaveValue("");
+  await expect(serial).toBeFocused();
+  await expect
+    .poll(async () => {
+      const answer = await request.post("./api/v1/items/query", {
+        headers,
+        data: { filter: { field: "hostname", op: "prefix", value: host("new-") }, limit: 10 },
+      });
+      const { items } = (await answer.json()) as { items: Array<{ catalog_entry_hid: string }> };
+      return items.map((item) => item.catalog_entry_hid);
+    })
+    .toEqual([second, second]);
+
+  // An item's details: the entry it has is named, and another is found by searching.
+  await page.goto(`./items/${made.item}`);
+  const details = page.getByRole("region", { name: "Details" });
+  await details.getByLabel("Catalog entry").fill(`48P ${id}`);
+  await entriesFound(details)
+    .getByRole("button", { name: new RegExp(`^SN-48P-${id} ·`) })
+    .click();
+  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "The item was saved." })).toBeVisible();
+  await expect
+    .poll(async () => (await read(request, headers, `/items/${made.item}`)).catalog_entry_hid)
+    .toBe(made.entry);
+  await expect(details.getByTestId("chosen-catalog_entry_hid")).toContainText(`SN-48P-${id}`);
+
+  // The successor of a catalog entry, named by the entry by HID alone, is named in its form.
+  await page.goto(`./catalog/${second}`);
+  const entryForm = page.getByRole("region", { name: "Details" });
+  await entryForm.getByLabel("Successor").fill(`${id} edge`);
+  await entriesFound(entryForm)
+    .getByRole("button", { name: new RegExp(`^SN-48P-${id} ·`) })
+    .click();
+  await entryForm.getByRole("button", { name: "Save", exact: true }).click();
+  await expect
+    .poll(async () => (await read(request, headers, `/catalog-entries/${second}`)).successor_hid)
+    .toBe(made.entry);
+  await page.reload();
+  await expect(entryForm.getByTestId("chosen-successor_hid")).toHaveText(
+    `SN-48P-${id} · ${label("Sample Networks")} · ${label("Edge Switch")}`,
+  );
+
+  await expectClean(page, seen);
 });

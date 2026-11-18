@@ -91,6 +91,15 @@ function region(page: Page, name: string): Locator {
   return page.getByRole("region", { name, exact: true });
 }
 
+/** 0.9.6: a catalog entry is chosen by searching for it, here by its PID (P-200). */
+async function chooseEntry(form: Locator, pid: string) {
+  await form.getByLabel("Catalog entry").fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} ·`) })
+    .click();
+}
+
 async function openItem(page: Page, hid: string, name: string) {
   await page.goto(`./items/${hid}`);
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
@@ -418,7 +427,7 @@ test("Create and add another like it makes the item and keeps what the next one 
   const another = form.getByRole("button", { name: "Create and add another like it" });
 
   // The first of a batch, as the form is filled for it.
-  await form.getByLabel("Catalog entry").selectOption({ label: made.pid ?? "" });
+  await chooseEntry(form, made.pid ?? "");
   await form.getByLabel("Owner").selectOption({ label: owner });
   await form.getByLabel("Location", { exact: true }).fill(label("Room 5"));
   await form
@@ -449,7 +458,7 @@ test("Create and add another like it makes the item and keeps what the next one 
     for (const own of ["Serial number", "Asset tag", "Name", "Hostname", "MAC address"]) {
       await expect(form.getByLabel(own, { exact: true })).toHaveValue("");
     }
-    await expect(form.getByLabel("Catalog entry")).not.toHaveValue("");
+    await expect(form.getByTestId("chosen-catalog_entry_hid")).toContainText(made.pid ?? "");
     await expect(form.getByLabel("Owner")).not.toHaveValue("");
     await expect(form.getByTestId("chosen-location_hid")).toContainText(label("Room 5"));
     await expect(form.getByLabel("Lifecycle state")).toHaveValue("Assigned");

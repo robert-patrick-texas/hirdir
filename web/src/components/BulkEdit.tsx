@@ -20,11 +20,12 @@ import {
 } from "../lib/bulk";
 import { plural } from "../lib/format";
 import { CONDITION_LIST, OBSERVED_CHOICES } from "../lib/health";
-import { toApiError, useLoad } from "../lib/hooks";
+import { toApiError } from "../lib/hooks";
 import { Keys, withKey } from "../lib/idempotency";
-import { EVERY, useOwnerOptions, useTags } from "../lib/lists";
+import { useOwnerOptions, useTags } from "../lib/lists";
 import { choiceOptions, SETTABLE_STATUSES } from "../lib/options";
 import type { FormValue, Option } from "../lib/patch";
+import { entrySeen } from "../lib/pick";
 import type { Preview } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
@@ -66,16 +67,15 @@ const INHERITS = "Cleared, it inherits from the catalog entry again";
 function bulkFields(
   states: readonly string[],
   owners: readonly Option[],
-  entries: readonly Option[],
   conditions: readonly Option[],
 ): BulkField[] {
   return [
     {
       name: CATALOG_ENTRY,
       label: "Catalog entry",
-      kind: "choice",
-      blank: "Choose a catalog entry",
-      options: entries,
+      // 0.9.6: searched for, not a list of every model (P-200).
+      kind: "entry",
+      blank: "None chosen yet",
     },
     {
       name: "owner",
@@ -193,26 +193,18 @@ function bulkFields(
   ];
 }
 
-/** The catalog entries to choose from, and how a file names each: its vendor and its PID. */
-function useEntries() {
-  return useLoad("bulk-entries", async (signal) => {
-    const page = await api.request("get", "/api/v1/catalog-entries", {
-      query: { limit: EVERY },
-      signal,
-    });
-    const refs: Record<string, EntryRef> = {};
-    const options: Option[] = [];
-    for (const entry of page.items) {
-      // The vendor by its HID, so that the right one is meant whatever it is called.
-      refs[entry.hid] = { vendor: entry.vendor.hid, pid: entry.pid };
-      options.push({
-        value: entry.hid,
-        label: entry.model_name ? `${entry.pid} (${entry.model_name})` : entry.pid,
-        group: entry.vendor.name,
-      });
-    }
-    return { refs, options };
-  });
+/**
+ * How a file names the catalog entry a line sets, by its vendor and its PID: the entry
+ * was chosen by searching for it (P-200), and the search noted what it offered.
+ */
+function entryRefs(lines: readonly BulkLine[]): Record<string, EntryRef> {
+  const refs: Record<string, EntryRef> = {};
+  for (const line of lines) {
+    if (line.name !== CATALOG_ENTRY || typeof line.value !== "string") continue;
+    const entry = entrySeen(line.value);
+    if (entry) refs[entry.hid] = { vendor: entry.vendor.hid, pid: entry.pid };
+  }
+  return refs;
 }
 
 interface BulkEditProps {
@@ -229,18 +221,11 @@ interface BulkEditProps {
 
 export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: BulkEditProps) {
   const owners = useOwnerOptions();
-  const entries = useEntries();
   const tags = useTags();
   const keys = useRef(new Keys());
   const fields = useMemo(
-    () =>
-      bulkFields(
-        states,
-        owners.data ?? [],
-        entries.data?.options ?? [],
-        choiceOptions(choices, CONDITION_LIST),
-      ),
-    [states, owners.data, entries.data, choices],
+    () => bulkFields(states, owners.data ?? [], choiceOptions(choices, CONDITION_LIST)),
+    [states, owners.data, choices],
   );
   const labels = (tags.data ?? []).map((tag) => ({ value: tag.label, label: tag.label }));
   const reasons = choiceOptions(choices, "state_reason");
@@ -262,7 +247,7 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
     fields,
     { lines, reason, addTags, removeTags },
     bulkRows(rows, view),
-    entries.data?.refs ?? {},
+    entryRefs(lines),
   );
   const names = [...lines.map((line) => line.name), "vendor", "pid", "add_tags", "remove_tags"];
   const refused = fieldErrors(error, names).shown;
@@ -329,7 +314,7 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   return (
     <section className="panel" aria-labelledby="bulk-edit" data-testid="bulk-edit">
       <h2 id="bulk-edit">Bulk edit</h2>
-      <Problem error={owners.error ?? entries.error ?? tags.error} />
+      <Problem error={owners.error ?? tags.error} />
       {!preview && (
         <form onSubmit={submit} className="stack" noValidate>
           <p>

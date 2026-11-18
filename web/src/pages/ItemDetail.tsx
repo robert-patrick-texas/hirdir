@@ -49,14 +49,7 @@ import {
   standingOf,
   stateNames,
 } from "../lib/lifecycle";
-import {
-  useChoices,
-  useEntryOptions,
-  useOwnerOptions,
-  useRules,
-  useTags,
-  withCurrent,
-} from "../lib/lists";
+import { useChoices, useOwnerOptions, useRules, useTags, withCurrent } from "../lib/lists";
 import { operatorOptionLabel } from "../lib/operators";
 import {
   CATALOG_KINDS,
@@ -68,6 +61,7 @@ import {
 } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
+import { entryLabel } from "../lib/pick";
 import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
@@ -1257,7 +1251,6 @@ interface DetailsProps {
 
 /** The form for everything about an item but its state. Only what was changed is sent. */
 function Details({ item, onSaved, onReload }: DetailsProps) {
-  const entries = useEntryOptions();
   const owners = useOwnerOptions();
   const tags = useTags();
   const specs = useMemo<FieldSpec[]>(() => {
@@ -1272,12 +1265,10 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       {
         name: "catalog_entry_hid",
         label: "Catalog entry",
-        kind: "choice",
+        // 0.9.6: searched for, not a list of every model (P-200).
+        kind: "entry",
         blank: "No catalog entry",
-        options: withCurrent(
-          entries.data,
-          catalog && { value: catalog.hid, label: catalog.pid, group: catalog.vendor },
-        ),
+        options: catalog ? [{ value: catalog.hid, label: entryLabel(catalog) }] : [],
         heading: "Identity",
       },
       { name: "serial_number", label: "Serial number", kind: "text", maxLength: 100 },
@@ -1377,7 +1368,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         blank: "As its model says",
       },
     ];
-  }, [item, entries.data, owners.data, tags.data]);
+  }, [item, owners.data, tags.data]);
 
   // Under each field that inherits: what a blank shows, or that it is set here.
   const hints: Record<string, string> = {};
@@ -1451,12 +1442,12 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         }
       : {}),
   };
-  const ready = !entries.loading && !owners.loading && !tags.loading;
+  const ready = !owners.loading && !tags.loading;
 
   return (
     <section aria-labelledby="details">
       <h2 id="details">Details</h2>
-      <Problem error={entries.error ?? owners.error ?? tags.error} />
+      <Problem error={owners.error ?? tags.error} />
       {!ready && <p role="status">Loading…</p>}
       {ready && (
         <EditForm<Item, Schemas["ItemPatch"]>

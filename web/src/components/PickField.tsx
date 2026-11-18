@@ -163,8 +163,8 @@ export function PickField(props: SearchProps) {
         )}
         {options.length > 0 && more > 0 && (
           <p className="hint">
-            {plural(more, `more ${noun[0]}`)} {more === 1 ? "matches" : "match"}. Type more to
-            narrow them down.
+            {plural(more, `more ${noun[0]}`, `more ${noun[1]}`)} {more === 1 ? "matches" : "match"}.
+            Type more to narrow them down.
           </p>
         )}
       </div>
