@@ -1,6 +1,6 @@
 """The routes of device groups and their members."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
@@ -9,11 +9,19 @@ from hirdir.api import records as r
 from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
-from hirdir.api.schemas import Page
+from hirdir.api.schemas import Page, Problem
 from hirdir.domain import groups, removal, resolution
 from hirdir.io import fields, tables
 
 router = APIRouter(prefix="/device-groups", tags=["Groups"], route_class=IdempotentRoute)
+# A stack or a cluster that items run on is not retired: they are named (P-247).
+HOSTS_SOMETHING: dict[int | str, dict[str, Any]] = {
+    409: {
+        "model": Problem,
+        "description": "Items run on it: each is in `depends_on`, to be given another host or "
+        "retired first.",
+    }
+}
 
 
 def _page(db: Db, listed: lists.ListRequest) -> Page[r.DeviceGroupOut]:
@@ -60,8 +68,11 @@ def create_group(
 @router.post("/retire")
 def retire_groups(body: r.RetireMany, _: Inventory, context: Audit, db: Db) -> r.RetiredMany:
     """Retire several device groups at once, each as its own retire route does, with an
-    audit event each (P-228). One retired already is counted, not refused."""
-    return shapes.retired_out(removal.retire_many(db, context, removal.DEVICE_GROUP, body.hids))
+    audit event each (P-228). One retired already is counted, not refused. A stack or a
+    cluster that items run on is refused, with those items in `depends_on` (P-247).
+    With `dry_run` nothing is changed, and the answer is the same."""
+    done = removal.retire_many(db, context, removal.DEVICE_GROUP, body.hids, dry_run=body.dry_run)
+    return shapes.retired_out(done)
 
 
 @router.post("/delete")
@@ -94,11 +105,14 @@ def update_group(
     return shapes.group_out(db, groups.update_group(db, context, hid, body.row_version, changes))
 
 
-@router.post("/{hid}/retire")
+@router.post("/{hid}/retire", responses=HOSTS_SOMETHING)
 def retire_group(
     hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
 ) -> r.DeviceGroupOut:
-    """Retire a device group. Its record is kept, and its current memberships end today."""
+    """Retire a device group. Its record is kept, and its current memberships end today.
+
+    A stack or a cluster that items run on is refused, a `409` that names them in
+    `depends_on` (P-247)."""
     return shapes.group_out(db, groups.retire_group(db, context, hid, body.row_version))
 
 

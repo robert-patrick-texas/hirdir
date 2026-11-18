@@ -17,22 +17,20 @@ import {
 
 const one = { hid: "0193a1f4-0001", label: "site7-sw-example-01" };
 const two = { hid: "0193a1f4-0002", label: "site7-sw-example-02" };
+// What a Retire answers where it did nothing: the fields each test leaves alone.
+const nothing = { dry_run: false, retired: [], already: [], refused: [], missing: [], hosted: [] };
 
 describe("what a Retire of the rows ticked did (P-228)", () => {
   it("says how many were retired", () => {
-    expect(
-      retiredText("item", { retired: [one, two], already: [], refused: [], missing: [] }),
-    ).toBe("Retired 2 items.");
-    expect(
-      retiredText("device_group", { retired: [one], already: [], refused: [], missing: [] }),
-    ).toBe("Retired 1 group.");
+    expect(retiredText("item", { ...nothing, retired: [one, two] })).toBe("Retired 2 items.");
+    expect(retiredText("device_group", { ...nothing, retired: [one] })).toBe("Retired 1 group.");
   });
 
   it("counts those retired already, refused and not found", () => {
     const answer = {
-      retired: [],
+      ...nothing,
       already: [one],
-      refused: [{ ...two, detail: "an example refusal" }],
+      refused: [{ ...two, detail: "an example refusal", depends_on: [] }],
       missing: ["0193a1f4-0003"],
     };
     expect(retiredText("item", answer)).toBe(
@@ -69,7 +67,7 @@ describe("what a Delete did, or would do (P-227)", () => {
     expect(
       retiredText(
         "item",
-        { retired: [], already: [], refused: [{ ...two, detail: "why" }], missing: [] },
+        { ...nothing, refused: [{ ...two, detail: "why", depends_on: [] }] },
         false,
       ),
     ).toBe("No items were retired. 1 item refused:");

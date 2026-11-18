@@ -48,7 +48,8 @@ class Conflict(DomainError):
     """The change collides with the present state: a duplicate, or a rule it would break.
 
     `fields` names the field that collides, where there is one, and `existing` the
-    record that has the value already, where the collision is with one.
+    record that has the value already, where the collision is with one. `depends_on`
+    are the records that stand on the one the change is about, where those are why.
     """
 
     def __init__(
@@ -56,10 +57,12 @@ class Conflict(DomainError):
         message: str,
         fields: dict[str, str] | None = None,
         existing: Existing | None = None,
+        depends_on: list[Existing] | None = None,
     ) -> None:
         super().__init__(message)
         self.fields = fields or {}
         self.existing = existing
+        self.depends_on = depends_on or []
 
 
 class StaleVersion(Conflict):

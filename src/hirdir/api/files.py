@@ -84,6 +84,23 @@ async def preview_import(
         Query(description="Left out, `upsert`, or what a JSON file says."),
     ] = None,
     file_name: Annotated[str | None, Query(max_length=255)] = None,
+    system: Annotated[
+        str | None,
+        Query(
+            max_length=200,
+            description="A file of items: the external system it was read from, by its HID "
+            "or its name. Its rows are then matched first by `external_id`, that system's "
+            "identifier of each (P-248).",
+        ),
+    ] = None,
+    complete: Annotated[
+        bool,
+        Query(
+            description="With `system`: the file is everything that system reports, so that "
+            "each item registered with it that no row names is marked `not_reported` once "
+            "the file is applied whole."
+        ),
+    ] = False,
 ) -> r.ImportPreview:
     """Work out what importing a file would do, and store that as a preview.
 
@@ -102,6 +119,8 @@ async def preview_import(
         mode=mode,
         file_name=file_name,
         max_bytes=request.app.state.config.max_file_bytes,
+        system=system,
+        complete=complete,
     )
     return shapes.preview_out(db, job)
 

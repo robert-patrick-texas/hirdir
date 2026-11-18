@@ -75,6 +75,7 @@ from hirdir.domain import (
 )
 from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
+from hirdir.domain.errors import Existing
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
 from hirdir.io import alerts, balance, fields, imports, operated, planning, tried
@@ -1373,12 +1374,14 @@ def job_out(db: Session, job: ImportJob) -> shapes.ImportJobOut:
     """Return a stored preview with the username of whoever made it."""
     maker = db.get(User, job.created_by) if job.created_by else None
     applier = db.get(User, job.applied_by) if job.applied_by else None
+    system = db.get(ExternalSystem, job.system_hid) if job.system_hid else None
     return shapes.ImportJobOut(
         **{
             name: getattr(job, name)
             for name in shapes.ImportJobOut.model_fields
-            if not name.endswith("_by_name")
+            if not name.endswith("_by_name") and name != "system"
         },
+        system=_system_ref(system) if system is not None else None,
         created_by_name=maker.username if maker else None,
         applied_by_name=applier.username if applier else None,
     )
@@ -1392,7 +1395,11 @@ def row_out(row: ImportRow) -> shapes.ImportRowOut:
 def preview_out(db: Session, job: ImportJob) -> shapes.ImportPreview:
     """Return a preview: the job, and the first of its rows."""
     rows, _ = imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)
-    return shapes.ImportPreview(job=job_out(db, job), rows=[row_out(row) for row in rows])
+    return shapes.ImportPreview(
+        job=job_out(db, job),
+        rows=[row_out(row) for row in rows],
+        not_reported_first=_labelled(imports.not_reported_first(db, job)),
+    )
 
 
 # --- several retired at once, and deleting (P-227, P-228, P-236) ---------------------
@@ -1402,16 +1409,29 @@ def _labelled(found: list[tuple[str, str]]) -> list[shapes.RecordLabel]:
     return [shapes.RecordLabel(hid=hid, label=label) for hid, label in found]
 
 
+def _dependents(found: list[Existing]) -> list[shapes.Dependent]:
+    return [
+        shapes.Dependent(record_type=one.record_type, hid=one.hid, label=one.label) for one in found
+    ]
+
+
 def retired_out(done: removal.Retired) -> shapes.RetiredMany:
-    """Return what a request that retires several did with each record it named."""
+    """Return what a request that retires several did, or would do, with each record."""
     return shapes.RetiredMany(
+        dry_run=done.dry_run,
         retired=_labelled(done.retired),
         already=_labelled(done.already),
         refused=[
-            shapes.RetireRefused(hid=hid, label=label, detail=detail)
-            for hid, label, detail in done.refused
+            shapes.RetireRefused(
+                hid=hid, label=label, detail=detail, depends_on=_dependents(depends_on)
+            )
+            for hid, label, detail, depends_on in done.refused
         ],
         missing=done.missing,
+        hosted=[
+            shapes.HostedRetired(hid=hid, label=label, host_hid=host_hid)
+            for hid, label, host_hid in done.hosted
+        ],
     )
 
 
@@ -1424,10 +1444,7 @@ def deleted_out(done: removal.Deletion) -> shapes.DeletedMany:
             shapes.DeleteRefused(
                 hid=hid,
                 label=label,
-                depends_on=[
-                    shapes.Dependent(record_type=one.record_type, hid=one.hid, label=one.label)
-                    for one in depends_on
-                ],
+                depends_on=_dependents(depends_on),
             )
             for hid, label, depends_on in done.refused
         ],

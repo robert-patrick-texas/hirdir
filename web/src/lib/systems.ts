@@ -49,6 +49,9 @@ export const REGISTRATION_STATUSES: readonly Option[] = [
   { value: "registered", label: "Registered" },
   { value: "pending", label: "Pending" },
   { value: "removed", label: "Removed" },
+  // 0.9.8: given by an import that is everything its system reports, to what it does not
+  // name (P-248). A person sets it back to Registered or to Removed.
+  { value: "not_reported", label: "Not reported" },
 ];
 
 export const REMOVED = "removed";

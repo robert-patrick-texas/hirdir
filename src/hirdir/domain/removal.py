@@ -117,30 +117,54 @@ def said(error: DomainError) -> str:
 
 @dataclass
 class Retired:
-    """What a request that retires several did with each record it named."""
+    """What a request that retires several did, or with a dry run would do, with each
+    record it named; and in `hosted`, by its HID, label and host, each item that went
+    with one named because it runs on it (P-247)."""
 
+    dry_run: bool = False
     retired: list[tuple[str, str]] = field(default_factory=list)
     already: list[tuple[str, str]] = field(default_factory=list)
-    refused: list[tuple[str, str, str]] = field(default_factory=list)
+    refused: list[tuple[str, str, str, list[Existing]]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    hosted: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 def retire_many(
-    db: Session, context: AuditContext, record_type: str, hids: Sequence[str]
+    db: Session,
+    context: AuditContext,
+    record_type: str,
+    hids: Sequence[str],
+    *,
+    dry_run: bool = False,
 ) -> Retired:
     """Retire each record named, as its own page retires it, with an audit event each.
 
     One that is retired already is counted so and not refused. One that the rules refuse
     is named with why, and leaves the others as they went. No version is asked for: what
     a person ticked is what is retired, as it is when the request is worked.
+
+    With `dry_run` the work is done in a savepoint that is then undone, so that the answer
+    is what the request would do, by the same rules, and nothing is kept.
     """
     kind = kind_of(record_type)
     named = unique(hids)
     # The memberships and the coverage that retiring ends are read with no other change
     # under way, as one retire reads them.
     dialect.hold_other_writers(db)
+    if not dry_run:
+        return _retire_each(db, context, kind, named, Retired())
+    trying = db.begin_nested()
+    try:
+        return _retire_each(db, context, kind, named, Retired(dry_run=True))
+    finally:
+        trying.rollback()
+
+
+def _retire_each(
+    db: Session, context: AuditContext, kind: Kind, named: list[str], done: Retired
+) -> Retired:
+    """Retire each record named, in the order named, and say what became of each."""
     found = read(db, kind.model, named)
-    done = Retired()
     for hid in named:
         record = found.get(hid)
         if record is None:
@@ -155,7 +179,7 @@ def retire_many(
             kind.retire(db, context, hid, record.row_version)
         except DomainError as error:
             savepoint.rollback()
-            done.refused.append((hid, label, said(error)))
+            done.refused.append((hid, label, said(error), getattr(error, "depends_on", [])))
         else:
             savepoint.commit()
             done.retired.append((hid, label))

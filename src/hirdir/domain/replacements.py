@@ -154,6 +154,7 @@ def replace(
     disposition: Any = None,
     expected_online: Any = None,
     old_item: Mapping[str, Any] | None = None,
+    hand_over_hosted: bool = True,
 ) -> ItemReplacement:
     """Record that one item took the place of another, and hand over its memberships.
 
