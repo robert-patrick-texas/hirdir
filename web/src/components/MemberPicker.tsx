@@ -9,7 +9,7 @@ import {
   roleLabel,
   roleOptions,
 } from "../lib/groups";
-import { MAJOR_ONLY } from "../lib/pick";
+import { MAJOR_ONLY, memberOffer, SPARES } from "../lib/pick";
 import { nextSort, type SortColumns, type SortState, sortRows } from "../lib/sort";
 import type { SortControl } from "../lib/useSorting";
 import { ItemPicker } from "./ItemPicker";
@@ -111,6 +111,9 @@ export function MemberPicker(props: MemberPickerProps) {
             : "Type a part of its name, serial number or asset tag."
         }
         only={majorOnly ? MAJOR_ONLY : null}
+        // 0.9.6: the spares first, each with where it stands (P-221).
+        first={SPARES}
+        standing={(item) => memberOffer(item, type)}
         taken={[...taken, ...pending.map((row) => row.item_hid)]}
         onPick={add}
         {...(disabled === undefined ? {} : { disabled })}

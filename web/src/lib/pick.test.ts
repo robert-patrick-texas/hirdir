@@ -3,10 +3,13 @@ import {
   entryLabel,
   entrySearch,
   entrySeen,
+  firstThen,
   itemSearch,
   MAJOR_ONLY,
+  memberOffer,
   offered,
   pickLabel,
+  placeText,
   sawEntries,
 } from "./pick";
 
@@ -106,5 +109,80 @@ describe("sawEntries", () => {
     expect(entrySeen("e-1")).toBeUndefined();
     sawEntries([entry]);
     expect(entrySeen("e-1")).toBe(entry);
+  });
+});
+
+describe("firstThen", () => {
+  it("puts the first search's items first, each item once, at most the limit", () => {
+    const spares = [{ hid: "s-2" }, { hid: "s-9" }];
+    const every = [{ hid: "a-1" }, { hid: "s-2" }, { hid: "b-3" }, { hid: "s-9" }];
+    expect(firstThen(spares, every, 8).map((item) => item.hid)).toEqual([
+      "s-2",
+      "s-9",
+      "a-1",
+      "b-3",
+    ]);
+    expect(firstThen(spares, every, 3).map((item) => item.hid)).toEqual(["s-2", "s-9", "a-1"]);
+    expect(firstThen([], every, 2).map((item) => item.hid)).toEqual(["a-1", "s-2"]);
+  });
+});
+
+describe("placeText", () => {
+  it("says where a place is without its region", () => {
+    expect(placeText("Campus Works > Campus 07 > IDF 03")).toBe("Campus 07 > IDF 03");
+    expect(placeText("Campus Works")).toBe("Campus Works");
+    expect(placeText(null)).toBe("");
+  });
+});
+
+describe("memberOffer", () => {
+  const spare = {
+    lifecycle_state: "Prod",
+    effective: {
+      disposition: { value: "Spare" },
+      location_hid: { label: "Campus Works > Campus 40 > Spares Depot" },
+    },
+    groups: [],
+  };
+  const member = {
+    lifecycle_state: "Prod",
+    effective: {
+      disposition: { value: "Production" },
+      location_hid: { label: "Campus Works > Campus 07 > IDF 03" },
+    },
+    groups: [
+      { name: "cw07-idf03-acc1", type: "stack", position: 2 },
+      { name: "lab-switches", type: "custom", position: null },
+    ],
+  };
+
+  it("says a candidate's state, disposition and place, and that it may be chosen", () => {
+    expect(memberOffer(spare, "stack")).toEqual({
+      facts: "Prod · Spare · Campus 40 > Spares Depot",
+      refused: "",
+    });
+  });
+
+  it("names the stack a candidate is in with its position, and refuses it for another stack", () => {
+    const said = memberOffer(member, "stack");
+    expect(said.facts).toBe(
+      "Prod · Production · Campus 07 > IDF 03 · member 2 of the stack cw07-idf03-acc1",
+    );
+    expect(said.refused).toBe(
+      "It is in the stack cw07-idf03-acc1 already: an item is in one stack at a time. End that membership first.",
+    );
+  });
+
+  it("lets a member of a stack be chosen for a group of another type", () => {
+    expect(memberOffer(member, "cluster").refused).toBe("");
+    expect(memberOffer(member, "custom").refused).toBe("");
+  });
+
+  it("refuses an item in a state that joins no group, and says where an item with none is", () => {
+    const released = { lifecycle_state: "Released", effective: null, groups: [] };
+    expect(memberOffer(released, "custom")).toEqual({
+      facts: "Released · no location",
+      refused: "An item in Released joins no group.",
+    });
   });
 });

@@ -59,6 +59,90 @@ export function offered<T extends Pickable>(found: readonly T[], taken: readonly
   return found.filter((item) => !taken.includes(item.hid));
 }
 
+// 0.9.6: the picker of members says where each candidate stands, and offers the spares
+// first (P-221).
+
+/** The spares: the items whose disposition in force is Spare, offered first to a group. */
+export const SPARES: FilterNode = { field: "effective.disposition", op: "eq", value: "Spare" };
+
+/**
+ * The items of two searches as one list, those of the first first: the spares, then the
+ * rest of every item that matches, each once, at most `limit`.
+ */
+export function firstThen<T extends { hid: string }>(
+  first: readonly T[],
+  every: readonly T[],
+  limit: number,
+): T[] {
+  const seen = new Set(first.map((item) => item.hid));
+  return [...first, ...every.filter((item) => !seen.has(item.hid))].slice(0, limit);
+}
+
+/** What the picker of members needs to know of an item to say where it stands. */
+export interface Standing {
+  lifecycle_state?: string | null;
+  effective?: {
+    disposition?: { value?: unknown } | null;
+    location_hid?: { label?: string | null } | null;
+  } | null;
+  groups?: ReadonlyArray<{ name: string; type: string; position: number | null }>;
+}
+
+/** What an offer says of an item beside it, and why it may not be chosen, blank if it may. */
+export interface OfferFacts {
+  facts: string;
+  refused: string;
+}
+
+// The types of group an item is a current member of one at most, and their names.
+const ONE_AT_A_TIME: Readonly<Record<string, string>> = { stack: "stack", cluster: "cluster" };
+// The states an item in which joins no group: it has left the inventory, or is leaving it.
+const JOINS_NONE: readonly string[] = ["Released", "Archived"];
+
+/** Where a place is, by its path without the region: "Campus 07 > IDF 03". */
+export function placeText(path: string | null | undefined): string {
+  if (!path) return "";
+  const parts = path.split(" > ");
+  return parts.length > 1 ? parts.slice(1).join(" > ") : path;
+}
+
+/** A membership as a candidate's offer says it: "member 2 of the stack cw07-idf03-acc1". */
+function memberOf(group: { name: string; type: string; position: number | null }): string {
+  const kind = ONE_AT_A_TIME[group.type] ?? "group";
+  const number = group.position === null ? "member" : `member ${group.position}`;
+  return `${number} of the ${kind} ${group.name}`;
+}
+
+/**
+ * Where a candidate for a group stands: its state and disposition, where it is, and the
+ * stack or cluster it is in with its position. An item that is in a group of the type of
+ * one at a time already, or in a state that joins no group, is refused by the server: it
+ * is shown, and says why it cannot be chosen.
+ */
+export function memberOffer(item: Standing, type: string): OfferFacts {
+  const disposition = item.effective?.disposition?.value;
+  const place = placeText(item.effective?.location_hid?.label);
+  const memberships = (item.groups ?? []).filter((group) => group.type in ONE_AT_A_TIME);
+  const facts = [
+    item.lifecycle_state ?? "",
+    typeof disposition === "string" ? disposition : "",
+    place === "" ? "no location" : place,
+    ...memberships.map(memberOf),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const state = item.lifecycle_state ?? "";
+  const kind = ONE_AT_A_TIME[type];
+  const holding = kind ? memberships.find((group) => group.type === type) : undefined;
+  let refused = "";
+  if (JOINS_NONE.includes(state)) {
+    refused = `An item in ${state} joins no group.`;
+  } else if (kind && holding) {
+    refused = `It is in the ${kind} ${holding.name} already: an item is in one ${kind} at a time. End that membership first.`;
+  }
+  return { facts, refused };
+}
+
 // 0.9.6: a catalog entry is chosen by searching for it (P-200). An inventory may hold
 // hundreds of models, so they are never listed whole in a form.
 

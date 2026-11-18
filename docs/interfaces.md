@@ -1871,7 +1871,11 @@ What 0.9.6 changes:
   groups finds a stack by a member's serial number; a member's row names its stack and
   position (P-220). The picker of members shows each switch's state, disposition and
   place and the stack it is in, offers the spares first, and does not let one that is in
-  a stack be chosen for another (P-221). A member's page says among its first facts that
+  a stack be chosen for another (P-221): it is shown, with why, as is one in a cluster
+  for another cluster and one in Released or Archived. The spares are a second search
+  sent beside the first, since the server sorts by no field that puts them first; the
+  search is not narrowed to switches, since a member may be any major item, one with no
+  model yet among them. A member's page says among its first facts that
   it is a member, with its position and its stack as a link, and shows the stack's host
   name, FQDN and addresses as the stack's; an item in no stack has Join a stack (P-222).
 

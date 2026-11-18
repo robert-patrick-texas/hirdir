@@ -1,10 +1,17 @@
 import { type KeyboardEvent, useId, useState } from "react";
 import { api, type Schemas } from "../api";
-import type { FilterNode } from "../lib/filter";
+import { all, type FilterNode } from "../lib/filter";
 import { plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
-import { itemSearch, offered, PICK_LIMIT, pickLabel } from "../lib/pick";
+import {
+  firstThen,
+  itemSearch,
+  type OfferFacts,
+  offered,
+  PICK_LIMIT,
+  pickLabel,
+} from "../lib/pick";
 import { Problem } from "./Problem";
 
 type Item = Schemas["ItemOut"];
@@ -22,6 +29,14 @@ interface ItemPickerProps {
   taken?: readonly string[];
   onPick: (item: Item) => void;
   disabled?: boolean;
+  /**
+   * 0.9.6: the items offered first, as the spares are to a group (P-221). It is a second
+   * search beside the first, sent at the same time: the server sorts by no field that
+   * puts them first.
+   */
+  first?: FilterNode | null;
+  /** What to say beside each item offered, and why it may not be chosen (P-221). */
+  standing?: (item: Item) => OfferFacts;
 }
 
 /**
@@ -39,26 +54,33 @@ export function ItemPicker({
   taken = [],
   onPick,
   disabled,
+  first = null,
+  standing,
 }: ItemPickerProps) {
   const id = useId();
   const [typed, setTyped] = useState("");
   const { asked, again, askNow, forget } = useAsked(typed);
 
   const filter = itemSearch(asked, only);
-  const found = useLoad(`pick ${JSON.stringify(filter)}`, async (signal) => {
+  // A few more than are offered, to make up for those that are taken already.
+  const limit = Math.min(PICK_LIMIT + taken.length, MOST_ASKED);
+  const found = useLoad(`pick ${JSON.stringify([filter, first])} ${limit}`, async (signal) => {
     if (filter === null) return null;
-    return api.request("post", "/api/v1/items/query", {
-      body: queryBody({
-        filter,
-        sort: ["name"],
-        // A few more than are offered, to make up for those that are taken already.
-        limit: Math.min(PICK_LIMIT + taken.length, MOST_ASKED),
-        offset: 0,
-        include_archived: false,
-        include_drafts: true,
-      }),
-      signal,
-    });
+    const ask = (wanted: FilterNode | null) =>
+      api.request("post", "/api/v1/items/query", {
+        body: queryBody({
+          filter: wanted,
+          sort: ["name"],
+          limit,
+          offset: 0,
+          include_archived: false,
+          include_drafts: true,
+        }),
+        signal,
+      });
+    if (first === null) return ask(filter);
+    const [early, every] = await Promise.all([ask(all(filter, first)), ask(filter)]);
+    return { items: firstThen(early.items, every.items, limit), total: every.total };
   });
 
   // Asked again, by Enter, the same text or a return to the tab: read again (P-183).
@@ -107,23 +129,34 @@ export function ItemPicker({
       </div>
       {items.length > 0 && (
         <ul className="pick-results" aria-label="Items that match">
-          {items.map((item) => (
-            <li key={item.hid}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => {
-                  onPick(item);
-                  setTyped("");
-                  forget();
-                }}
-              >
-                {pickLabel(item)}
-              </button>
-              {item.record_status === "draft" && <span className="badge">Draft</span>}
-              {!item.is_major && <span className="muted"> minor item</span>}
-            </li>
-          ))}
+          {items.map((item) => {
+            const said = standing?.(item);
+            const factsId = `${id}-${item.hid}`;
+            return (
+              <li key={item.hid} data-item={item.hid}>
+                <button
+                  type="button"
+                  disabled={disabled || Boolean(said?.refused)}
+                  aria-describedby={said ? factsId : undefined}
+                  onClick={() => {
+                    onPick(item);
+                    setTyped("");
+                    forget();
+                  }}
+                >
+                  {pickLabel(item)}
+                </button>
+                {item.record_status === "draft" && <span className="badge">Draft</span>}
+                {!item.is_major && <span className="muted"> minor item</span>}
+                {said && (
+                  <span id={factsId} className="pick-facts">
+                    <span className="muted">{said.facts}</span>
+                    {said.refused && <span className="pick-refused">{said.refused}</span>}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {items.length > 0 && more > 0 && (
