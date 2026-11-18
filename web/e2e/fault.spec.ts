@@ -162,6 +162,28 @@ test("a page that cannot be drawn says so; another page clears it; Load again lo
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toBe(await page.getByTestId("fault-text").inputValue());
 
+  // A move within the same path clears it too: Items in the menu bar, on the faulted list
+  // of items, and Find an item, which opens that list with words.
+  await page.unroute("**/api/v1/**");
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Items" }).click();
+  await expect(fault(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  await page.route("**/api/v1/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  await back(page);
+  await expect(fault(page)).toBeVisible();
+  await page.unroute("**/api/v1/**");
+  await page.getByRole("searchbox", { name: "Find an item" }).fill(`site4-sw-${suffix}`);
+  await page.getByRole("searchbox", { name: "Find an item" }).press("Enter");
+  await expect(fault(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  await page.route("**/api/v1/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  await back(page);
+  await expect(fault(page)).toBeVisible();
+
   // Going to another page clears it.
   await page.unroute("**/api/v1/**");
   await page

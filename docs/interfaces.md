@@ -2386,8 +2386,9 @@ A page that cannot be drawn says so (P-230): "This page could not be drawn", wit
 text of the fault in a box that is read and selected as any text, a button Copy the text,
 and two ways on, Load again, which loads the page at its present address, and The first
 page, at the prefix the page is served under. A fault in what is beneath the menu bar
-leaves the menu bar where it is, and opening another page clears it; a fault in the frame
-itself, the menu bar or what stands with it, stands over the whole page, and Back or
+leaves the menu bar where it is, and any move clears it, to another page or to the same
+one again, as Items in the menu bar on the list of items, or Find an item; a fault in the
+frame itself, the menu bar or what stands with it, stands over the whole page, and Back or
 Forward clears it. A part of the web page that cannot be fetched, the file of one of its
 pages, says the same, and that a new version may have been installed since the page was
 loaded. The fault is written to the browser's console and sent nowhere. The text of the
