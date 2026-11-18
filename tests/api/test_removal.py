@@ -454,6 +454,37 @@ def test_a_deletion_leaves_what_a_report_kept_unused(
     assert after["totals"] != before["totals"]
 
 
+def test_every_route_of_a_deleted_record_that_reads_it_says_it_was_deleted(
+    client: TestClient, make: Maker, admin: dict[str, str]
+) -> None:
+    (one,) = _switches(make, 1)
+    group = make.group("site9-gone", "custom")
+    _delete(client, admin, "/items", [one["hid"]])
+    _delete(client, admin, "/device-groups", [group["hid"]])
+    item, held = f"{API}/items/{one['hid']}", f"{API}/device-groups/{group['hid']}"
+    version = {"row_version": 1}
+    for method, path, body in (
+        ("GET", item, None),
+        ("PATCH", item, {**version, "name": "x"}),
+        ("POST", f"{item}/retire", version),
+        ("POST", f"{item}/transition", {**version, "to": "Prod"}),
+        ("POST", f"{item}/replace", {**version, "reason": "rma", "new_item": {}}),
+        ("GET", f"{item}/children", None),
+        ("GET", f"{item}/history", None),
+        ("GET", f"{item}/resolution", None),
+        ("GET", f"{item}/references", None),
+        ("GET", held, None),
+        ("PATCH", held, {**version, "name": "x"}),
+        ("POST", f"{held}/retire", version),
+        ("GET", f"{held}/resolution", None),
+        ("GET", f"{held}/members", None),
+        ("POST", f"{held}/members", {"members": [{"item_hid": NOBODY, "role": "member"}]}),
+    ):
+        response = client.request(method, path, json=body, headers=admin)
+        assert response.status_code == 404, (method, path, response.text)
+        assert response.json()["deleted"]["actor_name"] == "ada", (method, path)
+
+
 # --- a deletion and another change at the same moment ---------------------------------
 
 
