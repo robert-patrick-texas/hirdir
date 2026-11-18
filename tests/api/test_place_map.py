@@ -91,20 +91,35 @@ def test_the_setting_is_listed_and_takes_a_web_address_with_both_coordinates_or_
         "https://maps.example.net/" + chr(92) + "{latitude}/{longitude}",
         "https://maps.example.net/" + chr(7) + "{latitude}/{longitude}",
         "https://maps.example.net/" + chr(0x202E) + "{latitude}/{longitude}",
+        # A host that the parser itself refuses is refused with the rule's words, too.
+        "https://[x/?q={latitude},{longitude}",
+        "https://[notanaddress]/?q={latitude},{longitude}",
+        "https://maps.example.net]/?q={latitude},{longitude}",
+        "https://maps.example.net:abc/?q={latitude},{longitude}",
+        "https://maps.example.net:99999999/?q={latitude},{longitude}",
     ):
         refused = _put(client, admin, wrong, 422)
         assert "{latitude} and {longitude}" in errors(refused)["value"], wrong
     assert _put(client, admin, "   ")["value"] == ""
     # The default passes, and so does a map with both places in its path or its query.
-    for right in (GOOGLE, OTHER, "http://maps.example.net:8080/{latitude}/{longitude}"):
+    for right in (
+        GOOGLE,
+        OTHER,
+        "http://maps.example.net:8080/{latitude}/{longitude}",
+        "https://[2001:db8::10]:8443/map?at={latitude},{longitude}",
+    ):
         assert _put(client, admin, right)["value"] == right
 
 
+@pytest.mark.parametrize(
+    "stored",
+    ["https://{latitude}.example.net/{longitude}", "https://[x/?q={latitude},{longitude}"],
+)
 def test_a_value_stored_before_the_rule_tightened_leaves_no_map(
-    client: TestClient, make: Maker, db: Session
+    client: TestClient, make: Maker, db: Session, stored: str
 ) -> None:
     site = make.site("Site-2", make.region("Americas"), latitude="41.8781", longitude="-87.6298")
-    db.add(Setting(key="map_link", value="https://{latitude}.example.net/{longitude}"))
+    db.add(Setting(key="map_link", value=stored))
     db.commit()
     assert make.get(f"/sites/{site['hid']}")["map_url"] is None
     assert make.get("/sites")["items"][0]["map_url"] is None

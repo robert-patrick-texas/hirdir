@@ -217,11 +217,17 @@ def _map_link() -> Check:
             for character in url
         ):
             raise _refuse(MAP_LINK, expected)
-        parts = urlsplit(url)
-        host = parts.netloc
+        try:
+            # A host in brackets that is no address, or a port that is no number, is
+            # refused here by the parser itself: with the words of the rule, not its own.
+            parts = urlsplit(url)
+            host, named, _port = parts.netloc, parts.hostname, parts.port
+        except ValueError:
+            raise _refuse(MAP_LINK, expected) from None
         after = f"{parts.path}?{parts.query}#{parts.fragment}"
         if (
             not host
+            or not named
             or "@" in host
             or "{" in host
             or "}" in host
@@ -239,7 +245,7 @@ def usable_map_link(value: Any) -> str | None:
     answer is made of that."""
     try:
         return _map_link().check(value) or None
-    except Invalid:
+    except Invalid, ValueError:
         return None
 
 
