@@ -30,6 +30,7 @@ from hirdir.domain import (
     deleted,
     geography,
     health,
+    hosting,
     lifecycle,
     not_renewed,
     records,
@@ -60,6 +61,11 @@ FIELDS = (
     "operator_hid",
     "parent_item_hid",
     "position",
+    # What it runs on (P-246).
+    "host_item_hid",
+    "host_group_hid",
+    "observed_host_hid",
+    "host_observed_at",
     "purchase_line_hid",
     *DAYS,
     *catalog.AMOUNTS,
@@ -426,6 +432,12 @@ def _checked(
 
     def final(name: str) -> Any:
         return values.get(name, getattr(item, name) if item is not None else None)
+
+    if any(name in fields for name in (*hosting.FIELDS, "catalog_entry_hid", "parent_item_hid")):
+        # What it runs on, held against its model and its parent as they will be (P-246).
+        values.update(
+            hosting.checked(db, fields, values, item, settings.time_zone(db), looked_again)
+        )
 
     if item is not None and item.record_status == "retired" and "record_status" in values:
         _check_still_there(db, final("location_hid"))

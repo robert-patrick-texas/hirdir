@@ -70,11 +70,10 @@ def kinds_of(db: Session, entry_hids: set[str | None]) -> dict[str, str]:
     wanted = {hid for hid in entry_hids if hid}
     if not wanted:
         return {}
-    return dict(
-        db.execute(
-            select(CatalogEntry.hid, CatalogEntry.kind).where(CatalogEntry.hid.in_(wanted))
-        ).tuples()
+    rows = db.execute(
+        select(CatalogEntry.hid, CatalogEntry.kind).where(CatalogEntry.hid.in_(wanted))
     )
+    return dict(rows.all())
 
 
 def runs_on_a_host(kind: str | None) -> bool:
@@ -255,7 +254,7 @@ def reviews(
             .order_by(ExternalSystem.name_key, ExternalSystem.hid)
         )
         for item_hid, system_hid, name in rows:
-            marks[item_hid].append(Mark(NOT_REPORTED, "external_system", system_hid, name))
+            marks[item_hid or ""].append(Mark(NOT_REPORTED, "external_system", system_hid, name))
     return marks
 
 
@@ -308,8 +307,8 @@ def _check_host_item(db: Session, hid: str, item: Item | None) -> None:
         raise Invalid(
             "the item hosts nothing",
             {
-                field: f"{shown_name(host)} is of the kind {kind}; a host is hardware or a "
-                "virtual machine"
+                field: f"{shown_name(host)} is of the kind {kind}, which hosts nothing; a host "
+                "is hardware or a virtual machine"
             },
         )
     above = _line_above(db, host)
