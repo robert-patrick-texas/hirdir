@@ -2227,7 +2227,11 @@ One grid component is used on every list page.
   stray press costs one tick and not forty. Shift with a press, on a row or on its box,
   or with Space, ticks the rows from the one last pressed without Shift to this one, and
   unticks nothing, whether the row last pressed was ticked or unticked by that press;
-  the web takes the gesture itself, since the grid's own would untick the rest.
+  the web takes the gesture itself, since the grid's own would untick the rest. Rows of
+  the range that the grid has not read yet, as when the list was scrolled to its end at
+  once, cannot be ticked unread: the rows read and the row pressed are ticked, and the
+  status beside the count says how many rows between were not read and so not ticked,
+  until the next press.
   A press on a link in a row follows the link and changes no tick; Ctrl or the middle
   button on a link opens it in a new tab, as a browser does.
 - Rows are ticked (P-233). Every list whose rows are selected has a column of boxes at

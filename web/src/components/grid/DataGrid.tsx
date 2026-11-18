@@ -68,7 +68,7 @@ import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/g
 import { type GridLayout, GridStore, mergeLayout, withoutFilters } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
 import { useSite } from "../../lib/product";
-import { shiftRange, withCount } from "../../lib/selection";
+import { shiftRange, unreadText, withCount } from "../../lib/selection";
 import { browserStorage } from "../../lib/session";
 import {
   type Chosen,
@@ -322,6 +322,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const [note, setNote] = useState("");
   // The row a press or Space was last on without Shift, where a Shift range starts (0.9.7).
   const anchor = useRef<number | null>(null);
+  // What is said when a Shift range crossed rows not read yet, until the next press.
+  const [rangeNote, setRangeNote] = useState("");
   const [grid, setGrid] = useState<GridApi<T> | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(
     () => new Set(start.columns.filter((column) => column.hide).map((column) => column.id)),
@@ -571,17 +573,22 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     const tickRange = (to: number) => {
       const [first, last] = shiftRange(anchor.current, to);
       const nodes = [];
+      // Rows not read yet cannot be ticked: they are counted, and the list says so.
+      let unread = 0;
       for (let at = first; at <= last; at += 1) {
         const node = api.getDisplayedRowAtIndex(at);
         if (node?.data !== undefined) nodes.push(node);
+        else unread += 1;
       }
       if (nodes.length > 0) api.setNodesSelected({ nodes, newValue: true });
+      setRangeNote(unreadText(unread));
     };
     const onPress = (event: MouseEvent) => {
       const index = rowIndexOf(event.target);
       if (index === null || event.button !== 0) return;
       if (!event.shiftKey) {
         anchor.current = index;
+        setRangeNote("");
         return;
       }
       event.preventDefault();
@@ -594,6 +601,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       if (index === null) return;
       if (!event.shiftKey) {
         anchor.current = index;
+        setRangeNote("");
         return;
       }
       event.preventDefault();
@@ -651,6 +659,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     setAllMatching(false);
     // Other rows: a Shift range starts again from the next row pressed.
     anchor.current = null;
+    setRangeNote("");
     // The rows to tick again as they come, as those a Retire refused (P-228).
     const toTick = new Set(tickAfter(wanted.reloadKey));
     // Another filter or switch: the list begins at its top (P-203).
@@ -1107,6 +1116,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
           {!allMatching && selected > 0 && (
             <span data-testid="grid-selected"> · {selected} selected</span>
           )}
+          {/* 0.9.7: a Shift range that crossed rows not read yet says so. */}
+          {rangeNote && <span data-testid="grid-range-unread"> · {rangeNote}</span>}
         </p>
         <fieldset className="grid-selected-actions" disabled={!grid}>
           <legend className="visually-hidden">The selected rows</legend>

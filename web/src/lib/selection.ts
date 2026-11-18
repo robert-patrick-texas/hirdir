@@ -32,6 +32,16 @@ export function shiftRange(anchor: number | null, to: number): [first: number, l
   return anchor <= to ? [anchor, to] : [to, anchor];
 }
 
+/**
+ * What the list says when a Shift range crossed rows the grid has not read: they cannot
+ * be ticked unread, and the rest of the range is ticked without them.
+ */
+export function unreadText(unread: number): string {
+  if (unread <= 0) return "";
+  const rows = unread === 1 ? "1 row" : `${unread.toLocaleString("en-US")} rows`;
+  return `${rows} between ${unread === 1 ? "was" : "were"} not read yet, and so not ticked: scroll through them, then press again with Shift`;
+}
+
 /** What the box in the heading shows: no row ticked, some, or every row of the list. */
 export type TickState = "none" | "some" | "all";
 

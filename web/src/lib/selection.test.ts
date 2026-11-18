@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shiftRange, tickName, tickState, withCount } from "./selection";
+import { shiftRange, tickName, tickState, unreadText, withCount } from "./selection";
 
 describe("the buttons that act on the rows chosen say how many (P-233)", () => {
   it("counts the rows ticked", () => {
@@ -29,6 +29,14 @@ describe("Shift with a press or with Space (P-233)", () => {
     expect(shiftRange(3, 6)).toEqual([3, 6]);
     expect(shiftRange(8, 4)).toEqual([4, 8]);
     expect(shiftRange(null, 5)).toEqual([5, 5]);
+  });
+
+  it("says how many rows between were not read, and so not ticked", () => {
+    expect(unreadText(0)).toBe("");
+    expect(unreadText(1)).toBe(
+      "1 row between was not read yet, and so not ticked: scroll through them, then press again with Shift",
+    );
+    expect(unreadText(1200)).toContain("1,200 rows between were not read yet");
   });
 });
 

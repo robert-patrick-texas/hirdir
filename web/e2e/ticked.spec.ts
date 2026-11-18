@@ -279,3 +279,52 @@ test("Shift with a press or with Space ticks the rows from the one last pressed 
   await expect(page.getByTestId("grid-selected")).toContainText("7 selected");
   await expectClean(page, seen);
 });
+
+test("Shift across rows not read yet ticks the rows read and the row pressed, and says the rest were not", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(180_000);
+  const far = mark("ticked");
+  const names = Array.from(
+    { length: 250 },
+    (_, at) => `Example Far ${far} ${String(at).padStart(3, "0")}`,
+  );
+  await signIn(page, account);
+  await importFile(
+    page,
+    "vendors",
+    `vendors-${far}.csv`,
+    ["name"],
+    names.map((name) => [name]),
+  );
+  const seen = await watch(page.context());
+  await page.goto(`./vendors?filter=${encodeURIComponent(`name:contains:${far}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("250 vendors");
+  const row = (at: number) => gridRow(page, names[at] ?? "");
+  await expect(row(3)).toHaveAttribute("row-index", "3");
+  await row(3).locator('[col-id="review_status"]').click();
+
+  // To the end at once: the block of rows 100 to 199 is never read.
+  await page
+    .getByTestId(grid)
+    .locator(".ag-grid-viewport, .ag-body-viewport")
+    .first()
+    .evaluate((rows) => {
+      rows.scrollTop = rows.scrollHeight;
+    });
+  await row(245)
+    .locator('[col-id="review_status"]')
+    .click({ modifiers: ["Shift"] });
+  // 3 to 99 and 200 to 245 are ticked, the row pressed among them; 100 rows were not read.
+  await expect(row(245).locator(".ag-selection-checkbox input")).toBeChecked();
+  await expect(page.getByTestId("grid-selected")).toContainText("143 selected");
+  await expect(page.getByTestId("grid-range-unread")).toHaveText(
+    " · 100 rows between were not read yet, and so not ticked: scroll through them, then press again with Shift",
+  );
+  // The next press without Shift lets the words go.
+  await row(247).locator('[col-id="review_status"]').click();
+  await expect(page.getByTestId("grid-range-unread")).toHaveCount(0);
+  await expect(page.getByTestId("grid-selected")).toContainText("144 selected");
+  await expectClean(page, seen);
+});
