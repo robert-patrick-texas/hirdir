@@ -107,6 +107,16 @@ counts of the reports that open their rows by the server's own filter, an improv
 to each page of purchases, contracts and vendors, a switch that joins and leaves a
 stack in one step, and a host run of the browser scenarios that reports every failure
 at once.
+0.9.7 is to follow 0.9.6 with what its first days of use asked for, and changes nothing
+that is held: a page that cannot be drawn says so and offers to load again, and a page
+older than the server says that a new version is installed; every value of a list that
+names a record is a link; rows are ticked; the records an import made are listed, to be
+retired by the rows ticked (P-228) or deleted by an Admin where they were a mistake
+(P-227); a place is matched by its code in a file; and the coordinates of a place open
+a map (P-229). 0.9.8 is to follow it with a stack's member replaced, and a stack made of
+a switch that stands alone, in one press each (O-02), and with the things that run on
+another, a virtual device context, a virtual machine and a container, as items with a
+host (P-226).
 
 ## From 0.6.1 to 0.9.0
 
