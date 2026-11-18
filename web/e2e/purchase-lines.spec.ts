@@ -118,6 +118,12 @@ test("P-121: a line of what is not tracked, with its part number, takes nothing 
   await expect(page.getByRole("heading", { level: 1, name: "Purchase lines" })).toBeVisible();
   await expect(page.getByTestId("grid-total")).toHaveText("1 line");
   const listed = page.getByTestId("grid-purchase-lines").locator("[row-id]");
+  // 0.9.6: Tracked and Part number wait in the column chooser (P-210).
+  await page.getByText("Columns", { exact: true }).click();
+  const shown = page.getByRole("group", { name: "Columns to show" });
+  await shown.getByLabel("Tracked", { exact: true }).check();
+  await shown.getByLabel("Part number", { exact: true }).check();
+  await page.getByText("Columns", { exact: true }).click();
   await expect(listed.locator('[col-id="tracked"]')).toHaveText("Not tracked");
   await expect(listed.locator('[col-id="part_number"]')).toHaveText(partNumber);
   await page.goto(`./purchases/lines?filter=${encodeURIComponent(`${ofRequest} tracked:eq:true`)}`);

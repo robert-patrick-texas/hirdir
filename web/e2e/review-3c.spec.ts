@@ -272,3 +272,63 @@ test("P-208: the next line like the last, a draft site, the lines in the window 
   await expect(page.getByTestId("grid-total")).toHaveText("3 items", { timeout: 20_000 });
   await expectClean(page, seen);
 });
+
+/** Where a column's header ends, and whether its words are cut short. */
+async function header(page: Page, grid: string, column: string) {
+  const cell = page.getByTestId(grid).locator(`.ag-header-cell[col-id="${column}"]`);
+  await expect(cell).toBeVisible();
+  return cell.evaluate((element) => {
+    const text = element.querySelector(".ag-header-cell-text") as HTMLElement;
+    return {
+      right: element.getBoundingClientRect().right,
+      cut: text.scrollWidth > text.clientWidth,
+    };
+  });
+}
+
+test("P-210: a site's name finds the lines going to it, Destination site and Expected in view, Still to come whole", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await setUp(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  const width = page.viewportSize()?.width ?? 0;
+  expect(width, "the window is 1280 pixels wide").toBe(1280);
+
+  await page.goto("./purchases/lines");
+  await expect(page.getByRole("heading", { level: 1, name: "Purchase lines" })).toBeVisible();
+  await expect(page.getByText(/Words find lines by their .* or site\./)).toBeVisible();
+  const box = page.getByLabel("Filter", { exact: true });
+  await box.fill(label("Harbor Yard"));
+  await box.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("1 line");
+  const row = page.getByTestId("grid-purchase-lines").locator("[row-id]");
+  await expect(row.locator('[col-id="site"]')).toHaveText(label("Harbor Yard"));
+  await expect(row.locator('[col-id="request.reference"]')).toHaveText(reference);
+
+  // Destination site and Expected stand within the window, their headings whole; Part
+  // number and Tracked wait in the column chooser.
+  for (const column of ["site", "expected_on", "pending_quantity", "quantity"]) {
+    const at = await header(page, "grid-purchase-lines", column);
+    expect(at.right, `${column} ends within the window`).toBeLessThanOrEqual(width);
+    expect(at.cut, `the heading of ${column} is cut short`).toBe(false);
+  }
+  const grid = page.getByTestId("grid-purchase-lines");
+  await expect(grid.locator('.ag-header-cell[col-id="part_number"]')).toHaveCount(0);
+  await expect(grid.locator('.ag-header-cell[col-id="tracked"]')).toHaveCount(0);
+  await page.getByText("Columns", { exact: true }).click();
+  const shown = page.getByRole("group", { name: "Columns to show" });
+  await expect(shown.getByLabel("Part number", { exact: true })).not.toBeChecked();
+  await expect(shown.getByLabel("Tracked", { exact: true })).not.toBeChecked();
+  await page.getByText("Columns", { exact: true }).click();
+
+  // The list of requests: Still to come is whole.
+  await page.goto(`./purchases?filter=${encodeURIComponent(`reference:eq:${reference}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 request");
+  const still = await header(page, "grid-purchase-requests", "pending_quantity");
+  expect(still.cut, "Still to come is cut short").toBe(false);
+  await expectClean(page, seen);
+});

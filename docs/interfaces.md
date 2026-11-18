@@ -1766,8 +1766,11 @@ What 0.9.6 changes:
   and its location is searched within the line's destination site from the start, the
   site's first locations offered before anything is typed and its one location chosen
   where it has only one; Only at the site, cleared, searches every site (P-209). The
-  plain words of the list of lines look in the destination site, and Destination site
-  and Expected are in view (P-210).
+  plain words of the list of lines look in the name of the destination site (`site`;
+  the list of lines has no field of the site's code), and Destination site and Expected
+  are in view, with Part number and Tracked in the column chooser; a layout a person
+  kept stays until Reset layout and filters. Still to come is whole in the list of
+  requests (P-210).
 - **A vendor.** The table of models shows twenty and a button, Show all; the vendor's
   items stand above its agreements and contracts, with the filter box of the item
   list (P-211).

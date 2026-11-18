@@ -135,7 +135,8 @@ const REQUEST_COLUMNS: GridColumn<PurchaseRequest>[] = [
     hint: (request) =>
       `${request.received_quantity} of ${request.quantity} ${request.quantity === 1 ? "item has" : "items have"} arrived`,
     numeric: true,
-    width: 140,
+    // The heading whole (P-210).
+    width: 172,
   },
   { id: "notes", header: "Notes", kind: "text", value: (request) => request.notes, width: 320 },
   {
@@ -246,7 +247,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     column: "request",
     value: (line) => line.reference,
     link: true,
-    width: 190,
+    width: 160,
   },
   {
     id: "line",
@@ -263,7 +264,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "vendor",
     value: (line) => line.catalog?.vendor ?? null,
-    width: 130,
+    width: 100,
   },
   {
     id: "catalog.pid",
@@ -271,7 +272,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "pid",
     value: (line) => line.catalog?.pid ?? null,
-    width: 170,
+    width: 140,
   },
   {
     id: "catalog.model_name",
@@ -282,12 +283,14 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     hide: true,
   },
   {
-    // As the procurement system gave them, beside the model the line is matched to.
+    // As the procurement system gave them, beside the model the line is matched to. In
+    // the column chooser, so that Destination site and Expected are in view (P-210).
     id: "part_number",
     header: "Part number",
     kind: "text",
     value: (line) => line.part_number,
     mono: true,
+    hide: true,
     width: 170,
   },
   {
@@ -309,6 +312,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
       { value: "true", label: "Tracked: the line has a model" },
       { value: "false", label: "Not tracked: no model, and no item" },
     ],
+    hide: true,
     width: 120,
   },
   {
@@ -317,7 +321,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "integer",
     value: (line) => String(line.quantity),
     numeric: true,
-    width: 110,
+    width: 125,
   },
   {
     id: "received_quantity",
@@ -325,7 +329,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "integer",
     value: (line) => String(line.received_quantity),
     numeric: true,
-    width: 110,
+    width: 125,
   },
   {
     id: "pending_quantity",
@@ -333,7 +337,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "integer",
     value: (line) => String(line.pending_quantity),
     numeric: true,
-    width: 130,
+    width: 172,
   },
   {
     // The items on the line that are of another model than the line's, which 0.6.0 let
@@ -357,14 +361,14 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     column: "destination_site",
     value: (line) => line.destination_site?.name,
     hint: (line) => line.destination_site?.path,
-    width: 170,
+    width: 200,
   },
   {
     id: "expected_on",
     header: "Expected",
     kind: "date",
     value: (line) => line.expected_on,
-    width: 130,
+    width: 125,
   },
   {
     id: "request.status",
@@ -405,8 +409,9 @@ export function PurchaseLines() {
       <p>
         The lines of every request: what was asked for, what has arrived and what is still to come.
         Filter <span className="mono">Still to come</span> to more than 0, or type{" "}
-        <span className="mono">pending_quantity:gt:0</span>, for the list to plan by. A line is
-        received on the page of its request. A line with no model is not tracked, and{" "}
+        <span className="mono">pending_quantity:gt:0</span>, for the list to plan by; the name of a
+        site, typed in the filter, finds the lines going to it. A line is received on the page of
+        its request. A line with no model is not tracked, and{" "}
         <span className="mono">tracked:eq:false</span> lists those: nothing is to come on them.
       </p>
       <DataGrid<PurchaseLine>
@@ -422,7 +427,7 @@ export function PurchaseLines() {
         rowLink={(line) => requestPath(line.request_hid)}
         dimmed={(line) => line.request_status === "cancelled" || line.request_status === "draft"}
         shortFilter="pending_quantity:gt:0 tracked:eq:true catalog.vendor:eq:Cisco"
-        quickFields={["request.reference", "catalog.pid", "catalog.model_name"]}
+        quickFields={["request.reference", "catalog.pid", "catalog.model_name", "site"]}
         startFilter={startFilter}
       />
     </>
