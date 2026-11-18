@@ -177,7 +177,7 @@ test("a copied row holds the text of its values, as before", async ({
   const grid = await openList(page);
   await grid.locator('[role="gridcell"][col-id="serial_number"]').click();
   await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
-  await page.getByRole("button", { name: "Copy", exact: true }).click();
+  await page.getByRole("button", { name: /^Copy( \(|$)/ }).click();
   await expect(page.getByText("Copied 1 item to the clipboard, with a header row.")).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   for (const text of [host, pid, vendor, owner]) expect(copied).toContain(text);

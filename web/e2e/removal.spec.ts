@@ -52,10 +52,14 @@ async function signInAs(browser: Browser, account: Account) {
 }
 
 function gridRow(page: Page, grid: string, text: string): Locator {
-  // By the link of its name: a group's row names the group it is nested in too.
-  return page
-    .getByTestId(grid)
-    .locator("[row-id]", { has: page.getByRole("link", { name: text, exact: true }) });
+  // By the link of its own name, in its first columns: a group's row names the group it
+  // is nested in too, which is a link since 0.9.7 (P-232).
+  return page.getByTestId(grid).locator("[row-id]", {
+    has: page.locator('[col-id="name"], [col-id="hostname"]').getByRole("link", {
+      name: text,
+      exact: true,
+    }),
+  });
 }
 
 function rowBox(page: Page, grid: string, text: string): Locator {

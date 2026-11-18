@@ -8,7 +8,14 @@
 // and changes nothing: what it reads is the frame and the words of its own faults.
 
 import { expect, type Page, type Route } from "@playwright/test";
-import { signIn, test } from "./support";
+import { importFile } from "./structure";
+import { mark, signIn, test } from "./support";
+
+const suffix = mark("fault");
+const vendor = `Example Networks ${suffix}`;
+const pid = `EN-4800-${suffix}`;
+const host = `site4-sw-${suffix}`;
+const group = `site4-grp-${suffix}`;
 
 const back = (page: Page) =>
   page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -66,10 +73,35 @@ test("an answer of another shape on coming back leaves words and a way on, on ev
   await signIn(page, account);
   const links = await menuLinks(page);
   expect(links.length).toBeGreaterThan(15);
-  // The first record of the lists whose pages emptied in the probe.
-  for (const list of ["items", "groups", "circuits"]) {
-    await page.goto(`./${list}`);
-    const first = page.locator(`main a[href*="/${list}/"]`).first();
+  // The page of an item and of a group, which emptied in the probe: of this file's own,
+  // since the inventory it runs on may hold nothing else.
+  await importFile(
+    page,
+    "catalog_entries",
+    `catalog-entries-${suffix}.csv`,
+    ["vendor", "pid", "model_name", "type"],
+    [[vendor, pid, "Example 4800 48-port", "switch"]],
+  );
+  await importFile(
+    page,
+    "items",
+    `items-${suffix}.csv`,
+    ["vendor", "pid", "serial_number", "hostname"],
+    [[vendor, pid, `ENF${suffix.toUpperCase()}01`, host]],
+  );
+  await importFile(
+    page,
+    "device_groups",
+    `device-groups-${suffix}.csv`,
+    ["name", "type"],
+    [[group, "custom"]],
+  );
+  for (const [list, filter, name] of [
+    ["items", `hostname:eq:${host}`, host],
+    ["groups", `name:eq:${group}`, group],
+  ]) {
+    await page.goto(`./${list}?filter=${encodeURIComponent(filter ?? "")}`);
+    const first = page.locator("main").getByRole("link", { name, exact: true }).first();
     await expect(first).toBeVisible({ timeout: 20_000 });
     links.push(await first.evaluate((link) => (link as HTMLAnchorElement).href));
   }
