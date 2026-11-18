@@ -334,7 +334,8 @@ upload, by its extension and by its first bytes.
   what undoing that restore takes is kept there (P-165). Copying
   backups off the host, the `files/` beside them with them, is the host's job.
 - **Reset.** `hirdir admin reset` is the one place where records are deleted, beside
-  the erasure of a reference, which the owner asked for (P-160); it erases every
+  the erasure of a reference, which the owner asked for (P-160), and an Admin's
+  deletion of an item or a device group that was a mistake (P-227); it erases every
   reference and its content after the backup it takes. It is a
   command on the server, with no route behind it, and runs only while the service is
   stopped, after a backup. Every table is named in `domain/reset.py` as one that a

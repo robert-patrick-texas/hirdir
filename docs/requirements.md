@@ -80,9 +80,11 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 3. **One set of rules.** The web UI, the API, the CLI and file imports go through the
    same validation and the same permission checks on the server.
 4. **Nothing is silently lost.** Every change is recorded with who, when, what was and
-   what is. Items are archived, not deleted. The one exception is made on the server
-   itself, by an operator who clears a trial inventory with `hirdir admin reset`, and
-   it takes a backup first.
+   what is. Items are archived, not deleted. Two exceptions are made. An Admin deletes
+   an item or a device group that was a mistake and that nothing else depends on, and
+   the audit trail keeps the record as it was, the reason, and every event it had
+   before (P-227). And an operator on the server itself clears a trial inventory with
+   `hirdir admin reset`, which takes a backup first.
 5. **Intent and observation are separate.** The inventory records what should be. What
    is observed is kept beside it, as its own fact with the moment it was seen, and the
    two are compared. Until discovery and monitoring report it, what is observed is
@@ -215,6 +217,9 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 - **R7.4** Shipping address and shipping instructions inherit the same way. An address
   is inherited or overridden as a whole, never field by field. GPS coordinates do not
   inherit.
+- **R7.4a** The coordinates of a site or a location open a map, at an address that a
+  setting names and an installation may change or blank; with it blank they are plain
+  numbers, as where there is no access to the internet (P-229).
 - **R7.5** Owner is a reference to a managed owner record with a primary and alternate
   people. An owner outside the operations team is allowed as a marked exception with a
   reason.
@@ -274,8 +279,12 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 - **R10.2** Filters support exact, contains, prefix, wildcard and bounded regular
   expression matching, combined with AND and OR. One filter definition serves the grid,
   the export, the API and the CLI, so an export always matches what was on screen.
-- **R10.3** The grid selects whole rows. Selected rows can be copied to the clipboard as
-  tab-separated text, exported, or changed in bulk after a preview.
+- **R10.3** The grid selects whole rows, by the row and by a box at its left, with one
+  box in the heading for every row on show (P-233). Selected rows can be copied to the
+  clipboard as tab-separated text, exported, or changed in bulk after a preview. The
+  selected rows of the lists of items and of device groups are retired at once by the
+  Inventory role, after being asked with their number, and never all that match a
+  filter (P-228); an Admin deletes those that were a mistake (P-227).
 - **R10.4** Selecting cell ranges and editing in the grid are LATER.
 - **R10.5** An edit made against a stale copy of a record MUST be refused with a clear
   message, never applied over the newer change.
@@ -287,6 +296,10 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 - **R10.7** LATER: a person MAY choose the colour theme of the web page. One who has
   chosen none sees the default. The choice is kept in the browser's local storage and
   never in a cookie (P-144).
+- **R10.8** A value of a list that names another record MUST open that record: the
+  group, the place, the owner, the operator, the vendor and the model of an item, and
+  likewise in every other list. It looks like the text around it and is underlined
+  under the pointer and with the keyboard's focus (P-232).
 
 ### R11 Import and export
 
@@ -304,6 +317,14 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   the background, in batches, with its progress shown; a row whose record changed
   after the preview is not applied and is reported, while the rest are; and an apply
   that stops partway says what was applied and is resumed.
+- **R11.7** A past import lists the records it made, each with what it is now, and
+  those that were made only because a row named them. Where they are items or device
+  groups, the Inventory role retires the rows it selects and an Admin deletes those
+  that should never have been (P-234, P-227, P-228).
+- **R11.8** A place is found in a file by its path of names, by its HID, or by codes:
+  a step of the path may be a code, a path may begin at the code of a region or a
+  site, and a location is found by its code after its site. An export writes places by
+  their codes where it is asked to (P-235).
 
 ### R12 Access
 
@@ -477,6 +498,7 @@ itself where a closed network has no way out to the internet.
 | Times | Shown in the application's time zone with the zone named, the same for everybody. America/New_York unless an Admin sets another. |
 | Audit | Every change is kept. Nothing expires before a retention feature exists. |
 | Browser | Current Firefox, Chrome and Edge. Keyboard reachable, visible focus, labelled inputs. A page opens at its top, with the menu bar in view (P-167). |
+| Faults | A page that cannot be drawn says so, with the text of the fault, and offers to load again; a page that has not loaded yet says that it is loading, and never stands empty (P-230). A page older than the server says that a new version is installed, and is never loaded again unasked (P-231). |
 | Name | The web page, and the files it downloads, carry the name an Admin gives the product, `hirdir` unless changed (P-168). |
 | Whom to ask | About names the team that runs the installation and how to reach it, as an Admin sets it, and the sign-in page does too where the Admin chooses (P-169). |
 
