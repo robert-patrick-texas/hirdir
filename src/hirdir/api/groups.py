@@ -10,7 +10,7 @@ from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import Page
-from hirdir.domain import groups, resolution
+from hirdir.domain import groups, removal, resolution
 from hirdir.io import fields, tables
 
 router = APIRouter(prefix="/device-groups", tags=["Groups"], route_class=IdempotentRoute)
@@ -61,7 +61,7 @@ def create_group(
 def retire_groups(body: r.RetireMany, _: Inventory, context: Audit, db: Db) -> r.RetiredMany:
     """Retire several device groups at once, each as its own retire route does, with an
     audit event each (P-228). One retired already is counted, not refused."""
-    raise HTTPException(501, "not built yet")
+    return shapes.retired_out(removal.retire_many(db, context, removal.DEVICE_GROUP, body.hids))
 
 
 @router.post("/delete")

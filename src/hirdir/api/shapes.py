@@ -65,6 +65,7 @@ from hirdir.domain import (
     operators,
     purchases,
     records,
+    removal,
     replacements,
     resolution,
     settings,
@@ -1355,6 +1356,26 @@ def preview_out(db: Session, job: ImportJob) -> shapes.ImportPreview:
     """Return a preview: the job, and the first of its rows."""
     rows, _ = imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)
     return shapes.ImportPreview(job=job_out(db, job), rows=[row_out(row) for row in rows])
+
+
+# --- several retired at once, and deleting (P-227, P-228, P-236) ---------------------
+
+
+def _labelled(found: list[tuple[str, str]]) -> list[shapes.RecordLabel]:
+    return [shapes.RecordLabel(hid=hid, label=label) for hid, label in found]
+
+
+def retired_out(done: removal.Retired) -> shapes.RetiredMany:
+    """Return what a request that retires several did with each record it named."""
+    return shapes.RetiredMany(
+        retired=_labelled(done.retired),
+        already=_labelled(done.already),
+        refused=[
+            shapes.RetireRefused(hid=hid, label=label, detail=detail)
+            for hid, label, detail in done.refused
+        ],
+        missing=done.missing,
+    )
 
 
 # --- contracts and coverage ----------------------------------------------------------

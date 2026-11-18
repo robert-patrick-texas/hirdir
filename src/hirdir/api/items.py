@@ -10,7 +10,7 @@ from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
-from hirdir.domain import items, replacements, resolution
+from hirdir.domain import items, removal, replacements, resolution
 from hirdir.domain.lifecycle import UNSET
 from hirdir.io import bulk, fields, imports, tables
 
@@ -103,7 +103,7 @@ def apply_bulk_update(
 def retire_items(body: r.RetireMany, _: Inventory, context: Audit, db: Db) -> r.RetiredMany:
     """Retire several items at once, each as its own retire route does, with an audit
     event each (P-228). One retired already is counted, not refused."""
-    raise HTTPException(501, "not built yet")
+    return shapes.retired_out(removal.retire_many(db, context, removal.ITEM, body.hids))
 
 
 @router.post("/delete")
