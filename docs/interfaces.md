@@ -1887,6 +1887,12 @@ What 0.9.6 changes:
   model yet among them. A member's page says among its first facts that
   it is a member, with its position and its stack as a link, and shows the stack's host
   name, FQDN and addresses as the stack's; an item in no stack has Join a stack (P-222).
+  They stand under Name: Stack, "Member 2 of" the stack as a link, then the stack's
+  hostname, FQDN and addresses, read from `GET /device-groups/{hid}` when the page is
+  read, their lines there from the start. Join a stack is offered to a person who may
+  change the item, on a major item that is not retired, not in Released or Archived and
+  in no stack: the stack is searched for by its name among the stacks, the next position
+  is offered, and the answer is said at the top of the page, which reads the item again.
 
 ### The grid
 
