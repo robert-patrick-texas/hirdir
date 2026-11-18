@@ -2142,6 +2142,32 @@ field that searches finds is brought into the window as it comes, above those bu
 
 A count written in a sentence has the separator of thousands, as "34,778 items" (P-195).
 
+A page that cannot be drawn says so (P-230): "This page could not be drawn", with the
+text of the fault in a box that is read and selected as any text, a button Copy the text,
+and two ways on, Load again, which loads the page at its present address, and The first
+page, at the prefix the page is served under. A fault in what is beneath the menu bar
+leaves the menu bar where it is, and opening another page clears it; a fault in the frame
+itself, the menu bar or what stands with it, stands over the whole page, and Back or
+Forward clears it. A part of the web page that cannot be fetched, the file of one of its
+pages, says the same, and that a new version may have been installed since the page was
+loaded. The fault is written to the browser's console and sent nowhere. The text of the
+fault holds what was thrown, the address of the page, the version of the web page, the
+time, and where in the page it happened. Before its script runs the page holds words:
+the product's name, written into it by the server as it writes the tab's title, and
+Loading…; after six seconds, and at once where the stylesheet did not arrive either, "If
+the page stays like this, load the page again."
+
+A page older than the server says that a new version is installed (P-231). The page
+knows the version it was built as, that of `web/package.json`. It asks `GET /about`, as
+the person signed in, on coming back to its tab, at a change of page where it last asked
+more than five minutes before (or was loaded then), and when a page could not be drawn.
+Where the version the server answers is another, a notice stands under the menu bar of
+every page until the page is loaded again: that a new version of the product has been
+installed, the two versions, and a button, Load again. It is no dialog, takes no focus
+and is announced politely; the page never loads again by itself, so that what is typed
+into a form is not lost. A request that fails, or an answer without a version, says
+nothing, and nothing is asked while nobody is signed in.
+
 ### Times
 
 Every time on a page is in the application's time zone, the `time_zone` setting, and

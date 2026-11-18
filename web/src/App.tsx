@@ -3,51 +3,54 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import { AuthGate } from "./auth";
 import { Shell } from "./components/Shell";
 import { routerBasename } from "./lib/base";
+import { part } from "./lib/fault";
 import { About } from "./pages/About";
 import { Home } from "./pages/Home";
 import { AdminStart, NotFound, RequireRole } from "./pages/Misc";
 
 // The sign-in page and the first page are in the file the browser loads first. Every
-// other page is a file of its own, so that signing in never waits for the grid.
+// other page is a file of its own, so that signing in never waits for the grid. 0.9.7: a
+// file that cannot be fetched, as where a release installed meanwhile has taken the old
+// one away, is said as such where the page would stand (P-230).
 const pages = {
-  agreements: () => import("./pages/Agreements"),
-  audit: () => import("./pages/Audit"),
-  capacity: () => import("./pages/Capacity"),
-  catalog: () => import("./pages/Catalog"),
-  choices: () => import("./pages/Choices"),
-  contacts: () => import("./pages/Contacts"),
-  contracts: () => import("./pages/Contracts"),
-  deviceGroups: () => import("./pages/DeviceGroups"),
-  geography: () => import("./pages/Geography"),
-  groups: () => import("./pages/Groups"),
-  import: () => import("./pages/Import"),
-  itemDetail: () => import("./pages/ItemDetail"),
-  items: () => import("./pages/Items"),
-  lifecycleReports: () => import("./pages/LifecycleReports"),
-  lifecycleRules: () => import("./pages/LifecycleRules"),
-  networks: () => import("./pages/Networks"),
-  operators: () => import("./pages/Operators"),
-  owners: () => import("./pages/Owners"),
-  purchases: () => import("./pages/Purchases"),
+  agreements: part(() => import("./pages/Agreements")),
+  audit: part(() => import("./pages/Audit")),
+  capacity: part(() => import("./pages/Capacity")),
+  catalog: part(() => import("./pages/Catalog")),
+  choices: part(() => import("./pages/Choices")),
+  contacts: part(() => import("./pages/Contacts")),
+  contracts: part(() => import("./pages/Contracts")),
+  deviceGroups: part(() => import("./pages/DeviceGroups")),
+  geography: part(() => import("./pages/Geography")),
+  groups: part(() => import("./pages/Groups")),
+  import: part(() => import("./pages/Import")),
+  itemDetail: part(() => import("./pages/ItemDetail")),
+  items: part(() => import("./pages/Items")),
+  lifecycleReports: part(() => import("./pages/LifecycleReports")),
+  lifecycleRules: part(() => import("./pages/LifecycleRules")),
+  networks: part(() => import("./pages/Networks")),
+  operators: part(() => import("./pages/Operators")),
+  owners: part(() => import("./pages/Owners")),
+  purchases: part(() => import("./pages/Purchases")),
   // 0.7.0: the renewal worklist (D-178).
-  renewals: () => import("./pages/Renewals"),
-  reports: () => import("./pages/Reports"),
-  roles: () => import("./pages/Roles"),
-  scoreboard: () => import("./pages/Scoreboard"),
-  settings: () => import("./pages/Settings"),
-  systems: () => import("./pages/Systems"),
-  tags: () => import("./pages/Tags"),
-  userDetail: () => import("./pages/UserDetail"),
-  users: () => import("./pages/Users"),
-  vendors: () => import("./pages/Vendors"),
+  renewals: part(() => import("./pages/Renewals")),
+  reports: part(() => import("./pages/Reports")),
+  roles: part(() => import("./pages/Roles")),
+  scoreboard: part(() => import("./pages/Scoreboard")),
+  settings: part(() => import("./pages/Settings")),
+  systems: part(() => import("./pages/Systems")),
+  tags: part(() => import("./pages/Tags")),
+  userDetail: part(() => import("./pages/UserDetail")),
+  users: part(() => import("./pages/Users")),
+  vendors: part(() => import("./pages/Vendors")),
   // 0.8.0: circuits and circuit groups (P-145 to P-154).
-  circuits: () => import("./pages/Circuits"),
-  circuitGroups: () => import("./pages/CircuitGroups"),
+  circuits: part(() => import("./pages/Circuits")),
+  circuitGroups: part(() => import("./pages/CircuitGroups")),
   // 0.8.0, web lane B: the report of what circuits cost (P-151).
-  circuitCosts: () => import("./pages/CircuitCosts"),
+  circuitCosts: part(() => import("./pages/CircuitCosts")),
   // End of 0.8.0, web lane B.
   // 0.9.0: every reference, Admin › Files (P-162).
-  files: () => import("./pages/Files"),
+  files: part(() => import("./pages/Files")),
 };
 
 const AgreementDetail = lazy(() =>

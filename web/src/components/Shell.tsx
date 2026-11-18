@@ -12,6 +12,8 @@ import { useAuth } from "../auth";
 import { ITEM_WORDS, itemsPath, parseFilter } from "../lib/filter";
 import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
+import { FaultBoundary } from "./Fault";
+import { NewVersionNotice, VersionWatch } from "./NewVersion";
 import { RenewalAlert } from "./RenewalAlert";
 
 /**
@@ -200,19 +202,26 @@ export function Shell() {
         </button>
         {allows(user.role, "viewer") && <FindItem />}
       </header>
+      {/* 0.9.7: a new version installed since the page was loaded (P-231). */}
+      <VersionWatch />
+      <NewVersionNotice />
       {/* The renewal alert of 0.7.0 (D-179), under the header of every page. */}
       <RenewalAlert />
       <main ref={main} tabIndex={-1}>
-        {/* A page whose code is still on its way. It says so only if that takes a while. */}
-        <Suspense
-          fallback={
-            <p role="status" className="muted loading-late">
-              Loading…
-            </p>
-          }
-        >
-          <Outlet />
-        </Suspense>
+        {/* 0.9.7: a page that cannot be drawn, or fetched, says so beneath the menu bar,
+            until another page is opened (P-230). */}
+        <FaultBoundary resetKey={pathname}>
+          {/* A page whose code is still on its way. It says so only if that takes a while. */}
+          <Suspense
+            fallback={
+              <p role="status" className="muted loading-late">
+                Loading…
+              </p>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </FaultBoundary>
       </main>
     </>
   );

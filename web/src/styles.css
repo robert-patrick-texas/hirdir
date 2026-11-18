@@ -2642,3 +2642,67 @@ fieldset.extension-list {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* 0.9.7, lane W1 */
+
+/* What the page holds before its script runs (P-230). The words to load again come after
+   a few seconds, and at once where this stylesheet did not arrive either. */
+.boot {
+  max-width: 24rem;
+  margin: 0 auto;
+  padding: 12vh 1rem 1rem;
+}
+
+.boot-name {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.boot-late {
+  animation: appear 0s linear 6s both;
+}
+
+/* A page that could not be drawn (P-230). */
+main.fault-whole {
+  max-width: 48rem;
+}
+
+.fault .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.fault-text {
+  display: block;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  white-space: pre;
+  overflow: auto;
+}
+
+/* A new version installed since the page was loaded (P-231): it stands in the frame, as
+   wide as the content of the page beneath it, as the renewal alert does. */
+.new-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem max(1rem, calc((100% - 76rem) / 2)) 0;
+  padding: 0.5rem 0.9rem;
+  background: var(--info-surface);
+  border: 1px solid var(--accent);
+  border-left-width: 4px;
+  border-radius: 4px;
+}
+
+.new-version p {
+  flex: 1 1 20rem;
+  margin: 0;
+}
+
+main.fault-whole .new-version {
+  margin: 0 0 1rem;
+}

@@ -75,6 +75,8 @@ BASE_TAG = '<base href="/" />'
 # What the built page says of the product, which the server names as the site calls it.
 TITLE_TAG = "<title>hirdir</title>"
 NO_SCRIPT = "<noscript>hirdir needs JavaScript to run.</noscript>"
+# What the page holds before its script runs (P-230).
+BOOT_NAME = '<p class="boot-name">hirdir</p>'
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 log = logging.getLogger("hirdir")
@@ -257,11 +259,13 @@ def _install_web_ui(app: FastAPI) -> None:
 
 def _named(html: str, facts: dict[str, Any]) -> str:
     """Write the product name into the page, and what else it carries before signing in
-    (P-168, P-169): the tab's title, the note for a browser without scripts, and the
-    facts the web UI reads when it starts, as an attribute escaped as one is."""
+    (P-168, P-169): the tab's title, the note for a browser without scripts, the words
+    the page holds before its script runs (P-230), and the facts the web UI reads when it
+    starts, as an attribute escaped as one is."""
     name = escape(facts["product_name"], quote=True)
     html = html.replace(TITLE_TAG, f"<title>{name}</title>")
     html = html.replace(NO_SCRIPT, f"<noscript>{name} needs JavaScript to run.</noscript>")
+    html = html.replace(BOOT_NAME, f'<p class="boot-name">{name}</p>')
     meta = f'<meta name="hirdir-site" content="{product.page_attribute(facts)}" />'
     return html.replace("</head>", f"    {meta}\n  </head>", 1)
 

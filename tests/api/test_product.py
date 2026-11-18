@@ -24,6 +24,7 @@ HELP = {
 PAGE = (
     '<!doctype html>\n<html lang="en">\n  <head>\n    <base href="/" />\n'
     "    <title>hirdir</title>\n  </head>\n  <body>\n"
+    '    <div id="root"><p class="boot-name">hirdir</p></div>\n'
     "    <noscript>hirdir needs JavaScript to run.</noscript>\n  </body>\n</html>\n"
 )
 
@@ -192,6 +193,7 @@ def test_the_page_escapes_the_name_it_writes(ui: TestClient, admin: dict) -> Non
     named = html.escape(tricky.replace(">", ""), quote=True)
     assert f"<title>{named}</title>" in page
     assert f"<noscript>{named} needs JavaScript to run.</noscript>" in page
+    assert f'<p class="boot-name">{named}</p>' in page
     assert _site(page)["product_name"] == tricky.replace(">", "")
     assert page.count("<meta ") == 1
     assert "set-cookie" not in ui.get("/").headers
@@ -245,7 +247,14 @@ def test_a_value_equal_to_the_default_is_kept_as_no_value(client: TestClient, ad
 def test_the_built_page_holds_what_the_server_names(ui: TestClient) -> None:
     # The server replaces these very strings of the page the web UI builds from.
     built = (Path(__file__).parents[2] / "web" / "index.html").read_text(encoding="utf-8")
-    for held in (app_module.BASE_TAG, app_module.TITLE_TAG, app_module.NO_SCRIPT, "</head>"):
+    held_strings = (
+        app_module.BASE_TAG,
+        app_module.TITLE_TAG,
+        app_module.NO_SCRIPT,
+        app_module.BOOT_NAME,
+        "</head>",
+    )
+    for held in held_strings:
         assert built.count(held) == 1, held
 
 
@@ -254,6 +263,8 @@ def test_the_page_is_named_by_any_path_it_is_asked_for_by(ui: TestClient, admin:
     for path in ("/", "/items", "/index.html", "/admin/settings"):
         page = ui.get(path).text
         assert "<title>Réseau Example</title>" in page, path
+        # What the page holds before its script runs names it too (P-230).
+        assert '<p class="boot-name">Réseau Example</p>' in page, path
         assert _site(page)["product_name"] == "Réseau Example", path
 
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
@@ -80,8 +80,14 @@ function shipEmbeddedFiles(): Plugin {
 
 // The server rewrites <base href="/" /> in index.html to the URL prefix it is served
 // under, so every URL the build writes is relative and resolves against that tag.
+// 0.9.7: the version the page is built as, which it compares with the server's (P-231).
+const VERSION: string = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+).version;
+
 export default defineConfig({
   base: "./",
+  define: { __HIRDIR_VERSION__: JSON.stringify(VERSION) },
   plugins: [shipEmbeddedFiles(), react()],
   build: {
     outDir: "../src/hirdir/static",
