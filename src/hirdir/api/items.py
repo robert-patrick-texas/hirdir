@@ -2,11 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
-from hirdir.api.deps import Audit, Db, Inventory, Viewer
+from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
@@ -97,6 +97,25 @@ def apply_bulk_update(
     """
     job = imports.begin_apply(db, context, hid, source="bulk", skip_rejected=skip_rejected)
     return files.begun(request, background_tasks, db, job)
+
+
+@router.post("/retire")
+def retire_items(body: r.RetireMany, _: Inventory, context: Audit, db: Db) -> r.RetiredMany:
+    """Retire several items at once, each as its own retire route does, with an audit
+    event each (P-228). One retired already is counted, not refused."""
+    raise HTTPException(501, "not built yet")
+
+
+@router.post("/delete")
+def delete_items(body: r.DeleteMany, _: Admin, context: Audit, db: Db) -> r.DeletedMany:
+    """Delete items that were a mistake, each judged by itself: one that another record
+    depends on is refused, naming what (P-227, P-236).
+
+    What belongs to an item alone goes with it. A record that only items of the same
+    request depend on, as a switch with its power supplies, is deleted with them. With
+    `dry_run` nothing is changed, and the answer is the same.
+    """
+    raise HTTPException(501, "not built yet")
 
 
 @router.get("/{hid}")

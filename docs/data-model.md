@@ -510,7 +510,9 @@ beneath it do not share a name, so that a path names one record. `code` is optio
 `S2`, and is unique when present: among regions, among sites, and within its site for a
 location. `latitude` and `longitude` are decimal degrees with up to six places, given
 together or not at all. All three records take tags, and links (see "Links"), which a
-place does not pass down to the places beneath it.
+place does not pass down to the places beneath it. The answer of a site and of a
+location holds `map_url`, the address of a map at its coordinates, made of the setting
+`map_link`, and null where the setting is blank or the place has no coordinates (P-229).
 
 A **path** is the names from the top region down, joined with ` > `:
 `Americas > Central > Site-2 > Building 1 > Room 102`. A path identifies a region, site
@@ -518,6 +520,19 @@ or location in an import when no HID is given, and every answer that holds one o
 three holds its `path`. It is worked out when it is read and stored nowhere, so moving
 a site to another region changes the path of the site and of everything in it, and
 writes to none of them.
+
+A step of a path may also be a **code** (P-235). Where no name of that step matches, the
+step finds the record of that step whose code it is: a region or a site within the
+region before it, a location within the location or the site before it. A path need
+not begin at the top: its first step may be the code of any region or of any site,
+which no two of a kind share, so `S2 > Building 1 > Room 102` finds what `Americas >
+Central > Site-2 > Building 1 > Room 102` finds. After a site or a location, a step that
+is the code of a location beneath it finds that location at whatever depth, since no
+two locations of one site share a code: `S2 > R102`. A name wins over a code at each
+step, and a first step that is the code of a region and of a site at once finds
+neither. This one rule reads a path wherever one is taken: in a file, in a filter, and
+in a command. The name a row of a file gives a place of its own is matched by its name
+alone, so that a new location named as another's code is a new location.
 
 **Nesting.** Regions nest at most sixteen deep. Locations nest at most eight deep within a
 site: a building, a floor, a room, a rack. A location stays in the site it was made
@@ -1482,6 +1497,7 @@ and is refused, not rounded, when it has more.
 | `help_email` | blank | the email address to write to, for help with this installation. A plain address: at most 254 characters, one `@` and a domain with a dot, no space and none of `? & = % / : ; , " ' < >` |
 | `help_phone` | blank | the number to call, shown as it is typed. At most 40 characters of digits, spaces, letters and `+ - ( ) . , # *`, a digit among them |
 | `help_url` | blank | an address on the web for help, such as the team's page, opened in a new tab. `https://` or `http://`, as a link is |
+| `map_link` | `https://www.google.com/maps/search/?api=1&query={latitude},{longitude}` | the address of a map, with `{latitude}` and `{longitude}` where the coordinates of a site or a location go: the coordinates on the place's page open it in a new tab, and following it sends the map's site those coordinates and nothing else. Blank, the coordinates are plain numbers, as where there is no access to the internet. Blank, or an address of `https://` or `http://`, as a link is, that holds both `{latitude}` and `{longitude}` (P-229) |
 | `help_on_sign_in` | false | true lists whom to ask on the sign-in page too, which anyone who reaches the site sees; false keeps it to About |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
@@ -1526,6 +1542,15 @@ group `leaving_group` with the group's HID as `old` (P-217, P-218): what a joini
 stack member gave up, its host name, FQDN, location and each address, is read from
 these events (P-223). The entry is of the item's own events, and of the removal of its
 addresses: what follows from a move of the item is audited without it.
+
+An Admin's deletion of an item or a device group (P-227, P-236) is the event `delete`
+of that record. Its `changes` hold every field of the record as it was, each with
+`new` blank, its `tags`, `reason`, the reason the Admin gave, as `new`, and what went
+with it, each as `old`: `addresses`, `memberships` and `registrations`, a list of what
+each was. Each address, membership and registration that went with it has an event
+`delete` of its own beside, with what it was and `deleted_with`, the HID of the record,
+as `new`; a stack whose seen master it was has an `update` that clears it. The events
+the record had before stay, and are found by its HID; nothing is removed from the trail.
 
 ### `import_jobs` and `import_rows`
 

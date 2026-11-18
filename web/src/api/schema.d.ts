@@ -3305,6 +3305,45 @@ export interface paths {
       };
     };
   };
+  "/api/v1/device-groups/delete": {
+    /**
+     * Delete device groups that were a mistake, each judged by itself: one that another
+     * record depends on is refused, naming what (P-227, P-236).
+     *
+     * Its memberships, addresses, tags and registrations go with it; its members stay. A
+     * group nested only in groups of the same request is deleted with them. With
+     * `dry_run` nothing is changed, and the answer is the same.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DeleteMany"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["DeletedMany"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/device-groups/query": {
     /** List device groups, with the filter and sort in the body. */
     post: {
@@ -3323,6 +3362,41 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["Page_DeviceGroupOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/device-groups/retire": {
+    /**
+     * Retire several device groups at once, each as its own retire route does, with an
+     * audit event each (P-228). One retired already is counted, not refused.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RetireMany"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RetiredMany"];
           };
         };
         /** Validation Error */
@@ -4003,6 +4077,41 @@ export interface paths {
       };
     };
   };
+  "/api/v1/imports/{hid}/created": {
+    /**
+     * List the records an import made, a row of the file each, by row, with what each
+     * is now; and after them, whole, the vendors and catalog entries it made only because a
+     * row named them (P-234). Nothing new is stored: each is read from the rows and the
+     * audit trail.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ImportCreated"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/imports/{hid}/rows": {
     /**
      * List the rows of a preview, in the order of the file unless a sort says otherwise.
@@ -4197,6 +4306,45 @@ export interface paths {
       };
     };
   };
+  "/api/v1/items/delete": {
+    /**
+     * Delete items that were a mistake, each judged by itself: one that another record
+     * depends on is refused, naming what (P-227, P-236).
+     *
+     * What belongs to an item alone goes with it. A record that only items of the same
+     * request depend on, as a switch with its power supplies, is deleted with them. With
+     * `dry_run` nothing is changed, and the answer is the same.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DeleteMany"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["DeletedMany"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items/query": {
     /** List items, with the filter and sort in the body. */
     post: {
@@ -4215,6 +4363,41 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["Page_ItemOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/retire": {
+    /**
+     * Retire several items at once, each as its own retire route does, with an audit
+     * event each (P-228). One retired already is counted, not refused.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RetireMany"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RetiredMany"];
           };
         };
         /** Validation Error */
@@ -9974,6 +10157,49 @@ export interface components {
       /** In service, under no contract, and not flagged as not to be renewed. */
       uncovered: number;
     };
+    /** A record that a row of an import made, and what it is now. */
+    CreatedRecord: {
+      /** What it is known by now, as the routes that retire several give it; for one that was deleted, what it was known by then. */
+      label: string;
+      record_hid: string;
+      /** Its kind, as the audit trail names it: `item`. */
+      record_type: string;
+      /** The row of the file that made it, from 1. */
+      row: number;
+      /** A record with no status of its own, such as a tag or a membership, is `active` while it stands. */
+      state: "active" | "draft" | "retired" | "deleted";
+    };
+    /** Items or device groups that were a mistake, to delete, for an Admin. */
+    DeleteMany: {
+      /** Answer what it would do, and change nothing. */
+      dry_run?: boolean;
+      hids: string[];
+      /** Why they are deleted, kept in the audit event of each. A deletion requires it, and a dry run does not. */
+      reason?: string | null;
+    };
+    /** A record that is not deleted, and what depends on it. */
+    DeleteRefused: {
+      depends_on: components["schemas"]["Dependent"][];
+      hid: string;
+      /** What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name. */
+      label: string;
+    };
+    /** What a request that deletes several did, or with `dry_run` would do, with each. */
+    DeletedMany: {
+      deleted: components["schemas"]["RecordLabel"][];
+      dry_run: boolean;
+      /** Each HID that names no such record. */
+      missing: string[];
+      refused: components["schemas"]["DeleteRefused"][];
+    };
+    /** A record that depends on one that is to be deleted, and so stands in the way. */
+    Dependent: {
+      hid: string;
+      /** What it is known by: a contract by its number, a purchase line as RITM0012345/2, a replacement by its two items, a circuit by its enterprise circuit ID or its name, a reference by its title, an item or a group as `label` above. */
+      label: string;
+      /** Its kind, as the audit trail names it: `contract` for a coverage under it, `purchase_line`, `item` for an item installed in it, `item_replacement`, `circuit`, `reference_file`, or `device_group` for a group nested in it. */
+      record_type: string;
+    };
     /** What taking a reference off a record did. */
     Detached: {
       /** True where that was the last record it was on: it was erased, and its content with it unless another reference holds the same. */
@@ -10258,6 +10484,8 @@ export interface components {
       include_sources?: boolean;
       /** Stored values and not the ones in force: the form to import back. */
       own_values?: boolean;
+      /** Write each place the short way, by the codes of its site and its own: `S2 > R102`, with names where a place has no code (P-235). */
+      place_codes?: boolean;
       sort?: string[];
     };
     /** A new external system. */
@@ -10440,6 +10668,16 @@ export interface components {
     HealthOut: {
       reasons: string[];
       value: "good" | "degraded" | "failed" | "unknown";
+    };
+    /** The records an import made, a page of them, and those it made for a row. */
+    ImportCreated: {
+      /** Whole, on every page: the vendors and catalog entries made only because a row named them, that no row of the import described. */
+      also: components["schemas"]["MadeForARow"][];
+      /** By row, in the order of the file. */
+      items: components["schemas"]["CreatedRecord"][];
+      limit: number;
+      offset: number;
+      total: number;
     };
     /** A stored preview of an import or a bulk edit, and what became of it. */
     ImportJobOut: {
@@ -10989,6 +11227,8 @@ export interface components {
       /** How many locations are directly in it, retired aside. */
       locations: number;
       longitude: string | null;
+      /** The address of a map at its coordinates: the setting `map_link` with them in it. Null where it has none, or the setting is blank (P-229). */
+      map_url: string | null;
       name: string;
       notes: string | null;
       /** Its own operator. */
@@ -11067,6 +11307,14 @@ export interface components {
       /** The name of its site. */
       site: string;
       site_hid: string;
+    };
+    /** A vendor or a catalog entry an import made only because a row named it. */
+    MadeForARow: {
+      /** A vendor by its name, a catalog entry by vendor and PID. */
+      label: string;
+      record_hid: string;
+      record_type: "vendor" | "catalog_entry";
+      state: "active" | "draft" | "retired" | "deleted";
     };
     /** What a count of components adds to a `filter` of the answer (P-206). */
     ManagementConditions: {
@@ -11856,6 +12104,8 @@ export interface components {
     };
     /** An error, as an RFC 9457 problem document. */
     Problem: {
+      /** On a 404 for an item or a device group that an Admin deleted: when, by whom and why. Left out of every other problem. */
+      deleted?: components["schemas"]["ProblemDeleted"] | null;
       detail?: string;
       errors?: components["schemas"]["ProblemField"][];
       /** On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem. */
@@ -11863,6 +12113,17 @@ export interface components {
       status: number;
       title: string;
       type?: string;
+    };
+    /** The deletion of a record that a request named, read from the audit trail (P-236). */
+    ProblemDeleted: {
+      /** Who deleted it. */
+      actor_hid: string | null;
+      /** The username of who deleted it. */
+      actor_name: string | null;
+      /** When it was deleted. */
+      at: string;
+      /** Why, as the Admin gave it. */
+      reason: string | null;
     };
     /** What is wrong with one field of a request. */
     ProblemField: {
@@ -12040,6 +12301,12 @@ export interface components {
       /** The line has a model. One that has none takes no item, is in no count and is not waited for. */
       tracked: boolean;
       updated_at: string;
+    };
+    /** A record of a request that retires or deletes several. */
+    RecordLabel: {
+      hid: string;
+      /** What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name. */
+      label: string;
     };
     /** More records to put a reference on. */
     ReferenceAttach: {
@@ -12433,6 +12700,29 @@ export interface components {
       via_hid: string | null;
       via_name: string | null;
     };
+    /** Items or device groups to retire at once, as a person ticked them. */
+    RetireMany: {
+      /** Each is retired as its own retire route does. One named twice counts once. */
+      hids: string[];
+    };
+    /** A record the rules did not let be retired. */
+    RetireRefused: {
+      /** Why. */
+      detail: string;
+      hid: string;
+      /** What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name. */
+      label: string;
+    };
+    /** What a request that retires several did with each record it named. */
+    RetiredMany: {
+      /** What was retired before it: not refused. */
+      already: components["schemas"]["RecordLabel"][];
+      /** Each HID that names no such record. */
+      missing: string[];
+      refused: components["schemas"]["RetireRefused"][];
+      /** What this request retired. */
+      retired: components["schemas"]["RecordLabel"][];
+    };
     /** The contacts in force for one role, and the level they came from. */
     RoleContacts: {
       contacts: components["schemas"]["EffectiveContact"][];
@@ -12606,6 +12896,8 @@ export interface components {
       /** How many locations it has, retired ones aside. */
       locations: number;
       longitude: string | null;
+      /** The address of a map at its coordinates: the setting `map_link` with them in it. Null where it has none, or the setting is blank (P-229). */
+      map_url: string | null;
       name: string;
       notes: string | null;
       /** Its own operator. */

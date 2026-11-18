@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, PlainSerializer, WithJsonSchema
 
 from hirdir.api.schemas import Model
-from hirdir.domain import purchases, settings
+from hirdir.domain import purchases, removal, settings
 from hirdir.domain.inheritance import Source
 from hirdir.io import listing
 
@@ -471,6 +471,12 @@ class RegionPatch(Model):
     tags: list[ShortText] | None = Field(default=None, max_length=100)
 
 
+MAP_URL = (
+    "The address of a map at its coordinates: the setting `map_link` with them in it. "
+    "Null where it has none, or the setting is blank (P-229)."
+)
+
+
 class SiteOut(Model):
     """A place the team works at."""
 
@@ -500,6 +506,7 @@ class SiteOut(Model):
     operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
+    map_url: str | None = Field(description=MAP_URL)
     support_weight: Weight | None = Field(description=PLACE_WEIGHT)
     effective: SiteEffective
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
@@ -606,6 +613,7 @@ class LocationOut(Model):
     operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
+    map_url: str | None = Field(description=MAP_URL)
     support_weight: Weight | None = Field(description=PLACE_WEIGHT)
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
@@ -2002,6 +2010,89 @@ class DeviceGroupPatch(Model):
     master_observed_at: datetime | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+# --- several retired at once, and deleting (P-227, P-228, P-236) ---------------------
+
+LABEL = (
+    "What it is known by: an item by its name, host name, serial number or asset tag, the "
+    "first it has, and a device group by its name."
+)
+
+
+class RetireMany(Model):
+    """Items or device groups to retire at once, as a person ticked them."""
+
+    hids: list[Hid] = Field(
+        min_length=1,
+        max_length=removal.MOST_AT_ONCE,
+        description="Each is retired as its own retire route does. One named twice counts once.",
+    )
+
+
+class RecordLabel(Model):
+    """A record of a request that retires or deletes several."""
+
+    hid: str
+    label: str = Field(description=LABEL)
+
+
+class RetireRefused(RecordLabel):
+    """A record the rules did not let be retired."""
+
+    detail: str = Field(description="Why.")
+
+
+class RetiredMany(Model):
+    """What a request that retires several did with each record it named."""
+
+    retired: list[RecordLabel] = Field(description="What this request retired.")
+    already: list[RecordLabel] = Field(description="What was retired before it: not refused.")
+    refused: list[RetireRefused]
+    missing: list[str] = Field(description="Each HID that names no such record.")
+
+
+class DeleteMany(Model):
+    """Items or device groups that were a mistake, to delete, for an Admin."""
+
+    hids: list[Hid] = Field(min_length=1, max_length=removal.MOST_AT_ONCE)
+    reason: LongText | None = Field(
+        default=None,
+        description="Why they are deleted, kept in the audit event of each. A deletion "
+        "requires it, and a dry run does not.",
+    )
+    dry_run: bool = Field(default=False, description="Answer what it would do, and change nothing.")
+
+
+class Dependent(Model):
+    """A record that depends on one that is to be deleted, and so stands in the way."""
+
+    record_type: str = Field(
+        description="Its kind, as the audit trail names it: `contract` for a coverage under "
+        "it, `purchase_line`, `item` for an item installed in it, `item_replacement`, "
+        "`circuit`, `reference_file`, or `device_group` for a group nested in it."
+    )
+    hid: str
+    label: str = Field(
+        description="What it is known by: a contract by its number, a purchase line as "
+        "RITM0012345/2, a replacement by its two items, a circuit by its enterprise circuit "
+        "ID or its name, a reference by its title, an item or a group as `label` above."
+    )
+
+
+class DeleteRefused(RecordLabel):
+    """A record that is not deleted, and what depends on it."""
+
+    depends_on: list[Dependent]
+
+
+class DeletedMany(Model):
+    """What a request that deletes several did, or with `dry_run` would do, with each."""
+
+    dry_run: bool
+    deleted: list[RecordLabel]
+    refused: list[DeleteRefused]
+    missing: list[str] = Field(description="Each HID that names no such record.")
 
 
 # --- networks and addresses ----------------------------------------------------------
@@ -4333,6 +4424,48 @@ class ImportPreview(Model):
     )
 
 
+# What a record an import made is now (P-234).
+CreatedState = Literal["active", "draft", "retired", "deleted"]
+
+
+class CreatedRecord(Model):
+    """A record that a row of an import made, and what it is now."""
+
+    row: int = Field(description="The row of the file that made it, from 1.")
+    record_type: str = Field(description="Its kind, as the audit trail names it: `item`.")
+    record_hid: str
+    label: str = Field(
+        description="What it is known by now, as the routes that retire several give it; "
+        "for one that was deleted, what it was known by then."
+    )
+    state: CreatedState = Field(
+        description="A record with no status of its own, such as a tag or a membership, is "
+        "`active` while it stands."
+    )
+
+
+class MadeForARow(Model):
+    """A vendor or a catalog entry an import made only because a row named it."""
+
+    record_type: Literal["vendor", "catalog_entry"]
+    record_hid: str
+    label: str = Field(description="A vendor by its name, a catalog entry by vendor and PID.")
+    state: CreatedState
+
+
+class ImportCreated(Model):
+    """The records an import made, a page of them, and those it made for a row."""
+
+    total: int
+    limit: int
+    offset: int
+    items: list[CreatedRecord] = Field(description="By row, in the order of the file.")
+    also: list[MadeForARow] = Field(
+        description="Whole, on every page: the vendors and catalog entries made only "
+        "because a row named them, that no row of the import described."
+    )
+
+
 class ExportRequest(Model):
     """What to export. The filter and the sort are those of a list."""
 
@@ -4358,6 +4491,11 @@ class ExportRequest(Model):
     own_values: bool = Field(
         default=False,
         description="Stored values and not the ones in force: the form to import back.",
+    )
+    place_codes: bool = Field(
+        default=False,
+        description="Write each place the short way, by the codes of its site and its own: "
+        "`S2 > R102`, with names where a place has no code (P-235).",
     )
     include_archived: bool = False
     include_drafts: bool = False
