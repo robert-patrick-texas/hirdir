@@ -1783,7 +1783,10 @@ What 0.9.6 changes:
   items it covers today that are marked not to be renewed and stay behind, as a link to
   them, the coverages that begin after the present term, with the new one, and those
   that end on a day of their own by then (P-214). An agreement's page has the
-  annual cost of each of its contracts and their total (P-215).
+  annual cost of each of its contracts, which is always the contract's own, and a row
+  of their total, beside the agreement's own figure and not in place of it: a contract
+  with no cost counts as none, and the row says how many have none; a draft is not
+  counted (P-215).
 - **A minor item.** Under its heading, what it is, its position in the item it is in
   and the site, and a link to the spares of its model there (P-216).
 

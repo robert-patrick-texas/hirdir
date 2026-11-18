@@ -578,3 +578,36 @@ export function flaggedFilter(contractHid: string): FilterNode {
 export function flaggedItemsPath(contractHid: string): string {
   return `/items?filter=${encodeURIComponent(filterText(flaggedFilter(contractHid)))}&minor=1`;
 }
+
+/** What the contracts of an agreement cost a year together, as the page says it. */
+export interface CostTotal {
+  /** The sum, as a decimal with the places of the most precise cost: `1201500.00`. */
+  total: string;
+  /** How many contracts were summed: those with a cost. */
+  counted: number;
+  /** How many have no cost: they count as none. */
+  none: number;
+}
+
+/**
+ * 0.9.6 (P-215): the annual costs of contracts, added up exactly, in the smallest unit
+ * the costs are written in. A contract with no cost counts as none, and is counted
+ * apart; so is a cost that is not a decimal, which the server never answers.
+ */
+export function costTotal(costs: ReadonlyArray<string | null | undefined>): CostTotal {
+  const read = costs.map((cost) => (cost ? /^(-?)(\d+)(?:\.(\d+))?$/.exec(cost.trim()) : null));
+  const places = Math.max(2, ...read.map((match) => (match?.[3] ?? "").length));
+  let sum = 0n;
+  let counted = 0;
+  for (const match of read) {
+    if (!match) continue;
+    const [, sign = "", whole = "0", fraction = ""] = match;
+    const units = BigInt(whole + fraction.padEnd(places, "0"));
+    sum += sign === "-" ? -units : units;
+    counted += 1;
+  }
+  const negative = sum < 0n;
+  const digits = (negative ? -sum : sum).toString().padStart(places + 1, "0");
+  const total = `${negative ? "-" : ""}${digits.slice(0, -places)}.${digits.slice(-places)}`;
+  return { total, counted, none: costs.length - counted };
+}

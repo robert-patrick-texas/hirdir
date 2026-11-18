@@ -380,3 +380,56 @@ test("P-212: every contract first, the tables by agreement folded; an opened cou
   await expect(row.locator('[col-id="account_manager"]')).toBeInViewport();
   await expectClean(page, seen);
 });
+
+test("P-215: an agreement's page says what each of its contracts costs a year, and their total beside its own", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const { vendor } = await vendorAndModel(request, headers);
+  const name = label("Example Fabric Campus");
+  const agreementHid = (
+    await make(request, headers, "/agreements", {
+      name,
+      vendor_hid: vendor,
+      starts_on: `${year}-01-01`,
+      ends_on: `${year + 1}-12-31`,
+      annual_cost: "663000.00",
+    })
+  ).hid;
+  const priced = [
+    [`EFC-${upper}-31`, "600000.50"],
+    [`EFC-${upper}-32`, "601499.50"],
+    [`EFC-${upper}-33`, null],
+  ] as const;
+  for (const [number, cost] of priced) {
+    await make(request, headers, "/contracts", {
+      number,
+      agreement_hid: agreementHid,
+      ...(cost ? { annual_cost: cost } : {}),
+    });
+  }
+
+  await signIn(page, account);
+  await page.goto(`./agreements/${agreementHid}`);
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  const table = page.getByTestId("agreement-contracts");
+  await expect(table.getByRole("columnheader", { name: /^Annual cost/ })).toBeVisible();
+  await expect(
+    table.locator(`tr[data-contract="EFC-${upper}-31"] [data-field="annual_cost"]`),
+  ).toHaveText("600,000.50");
+  await expect(
+    table.locator(`tr[data-contract="EFC-${upper}-33"] [data-field="annual_cost"]`),
+  ).toHaveText("—");
+  // The total, written as money is written on the page, beside the agreement's own.
+  const total = table.getByTestId("agreement-contracts-total");
+  await expect(total.locator('[data-field="annual_cost"]')).toHaveText("1,201,500.00");
+  await expect(total.locator("th")).toHaveText("What its 3 contracts cost a year");
+  await expect(total.getByTestId("agreement-own-cost")).toHaveText(
+    "The agreement's own: 663,000.00. 1 contract has no cost, and counts as none.",
+  );
+  await expectClean(page, seen);
+});

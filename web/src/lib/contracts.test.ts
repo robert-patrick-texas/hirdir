@@ -11,6 +11,7 @@ import {
   contractLabel,
   contractPath,
   contractsOfPath,
+  costTotal,
   countedUnder,
   coverageDay,
   coverBatches,
@@ -745,5 +746,28 @@ describe("the renewal form starts from what follows (P-214)", () => {
     expect(decodeURIComponent(flaggedItemsPath("CT-0001"))).toBe(
       "/items?filter=contract.hid:eq:CT-0001 effective.do_not_renew:eq:true&minor=1",
     );
+  });
+});
+
+describe("what an agreement's contracts cost a year (P-215)", () => {
+  it("adds the costs exactly, a contract with none counting as none", () => {
+    expect(costTotal(["600000.00", "450000.00", "151500.00"])).toEqual({
+      total: "1201500.00",
+      counted: 3,
+      none: 0,
+    });
+    // Tenths that a float would not add exactly.
+    expect(costTotal(["0.10", "0.20", null, ""])).toEqual({
+      total: "0.30",
+      counted: 2,
+      none: 2,
+    });
+  });
+
+  it("keeps the places of the most precise cost, and gives none as nothing", () => {
+    expect(costTotal(["12", "0.125"]).total).toBe("12.125");
+    expect(costTotal([])).toEqual({ total: "0.00", counted: 0, none: 0 });
+    expect(costTotal([null])).toEqual({ total: "0.00", counted: 0, none: 1 });
+    expect(costTotal(["-5.00", "2.50"]).total).toBe("-2.50");
   });
 });

@@ -31,6 +31,7 @@ import {
   type Contract,
   contractPath,
   contractsOfPath,
+  costTotal,
   INHERITED,
   inForce,
   LAPSED_NOTE,
@@ -612,15 +613,25 @@ function AgreementContracts({
   selection?: Selection;
 }) {
   const rows = found.data?.items ?? [];
+  const money = useMoney();
   const sorting = useSorting(rows, {
     number: (contract) => contract.number,
     status: (contract) => optionLabel(CONTRACT_STATUSES, contract.status),
     covered: (contract) => contract.covered_items,
+    cost: (contract) => (contract.annual_cost === null ? null : Number(contract.annual_cost)),
     ...Object.fromEntries(
       INHERITED.map(({ field }) => [field, (contract: Contract) => inForce(contract, field).text]),
     ),
   });
   const holdsAll = found.data !== undefined && found.data.total <= rows.length;
+  // 0.9.6 (P-215): what its contracts cost a year together, beside the agreement's own
+  // figure: each its own cost in force, a draft left out.
+  const drafts = rows.filter((contract) => contract.record_status !== "active").length;
+  const cost = costTotal(
+    rows
+      .filter((contract) => contract.record_status === "active")
+      .map((contract) => contract.annual_cost),
+  );
 
   return (
     <section aria-labelledby="agreement-contracts">
@@ -669,6 +680,9 @@ function AgreementContracts({
                 <SortTh sort={sorting} column="covered" className="number">
                   Items covered
                 </SortTh>
+                <SortTh sort={sorting} column="cost" className="number">
+                  Annual cost{money}
+                </SortTh>
                 {INHERITED.map(({ field, label }) => (
                   <SortTh sort={sorting} column={field} key={field}>
                     {label}
@@ -710,6 +724,9 @@ function AgreementContracts({
                     <EndsWithTermMark contract={contract} />
                   </td>
                   <td className="number">{contract.covered_items}</td>
+                  <td className="number" data-field="annual_cost">
+                    {amountText(contract.annual_cost) || <Dash />}
+                  </td>
                   {INHERITED.map(({ field }) => {
                     const value = inForce(contract, field);
                     return (
@@ -758,6 +775,22 @@ function AgreementContracts({
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr data-testid="agreement-contracts-total" data-total={cost.total}>
+                <th scope="row" colSpan={selection ? 4 : 3}>
+                  What its {plural(cost.counted + cost.none, "contract")} cost a year
+                </th>
+                <td className="number" data-field="annual_cost">
+                  {amountText(cost.total)}
+                </td>
+                <td colSpan={INHERITED.length} className="muted" data-testid="agreement-own-cost">
+                  The agreement&apos;s own: {amountText(agreement.annual_cost) || "none is given"}.
+                  {cost.none > 0 &&
+                    ` ${plural(cost.none, "contract has", "contracts have")} no cost, and ${cost.none === 1 ? "counts" : "count"} as none.`}
+                  {drafts > 0 && ` ${plural(drafts, "draft is", "drafts are")} not counted.`}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
