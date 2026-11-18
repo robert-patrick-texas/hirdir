@@ -1204,22 +1204,31 @@ NAMED = "Each by its HID, or as the other commands name one."
 Yes = Annotated[bool, typer.Option("--yes", help="Go on without asking. For a script.")]
 
 
-def _hids(target: Target, named: list[str], find: Any) -> list[str]:
+def _hids(target: Target, named: list[str], find: Any, doing: str) -> list[str]:
     """Return the HIDs of the records named, each once: an HID as it is, anything else
-    as the server finds it."""
-    return list(
+    as the server finds it. More than one request takes are refused, and not split: the
+    records of one command are judged together, a switch with its power supplies."""
+    if len(set(named)) > AT_ONCE:
+        raise _too_many(len(set(named)), doing)
+    hids = list(
         dict.fromkeys(text if _is_hid(text) else find(target, text)["hid"] for text in named)
+    )
+    if len(hids) > AT_ONCE:
+        raise _too_many(len(hids), doing)
+    return hids
+
+
+def _too_many(given: int, doing: str) -> typer.Exit:
+    return client.fail(
+        f"at most {AT_ONCE:,} are {doing} by one command, and {given:,} were given: "
+        f"name {AT_ONCE:,} or fewer",
+        2,
     )
 
 
-def _in_pieces(target: Target, path: str, hids: list[str], **body: Any) -> dict[str, Any]:
-    """Send the HIDs a thousand at a time, and return the answers as one."""
-    whole: dict[str, Any] = {}
-    for start in range(0, len(hids), AT_ONCE):
-        answer = client.call(target, "POST", path, {"hids": hids[start : start + AT_ONCE], **body})
-        for name, value in answer.items():
-            whole[name] = whole.get(name, []) + value if isinstance(value, list) else value
-    return whole
+def _sent(target: Target, path: str, hids: list[str], **body: Any) -> dict[str, Any]:
+    """Send the HIDs in one request, which judges them together, and return its answer."""
+    return client.call(target, "POST", path, {"hids": hids, **body})
 
 
 def _said(found: list[dict[str, Any]], what: str) -> None:
@@ -1241,7 +1250,7 @@ def _retire_many(path: str, find: Any, plural: str, metavar: str) -> Any:
         token: Token = None,
     ) -> None:
         target = client.load_target(url, token)
-        done = _in_pieces(target, f"{path}/retire", _hids(target, records, find))
+        done = _sent(target, f"{path}/retire", _hids(target, records, find, "retired"))
         if format_ == "json":
             typer.echo(json.dumps(done, indent=2))
         else:
@@ -1281,9 +1290,9 @@ def _delete_many(path: str, find: Any, plural: str, metavar: str) -> Any:
         if not dry_run and not (reason or "").strip():
             raise client.fail("--reason says why they are deleted", 2)
         target = client.load_target(url, token)
-        hids = _hids(target, records, find)
+        hids = _hids(target, records, find, "deleted")
         # Asked first: what would be deleted, and what refused with what depends on it.
-        tried = _in_pieces(target, f"{path}/delete", hids, reason=reason, dry_run=True)
+        tried = _sent(target, f"{path}/delete", hids, reason=reason, dry_run=True)
         as_json = format_ == "json"
         if not as_json or dry_run:
             if as_json:
@@ -1308,7 +1317,7 @@ def _delete_many(path: str, find: Any, plural: str, metavar: str) -> Any:
                 "keeps each as it was.",
                 abort=True,
             )
-        done = _in_pieces(target, f"{path}/delete", going, reason=reason, dry_run=False)
+        done = _sent(target, f"{path}/delete", going, reason=reason, dry_run=False)
         if as_json:
             typer.echo(json.dumps(done, indent=2))
         else:
