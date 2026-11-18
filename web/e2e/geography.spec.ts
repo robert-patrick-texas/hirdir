@@ -269,7 +269,11 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveText(roomName);
   await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveClass(/cell-inherited/);
   // The whole path, and where it came from, is what the cell says when it has the focus.
-  await gridRow(supply).locator('[col-id="location.name"]').click();
+  // 0.9.7: the name of the location is a link, which a press would follow (P-232).
+  // It is reached with the keyboard instead, from the cell beside it.
+  await gridRow(supply).locator('[col-id="location.name"]').focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("grid-cell-note")).toHaveText(
     `Location: ${room} · Inherited from the item ${first}`,
   );

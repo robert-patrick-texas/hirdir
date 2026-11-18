@@ -345,10 +345,10 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
 
   // Select two rows: one, and with Ctrl another.
   await gridRow(page, hosts[0] ?? "")
-    .locator('[col-id="catalog.pid"]')
+    .locator('[col-id="serial_number"]')
     .click();
   await gridRow(page, hosts[2] ?? "")
-    .locator('[col-id="catalog.pid"]')
+    .locator('[col-id="serial_number"]')
     .click({ modifiers: ["ControlOrMeta"] });
   await expect(page.getByTestId("grid-selected")).toContainText("2 selected");
 
@@ -430,7 +430,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
 
   // Selecting a row takes the place of "all that match".
   await gridRow(page, hosts[1] ?? "")
-    .locator('[col-id="catalog.pid"]')
+    .locator('[col-id="serial_number"]')
     .click();
   await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
   await page.getByRole("button", { name: "Clear selection" }).click();
@@ -540,10 +540,10 @@ test("S17: a bulk edit shows before and after, and leaves an item changed since 
   // Particular rows are named by their HIDs, and a cleared field is sent as null.
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
   await gridRow(page, hosts[0] ?? "")
-    .locator('[col-id="catalog.pid"]')
+    .locator('[col-id="serial_number"]')
     .click();
   await gridRow(page, hosts[1] ?? "")
-    .locator('[col-id="catalog.pid"]')
+    .locator('[col-id="serial_number"]')
     .click({ modifiers: ["Shift"] });
   await expect(page.getByTestId("grid-selected")).toContainText("2 selected");
   await page.getByRole("button", { name: "Bulk edit" }).click();

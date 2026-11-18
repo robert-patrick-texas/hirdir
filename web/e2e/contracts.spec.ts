@@ -326,9 +326,9 @@ test("D-137: rows of the item grid covered by one contract, the contract renewed
   // Two of the three switches are selected in the grid and put under the contract.
   await page.goto(`./items?filter=${encodeURIComponent(own)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
-  await gridRow(page, "grid-items", covered).locator('[col-id="catalog.pid"]').click();
+  await gridRow(page, "grid-items", covered).locator('[col-id="serial_number"]').click();
   await gridRow(page, "grid-items", archived)
-    .locator('[col-id="catalog.pid"]')
+    .locator('[col-id="serial_number"]')
     .click({ modifiers: ["ControlOrMeta"] });
   await expect(page.getByTestId("grid-selected")).toContainText("2 selected");
   await page.getByRole("button", { name: "Cover with a contract" }).click();
