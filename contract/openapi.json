@@ -30240,7 +30240,7 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.9.7"
+    "version": "0.9.8"
   },
   "openapi": "3.1.0",
   "paths": {
