@@ -24,6 +24,15 @@ interface Counts {
   flagged: number;
 }
 
+/** How many of the items it covers today are marked not to be renewed, by the server. */
+async function countFlagged(contractHid: string, signal: AbortSignal): Promise<number> {
+  const page = await api.request("get", "/api/v1/items", {
+    query: { filter: JSON.stringify(flaggedFilter(contractHid)), limit: 1 },
+    signal,
+  });
+  return page.total;
+}
+
 /**
  * A link to the items it covers, further down this page. The page's own address with the
  * section's id, as the section links of an item (P-189): a bare `#…` is read against the
@@ -46,7 +55,15 @@ export function RenewScope({ contract }: { contract: Contract }) {
   const found = useLoad<Counts | null>(
     `renew-scope ${contract.hid} ${contract.row_version} ${end}`,
     async (signal) => {
-      if (end === "") return null;
+      // A term that names no end: what is marked is counted all the same (P-214).
+      if (end === "") {
+        return {
+          follow: 0,
+          begin: 0,
+          ownEnd: 0,
+          flagged: await countFlagged(contract.hid, signal),
+        };
+      }
       const filters = renewScopeFilters(end, day);
       const coverages = async (filter: FilterNode) =>
         (
@@ -60,25 +77,42 @@ export function RenewScope({ contract }: { contract: Contract }) {
         coverages(filters.follow),
         coverages(filters.begin),
         coverages(filters.ownEnd),
-        api
-          .request("get", "/api/v1/items", {
-            query: { filter: JSON.stringify(flaggedFilter(contract.hid)), limit: 1 },
-            signal,
-          })
-          .then((page) => page.total),
+        countFlagged(contract.hid, signal),
       ]);
       return { follow, begin, ownEnd, flagged };
     },
   );
+  const counts = found.data;
   if (end === "") {
+    const flagged = counts?.flagged ?? null;
     return (
-      <p className="hint">
-        The present term names no end: <strong>{plural(contract.items_in_scope, "item")}</strong> in
-        scope {contract.items_in_scope === 1 ? "follows" : "follow"}. <CoverageLink />
-      </p>
+      <div className="renew-scope" aria-live="polite">
+        <Problem error={found.error} />
+        <p className="hint" data-testid="renew-no-end">
+          The present term names no end: <strong>{plural(contract.items_in_scope, "item")}</strong>{" "}
+          in scope {contract.items_in_scope === 1 ? "follows" : "follow"}
+          {flagged !== null && flagged > 0 ? ", but for those marked not to be renewed." : "."}{" "}
+          <CoverageLink />
+        </p>
+        {flagged !== null && (
+          <p data-testid="renew-flagged" data-count={flagged}>
+            {flagged === 0 ? (
+              "None of the items it covers today is marked not to be renewed."
+            ) : (
+              <>
+                <Link to={flaggedItemsPath(contract.hid)}>
+                  {plural(flagged, "item")} it covers today
+                </Link>{" "}
+                {flagged === 1 ? "is" : "are"} marked not to be renewed, and{" "}
+                {flagged === 1 ? "stays" : "stay"} behind: the renewal ends their coverage the day
+                before the new term begins.
+              </>
+            )}
+          </p>
+        )}
+      </div>
     );
   }
-  const counts = found.data;
   return (
     <div className="renew-scope" aria-live="polite">
       <Problem error={found.error} />

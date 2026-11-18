@@ -287,6 +287,54 @@ test("P-214: the renewal form starts from what follows, and says what follows, s
   await expectClean(page, seen);
 });
 
+test("P-214: for a term that names no end, the renewal form says how many items are marked and stay behind", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const { vendor, model } = await vendorAndModel(request, headers);
+  const number = `EFC-${upper}-15`;
+  const contract = (await make(request, headers, "/contracts", { number, vendor_hid: vendor })).hid;
+  const items: string[] = [];
+  for (const side of ["kept", "marked"]) {
+    items.push(
+      (
+        await make(request, headers, "/items", {
+          catalog_entry_hid: model,
+          hostname: `sw-open-${side}-${id}`,
+          lifecycle_state: "Prod",
+        })
+      ).hid,
+    );
+  }
+  const covered = await request.post(`./api/v1/contracts/${contract}/coverage`, {
+    headers,
+    data: { items: items.map((item_hid) => ({ item_hid })) },
+  });
+  expect(covered.ok(), await covered.text()).toBe(true);
+  await patch(request, headers, `/items/${items[1]}`, { do_not_renew: true });
+
+  await signIn(page, account);
+  await openContractPage(page, contract, number);
+  await page
+    .getByRole("region", { name: "Renew" })
+    .getByRole("button", { name: "Renew", exact: true })
+    .click();
+  const follows = page.getByTestId("renew-form").getByTestId("renew-follows");
+  await expect(follows.getByTestId("renew-no-end")).toContainText(
+    "The present term names no end: 2 items in scope follow, but for those marked not to be renewed.",
+  );
+  await expect(follows.getByTestId("renew-flagged")).toHaveAttribute("data-count", "1");
+  await expect(follows.getByTestId("renew-flagged")).toContainText(
+    "1 item it covers today is marked not to be renewed, and stays behind",
+  );
+  await expect(follows.getByRole("link", { name: "1 item it covers today" })).toBeVisible();
+  await expectClean(page, seen);
+});
+
 /** The day `days` after today, as the server's clock and the browser's see it. */
 function fromToday(days: number): string {
   const moment = new Date();
