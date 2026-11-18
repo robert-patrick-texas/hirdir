@@ -26,6 +26,7 @@ import { optionLabel } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
 import { useSorting } from "../lib/useSorting";
+import { oneLink, page } from "../lib/valueLinks";
 
 type Network = Schemas["NetworkOut"];
 
@@ -71,6 +72,8 @@ const COLUMNS: GridColumn<Address>[] = [
     header: "Item",
     kind: "text",
     value: (address) => (address.item ? itemName(address.item) : ""),
+    links: (address) =>
+      oneLink(address.item ? itemName(address.item) : "", page("item", address.item?.hid)),
     width: 220,
   },
   {
@@ -78,6 +81,7 @@ const COLUMNS: GridColumn<Address>[] = [
     header: "Group",
     kind: "text",
     value: (address) => address.group?.name,
+    links: (address) => oneLink(address.group?.name, page("device_group", address.group?.hid)),
     width: 200,
   },
   {

@@ -2041,6 +2041,29 @@ One grid component is used on every list page.
   its own shows it from the top. A browser that refuses the storage shows the list from
   its top (P-203).
 
+- Every value of a list that names another record is a link to that record's page
+  (P-232): in the item list the stack, the groups, the location, the planned location,
+  the site, the region, the owner, the operator, the vendor, the PID and the model, the
+  item a minor item is in, the contracts, the systems it is registered with and the
+  purchase request of its line; in the list of groups the masters, the owner, the
+  operator, the group it is in, the places and the systems; in the list of circuits the
+  carrier, the places of the two sides, the owner, the site its cost is of and its
+  groups; and likewise in the other lists. Such a link is in the colour of the text
+  around it, a lighter inherited value lighter, with no underline but while the pointer is
+  on it and while its cell has the keyboard's focus. The name that opens the row's own
+  record stays the link it is. A cell that names several records, as the groups of an
+  item, has a link for each, parted by commas. A press on a link opens its page and does
+  not select the row; a press with Ctrl, Shift or the middle button is the browser's, as a
+  new tab, and selects nothing either. Enter on such a cell opens the page of the first
+  record it names, as Enter on any other cell opens the row's own. A value that names a
+  record with no page, a tag or a network, stays text. What is copied and exported is
+  unchanged: the same text as the cell's. The tables of pages follow the same rule: the
+  name in the heading of a row, which opens the row's own record, is the link it is, and a
+  value in another cell that names a record is a link in the style of its text, as the
+  vendor of a contract, the agreement of a term or a contract, the system of a
+  registration, the model of a minor item, the carrier or the place a contact is
+  inherited from, the contact of a place and the user groups of a user, for an Admin.
+
 Cell-range selection and editing in the grid are LATER.
 
 ### The frame of every page
@@ -2141,6 +2164,32 @@ button New comes into the window with the keyboard in its first field (P-190). W
 field that searches finds is brought into the window as it comes, above those buttons.
 
 A count written in a sentence has the separator of thousands, as "34,778 items" (P-195).
+
+A page that cannot be drawn says so (P-230): "This page could not be drawn", with the
+text of the fault in a box that is read and selected as any text, a button Copy the text,
+and two ways on, Load again, which loads the page at its present address, and The first
+page, at the prefix the page is served under. A fault in what is beneath the menu bar
+leaves the menu bar where it is, and opening another page clears it; a fault in the frame
+itself, the menu bar or what stands with it, stands over the whole page, and Back or
+Forward clears it. A part of the web page that cannot be fetched, the file of one of its
+pages, says the same, and that a new version may have been installed since the page was
+loaded. The fault is written to the browser's console and sent nowhere. The text of the
+fault holds what was thrown, the address of the page, the version of the web page, the
+time, and where in the page it happened. Before its script runs the page holds words:
+the product's name, written into it by the server as it writes the tab's title, and
+Loading…; after six seconds, and at once where the stylesheet did not arrive either, "If
+the page stays like this, load the page again."
+
+A page older than the server says that a new version is installed (P-231). The page
+knows the version it was built as, that of `web/package.json`. It asks `GET /about`, as
+the person signed in, on coming back to its tab, at a change of page where it last asked
+more than five minutes before (or was loaded then), and when a page could not be drawn.
+Where the version the server answers is another, a notice stands under the menu bar of
+every page until the page is loaded again: that a new version of the product has been
+installed, the two versions, and a button, Load again. It is no dialog, takes no focus
+and is announced politely; the page never loads again by itself, so that what is typed
+into a form is not lost. A request that fails, or an answer without a version, says
+nothing, and nothing is asked while nobody is signed in.
 
 ### Times
 

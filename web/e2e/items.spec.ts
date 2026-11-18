@@ -188,7 +188,7 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   expect(await gridNames(page)).toEqual([first]);
 
   // Select the row: the count of selected rows is shown.
-  await grid.locator('[row-id] [col-id="catalog.pid"]').first().click();
+  await grid.locator('[row-id] [col-id="serial_number"]').first().click();
   await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
 
   // The short form in the filter box, joined to the column filter by the server. The link

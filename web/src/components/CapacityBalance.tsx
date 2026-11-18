@@ -244,7 +244,9 @@ function MultiplyingTable(props: {
                       data-target={target.name}
                       data-counted={target.counted ? "true" : "false"}
                     >
-                      <Link to={capacityLinePath(target.hid)}>{target.name}</Link>{" "}
+                      <Link className="value-link" to={capacityLinePath(target.hid)}>
+                        {target.name}
+                      </Link>{" "}
                       {target.counted ? (
                         <span className="muted">{measureText(target.units, "units")}</span>
                       ) : (

@@ -36,8 +36,9 @@ import {
 import type { Option } from "../../lib/patch";
 import { nameOf } from "../../lib/places";
 import { MISMATCH_NOTE } from "../../lib/purchases";
-import { memberText } from "../../lib/stacks";
+import { memberText, stackOf } from "../../lib/stacks";
 import { registeredWith } from "../../lib/systems";
+import { contractLinks, oneLink, page, systemLinks } from "../../lib/valueLinks";
 import type { GridColumn } from "./columns";
 
 type Item = Schemas["ItemOut"];
@@ -188,6 +189,8 @@ export function itemColumns(
       sortField: "group.name",
       column: null,
       value: (item) => memberText(item.groups),
+      links: (item) =>
+        oneLink(memberText(item.groups), page("device_group", stackOf(item.groups)?.group_hid)),
       width: 200,
     },
     {
@@ -195,6 +198,7 @@ export function itemColumns(
       header: "Vendor",
       kind: "text",
       value: (item) => item.catalog?.vendor,
+      links: (item) => oneLink(item.catalog?.vendor, page("vendor", item.catalog?.vendor_hid)),
       width: 130,
     },
     {
@@ -202,6 +206,7 @@ export function itemColumns(
       header: "PID",
       kind: "text",
       value: (item) => item.catalog?.pid,
+      links: (item) => oneLink(item.catalog?.pid, page("catalog_entry", item.catalog?.hid)),
       width: 130,
     },
     {
@@ -209,6 +214,7 @@ export function itemColumns(
       header: "Model",
       kind: "text",
       value: (item) => item.catalog?.model_name,
+      links: (item) => oneLink(item.catalog?.model_name, page("catalog_entry", item.catalog?.hid)),
       hide: true,
     },
     {
@@ -244,6 +250,8 @@ export function itemColumns(
       field: null,
       sortField: "parent.name",
       value: (item) => (item.parent ? itemName(item.parent) : ""),
+      links: (item) =>
+        oneLink(item.parent ? itemName(item.parent) : "", page("item", item.parent?.hid)),
       hide: true,
       width: 200,
     },
@@ -354,6 +362,11 @@ export function itemColumns(
       header: "Owner",
       kind: "text",
       value: (item) => effectiveLabel(item.effective.owner_hid),
+      links: (item) =>
+        oneLink(
+          effectiveLabel(item.effective.owner_hid),
+          page("owner", item.effective.owner_hid.value),
+        ),
       effective: (item) => item.effective.owner_hid,
       hint: (item) => inheritedHint(ownerSource(item.effective.owner_hid, knownAbove(item))),
       width: 170,
@@ -410,6 +423,11 @@ export function itemColumns(
       kind: "text",
       column: "location",
       value: (item) => nameOf(item.effective.location_hid.label),
+      links: (item) =>
+        oneLink(
+          nameOf(item.effective.location_hid.label),
+          page("location", item.effective.location_hid.value),
+        ),
       effective: (item) => item.effective.location_hid,
       hint: (item) => locationHint(item.effective.location_hid),
       // Shown from the start, with the site: a list of items says where each is (P-193).
@@ -428,6 +446,11 @@ export function itemColumns(
       field: "planned_location.name",
       sortField: "planned_location.name",
       value: (item) => nameOf(item.effective.planned_location_hid.label),
+      links: (item) =>
+        oneLink(
+          nameOf(item.effective.planned_location_hid.label),
+          page("location", item.effective.planned_location_hid.value),
+        ),
       effective: (item) => item.effective.planned_location_hid,
       hint: (item) => locationHint(item.effective.planned_location_hid),
       hide: true,
@@ -439,6 +462,11 @@ export function itemColumns(
       header: "Site",
       kind: "text",
       value: (item) => item.effective.location_hid.site,
+      links: (item) =>
+        oneLink(
+          item.effective.location_hid.site,
+          page("site", item.effective.location_hid.site_hid),
+        ),
       effective: (item) => item.effective.location_hid,
       width: 120,
     },
@@ -448,6 +476,11 @@ export function itemColumns(
       header: "Region",
       kind: "text",
       value: (item) => item.effective.location_hid.region,
+      links: (item) =>
+        oneLink(
+          item.effective.location_hid.region,
+          page("region", item.effective.location_hid.region_hid),
+        ),
       effective: (item) => item.effective.location_hid,
       hide: true,
       width: 150,
@@ -459,6 +492,11 @@ export function itemColumns(
       sortField: "group.name",
       column: null,
       value: (item) => item.groups.map((group) => group.name).join(", "),
+      links: (item) =>
+        item.groups.map((group) => ({
+          text: group.name,
+          path: page("device_group", group.group_hid),
+        })),
       hide: true,
       width: 200,
     },
@@ -570,6 +608,8 @@ export function itemColumns(
       header: "Contracts",
       kind: "text",
       value: (item) => coveringNumbers(item.coverage),
+      links: (item) =>
+        contractLinks(item.coverage.filter((one) => one.in_force).map((one) => one.contract)),
       hide: true,
       width: 180,
     },
@@ -583,6 +623,7 @@ export function itemColumns(
       header: "Still counted under",
       kind: "text",
       value: countedUnder,
+      links: (item) => contractLinks(item.out_of_service_contracts),
       hint: (item) => (item.out_of_service_contracts.length > 0 ? COUNTED_NOTE : ""),
       hide: true,
       width: 190,
@@ -621,6 +662,7 @@ export function itemColumns(
       kind: "text",
       column: null,
       value: (item) => registeredWith(item.registrations, item.group_registrations),
+      links: (item) => systemLinks([...item.registrations, ...item.group_registrations]),
       hint: (item) =>
         item.group_registrations.some((one) => one.status !== "removed")
           ? `Through ${[...new Set(item.group_registrations.map((one) => one.group.name))].join(", ")}, which it is a member of`
@@ -636,6 +678,11 @@ export function itemColumns(
       header: "Purchase line",
       kind: "reference",
       value: (item) => item.purchase_line?.name,
+      links: (item) =>
+        oneLink(
+          item.purchase_line?.name,
+          page("purchase_request", item.purchase_line?.request_hid),
+        ),
       hint: (item) => (item.purchase_line ? `The line with the HID ${item.purchase_line.hid}` : ""),
       hide: true,
       width: 160,

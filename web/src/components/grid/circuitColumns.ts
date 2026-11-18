@@ -20,6 +20,7 @@ import { effectiveText } from "../../lib/effective";
 import { formatTime } from "../../lib/format";
 import { choiceFilterOptions, choiceLabel, RECORD_STATUSES } from "../../lib/options";
 import { placePath } from "../../lib/places";
+import { page } from "../../lib/valueLinks";
 import type { GridColumn } from "./columns";
 
 type Choice = Schemas["ChoiceOut"];
@@ -356,6 +357,11 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
       kind: "text",
       column: "groups",
       value: (circuit) => (circuit.groups ?? []).map((group) => group.name).join(", "),
+      links: (circuit) =>
+        (circuit.groups ?? []).map((group) => ({
+          text: group.name,
+          path: page("circuit_group", group.hid),
+        })),
       hide: true,
       width: 200,
     },

@@ -7,6 +7,7 @@ import type { QueryColumn } from "../../lib/gridQuery";
 import type { ColumnDefault, GridLayout } from "../../lib/gridStore";
 import { healthTone } from "../../lib/health";
 import type { Option } from "../../lib/patch";
+import type { ValueLink } from "../../lib/valueLinks";
 import { ChoiceFilter } from "./choiceFilter";
 
 export interface GridColumn<T> {
@@ -57,6 +58,12 @@ export interface GridColumn<T> {
    */
   chip?: (row: T) => { colour: string | null; path: string; note?: string } | null | undefined;
   /**
+   * 0.9.7: the records the value of the cell names, each a link to its page in the style
+   * of the text around it (P-232). Several are parted by commas, as the text of the cell
+   * parts them; one with no page stays text. What is copied and exported is unchanged.
+   */
+  links?: (row: T) => readonly ValueLink[] | null | undefined;
+  /**
    * For a choice: the values to offer in the filter. For a boolean: what to call `true`
    * and `false` there, when Yes and No would not say it.
    */
@@ -65,6 +72,19 @@ export interface GridColumn<T> {
   hide?: boolean;
   numeric?: boolean;
   mono?: boolean;
+}
+
+/**
+ * The page a cell leads to, where it is a link to another record than the row's own: the
+ * first of its links. Enter on the cell opens it, as Enter on the name opens the row.
+ */
+export function cellPath<T>(column: GridColumn<T>, row: T): string | null {
+  if (column.links) {
+    return column.links(row)?.find((one) => one.text !== "" && one.path)?.path ?? null;
+  }
+  if (column.linkTo) return column.value(row) ? (column.linkTo(row) ?? null) : null;
+  if (column.chip) return column.value(row) ? (column.chip(row)?.path ?? null) : null;
+  return null;
 }
 
 export function queryColumns<T>(columns: readonly GridColumn<T>[]): QueryColumn[] {
@@ -209,6 +229,29 @@ export interface ColumnContext<T> {
   go: (path: string, row?: T) => void;
 }
 
+/**
+ * A link in a cell. It is reached with the arrow keys and opened with Enter, as every
+ * cell of the row is, so it takes no place in the order of Tab. A plain press opens its
+ * page within the app; a press with a key held, or with another button, is the
+ * browser's, as a new tab. No press on it selects the row (P-232).
+ */
+function cellLink(href: string, follow: () => void): HTMLAnchorElement {
+  const link = document.createElement("a");
+  link.href = href;
+  link.tabIndex = -1;
+  link.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const plainClick =
+      event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+    if (!plainClick) return;
+    event.preventDefault();
+    follow();
+  });
+  // A press with the middle button opens a tab, and selects nothing either.
+  link.addEventListener("auxclick", (event) => event.stopPropagation());
+  return link;
+}
+
 function linkRenderer<T>(context: ColumnContext<T>) {
   return (params: ICellRendererParams<T, string>): HTMLElement => {
     const { data } = params;
@@ -218,21 +261,23 @@ function linkRenderer<T>(context: ColumnContext<T>) {
       plain.textContent = params.value ?? "";
       return plain;
     }
-    const link = document.createElement("a");
-    link.href = href;
-    // Reached with the arrow keys and opened with Enter, as every cell of the row is.
-    link.tabIndex = -1;
+    const link = cellLink(href, () => context.open(data));
     // Text from the inventory is put in as text, never as HTML.
     link.textContent = params.value || "(no name)";
-    link.addEventListener("click", (event) => {
-      const plainClick =
-        event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
-      if (!plainClick) return;
-      event.preventDefault();
-      context.open(data);
-    });
     return link;
   };
+}
+
+/**
+ * A value that names another record than the row's own, as a link to its page in the
+ * style of the text around it (P-232).
+ */
+function valueLink<T>(text: string, path: string, context: ColumnContext<T>, row: T | undefined) {
+  const link = cellLink(context.hrefOf(path), () => context.go(path, row));
+  link.className = "value-link";
+  // Text from the inventory is put in as text, never as HTML.
+  link.textContent = text;
+  return link;
 }
 
 /** A cell that is a link to the page a row names for it, which is not the row's own. */
@@ -245,20 +290,27 @@ function pathRenderer<T>(path: (row: T) => string | null | undefined, context: C
       plain.textContent = text;
       return plain;
     }
-    const link = document.createElement("a");
-    link.href = context.hrefOf(to);
-    // Reached with the arrow keys, as every cell of the row is.
-    link.tabIndex = -1;
-    // Text from the inventory is put in as text, never as HTML.
-    link.textContent = text;
-    link.addEventListener("click", (event) => {
-      const plainClick =
-        event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
-      if (!plainClick) return;
-      event.preventDefault();
-      context.go(to, params.data);
+    return valueLink(text, to, context, params.data);
+  };
+}
+
+/** A cell of the values that name records, each a link to its page, parted by commas. */
+function linksRenderer<T>(
+  links: (row: T) => readonly ValueLink[] | null | undefined,
+  context: ColumnContext<T>,
+) {
+  return (params: ICellRendererParams<T, string>): HTMLElement => {
+    const cell = document.createElement("span");
+    const named = (params.data ? links(params.data) : null)?.filter((one) => one.text !== "");
+    if (!named?.some((one) => one.path)) {
+      cell.textContent = params.value ?? "";
+      return cell;
+    }
+    named.forEach((one, index) => {
+      if (index > 0) cell.append(", ");
+      cell.append(one.path ? valueLink(one.text, one.path, context, params.data) : one.text);
     });
-    return link;
+    return cell;
   };
 }
 
@@ -294,23 +346,14 @@ function chipRenderer<T>(chip: NonNullable<GridColumn<T>["chip"]>, context: Colu
       return cell;
     }
     cell.className = "operator-mark";
-    const link = document.createElement("a");
-    link.href = context.hrefOf(about.path);
-    // Reached with the arrow keys, as every cell of the row is.
-    link.tabIndex = -1;
+    const link = cellLink(context.hrefOf(about.path), () => context.go(about.path, params.data));
+    link.className = "value-link";
     const dot = document.createElement("span");
     dot.className = "swatch operator-dot";
     dot.setAttribute("aria-hidden", "true");
     if (about.colour) dot.style.backgroundColor = about.colour;
     // Text from the inventory is put in as text, never as HTML.
     link.append(dot, text);
-    link.addEventListener("click", (event) => {
-      const plainClick =
-        event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
-      if (!plainClick) return;
-      event.preventDefault();
-      context.go(about.path, params.data);
-    });
     cell.append(link);
     if (about.note) {
       const note = document.createElement("span");
@@ -384,6 +427,7 @@ export function columnDefs<T>(
         : {}),
       ...(column.link ? { cellRenderer: linkRenderer(context) } : {}),
       ...(column.linkTo ? { cellRenderer: pathRenderer(column.linkTo, context) } : {}),
+      ...(column.links ? { cellRenderer: linksRenderer(column.links, context) } : {}),
       ...(column.mark ? { cellRenderer: markRenderer(column.mark) } : {}),
       ...(column.chip ? { cellRenderer: chipRenderer(column.chip, context) } : {}),
     });

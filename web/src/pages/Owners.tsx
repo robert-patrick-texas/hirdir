@@ -22,6 +22,7 @@ import { contactLine } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { useSorting } from "../lib/useSorting";
+import { oneLink, page } from "../lib/valueLinks";
 
 type Owner = Schemas["OwnerOut"];
 
@@ -64,6 +65,10 @@ const COLUMNS: GridColumn<Owner>[] = [
     sortField: "primary.name",
     column: null,
     value: (owner) => owner.members.find((member) => member.role === "primary")?.contact.name,
+    links: (owner) => {
+      const primary = owner.members.find((member) => member.role === "primary");
+      return oneLink(primary?.contact.name, page("contact", primary?.contact_hid));
+    },
     width: 200,
   },
   { id: "tags", header: "Tags", kind: "tags", value: (owner) => owner.tags.join(", "), width: 160 },

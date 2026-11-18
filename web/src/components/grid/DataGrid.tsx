@@ -77,7 +77,14 @@ import {
 } from "../../lib/transfer";
 import { CheckField, TextField } from "../Field";
 import { Notice, Problem } from "../Problem";
-import { cellHint, columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
+import {
+  cellHint,
+  cellPath,
+  columnDefaults,
+  columnDefs,
+  type GridColumn,
+  queryColumns,
+} from "./columns";
 import { saveFile } from "./save";
 
 ModuleRegistry.registerModules([
@@ -472,7 +479,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         const key = event.event instanceof KeyboardEvent ? event.event.key : "";
         if (key !== "Enter" || !event.data) return;
         leaving(event.api, event.data);
-        open(event.data);
+        // 0.9.7: on a cell whose value names another record, its page (P-232).
+        const colId = "column" in event ? event.column.getColId() : null;
+        const column = columns.find((one) => one.id === colId);
+        const path = column ? cellPath(column, event.data) : null;
+        if (path) go(path);
+        else open(event.data);
       },
       // What a cell shows on hover it also says when it has the focus, beneath the grid,
       // for whoever moves through the grid with the keyboard.

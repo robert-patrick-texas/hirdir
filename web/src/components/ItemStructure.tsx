@@ -26,6 +26,7 @@ import { NewItem } from "./NewItem";
 import { Pager } from "./Pager";
 import { Problem } from "./Problem";
 import { SortTh } from "./SortTh";
+import { ValueLink } from "./ValueLink";
 
 type Item = Schemas["ItemOut"];
 type ItemRef = Schemas["ItemRef"];
@@ -300,7 +301,15 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
                         <span className="badge">{child.record_status}</span>
                       )}
                     </th>
-                    <td>{child.catalog?.pid || <Dash />}</td>
+                    <td>
+                      {child.catalog?.pid ? (
+                        <ValueLink kind="catalog_entry" hid={child.catalog.hid}>
+                          {child.catalog.pid}
+                        </ValueLink>
+                      ) : (
+                        <Dash />
+                      )}
+                    </td>
                     <td className="mono">{child.serial_number || <Dash />}</td>
                     <InForce
                       text={effectiveText(child.effective.lifecycle_state)}

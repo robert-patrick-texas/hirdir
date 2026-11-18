@@ -642,7 +642,7 @@ test("small words: a create says so with a link, a bulk edit's preview speaks of
   await page.goto(`./items?filter=${encodeURIComponent(`hostname:prefix:${host("row-0")}`)}`);
   const grid = page.getByTestId("grid-items");
   await expect(page.getByText("10 items", { exact: true })).toBeVisible();
-  await grid.locator(".ag-row[row-index='0'] [col-id='catalog.pid']").click();
+  await grid.locator(".ag-row[row-index='0'] [col-id='serial_number']").click();
   await page.getByRole("button", { name: "Bulk edit" }).click();
   const bulk = page.getByTestId("bulk-edit");
   await bulk.getByLabel("Field to change").selectOption({ label: "Comments" });

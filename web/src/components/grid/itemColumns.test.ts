@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../../api/client";
 import { exportColumns } from "../../lib/transfer";
-import { cellHint, columnDefaults, queryColumns } from "./columns";
+import { cellHint, cellPath, columnDefaults, queryColumns } from "./columns";
 import { FIRST_IN_VIEW, itemColumns, itemIsDimmed, MAJOR_ITEMS } from "./itemColumns";
 
 type Item = Schemas["ItemOut"];
@@ -1041,5 +1041,164 @@ describe("what still counts an item out of service, and a line of another model,
         { colId: "purchase_line_mismatch" },
       ]),
     ).toEqual(["hid", "out_of_service_contract.number", "purchase_line_mismatch"]);
+  });
+});
+
+// 0.9.7: every value of the item list that names another record is a link (P-232).
+describe("the links of the item grid", () => {
+  const ROOM = "0193a1f4-0000-7000-8000-0000000000c1";
+  const SITE = "0193a1f4-0000-7000-8000-0000000000c2";
+  const REGION = "0193a1f4-0000-7000-8000-0000000000c3";
+  const ENTRY = "0193a1f4-0000-7000-8000-0000000000e1";
+  const VENDOR = "0193a1f4-0000-7000-8000-0000000000e2";
+  const place = (hid: string | null) => ({
+    ...(hid ? from(hid, "own", SWITCH) : none),
+    label: hid ? "Americas > Central > Site-2 > Building 1 > Room 102" : null,
+    site: hid ? "Site-2" : null,
+    site_hid: hid ? SITE : null,
+    region: hid ? "Central" : null,
+    region_hid: hid ? REGION : null,
+  });
+  const contract = (hid: string, number: string) => ({
+    hid,
+    number,
+    vendor: "Example Networks",
+    status: "active",
+    record_status: "active",
+  });
+  const system = (hid: string, name: string, status: string) => ({
+    hid: `reg-${hid}`,
+    system_hid: hid,
+    system: { hid, name, kind: "monitoring" },
+    external_id: null,
+    status,
+    confirmed_at: null,
+  });
+  const linked = {
+    ...chassis,
+    catalog: {
+      hid: ENTRY,
+      pid: "EN-4800-48P",
+      model_name: "Example 4800",
+      vendor: "Example Networks",
+      vendor_hid: VENDOR,
+      kind: "hardware",
+      type: null,
+      function: null,
+      links: [],
+    },
+    coverage: [
+      { in_force: true, contract: contract("k-1", "CON-2026-0001") },
+      { in_force: false, contract: contract("k-2", "CON-2025-0009") },
+      { in_force: true, contract: contract("k-1", "CON-2026-0001") },
+    ],
+    out_of_service_contracts: [contract("k-3", "CON-2024-0002")],
+    registrations: [system("s-1", "NetWatch", "registered"), system("s-2", "Vault", "removed")],
+    group_registrations: [
+      { ...system("s-1", "NetWatch", "registered"), group: { hid: "g-1" } },
+      { ...system("s-3", "Fabric", "pending"), group: { hid: "g-1" } },
+    ],
+    purchase_line: {
+      hid: "l-1",
+      request_hid: "r-1",
+      reference: "RITM0012345",
+      line: 2,
+      name: "RITM0012345/2",
+      catalog_entry_hid: ENTRY,
+    },
+    effective: {
+      ...chassis.effective,
+      location_hid: place(ROOM),
+      planned_location_hid: place(ROOM),
+      operator_hid: { ...none, label: null, colour: null, is_open: false, contact: null },
+    },
+  } as unknown as Item;
+  const minor = {
+    ...supply,
+    catalog: null,
+    coverage: [],
+    out_of_service_contracts: [],
+    registrations: [],
+    group_registrations: [],
+    purchase_line: null,
+    effective: {
+      ...supply.effective,
+      location_hid: place(null),
+      planned_location_hid: place(null),
+      operator_hid: { ...none, label: null, colour: null, is_open: false, contact: null },
+    },
+  } as unknown as Item;
+  const links = (id: string, item: Item) => column(id).links?.(item) ?? [];
+
+  it("links the stack first, then the place, the owner, the vendor and the model", () => {
+    const paths = Object.fromEntries(
+      [
+        "stack",
+        "location.name",
+        "site",
+        "region",
+        "owner.label",
+        "catalog.vendor",
+        "catalog.pid",
+        "catalog.model_name",
+        "planned_location",
+        "purchase_line_hid",
+      ].map((id) => [id, links(id, linked).map((one) => `${one.text} → ${one.path}`)]),
+    );
+    expect(paths).toEqual({
+      stack: ["site2-sw-stack1 #1 → /groups/g-1"],
+      "location.name": [`Room 102 → /geography/location/${ROOM}`],
+      site: [`Site-2 → /geography/site/${SITE}`],
+      region: [`Central → /geography/region/${REGION}`],
+      "owner.label": [`Network Engineering → /owners/${OWNER}`],
+      "catalog.vendor": [`Example Networks → /vendors/${VENDOR}`],
+      "catalog.pid": [`EN-4800-48P → /catalog/${ENTRY}`],
+      "catalog.model_name": [`Example 4800 → /catalog/${ENTRY}`],
+      planned_location: [`Room 102 → /geography/location/${ROOM}`],
+      purchase_line_hid: ["RITM0012345/2 → /purchases/r-1"],
+    });
+  });
+
+  it("links each group, contract and system a cell names, each once", () => {
+    expect(links("group.name", linked).map((one) => one.path)).toEqual([
+      "/groups/g-1",
+      "/groups/g-2",
+    ]);
+    expect(links("contract.number", linked)).toEqual([
+      { text: "CON-2026-0001", path: "/contracts/k-1" },
+    ]);
+    expect(links("out_of_service_contract.number", linked)).toEqual([
+      { text: "CON-2024-0002", path: "/contracts/k-3" },
+    ]);
+    expect(links("registration.system", linked).map((one) => one.path)).toEqual([
+      "/systems/s-1",
+      "/systems/s-3",
+    ]);
+  });
+
+  it("links the item a minor item is in, and nothing where a value is blank", () => {
+    expect(links("parent", minor)).toEqual([
+      { text: "site2-sw-access-01", path: `/items/${SWITCH}` },
+    ]);
+    for (const id of ["stack", "location.name", "site", "region", "catalog.pid", "group.name"]) {
+      expect(links(id, minor), id).toEqual([]);
+      expect(cellPath(column(id), minor), id).toBeNull();
+    }
+  });
+
+  it("says in its links what the text of its cell says, so that copying is unchanged", () => {
+    for (const item of [linked, minor]) {
+      for (const one of COLUMNS.filter((candidate) => candidate.links)) {
+        const text = (one.links?.(item) ?? []).map((link) => link.text).join(", ");
+        expect(text, one.id).toBe(one.value(item) ?? "");
+      }
+    }
+  });
+
+  it("opens with Enter the page a cell leads to, and the row's own from its name", () => {
+    expect(cellPath(column("stack"), linked)).toBe("/groups/g-1");
+    expect(cellPath(column("contract.number"), linked)).toBe("/contracts/k-1");
+    expect(cellPath(column("name"), linked)).toBeNull();
+    expect(cellPath(column("serial_number"), linked)).toBeNull();
   });
 });

@@ -166,7 +166,9 @@ export function TermsTable<T extends Term>(props: TermsTableProps<T>) {
                 {agreementOf && (
                   <td data-part="agreement" data-agreement={inAgreement?.name ?? ""}>
                     {inAgreement ? (
-                      <Link to={agreementPath(inAgreement.hid)}>{inAgreement.name}</Link>
+                      <Link className="value-link" to={agreementPath(inAgreement.hid)}>
+                        {inAgreement.name}
+                      </Link>
                     ) : (
                       <span className="muted">Standing by itself</span>
                     )}

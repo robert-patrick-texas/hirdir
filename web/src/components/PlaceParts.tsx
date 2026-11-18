@@ -840,7 +840,10 @@ function AssignedHere({ level, place, choices, mayEdit, turn, onChanged }: Assig
                     <td>
                       {assignment.contact ? (
                         <>
-                          <Link to={`/contacts/${encodeURIComponent(assignment.contact.hid)}`}>
+                          <Link
+                            className="value-link"
+                            to={`/contacts/${encodeURIComponent(assignment.contact.hid)}`}
+                          >
                             {assignment.contact.name}
                           </Link>
                           {assignment.contact.record_status !== "active" && (

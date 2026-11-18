@@ -18,6 +18,18 @@ describe("index.html", () => {
     expect(html).not.toContain("hirdir-site");
   });
 
+  // 0.9.7: before its script runs the page holds words, so that a script which did not
+  // arrive leaves words and not an empty window: the name, which the server writes as the
+  // site calls the product, that it is loading, and, after a while, to load again (P-230).
+  it("holds words inside #root, the name among them as the server rewrites it", () => {
+    const root = html.slice(html.indexOf('<div id="root">'), html.indexOf("<noscript>"));
+    expect(root).toContain('<p class="boot-name">hirdir</p>');
+    expect(html.split('<p class="boot-name">hirdir</p>').length).toBe(2);
+    expect(root).toContain("Loading…");
+    expect(root).toMatch(/<p class="boot-late">[^<]*load the page again[^<]*<\/p>/);
+    expect(html).not.toContain('<div id="root"></div>');
+  });
+
   it("has nothing inline that the content security policy would block", () => {
     expect(html).not.toMatch(/<style/i);
     expect(html).not.toMatch(/\sstyle=/i);

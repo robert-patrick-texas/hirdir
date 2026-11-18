@@ -48,6 +48,7 @@ import {
   sectionInfo,
 } from "../lib/renewals";
 import { useSorting } from "../lib/useSorting";
+import { oneLink, page } from "../lib/valueLinks";
 
 /** The columns of a list of contracts on the worklist: what each must be acted on by. */
 const COLUMNS: GridColumn<Contract>[] = [
@@ -64,6 +65,7 @@ const COLUMNS: GridColumn<Contract>[] = [
     header: "Vendor",
     kind: "text",
     value: (contract) => contract.vendor.name,
+    links: (contract) => oneLink(contract.vendor.name, page("vendor", contract.vendor.hid)),
     width: 140,
   },
   {
@@ -525,7 +527,9 @@ function Groups({ report, opened, keep }: PartProps) {
                     </th>
                     <td>
                       {group.agreement_hid ? (
-                        <Link to={agreementPath(group.agreement_hid)}>{group.agreement}</Link>
+                        <Link className="value-link" to={agreementPath(group.agreement_hid)}>
+                          {group.agreement}
+                        </Link>
                       ) : (
                         <span className="muted">Standing by themselves</span>
                       )}

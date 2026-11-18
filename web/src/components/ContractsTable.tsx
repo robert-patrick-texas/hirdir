@@ -19,6 +19,7 @@ import { dateValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
 import { Dash } from "./ContractParts";
 import { SortTh } from "./SortTh";
+import { ValueLink } from "./ValueLink";
 
 interface ContractsTableProps {
   contracts: readonly Contract[];
@@ -124,7 +125,13 @@ export function ContractsTable({ contracts, agreement, empty }: ContractsTablePr
                     </span>
                   )}
                 </th>
-                {!agreement && <td>{contract.vendor.name}</td>}
+                {!agreement && (
+                  <td>
+                    <ValueLink kind="vendor" hid={contract.vendor.hid}>
+                      {contract.vendor.name}
+                    </ValueLink>
+                  </td>
+                )}
                 <td
                   data-status={contract.status}
                   title={contract.status === RENEWAL_PENDING ? RENEWAL_PENDING_NOTE : undefined}
