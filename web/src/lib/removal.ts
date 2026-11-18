@@ -54,8 +54,16 @@ export function stayTicked(answer: { refused: readonly { hid: string }[] }): str
   return answer.refused.map((one) => one.hid);
 }
 
-/** What a Retire of several did, in one sentence: "Retired 3 items. 1 was retired already." */
-export function retiredText(kind: RemovalKind, answer: RetiredMany): string {
+/** What is said before those refused: on a list they stay ticked, on a page nothing is. */
+function refusedLead(kind: RemovalKind, count: number, ticked: boolean): string {
+  return `${countOf(kind, count)} refused${ticked ? ", still ticked" : ""}:`;
+}
+
+/**
+ * What a Retire of several did, in one sentence: "Retired 3 items. 1 was retired already."
+ * `ticked` is false where nothing was ticked, as on a record's page.
+ */
+export function retiredText(kind: RemovalKind, answer: RetiredMany, ticked = true): string {
   const parts = [
     answer.retired.length > 0
       ? `Retired ${countOf(kind, answer.retired.length)}.`
@@ -65,7 +73,7 @@ export function retiredText(kind: RemovalKind, answer: RetiredMany): string {
     parts.push(`${countOf(kind, answer.already.length)} retired already.`);
   }
   if (answer.refused.length > 0) {
-    parts.push(`${countOf(kind, answer.refused.length)} refused, still ticked:`);
+    parts.push(refusedLead(kind, answer.refused.length, ticked));
   }
   if (answer.missing.length > 0) {
     parts.push(`${countOf(kind, answer.missing.length)} not found, as deleted since.`);
@@ -73,8 +81,11 @@ export function retiredText(kind: RemovalKind, answer: RetiredMany): string {
   return parts.join(" ");
 }
 
-/** What a Delete did, or with a dry run would do, in one sentence. */
-export function deletedText(kind: RemovalKind, answer: DeletedMany): string {
+/**
+ * What a Delete did, or with a dry run would do, in one sentence. `ticked` is false where
+ * nothing was ticked, as on a record's page.
+ */
+export function deletedText(kind: RemovalKind, answer: DeletedMany, ticked = true): string {
   const parts: string[] = [];
   const count = answer.deleted.length;
   if (answer.dry_run) {
@@ -93,7 +104,7 @@ export function deletedText(kind: RemovalKind, answer: DeletedMany): string {
       count > 0 ? `Deleted ${countOf(kind, count)}.` : `No ${NOUNS[kind][1]} were deleted.`,
     );
     if (answer.refused.length > 0) {
-      parts.push(`${countOf(kind, answer.refused.length)} refused, still ticked:`);
+      parts.push(refusedLead(kind, answer.refused.length, ticked));
     }
   }
   if (answer.missing.length > 0) {

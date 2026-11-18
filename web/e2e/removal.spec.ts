@@ -309,8 +309,10 @@ test("Admin: a group that a group is nested in is refused, naming it as a link, 
   await expect(refused).toContainText(groupName(2));
   await expect(refused.getByRole("link", { name: groupName(3) })).toBeVisible();
   await expect(dialog.getByLabel("Reason")).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: /^Delete \d/ })).toBeDisabled();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  // Nothing to delete: no Delete is offered, nor is it said that one cannot be undone.
+  await expect(dialog.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
+  await expect(dialog).not.toContainText("cannot be undone");
+  await dialog.getByRole("button", { name: "Close" }).click();
 
   // With a retired group beside it: that one is deleted, and the third stays ticked.
   await rowBox(page, "grid-device-groups", groupName(0)).check();
@@ -327,6 +329,20 @@ test("Admin: a group that a group is nested in is refused, naming it as a link, 
   await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
   await expect(rowBox(page, "grid-device-groups", groupName(2))).toBeChecked();
   await page.getByLabel("Include retired").uncheck();
+
+  // On the group's own page the same: what is in its way, and Close alone.
+  await gridRow(page, "grid-device-groups", groupName(2))
+    .getByRole("link", { name: groupName(2), exact: true })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: groupName(2) })).toBeVisible();
+  await page.getByRole("button", { name: "Delete group" }).click();
+  await expect(dialog.getByTestId("delete-said")).toHaveText(
+    "No groups can be deleted. 1 group refused, while what depends on each is there:",
+  );
+  await expect(dialog.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
+  await expect(dialog).not.toContainText("cannot be undone");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
   await expectClean(page, seen);
 });
 

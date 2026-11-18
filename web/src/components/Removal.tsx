@@ -159,10 +159,13 @@ function DeleteAsk({ kind, hids, onDone, onCancel }: AskProps) {
         {answer && (
           <div data-testid="delete-dry-run">
             <DeletedAnswer kind={kind} answer={answer} />
-            <p>
-              A deletion cannot be undone. Each is kept in the audit trail, with the record as it
-              was, who deleted it, when, and the reason.
-            </p>
+            {/* Where nothing can be deleted, nothing is offered: only Close. */}
+            {count > 0 && (
+              <p>
+                A deletion cannot be undone. Each is kept in the audit trail, with the record as it
+                was, who deleted it, when, and the reason.
+              </p>
+            )}
             {count > 0 && (
               <TextAreaField
                 label="Reason"
@@ -182,16 +185,18 @@ function DeleteAsk({ kind, hids, onDone, onCancel }: AskProps) {
       </div>
       <p className="actions">
         <button type="button" onClick={onCancel} disabled={action.busy}>
-          Cancel
+          {answer && count === 0 ? "Close" : "Cancel"}
         </button>
-        <button
-          type="button"
-          className="danger"
-          onClick={go}
-          disabled={action.busy || !answer || count === 0 || !reasonGiven(reason)}
-        >
-          {answer ? `Delete ${countOf(kind, count)}` : "Delete"}
-        </button>
+        {!(answer && count === 0) && (
+          <button
+            type="button"
+            className="danger"
+            onClick={go}
+            disabled={action.busy || !answer || !reasonGiven(reason)}
+          >
+            {answer ? `Delete ${countOf(kind, count)}` : "Delete"}
+          </button>
+        )}
       </p>
     </>
   );
@@ -224,10 +229,18 @@ function DependentLink({ dependent }: { dependent: Dependent }) {
 }
 
 /** What a deletion did, or would do: what is deleted, and each refused with what is in its way. */
-function DeletedAnswer({ kind, answer }: { kind: RemovalKind; answer: DeletedMany }) {
+function DeletedAnswer({
+  kind,
+  answer,
+  ticked = true,
+}: {
+  kind: RemovalKind;
+  answer: DeletedMany;
+  ticked?: boolean;
+}) {
   return (
     <>
-      <p data-testid="delete-said">{deletedText(kind, answer)}</p>
+      <p data-testid="delete-said">{deletedText(kind, answer, ticked)}</p>
       {answer.refused.length > 0 && (
         <ul className="removal-refused" data-testid="delete-refused">
           {answer.refused.map((one) => (
@@ -260,7 +273,16 @@ function DeletedAnswer({ kind, answer }: { kind: RemovalKind; answer: DeletedMan
 }
 
 /** What the last Retire or Delete did, said where the page answers, which stays in view. */
-export function RemovalOutcome({ kind, outcome }: { kind: RemovalKind; outcome: Outcome | null }) {
+export function RemovalOutcome({
+  kind,
+  outcome,
+  ticked = true,
+}: {
+  kind: RemovalKind;
+  outcome: Outcome | null;
+  /** Whether rows were ticked, which those refused stay; not on a record's page. */
+  ticked?: boolean;
+}) {
   return (
     <div className="live" role="status" aria-live="polite">
       {outcome && (
@@ -270,7 +292,7 @@ export function RemovalOutcome({ kind, outcome }: { kind: RemovalKind; outcome: 
         >
           {outcome.what === "retire" ? (
             <>
-              <p>{retiredText(kind, outcome.answer)}</p>
+              <p>{retiredText(kind, outcome.answer, ticked)}</p>
               {outcome.answer.refused.length > 0 && (
                 <ul className="removal-refused">
                   {outcome.answer.refused.map((one) => (
@@ -282,7 +304,7 @@ export function RemovalOutcome({ kind, outcome }: { kind: RemovalKind; outcome: 
               )}
             </>
           ) : (
-            <DeletedAnswer kind={kind} answer={outcome.answer} />
+            <DeletedAnswer kind={kind} answer={outcome.answer} ticked={ticked} />
           )}
         </div>
       )}
@@ -386,7 +408,7 @@ export function DeleteRecord({ kind, hid, name }: DeleteRecordProps) {
   return (
     <section aria-labelledby="delete-record">
       <h2 id="delete-record">Delete</h2>
-      <RemovalOutcome kind={kind} outcome={outcome} />
+      <RemovalOutcome kind={kind} outcome={outcome} ticked={false} />
       <p>
         Deleting is for a {noun} that should never have been, as one a wrong file made: retiring is
         the way a {noun} ends. Only a {noun} that nothing else depends on is deleted, and the
