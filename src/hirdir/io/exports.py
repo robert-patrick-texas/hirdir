@@ -37,6 +37,8 @@ class Export:
     where: tuple[Any, ...]
     order: tuple[Any, ...]
     own_values: bool
+    # Each place written the short way, by codes (P-235).
+    place_codes: bool = False
 
     @property
     def names(self) -> list[str]:
@@ -82,6 +84,7 @@ def plan(
     own_values: bool = False,
     include_archived: bool = False,
     include_drafts: bool = False,
+    place_codes: bool = False,
 ) -> Export:
     """Check what an export asks for, and return it ready to be written."""
     if format_ not in files.FORMATS:
@@ -113,6 +116,7 @@ def plan(
         where=tuple(where),
         order=tuple(order),
         own_values=own_values,
+        place_codes=place_codes,
     )
 
 

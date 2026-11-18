@@ -2,11 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from hirdir.api import lists, shapes
 from hirdir.api import records as r
-from hirdir.api.deps import Audit, Db, Inventory, Viewer
+from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import Page
@@ -55,6 +55,25 @@ def create_group(
     most one is marked `master`, the master that is intended.
     """
     return shapes.group_out(db, groups.create_group(db, context, body.model_dump()))
+
+
+@router.post("/retire")
+def retire_groups(body: r.RetireMany, _: Inventory, context: Audit, db: Db) -> r.RetiredMany:
+    """Retire several device groups at once, each as its own retire route does, with an
+    audit event each (P-228). One retired already is counted, not refused."""
+    raise HTTPException(501, "not built yet")
+
+
+@router.post("/delete")
+def delete_groups(body: r.DeleteMany, _: Admin, context: Audit, db: Db) -> r.DeletedMany:
+    """Delete device groups that were a mistake, each judged by itself: one that another
+    record depends on is refused, naming what (P-227, P-236).
+
+    Its memberships, addresses, tags and registrations go with it; its members stay. A
+    group nested only in groups of the same request is deleted with them. With
+    `dry_run` nothing is changed, and the answer is the same.
+    """
+    raise HTTPException(501, "not built yet")
 
 
 @router.get("/{hid}")

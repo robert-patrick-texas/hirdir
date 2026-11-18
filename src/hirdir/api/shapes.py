@@ -505,8 +505,9 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
             **_own(
                 site,
                 shapes.SiteOut,
-                ("region", "path", "tags", "locations", "operator", "effective"),
+                ("region", "path", "tags", "locations", "operator", "effective", "map_url"),
             ),
+            map_url=None,
             effective=shapes.SiteEffective(
                 support_weight=weight_out(weights.of_site(site, figures))
             ),
@@ -559,8 +560,10 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                         "planned_items",
                         "planned_groups",
                         "operator",
+                        "map_url",
                     ),
                 ),
+                map_url=None,
                 planned_items=planned[location.hid],
                 planned_groups=planned_groups[location.hid],
                 operator=marks.ref(location.operator_hid),

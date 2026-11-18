@@ -11326,6 +11326,187 @@
         "title": "CoverageTotals",
         "type": "object"
       },
+      "CreatedRecord": {
+        "additionalProperties": false,
+        "description": "A record that a row of an import made, and what it is now.",
+        "properties": {
+          "label": {
+            "description": "What it is known by now, as the routes that retire several give it; for one that was deleted, what it was known by then.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_hid": {
+            "title": "Record Hid",
+            "type": "string"
+          },
+          "record_type": {
+            "description": "Its kind, as the audit trail names it: `item`.",
+            "title": "Record Type",
+            "type": "string"
+          },
+          "row": {
+            "description": "The row of the file that made it, from 1.",
+            "title": "Row",
+            "type": "integer"
+          },
+          "state": {
+            "description": "A record with no status of its own, such as a tag or a membership, is `active` while it stands.",
+            "enum": [
+              "active",
+              "draft",
+              "retired",
+              "deleted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row",
+          "record_type",
+          "record_hid",
+          "label",
+          "state"
+        ],
+        "title": "CreatedRecord",
+        "type": "object"
+      },
+      "DeleteMany": {
+        "additionalProperties": false,
+        "description": "Items or device groups that were a mistake, to delete, for an Admin.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Answer what it would do, and change nothing.",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "hids": {
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Hids",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why they are deleted, kept in the audit event of each. A deletion requires it, and a dry run does not.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "hids"
+        ],
+        "title": "DeleteMany",
+        "type": "object"
+      },
+      "DeleteRefused": {
+        "additionalProperties": false,
+        "description": "A record that is not deleted, and what depends on it.",
+        "properties": {
+          "depends_on": {
+            "items": {
+              "$ref": "#/components/schemas/Dependent"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name.",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "depends_on"
+        ],
+        "title": "DeleteRefused",
+        "type": "object"
+      },
+      "DeletedMany": {
+        "additionalProperties": false,
+        "description": "What a request that deletes several did, or with `dry_run` would do, with each.",
+        "properties": {
+          "deleted": {
+            "items": {
+              "$ref": "#/components/schemas/RecordLabel"
+            },
+            "title": "Deleted",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "missing": {
+            "description": "Each HID that names no such record.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "refused": {
+            "items": {
+              "$ref": "#/components/schemas/DeleteRefused"
+            },
+            "title": "Refused",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "deleted",
+          "refused",
+          "missing"
+        ],
+        "title": "DeletedMany",
+        "type": "object"
+      },
+      "Dependent": {
+        "additionalProperties": false,
+        "description": "A record that depends on one that is to be deleted, and so stands in the way.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: a contract by its number, a purchase line as RITM0012345/2, a replacement by its two items, a circuit by its enterprise circuit ID or its name, a reference by its title, an item or a group as `label` above.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_type": {
+            "description": "Its kind, as the audit trail names it: `contract` for a coverage under it, `purchase_line`, `item` for an item installed in it, `item_replacement`, `circuit`, `reference_file`, or `device_group` for a group nested in it.",
+            "title": "Record Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_type",
+          "hid",
+          "label"
+        ],
+        "title": "Dependent",
+        "type": "object"
+      },
       "Detached": {
         "additionalProperties": false,
         "description": "What taking a reference off a record did.",
@@ -13408,6 +13589,12 @@
             "title": "Own Values",
             "type": "boolean"
           },
+          "place_codes": {
+            "default": false,
+            "description": "Write each place the short way, by the codes of its site and its own: `S2 > R102`, with names where a place has no code (P-235).",
+            "title": "Place Codes",
+            "type": "boolean"
+          },
           "sort": {
             "default": [],
             "items": {
@@ -14382,6 +14569,49 @@
           "reasons"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "ImportCreated": {
+        "additionalProperties": false,
+        "description": "The records an import made, a page of them, and those it made for a row.",
+        "properties": {
+          "also": {
+            "description": "Whole, on every page: the vendors and catalog entries made only because a row named them, that no row of the import described.",
+            "items": {
+              "$ref": "#/components/schemas/MadeForARow"
+            },
+            "title": "Also",
+            "type": "array"
+          },
+          "items": {
+            "description": "By row, in the order of the file.",
+            "items": {
+              "$ref": "#/components/schemas/CreatedRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items",
+          "also"
+        ],
+        "title": "ImportCreated",
         "type": "object"
       },
       "ImportJobOut": {
@@ -18007,6 +18237,18 @@
             ],
             "title": "Longitude"
           },
+          "map_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The address of a map at its coordinates: the setting `map_link` with them in it. Null where it has none, or the setting is blank (P-229).",
+            "title": "Map Url"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -18261,6 +18503,7 @@
           "operator",
           "latitude",
           "longitude",
+          "map_url",
           "support_weight",
           "links",
           "notes",
@@ -18683,6 +18926,47 @@
           "region"
         ],
         "title": "LocationRef",
+        "type": "object"
+      },
+      "MadeForARow": {
+        "additionalProperties": false,
+        "description": "A vendor or a catalog entry an import made only because a row named it.",
+        "properties": {
+          "label": {
+            "description": "A vendor by its name, a catalog entry by vendor and PID.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_hid": {
+            "title": "Record Hid",
+            "type": "string"
+          },
+          "record_type": {
+            "enum": [
+              "vendor",
+              "catalog_entry"
+            ],
+            "title": "Record Type",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "draft",
+              "retired",
+              "deleted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_type",
+          "record_hid",
+          "label",
+          "state"
+        ],
+        "title": "MadeForARow",
         "type": "object"
       },
       "ManagementConditions": {
@@ -23002,6 +23286,17 @@
         "additionalProperties": false,
         "description": "An error, as an RFC 9457 problem document.",
         "properties": {
+          "deleted": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemDeleted"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a 404 for an item or a device group that an Admin deleted: when, by whom and why. Left out of every other problem."
+          },
           "detail": {
             "default": "",
             "title": "Detail",
@@ -23045,6 +23340,62 @@
           "status"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "ProblemDeleted": {
+        "additionalProperties": false,
+        "description": "The deletion of a record that a request named, read from the audit trail (P-236).",
+        "properties": {
+          "actor_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who deleted it.",
+            "title": "Actor Hid"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The username of who deleted it.",
+            "title": "Actor Name"
+          },
+          "at": {
+            "description": "When it was deleted.",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why, as the Admin gave it.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "at",
+          "actor_hid",
+          "actor_name",
+          "reason"
+        ],
+        "title": "ProblemDeleted",
         "type": "object"
       },
       "ProblemField": {
@@ -24085,6 +24436,27 @@
           "items"
         ],
         "title": "ReceivedOut",
+        "type": "object"
+      },
+      "RecordLabel": {
+        "additionalProperties": false,
+        "description": "A record of a request that retires or deletes several.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name.",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label"
+        ],
+        "title": "RecordLabel",
         "type": "object"
       },
       "ReferenceAttach": {
@@ -26464,6 +26836,100 @@
         "title": "ResolutionStep",
         "type": "object"
       },
+      "RetireMany": {
+        "additionalProperties": false,
+        "description": "Items or device groups to retire at once, as a person ticked them.",
+        "properties": {
+          "hids": {
+            "description": "Each is retired as its own retire route does. One named twice counts once.",
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Hids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "hids"
+        ],
+        "title": "RetireMany",
+        "type": "object"
+      },
+      "RetireRefused": {
+        "additionalProperties": false,
+        "description": "A record the rules did not let be retired.",
+        "properties": {
+          "detail": {
+            "description": "Why.",
+            "title": "Detail",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name.",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "detail"
+        ],
+        "title": "RetireRefused",
+        "type": "object"
+      },
+      "RetiredMany": {
+        "additionalProperties": false,
+        "description": "What a request that retires several did with each record it named.",
+        "properties": {
+          "already": {
+            "description": "What was retired before it: not refused.",
+            "items": {
+              "$ref": "#/components/schemas/RecordLabel"
+            },
+            "title": "Already",
+            "type": "array"
+          },
+          "missing": {
+            "description": "Each HID that names no such record.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "refused": {
+            "items": {
+              "$ref": "#/components/schemas/RetireRefused"
+            },
+            "title": "Refused",
+            "type": "array"
+          },
+          "retired": {
+            "description": "What this request retired.",
+            "items": {
+              "$ref": "#/components/schemas/RecordLabel"
+            },
+            "title": "Retired",
+            "type": "array"
+          }
+        },
+        "required": [
+          "retired",
+          "already",
+          "refused",
+          "missing"
+        ],
+        "title": "RetiredMany",
+        "type": "object"
+      },
       "RoleContacts": {
         "additionalProperties": false,
         "description": "The contacts in force for one role, and the level they came from.",
@@ -27540,6 +28006,18 @@
             ],
             "title": "Longitude"
           },
+          "map_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The address of a map at its coordinates: the setting `map_link` with them in it. Null where it has none, or the setting is blank (P-229).",
+            "title": "Map Url"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -27759,6 +28237,7 @@
           "operator",
           "latitude",
           "longitude",
+          "map_url",
           "support_weight",
           "effective",
           "links",
@@ -36532,6 +37011,69 @@
         ]
       }
     },
+    "/api/v1/device-groups/delete": {
+      "post": {
+        "description": "Delete device groups that were a mistake, each judged by itself: one that another\nrecord depends on is refused, naming what (P-227, P-236).\n\nIts memberships, addresses, tags and registrations go with it; its members stay. A\ngroup nested only in groups of the same request is deleted with them. With\n`dry_run` nothing is changed, and the answer is the same.",
+        "operationId": "delete_groups_api_v1_device_groups_delete_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMany"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedMany"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Groups",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
     "/api/v1/device-groups/query": {
       "post": {
         "description": "List device groups, with the filter and sort in the body.",
@@ -36569,6 +37111,69 @@
           }
         },
         "summary": "Query Groups",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/v1/device-groups/retire": {
+      "post": {
+        "description": "Retire several device groups at once, each as its own retire route does, with an\naudit event each (P-228). One retired already is counted, not refused.",
+        "operationId": "retire_groups_api_v1_device_groups_retire_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireMany"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredMany"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Groups",
         "tags": [
           "Groups"
         ]
@@ -38032,6 +38637,73 @@
         ]
       }
     },
+    "/api/v1/imports/{hid}/created": {
+      "get": {
+        "description": "List the records an import made, a row of the file each, by row, with what each\nis now; and after them, whole, the vendors and catalog entries it made only because a\nrow named them (P-234). Nothing new is stored: each is read from the rows and the\naudit trail.",
+        "operationId": "list_import_created_api_v1_imports__hid__created_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Import Created",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
     "/api/v1/imports/{hid}/rows": {
       "get": {
         "description": "List the rows of a preview, in the order of the file unless a sort says otherwise.\n\nEach says what the preview found, and once it is applied, what the apply did with it.",
@@ -38516,6 +39188,69 @@
         ]
       }
     },
+    "/api/v1/items/delete": {
+      "post": {
+        "description": "Delete items that were a mistake, each judged by itself: one that another record\ndepends on is refused, naming what (P-227, P-236).\n\nWhat belongs to an item alone goes with it. A record that only items of the same\nrequest depend on, as a switch with its power supplies, is deleted with them. With\n`dry_run` nothing is changed, and the answer is the same.",
+        "operationId": "delete_items_api_v1_items_delete_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMany"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedMany"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Items",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
     "/api/v1/items/query": {
       "post": {
         "description": "List items, with the filter and sort in the body.",
@@ -38553,6 +39288,69 @@
           }
         },
         "summary": "Query Items",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
+    "/api/v1/items/retire": {
+      "post": {
+        "description": "Retire several items at once, each as its own retire route does, with an audit\nevent each (P-228). One retired already is counted, not refused.",
+        "operationId": "retire_items_api_v1_items_retire_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireMany"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredMany"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Items",
         "tags": [
           "Items"
         ]

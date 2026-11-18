@@ -21,9 +21,9 @@ and CLI's types are generated from it.
 | Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
 | Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses, locations, circuits and circuit groups |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
-| Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
-| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
+| Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back. `POST /items/retire` and `POST /device-groups/retire` retire several at once, each as its own route does (P-228): see [Retiring several, and deleting](#retiring-several-and-deleting) |
+| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. An Admin deletes an item or a device group that was a mistake and that nothing else depends on with `POST /items/delete` and `POST /device-groups/delete` (P-227). Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
+| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, which for an item or a device group that was deleted holds `deleted`, when, by whom and why, read from the audit trail (P-236), `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
@@ -34,8 +34,8 @@ and CLI's types are generated from it.
 | Access | `POST /auth/sign-in`, `POST /auth/sign-out-everywhere`, `GET /auth/me` |
 | Accounts (Admin) | `/users`, `/user-groups`, `/role-grants`, `/users/{hid}/access-code`, `/users/{hid}/service-tokens` |
 | Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio`; `GET` and `POST /vendors/{hid}/contacts`, `PATCH` and `DELETE /vendors/{hid}/contacts/{link_hid}` |
-| Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace` |
-| Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}` |
+| Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once |
+| Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}`; `POST /device-groups/retire` and, for an Admin, `POST /device-groups/delete`, of several at once |
 | Addresses | `/networks`, `/addresses` |
 | Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening` |
 | People | `/contacts`, `POST /contacts/{hid}/retire`, `GET /contacts/{hid}/uses`, `/operators`, `GET /operators/{hid}/assignments`, `POST /operators/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
@@ -47,7 +47,7 @@ and CLI's types are generated from it.
 | References | `GET` and `POST /reference-files`, `POST /reference-files/links`, `GET`, `PATCH` and `DELETE /reference-files/{hid}`, `GET` and `PUT /reference-files/{hid}/content`, `POST /reference-files/{hid}/attachments`, `DELETE /reference-files/{hid}/attachments/{attachment_hid}`; `GET /catalog-entries/{hid}/references`, `GET /regions/{hid}/references`, `GET /sites/{hid}/references`, `GET /locations/{hid}/references`, `GET /circuits/{hid}/references` and `GET /items/{hid}/references` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
-| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `POST /exports` |
+| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports` |
 | Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/circuit-costs`, `/reports/duplicates` |
 | Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
@@ -62,7 +62,8 @@ and CLI's types are generated from it.
 | Read any inventory record, run reports, export | yes | yes | yes |
 | Download a reference file | yes | yes | yes |
 | Upload, link, change, attach, take off, replace and erase references | | yes | yes |
-| Create, change, retire, import, bulk-update inventory records | | yes | yes |
+| Create, change, retire, import, bulk-update inventory records, and retire several at once | | yes | yes |
+| Delete an item or a device group that was a mistake (P-227) | | | yes |
 | Edit choices, tags | | yes | yes |
 | Edit settings and lifecycle rules, force a lifecycle move, and so the kinds of file a reference may be | | | yes |
 | List and check the kept answers of the long reports | | | yes |
@@ -98,6 +99,7 @@ out, these decide it:
 | `product_name` | `product_name` of `GET /about`, the name the page that is served shows before signing in, and the first part of the name in the `Content-Disposition` of `POST /exports`, `Example-Inventory-items-20261116T091500-0500.csv`, as P-168 forms it |
 | `help_organization`, `help_email`, `help_phone`, `help_url` | `help` of `GET /about`, each `null` where it is blank |
 | `help_on_sign_in` | whether the page that is served before signing in carries `help` as well; while it is false the page holds nothing of it |
+| `map_link` | `map_url` of a site and of a location: the setting with the place's latitude and longitude in it, or null where it is blank or the place has none (P-229, P-236) |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 
 The fixed values are these. What was decided:
@@ -269,6 +271,89 @@ is `null` for a group of another type. A member of a cluster, a controller domai
 custom group has a position only where one is given, and any. `POST
 /items/{hid}/replace` ends the old item's membership and gives the new item its
 position, as it is, in the same change.
+
+### Retiring several, and deleting
+
+`POST /items/retire` and `POST /device-groups/retire`, for the Inventory role, retire the
+records named in `hids`, at most 1,000, each as `POST /items/{hid}/retire` and `POST
+/device-groups/{hid}/retire` retire one, with an audit event each (P-228, P-236). No
+`row_version` is sent: what a person ticked is what is retired.
+
+```json
+{ "hids": ["0193a1f4-...", "0193a1f5-...", "0193a1f6-..."] }
+```
+
+```json
+{ "retired": [ { "hid": "0193a1f4-...", "label": "site2-sw-access-01" } ],
+  "already": [ { "hid": "0193a1f5-...", "label": "site2-sw-access-02" } ],
+  "refused": [],
+  "missing": ["0193a1f6-..."] }
+```
+
+`retired` is what this request retired; `already` what was retired before it, counted
+and not refused; `refused` each that the rules did not let be retired, with why in
+`detail`; and `missing` each HID that names no such record, also one that was deleted.
+One that is refused leaves the others as they went, and a HID named twice counts once.
+`label` is what a record is known by: an item by its name, host name, serial number or
+asset tag, the first it has, and a group by its name. What is retired is hidden from a
+list as before, shown again with `include_archived`, and brought back with `PATCH`.
+
+`POST /items/delete` and `POST /device-groups/delete`, for an Admin, delete records that
+should never have been, as the items a wrong file made (P-227, P-236). The body names
+`hids`, at most 1,000, `reason`, which a deletion requires and a dry run does not, and
+`dry_run`, false unless given:
+
+```json
+{ "hids": ["0193a1f4-...", "0193a1f7-..."], "reason": "a wrong file of 2026-11-18", "dry_run": true }
+```
+
+```json
+{ "dry_run": true,
+  "deleted": [ { "hid": "0193a1f4-...", "label": "site2-sw-access-01" } ],
+  "refused": [ { "hid": "0193a1f7-...", "label": "site2-sw-core-01",
+                 "depends_on": [ { "record_type": "contract", "hid": "0193a1f8-...",
+                                   "label": "CON-2026-0001" } ] } ],
+  "missing": [] }
+```
+
+Each record is judged by itself, and one that is refused leaves the others as they go.
+A record is deleted where nothing depends on it but what goes with it and the records of
+the same request that are deleted too: a switch named with the power supplies in it is
+deleted with them, and a switch whose power supply is refused is refused, naming the
+supply. What goes with an item: its addresses, its tags, its memberships of groups,
+current and ended, with the role of master it had there, the mark of the master that is
+seen on a stack where it was that one, and its registrations. An item is refused while
+a contract covers it or has covered it, it arrived on a purchase line, an item is
+installed in it, it replaced another or was replaced, a circuit is connected to it, or
+a reference is attached to it. What goes with a device group: its memberships, current
+and ended, its addresses, its tags and its registrations; its members stay, as items of
+their own. A group is refused while a group is nested in it or a circuit is connected to
+it.
+
+`depends_on` names each record in the way, by `record_type` as the audit trail names a
+kind, its `hid` and its `label`: `contract` by its number, for a coverage under it,
+ended or not; `purchase_line` by its request and line, `RITM0012345/2`; `item` for an
+item installed in it; `item_replacement` for a replacement, labelled with the two items;
+`circuit` by its enterprise circuit ID or its name; `reference_file` by its title; and
+`device_group` for a group nested in it. Each is taken away first where it can be: a
+coverage that was a mistake is removed, a minor item is taken out or deleted with it,
+the purchase line is cleared from the item, the circuit's device and the reference's
+attachment are removed. A replacement is never taken away, and an item that is part of
+one is retired.
+
+With `dry_run` nothing is changed and the answer is the same: it is what the web page
+shows before it asks. Without it, what `deleted` names is gone when the answer comes,
+in one change. Each deletion is the audit event `delete` of its record, with who, when,
+the reason, every field of the record as it was, and what went with it, as `audit_events`
+on the [data model](data-model.md#audit_events) page says. Nothing is removed from the
+audit trail: the events the record had before stay, and `GET /audit-events?record_hid=`
+finds them by its HID. A HID that was deleted is never given again. `GET`, `PATCH` and
+every other route of a record that was deleted answer `404`, whose `detail` says that it
+was deleted, when and by whom, and whose `deleted` holds `at`, `actor_hid`,
+`actor_name` and `reason`; a request that names it among `hids` counts it in `missing`.
+A change of the item that was under way at the same moment, its joining a group or a
+contract covering it, either is stored first, and the deletion then sees it and is
+refused, or comes second and is refused as a change of a record that is not there.
 
 ## Filter grammar
 
@@ -612,7 +697,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Minor items | `parent` names the item a minor item is in, and `!clear` takes it out. An item that a file creates stands before the minor items the same file puts in it: an export sorted by `depth` writes them so. Rows that change items that exist are worked an item before its minor items, wherever they stand, so that a row with the owner or the state its item would inherit anyway leaves it inheriting, also when the same file changes the item above. A bulk edit is worked in the same order |
 | Management address | An item and a device group have a primary management address of each family. `mgmt_ipv4` and `mgmt_ipv6` set them, and `mgmt_address` takes an address of either family and files it under its own. A value changes the one there is or adds one; `!clear` removes it, and in `mgmt_address` removes both. `mgmt_network` is the label of the network the addresses of the row are under. It is optional: with no such column the network stays as it is, and a new address is in the unlabelled address space. An export writes it where both addresses are under one network, and leaves it blank where they are under two, so that a file loaded back moves neither. A row that names `mgmt_network` and no address is rejected. Every address of a record, these among them, is in the `addresses` entity, so an export writes these columns only when they are asked for by name |
 | A first file | A file of host names, with or without addresses, loads as it is: `hostname` alone makes an item, and loading it again finds each item by its host name and changes nothing. The spellings such a file is likely to use are read as the columns they mean: `ip_address`, `ip` and `mgmt_ip` as `mgmt_address`, `ipv4_address` and `ipv4` as `mgmt_ipv4`, `ipv6_address` and `ipv6` as `mgmt_ipv6` |
-| Places | `location` on an item and on a device group is the path of a location, or its HID, and so is `planned_location` on an item and on a device group, which takes a location that is not in use yet. `parent` of a region is the path of the region it is in, `region` of a site the path of its region, and `site` of a location the path of its site. `parent` of a location is the path of the location it is in, whole or from the site down: `Building 1 > Floor 2`. A row of a location that names its parent whole need not name the site. The regions of one file are worked a region before the regions within it, and the locations likewise, wherever they stand. A row that would move a location to another site is rejected A row of an item says where the item is and is going in force, with `location_source` and `planned_location_source`; loaded back, a value that the item has anyway from the item above it or from its group gives the item nothing of its own. |
+| Places | `location` on an item and on a device group is the path of a location, or its HID, and so is `planned_location` on an item and on a device group, which takes a location that is not in use yet. `parent` of a region is the path of the region it is in, `region` of a site the path of its region, and `site` of a location the path of its site. `parent` of a location is the path of the location it is in, whole or from the site down: `Building 1 > Floor 2`. A row of a location that names its parent whole need not name the site. The regions of one file are worked a region before the regions within it, and the locations likewise, wherever they stand. A row that would move a location to another site is rejected. A step of any of these paths may be the code of its place, and a path may begin at the code of a region or of a site, as the [data model](data-model.md#regions-sites-locations) page says: `S2 > R102` (P-235); the name a row gives a place of its own, in `name`, finds a place by its name alone. A row of an item says where the item is and is going in force, with `location_source` and `planned_location_source`; loaded back, a value that the item has anyway from the item above it or from its group gives the item nothing of its own. |
 | Contacts of a place | A row of `contact_assignments` names one place, in `region`, `site` or `location`, with a `role` and a `contact`. A row with `stop_inheritance` true and no contact is the one that stops inheritance for that place and role. An import does not remove an assignment. In a file of `owner_members` the rows that name a primary are worked first, wherever they stand, so that the first member of an owner is its primary and a change of primary comes out right |
 | Contacts of contracts | A row of `contract_contacts` names one record: an `agreement` by its name, or a `contract` by its number, with `vendor` beside it where two vendors use one number. It names a `role`, `account_manager` or `support_contact`, and a `contact` as any column names one. A row with no `priority` is listed after the others of its record and role. An import does not remove one, and a row does not move one to another record |
 | Not to be renewed | `do_not_renew` of a catalog entry is `true` or `false`, and `!clear` makes it `false`. `do_not_renew` of an item is its own word, and `!clear` gives it its model's again; a row that holds the very flag the item has from its model leaves it inheriting, as for every value of the catalog. An export of items in force writes the flag in force with `do_not_renew_source`, and one with `own_values` the item's own. A bulk edit sets it as a file does |
@@ -652,6 +737,14 @@ is always the first column. Inheritable fields export their effective value;
 `include_sources=true` adds the `_source` columns, and `own_values=true` exports stored
 values instead, which is the form to use for a file that will be imported back.
 
+A place is written as the path of its names. With `place_codes=true` each place is
+written the short way, by codes (P-235): a region by its code, a site by its code, and a
+location by the code of its site and its own, `S2 > R102`. Where a place has no code,
+its names stand in for it, `S2 > Building 1 > Room 102` and `Americas > Central > Site-2
+> R102`, and a place whose short way would find another, where a name wins over the
+code, is written by its names. That holds for every column that names a place, `path`
+among them, and such a file loads back to the same places.
+
 Left out, the columns are the ones that can be set. A column may also be named as a
 filter names it: `catalog.pid` is `pid`, `owner.label` is `owner` and `effective.ldos`
 is `ldos`. Left out, the sort is the list's own. `include_archived` and
@@ -673,6 +766,30 @@ of them can be set.
 Every template in `examples/` is produced by exporting the seeded example database, so
 the templates can never drift from the importer. `make examples` writes them, and a
 test fails when they are out of date.
+
+### The records an import made
+
+`GET /imports/{hid}/created`, which every role reads that reads imports, lists the
+records an import made, one row of the file each, in the order of the file, and is
+paged with `limit` and `offset` as the rows of an import are (P-234):
+
+```json
+{ "total": 40, "limit": 100, "offset": 0,
+  "items": [ { "row": 1, "record_type": "item", "record_hid": "0193a1f4-...",
+               "label": "site2-sw-access-01", "state": "retired" } ],
+  "also": [ { "record_type": "catalog_entry", "record_hid": "0193a1f9-...",
+              "label": "Cisco C9300-48P", "state": "active" } ] }
+```
+
+`record_type` is the kind of record, as the audit trail names it, `label` what it is
+known by now, as `POST /items/retire` gives it, and for one that was deleted what it was
+known by then. `state` is what it is now: `active`, `draft`, `retired` or `deleted`; a
+record with no status of its own, a tag, a network, an address or a membership, is
+`active` while it stands. `also` lists, after them and whole, the vendors and the
+catalog entries that the import made only because a row named them and that no row of
+it described. Nothing new is stored: a row that made a record keeps its HID, and the
+audit trail the request that made the others. A preview that was not applied, and a
+bulk edit, made nothing, and list none.
 
 ### Bulk edit
 
@@ -1369,6 +1486,20 @@ blank where it was not raised. A region and a location count their own alone. An
 answers `effective.support_weight` in the same form, with `catalog` for its model's
 weight and `setting` for `default_item_weight`, and so does a circuit (P-155).
 
+**The map of a place** is `map_url` on the answer of a site and of a location, in a list
+as on its own: the setting `map_link` with `{latitude}` and `{longitude}` each replaced
+by the place's coordinates, as the answer writes them, six places of decimal degrees
+(P-229, P-236):
+
+```json
+{ "latitude": "41.878100", "longitude": "-87.629800",
+  "map_url": "https://www.google.com/maps/search/?api=1&query=41.878100,-87.629800" }
+```
+
+It is null where the place has no coordinates of its own, which are not inherited, and
+where the setting is blank, as an installation with no access to the internet sets it.
+Nothing else of the place is in it. A region has no coordinates and no `map_url`.
+
 ## Contacts of agreements and contracts
 
 `GET /agreements/{hid}/contacts` lists the contact records an agreement names, by role
@@ -1628,7 +1759,13 @@ hirdir import items.csv --entity items --apply --skip-rejected
 hirdir import items.csv --entity items --apply --no-wait   # leaves it to the server
 hirdir imports show <hid> --wait                       # how far an apply has got, until it ends
 hirdir imports apply <hid>                             # a stored preview, or one that stopped, resumed
+hirdir imports created <hid>                           # the records it made, and what each is now
+hirdir items retire <hid> <hid> <hid>                  # several at once, for the Inventory role
+hirdir items delete <hid> <hid> --reason 'a wrong file'    # an Admin: says what it would do, and asks
+hirdir groups retire site2-sw-stack9
+hirdir groups delete <hid> --reason 'a wrong file' --yes
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
+hirdir export items --own-values --place-codes --output items.csv   # places as S2 > R102
 hirdir report summary --by health --format json
 hirdir report management                         # by site
 hirdir report management --by owner
@@ -1706,6 +1843,9 @@ refused leaves the others as they went.
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An apply | `hirdir import --apply` and `hirdir items set` wait for the server to apply the change in the background, and say how far it has got, unless `--no-wait` is given. Stopping the command does not stop the apply. The rows the apply left out as stale are listed with why, and the command exits `5`; rows the rules refused at the apply exit `4`; a job that stopped exits `6` and says how to resume it. `hirdir imports show HID` prints a stored preview of an import or a bulk edit and how far its apply has got, and with `--wait` waits for its end as an apply does. `hirdir imports apply HID` applies a stored preview, or resumes one that stopped, and waits likewise |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model |
+| Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire` for each 1,000, and print what was retired, what was retired already, what was refused with why and what was not found; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once (P-227, P-228) |
+| The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
+| Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
