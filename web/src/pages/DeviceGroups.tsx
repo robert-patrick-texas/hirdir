@@ -67,13 +67,7 @@ import {
   stackProblem,
   takesTheMark,
 } from "../lib/groups";
-import {
-  CONDITION_LIST,
-  healthLabel,
-  OBSERVED,
-  observedLabel,
-  reasonsText,
-} from "../lib/health";
+import { CONDITION_LIST, healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   useChoices,

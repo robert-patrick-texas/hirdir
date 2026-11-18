@@ -14,7 +14,7 @@
 
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { type Account, expectClean, mark, signIn, test, watch } from "./support";
+import { type Account, createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
@@ -303,5 +303,136 @@ test("a member that leaves by End is given its condition in the same form: Faile
     "ConditionDead",
   );
   await expect(page.getByTestId("standing-fact")).toContainText("Pending-Removal");
+  await expectClean(page, seen);
+});
+
+// The spare that took a place in the second scenario, which goes back to the pool and
+// takes a place again, as 0.9.7 refused.
+const pooled = host("spare-sw-93");
+
+async function replaceOnRow(page: Page, leaving: string, coming: string) {
+  await memberRow(page, leaving)
+    .getByRole("button", { name: `Replace ${leaving}` })
+    .click();
+  const form = page.getByRole("region", { name: `Replace ${leaving}` });
+  await form.getByLabel("The item that takes its place", { exact: true }).fill(coming);
+  await offers(form)
+    .getByRole("button", { name: new RegExp(`^${coming}`) })
+    .click();
+  await form.getByLabel("Reason").selectOption({ label: "RMA" });
+  return form;
+}
+
+test("a spare that took a place goes back to the pool by Replace and takes a place a second time; its page lists every replacement, and an Admin removes one that was a mistake (P-241, P-238)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openStack(page, firstStack);
+  const twice = spareSerials[2] ?? "";
+  const between = spareSerials[3] ?? "";
+
+  // It leaves for the pool, with a new name and the depot, as End sends it.
+  let form = await replaceOnRow(page, twice, spares[3] ?? "");
+  const what = form.getByRole("group", { name: "What becomes of it" });
+  await what.getByLabel("To the spare pool").check();
+  await what.getByLabel("Hostname").fill(pooled);
+  await what.getByLabel("Location").fill(depot);
+  await what
+    .getByRole("button", { name: new RegExp(depot) })
+    .first()
+    .click();
+  await form.getByRole("button", { name: "Replace", exact: true }).click();
+  const said = page.locator(".alert-ok");
+  await expect(said).toContainText(`${pooled} was replaced by ${between} as member 2`);
+  await expect(said).toContainText("named " + pooled);
+
+  // It takes the place again, and is in the stack once more.
+  form = await replaceOnRow(page, between, pooled);
+  await expect(
+    form.getByRole("group", { name: pooled }).getByLabel("It takes the stack's name and place"),
+  ).toBeChecked();
+  await form.getByRole("button", { name: "Replace", exact: true }).click();
+  await expect(said).toContainText(`${between} was replaced by ${twice} as member 2`);
+  await expect(memberRow(page, twice).locator("td").first()).toHaveText("2");
+
+  // Its page lists the three, the latest first.
+  await said.getByRole("link", { name: twice }).click();
+  await expect(page.getByRole("heading", { level: 1, name: twice })).toBeVisible();
+  const lines = page.getByTestId("replacements").locator("li");
+  await expect(lines).toHaveCount(3);
+  await expect(lines.nth(0)).toContainText(`Took the place of ${between}`);
+  await expect(lines.nth(1)).toContainText(`Replaced by ${between}`);
+  await expect(lines.nth(2)).toContainText(`Took the place of ${spareSerials[1]}`);
+  await expect(lines.nth(0).getByRole("link", { name: new RegExp(`^${between}`) })).toBeVisible();
+
+  // An Admin removes the latest, which asks first and wants a reason typed.
+  await lines
+    .nth(0)
+    .getByRole("button", { name: /^Remove the replacement of/ })
+    .click();
+  const asked = page.getByRole("form", { name: /^Remove the replacement of/ });
+  await expect(asked).toContainText("What it handed over stays");
+  const go = asked.getByRole("button", { name: "Remove replacement" });
+  await expect(go).toBeDisabled();
+  await asked.getByLabel("Reason").fill(`recorded twice ${id}`);
+  await go.click();
+  await expect(said).toContainText(`The replacement of ${between} by ${twice} on`);
+  await expect(said).toContainText("was removed.");
+  await expect(lines).toHaveCount(2);
+  // What it handed over stays: the switch is still member 2 of the stack.
+  await expect(page.getByTestId("stack-member")).toHaveText(`Member 2 of ${firstStack}`);
+  await expectClean(page, seen);
+});
+
+test("a viewer sees no Replace; Inventory sees Replace on the row and on the item, and no Remove of a replacement (P-242, P-238)", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const viewer = await createAccount(request, `e2e-${id}-viewer`, "viewer");
+  const inventory = await createAccount(request, `e2e-${id}-inventory`, "inventory");
+  const twice = spareSerials[2] ?? "";
+  const seen = await watch(page.context());
+
+  await signIn(page, viewer);
+  await openStack(page, firstStack);
+  await expect(memberRow(page, twice)).toBeVisible();
+  await expect(page.getByRole("button", { name: `Replace ${twice}` })).toHaveCount(0);
+  await openItem(page, twice);
+  await expect(page.getByTestId("replacements").locator("li")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Replace this item" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Remove the replacement/ })).toHaveCount(0);
+  // Who made a change is text for every role but Admin (P-240).
+  await expect(page.getByRole("region", { name: "History" }).getByRole("link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign out" }).click();
+
+  await signIn(page, inventory);
+  await openStack(page, firstStack);
+  // Pressed while the server is slow to read the item, Replace says so, then shows its
+  // form when the item comes, the box ticked.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/items/*", async (route) => {
+    if (route.request().method() === "GET") await held;
+    await route.continue().catch(() => {});
+  });
+  await page.getByRole("button", { name: `Replace ${twice}` }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Reading the item" })).toBeVisible();
+  release();
+  const form = page.getByRole("region", { name: `Replace ${twice}` });
+  await expect(form.getByLabel("The item that takes its place", { exact: true })).toBeEnabled();
+  await page.unroute("**/api/v1/items/*");
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await expect(form).toHaveCount(0);
+  await openItem(page, twice);
+  await expect(page.getByRole("button", { name: "Replace this item" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Remove the replacement/ })).toHaveCount(0);
   await expectClean(page, seen);
 });

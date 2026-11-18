@@ -29,7 +29,6 @@ import { SortTh } from "./SortTh";
 import { ValueLink } from "./ValueLink";
 
 type Item = Schemas["ItemOut"];
-type ItemRef = Schemas["ItemRef"];
 type Choice = Schemas["ChoiceOut"];
 
 const CHILDREN_PAGE = 100;
@@ -452,73 +451,153 @@ export function Memberships({ item }: { item: Item }) {
   );
 }
 
-function ReplacementFact({
-  label,
-  other,
-  choices,
-  testId,
-}: {
-  label: string;
-  other: Schemas["ReplacementRef"];
+type Entry = Schemas["ReplacementEntry"];
+
+/** What one line says the other item was to this one: "Replaced by", "Took the place of". */
+function partLabel(entry: Pick<Entry, "part">): string {
+  return entry.part === "left" ? "Replaced by" : "Took the place of";
+}
+
+interface ReplacementLineProps {
+  item: Item;
+  entry: Entry;
   choices: readonly Choice[] | undefined;
-  testId: string;
-}) {
-  const named: ItemRef = {
-    hid: other.item_hid,
-    name: other.name,
-    serial_number: other.serial_number,
-    asset_tag: null,
-    catalog_entry_hid: null,
-    pid: null,
-  };
+  /** An Admin removes a replacement that was a mistake (P-238). */
+  mayRemove: boolean;
+  onRemoved: (text: string) => void;
+}
+
+/**
+ * One replacement the item is part of: whether it left or came, the other item as a
+ * link, the reason, the reference and the day; for an Admin, Remove, which asks first
+ * and takes a reason that must be typed.
+ */
+function ReplacementLine({ item, entry, choices, mayRemove, onRemoved }: ReplacementLineProps) {
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const action = useAction();
+  const refused = fieldErrors(action.error, ["reason"]).shown;
+  const other = pickLabel(entry.item);
+  const name = itemName(item);
+  const otherName = itemName(entry.item);
+  const what =
+    entry.part === "left"
+      ? `the replacement of ${name} by ${otherName} on ${entry.replaced_on}`
+      : `the replacement of ${otherName} by ${name} on ${entry.replaced_on}`;
+
+  async function remove(event: FormEvent) {
+    event.preventDefault();
+    const typed = reason.trim();
+    if (typed === "") return;
+    const result = await action.run(() =>
+      api.request("post", "/api/v1/item-replacements/{hid}/remove", {
+        path: { hid: entry.hid },
+        body: { reason: typed },
+      }),
+    );
+    if (result.ok) onRemoved(`${what[0]?.toUpperCase() ?? ""}${what.slice(1)} was removed.`);
+  }
+
   return (
-    <>
-      <dt>{label}</dt>
-      <dd data-testid={testId}>
-        <Link to={itemPath(other.item_hid)}>{pickLabel(named)}</Link> on {other.replaced_on}, for{" "}
-        {choiceLabel(choices, "replacement_reason", other.reason)}
-        {other.reference && <span className="muted"> · {other.reference}</span>}
-      </dd>
-    </>
+    <li data-testid={entry.part === "left" ? "replaced-by" : "replaces"} data-part={entry.part}>
+      <span className="replacement-part">{partLabel(entry)}</span>{" "}
+      <Link to={itemPath(entry.item.hid)}>{other}</Link> on {entry.replaced_on}, for{" "}
+      {choiceLabel(choices, "replacement_reason", entry.reason)}
+      {entry.reference && <span className="muted"> · {entry.reference}</span>}
+      {mayRemove && !asking && (
+        <>
+          {" "}
+          <button
+            type="button"
+            className="danger"
+            aria-label={`Remove ${what}`}
+            onClick={() => setAsking(true)}
+          >
+            Remove
+          </button>
+        </>
+      )}
+      {mayRemove && asking && (
+        <form
+          onSubmit={remove}
+          className="panel stack remove-replacement"
+          aria-label={`Remove ${what}`}
+          noValidate
+        >
+          <p>
+            Remove {what}? It is for a replacement that never happened, which a wrong file or a
+            wrong press recorded. The removal is kept in the audit trail with the replacement as it
+            was. What it handed over stays: a membership or a connection of a circuit is put right
+            on the page of its group or its circuit.
+          </p>
+          <Problem error={action.error} shown={["reason"]} />
+          <div className="fields">
+            <TextField
+              label="Reason"
+              name={`remove-reason-${entry.hid}`}
+              value={reason}
+              onChange={setReason}
+              required
+              maxLength={500}
+              autoComplete="off"
+              error={refused.reason}
+              hint="Why it was a mistake, kept with the removal"
+            />
+          </div>
+          <p className="actions">
+            <button type="submit" className="danger" disabled={action.busy || reason.trim() === ""}>
+              Remove replacement
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAsking(false);
+                action.clear();
+              }}
+              disabled={action.busy}
+            >
+              Cancel
+            </button>
+          </p>
+        </form>
+      )}
+    </li>
   );
 }
 
 interface ReplacementProps extends Omit<ChangeProps, "onChanged"> {
   choices: readonly Choice[] | undefined;
+  /** An Admin removes a replacement that was a mistake (P-238). */
+  mayRemove: boolean;
   /** What was done, and the same in parts with both items as links (P-242). */
   onChanged: (text: string, parts?: SaidPart[]) => void;
 }
 
 /**
- * What this item replaced and what replaced it, and the Replace action. A replacement
- * links the two records and hands over the old item's place in every group it is a
- * current member of. It moves neither item in the lifecycle: that is a move of its own.
+ * Every replacement the item is part of, the latest first, and the Replace action
+ * (P-241). A replacement links the two records and hands over the old item's place in
+ * every group it is a current member of; each item changes only as the request names.
  */
-export function Replacement({ item, choices, mayEdit, onChanged, onReload }: ReplacementProps) {
+export function Replacement(props: ReplacementProps) {
+  const { item, choices, mayEdit, mayRemove, onChanged, onReload } = props;
   const [open, setOpen] = useState(false);
-  const { replaces, replaced_by: replacedBy } = item;
+  const entries = item.replacements;
   return (
     <section aria-labelledby="replacement">
       <h2 id="replacement">Replacement</h2>
-      {replaces || replacedBy ? (
-        <dl className="facts">
-          {replaces && (
-            <ReplacementFact
-              label="Took the place of"
-              other={replaces}
+      {entries.length > 0 ? (
+        <ul className="plain-list replacements" data-testid="replacements">
+          {entries.map((entry) => (
+            <ReplacementLine
+              key={entry.hid}
+              item={item}
+              entry={entry}
               choices={choices}
-              testId="replaces"
+              mayRemove={mayRemove}
+              onRemoved={(text) => onChanged(text)}
             />
-          )}
-          {replacedBy && (
-            <ReplacementFact
-              label="Replaced by"
-              other={replacedBy}
-              choices={choices}
-              testId="replaced-by"
-            />
-          )}
-        </dl>
+          ))}
+        </ul>
       ) : (
         <p className="muted">{itemName(item)} replaced no item, and was not replaced.</p>
       )}

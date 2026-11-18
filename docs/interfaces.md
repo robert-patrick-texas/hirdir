@@ -2379,7 +2379,16 @@ What 0.9.6 changes:
   what the box removed, what the one that came is now and what became of the one that
   left; the members are read again, and the new member's row stands at the position
   that was the old one's. Replace this item on an item's page is the same form, offered
-  whether or not the item was replaced before (P-241).
+  whether or not the item was replaced before (P-241). Above it, the section Replacement
+  lists the item's `replacements`, the latest first, one line each: Replaced by, where
+  this item left, or Took the place of, where it came, the other item as a link, the day,
+  the reason and the reference. For an Admin each line has Remove (P-238), which opens
+  under the line a question that says the removal is for a replacement that never
+  happened and that what it handed over stays, with a Reason that must be typed before
+  Remove replacement may be pressed; it calls `POST /item-replacements/{hid}/remove`, and
+  the page says the replacement was removed and reads the item again. No other page
+  reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
+  each replacement.
 
 ### The grid
 

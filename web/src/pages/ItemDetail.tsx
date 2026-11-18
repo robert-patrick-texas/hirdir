@@ -276,6 +276,8 @@ export function ItemDetail() {
             item={record}
             choices={choices.data}
             mayEdit={mayEdit && record.record_status !== "retired"}
+            // 0.9.8: an Admin removes a replacement that was a mistake (P-238).
+            mayRemove={allows(user.role, "admin")}
             onChanged={changed}
             onReload={item.reload}
           />
