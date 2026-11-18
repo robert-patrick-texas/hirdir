@@ -9,7 +9,7 @@ in every circuit it was connected to.
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
@@ -23,24 +23,38 @@ FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
 MAX_REFERENCE = 200
 
 
+def latest_first() -> list[Any]:
+    """The order of replacements, the latest first: by the day, then by when entered."""
+    return [
+        ItemReplacement.replaced_on.desc(),
+        ItemReplacement.created_at.desc(),
+        ItemReplacement.hid.desc(),
+    ]
+
+
 def of_items(
     db: Session, item_hids: list[str]
-) -> tuple[dict[str, ItemReplacement], dict[str, ItemReplacement]]:
-    """Return, for the items, the replacement each was replaced by and the one it made."""
+) -> tuple[dict[str, list[ItemReplacement]], dict[str, list[ItemReplacement]]]:
+    """Return, for the items, the replacements each was replaced by and those it made,
+    the latest first (P-241). An item that is part of none has empty lists."""
+    replaced_by: dict[str, list[ItemReplacement]] = {hid: [] for hid in item_hids}
+    replaces: dict[str, list[ItemReplacement]] = {hid: [] for hid in item_hids}
     if not item_hids:
-        return {}, {}
-    replaced_by = {
-        found.old_item_hid: found
-        for found in db.scalars(
-            select(ItemReplacement).where(ItemReplacement.old_item_hid.in_(item_hids))
+        return replaced_by, replaces
+    for found in db.scalars(
+        select(ItemReplacement)
+        .where(
+            or_(
+                ItemReplacement.old_item_hid.in_(item_hids),
+                ItemReplacement.new_item_hid.in_(item_hids),
+            )
         )
-    }
-    replaces = {
-        found.new_item_hid: found
-        for found in db.scalars(
-            select(ItemReplacement).where(ItemReplacement.new_item_hid.in_(item_hids))
-        )
-    }
+        .order_by(*latest_first())
+    ):
+        if found.old_item_hid in replaced_by:
+            replaced_by[found.old_item_hid].append(found)
+        if found.new_item_hid in replaces:
+            replaces[found.new_item_hid].append(found)
     return replaced_by, replaces
 
 

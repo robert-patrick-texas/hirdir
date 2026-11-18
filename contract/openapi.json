@@ -16258,7 +16258,15 @@
                 "type": "null"
               }
             ],
-            "description": "The item that took its place."
+            "description": "The item that took its place, the latest where it was replaced several times."
+          },
+          "replacements": {
+            "description": "Every replacement it is part of, the latest first: by `replaced_on`, then by when it was entered (P-241).",
+            "items": {
+              "$ref": "#/components/schemas/ReplacementEntry"
+            },
+            "title": "Replacements",
+            "type": "array"
           },
           "replaces": {
             "anyOf": [
@@ -16269,7 +16277,7 @@
                 "type": "null"
               }
             ],
-            "description": "The item whose place this one took."
+            "description": "The item whose place this one took, the latest where it took several."
           },
           "row_version": {
             "title": "Row Version",
@@ -16432,6 +16440,7 @@
           "addresses",
           "replaces",
           "replaced_by",
+          "replacements",
           "covered",
           "contract_count",
           "covered_until",
@@ -17150,8 +17159,21 @@
       },
       "LeavingItem": {
         "additionalProperties": false,
-        "description": "What an item that leaves a group is to have from the end (P-218).\n\nEach is checked by the item's own rules once the membership has ended. A field left\nout stays as it is, and null clears hostname, fqdn and location_hid.",
+        "description": "What an item that leaves a group is to have from the end (P-218).\n\nEach is checked by the item's own rules once the membership has ended. A field left\nout stays as it is, and null clears hostname, fqdn, location_hid and condition.",
         "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A value of the item_condition list. Null clears it; left out, it stays (P-245).",
+            "title": "Condition"
+          },
           "disposition": {
             "anyOf": [
               {
@@ -18999,6 +19021,45 @@
           "state"
         ],
         "title": "MadeForARow",
+        "type": "object"
+      },
+      "MakeStack": {
+        "additionalProperties": false,
+        "description": "A stack made of an item that stands alone, with the item as its first member (P-243).",
+        "properties": {
+          "members": {
+            "default": [],
+            "description": "More members, each as `POST /device-groups/{hid}/members` takes one, added after the first.",
+            "items": {
+              "$ref": "#/components/schemas/MemberAdd"
+            },
+            "maxItems": 5000,
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stack's name. Left out or blank, the item's own.",
+            "title": "Name"
+          },
+          "row_version": {
+            "description": "The version of the item.",
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "MakeStack",
         "type": "object"
       },
       "ManagementConditions": {
@@ -26237,8 +26298,39 @@
       },
       "Replace": {
         "additionalProperties": false,
-        "description": "The replacement of an item: what takes its place, why and when.",
+        "description": "The replacement of an item: what takes its place, why and when, and what each of\nthe two is to have from it (P-242).",
         "properties": {
+          "disposition": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Given, the disposition of the item that comes, as the rule of its lifecycle state allows. Left out, it stays as it is.",
+            "title": "Disposition"
+          },
+          "drop_identity": {
+            "default": false,
+            "description": "Where the item that leaves is a current member of a stack: in the same change the item that comes gives up its own hostname, FQDN, addresses and location, as a member that joins a stack with it does (P-217).",
+            "title": "Drop Identity",
+            "type": "boolean"
+          },
+          "expected_online": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Given, whether the item that comes is expected online, as the rule of its lifecycle state allows. Left out, it stays as it is.",
+            "title": "Expected Online"
+          },
           "new_item": {
             "anyOf": [
               {
@@ -26262,6 +26354,17 @@
             ],
             "description": "An item that exists and takes the place.",
             "title": "New Item Hid"
+          },
+          "old_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeavingItem"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the item that leaves is to have from the replacement, as the end of a membership takes `item` (P-218): applied once its memberships have ended. Given with a replaced_on that has come."
           },
           "reason": {
             "description": "A value of the replacement_reason list.",
@@ -26306,6 +26409,65 @@
           "reason"
         ],
         "title": "Replace",
+        "type": "object"
+      },
+      "ReplacementEntry": {
+        "additionalProperties": false,
+        "description": "One replacement an item is part of, and which of its two items this one was (P-241).",
+        "properties": {
+          "hid": {
+            "description": "The replacement.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "item": {
+            "$ref": "#/components/schemas/ItemRef",
+            "description": "The other item."
+          },
+          "part": {
+            "description": "`left`: this item left, and `item` took its place. `came`: this item took the place of `item`.",
+            "enum": [
+              "left",
+              "came"
+            ],
+            "title": "Part",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "replaced_on": {
+            "format": "date",
+            "title": "Replaced On",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "part",
+          "item",
+          "reason",
+          "reference",
+          "replaced_on",
+          "row_version"
+        ],
+        "title": "ReplacementEntry",
         "type": "object"
       },
       "ReplacementOut": {
@@ -26453,6 +26615,24 @@
           "replaced_on"
         ],
         "title": "ReplacementRef",
+        "type": "object"
+      },
+      "ReplacementRemove": {
+        "additionalProperties": false,
+        "description": "Why a replacement that was a mistake is removed, by an Admin (P-238).",
+        "properties": {
+          "reason": {
+            "description": "Required, and kept in the audit event of the removal.",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReplacementRemove",
         "type": "object"
       },
       "ReplacementRow": {
@@ -38873,6 +39053,71 @@
         ]
       }
     },
+    "/api/v1/item-replacements/{hid}/remove": {
+      "post": {
+        "description": "Remove a replacement that was a mistake, with a reason (P-238).\n\nThe audit event of the removal holds what it was, and each of the two items has an\nevent of it. What it handed over, memberships and connections of circuits, stays.",
+        "operationId": "remove_replacement_api_v1_item_replacements__hid__remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplacementRemove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Replacement",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
     "/api/v1/items": {
       "get": {
         "description": "List items, by name unless a sort says otherwise.\n\nDrafts, retired items and items in Archived are left out unless asked for.",
@@ -39658,6 +39903,78 @@
         ]
       }
     },
+    "/api/v1/items/{hid}/make-stack": {
+      "post": {
+        "description": "Make a stack of an item that is in none, with the item as its first member.\n\nThe stack takes the item's host name, FQDN and addresses, and the location, planned\nlocation, owner and operator it has of its own, which the item gives up in the same\nchange and has from the stack from then on (P-243). `members` are added after it.",
+        "operationId": "make_stack_api_v1_items__hid__make_stack_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeStack"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Stack",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
     "/api/v1/items/{hid}/references": {
       "get": {
         "description": "List the references a item has: its own, then those of its model, then those of the location it is at in force and of each place above it, nearest first, each once, and by title within a level.",
@@ -39727,7 +40044,7 @@
     },
     "/api/v1/items/{hid}/replace": {
       "post": {
-        "description": "Record that another item took the place of this one, and link the two.\n\nThe other item is one that exists, or is created here. It takes over this item's\nplace in every group it is a current member of. Neither is moved in the lifecycle.",
+        "description": "Record that another item took the place of this one, and link the two.\n\nThe other item is one that exists, or is created here. It takes over this item's\nplace in every group it is a current member of. An item is replaced, and takes\nanother's place, as often as that happens (P-241). Neither is moved by a rule: each\nis changed only as the request names, the new one by `drop_identity`, `disposition`\nand `expected_online`, the old one by `old_item`, in the same change (P-242).",
         "operationId": "replace_item_api_v1_items__hid__replace_post",
         "parameters": [
           {

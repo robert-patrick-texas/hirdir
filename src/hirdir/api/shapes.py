@@ -733,15 +733,21 @@ def entry_out(db: Session, entry: CatalogEntry) -> shapes.CatalogEntryOut:
 
 def _replacement_refs(
     db: Session, hids: list[str]
-) -> tuple[dict[str, shapes.ReplacementRef], dict[str, shapes.ReplacementRef]]:
-    """Return, for each item, the item that took its place and the one whose place it took."""
+) -> tuple[
+    dict[str, shapes.ReplacementRef],
+    dict[str, shapes.ReplacementRef],
+    dict[str, list[shapes.ReplacementEntry]],
+]:
+    """Return, for each item, the latest item that took its place, the latest whose place
+    it took, and every replacement it is part of, the latest first (P-241)."""
     replaced_by, replaces = replacements.of_items(db, hids)
     others = _by_hid(
         db,
         Item,
-        {found.new_item_hid for found in replaced_by.values()}
-        | {found.old_item_hid for found in replaces.values()},
+        {found.new_item_hid for listed in replaced_by.values() for found in listed}
+        | {found.old_item_hid for listed in replaces.values() for found in listed},
     )
+    named = item_refs(db, list(others.values()))
 
     def ref(found: ItemReplacement, other_hid: str) -> shapes.ReplacementRef:
         other = others[other_hid]
@@ -755,9 +761,34 @@ def _replacement_refs(
             replaced_on=found.replaced_on,
         )
 
+    def entries(hid: str) -> list[shapes.ReplacementEntry]:
+        both = [(found, "left") for found in replaced_by[hid]] + [
+            (found, "came") for found in replaces[hid]
+        ]
+        both.sort(
+            key=lambda pair: (pair[0].replaced_on, pair[0].created_at, pair[0].hid), reverse=True
+        )
+        return [
+            shapes.ReplacementEntry(
+                hid=found.hid,
+                part=part,
+                item=named[found.new_item_hid if part == "left" else found.old_item_hid],
+                reason=found.reason,
+                reference=found.reference,
+                replaced_on=found.replaced_on,
+                row_version=found.row_version,
+            )
+            for found, part in both
+        ]
+
     return (
-        {hid: ref(found, found.new_item_hid) for hid, found in replaced_by.items()},
-        {hid: ref(found, found.old_item_hid) for hid, found in replaces.items()},
+        {
+            hid: ref(listed[0], listed[0].new_item_hid)
+            for hid, listed in replaced_by.items()
+            if listed
+        },
+        {hid: ref(listed[0], listed[0].old_item_hid) for hid, listed in replaces.items() if listed},
+        {hid: entries(hid) for hid in hids},
     )
 
 
@@ -930,7 +961,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         list({item.hid: item for listed in controllers.values() for item, _ in listed}.values()),
     )
     its_addresses = _address_refs(db, "item_hid", hids)
-    replaced_by, replaces = _replacement_refs(db, hids)
+    replaced_by, replaces, replaced_entries = _replacement_refs(db, hids)
     today = contracts.today(db)
     cover = _cover(db, hids, today)
     registered = _registration_refs(db, "item_hid", hids)
@@ -1012,6 +1043,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 addresses=its_addresses[item.hid],
                 replaces=replaces.get(item.hid),
                 replaced_by=replaced_by.get(item.hid),
+                replacements=replaced_entries[item.hid],
                 purchase_line=arrived_on.get(item.purchase_line_hid or ""),
                 covered=cover[item.hid][2] > 0,
                 covered_until=cover[item.hid][1],
@@ -1068,6 +1100,7 @@ _ITEM_SHAPED = (
     "addresses",
     "replaces",
     "replaced_by",
+    "replacements",
     "purchase_line",
     "purchase_line_mismatch",
     "covered",
