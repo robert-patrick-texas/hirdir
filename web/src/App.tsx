@@ -1,9 +1,9 @@
-import { lazy, useEffect } from "react";
+import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AuthGate } from "./auth";
 import { Shell } from "./components/Shell";
 import { routerBasename } from "./lib/base";
-import { part } from "./lib/fault";
+import { part, retriedPart } from "./lib/fault";
 import { About } from "./pages/About";
 import { Home } from "./pages/Home";
 import { AdminStart, NotFound, RequireRole } from "./pages/Misc";
@@ -11,7 +11,8 @@ import { AdminStart, NotFound, RequireRole } from "./pages/Misc";
 // The sign-in page and the first page are in the file the browser loads first. Every
 // other page is a file of its own, so that signing in never waits for the grid. 0.9.7: a
 // file that cannot be fetched, as where a release installed meanwhile has taken the old
-// one away, is said as such where the page would stand (P-230).
+// one away, is said as such where the page would stand (P-230), and is fetched again the
+// next time the page is opened, once a move has cleared the fault.
 const pages = {
   agreements: part(() => import("./pages/Agreements")),
   audit: part(() => import("./pages/Audit")),
@@ -53,102 +54,130 @@ const pages = {
   files: part(() => import("./pages/Files")),
 };
 
-const AgreementDetail = lazy(() =>
+const AgreementDetail = retriedPart(() =>
   pages.agreements().then((page) => ({ default: page.AgreementDetail })),
 );
-const Agreements = lazy(() => pages.agreements().then((page) => ({ default: page.Agreements })));
-const AllAddresses = lazy(() => pages.networks().then((page) => ({ default: page.AllAddresses })));
-const Capacity = lazy(() => pages.capacity().then((page) => ({ default: page.Capacity })));
-const CapacityLineDetail = lazy(() =>
+const Agreements = retriedPart(() =>
+  pages.agreements().then((page) => ({ default: page.Agreements })),
+);
+const AllAddresses = retriedPart(() =>
+  pages.networks().then((page) => ({ default: page.AllAddresses })),
+);
+const Capacity = retriedPart(() => pages.capacity().then((page) => ({ default: page.Capacity })));
+const CapacityLineDetail = retriedPart(() =>
   pages.capacity().then((page) => ({ default: page.CapacityLineDetail })),
 );
-const ContractDetail = lazy(() =>
+const ContractDetail = retriedPart(() =>
   pages.contracts().then((page) => ({ default: page.ContractDetail })),
 );
-const Contracts = lazy(() => pages.contracts().then((page) => ({ default: page.Contracts })));
-const CoverageReport = lazy(() =>
+const Contracts = retriedPart(() =>
+  pages.contracts().then((page) => ({ default: page.Contracts })),
+);
+const CoverageReport = retriedPart(() =>
   pages.lifecycleReports().then((page) => ({ default: page.CoverageReport })),
 );
-const EndOfLifeReport = lazy(() =>
+const EndOfLifeReport = retriedPart(() =>
   pages.lifecycleReports().then((page) => ({ default: page.EndOfLifeReport })),
 );
-const PurchaseDetail = lazy(() =>
+const PurchaseDetail = retriedPart(() =>
   pages.purchases().then((page) => ({ default: page.PurchaseDetail })),
 );
-const PurchaseLines = lazy(() =>
+const PurchaseLines = retriedPart(() =>
   pages.purchases().then((page) => ({ default: page.PurchaseLines })),
 );
-const Purchases = lazy(() => pages.purchases().then((page) => ({ default: page.Purchases })));
+const Purchases = retriedPart(() =>
+  pages.purchases().then((page) => ({ default: page.Purchases })),
+);
 // 0.7.0: the renewal worklist, under Contracts (D-178).
-const Renewals = lazy(() => pages.renewals().then((page) => ({ default: page.Renewals })));
-const Replacements = lazy(() =>
+const Renewals = retriedPart(() => pages.renewals().then((page) => ({ default: page.Renewals })));
+const Replacements = retriedPart(() =>
   pages.lifecycleReports().then((page) => ({ default: page.Replacements })),
 );
-const SystemDetail = lazy(() => pages.systems().then((page) => ({ default: page.SystemDetail })));
-const Systems = lazy(() => pages.systems().then((page) => ({ default: page.Systems })));
-const Audit = lazy(() => pages.audit().then((page) => ({ default: page.Audit })));
-const Catalog = lazy(() => pages.catalog().then((page) => ({ default: page.Catalog })));
-const CatalogEntryDetail = lazy(() =>
+const SystemDetail = retriedPart(() =>
+  pages.systems().then((page) => ({ default: page.SystemDetail })),
+);
+const Systems = retriedPart(() => pages.systems().then((page) => ({ default: page.Systems })));
+const Audit = retriedPart(() => pages.audit().then((page) => ({ default: page.Audit })));
+const Catalog = retriedPart(() => pages.catalog().then((page) => ({ default: page.Catalog })));
+const CatalogEntryDetail = retriedPart(() =>
   pages.catalog().then((page) => ({ default: page.CatalogEntryDetail })),
 );
-const Choices = lazy(() => pages.choices().then((page) => ({ default: page.Choices })));
-const ContactDetail = lazy(() =>
+const Choices = retriedPart(() => pages.choices().then((page) => ({ default: page.Choices })));
+const ContactDetail = retriedPart(() =>
   pages.contacts().then((page) => ({ default: page.ContactDetail })),
 );
-const Contacts = lazy(() => pages.contacts().then((page) => ({ default: page.Contacts })));
-const DeviceGroupDetail = lazy(() =>
+const Contacts = retriedPart(() => pages.contacts().then((page) => ({ default: page.Contacts })));
+const DeviceGroupDetail = retriedPart(() =>
   pages.deviceGroups().then((page) => ({ default: page.DeviceGroupDetail })),
 );
-const DeviceGroups = lazy(() =>
+const DeviceGroups = retriedPart(() =>
   pages.deviceGroups().then((page) => ({ default: page.DeviceGroups })),
 );
-const Geography = lazy(() => pages.geography().then((page) => ({ default: page.Geography })));
-const Duplicates = lazy(() => pages.reports().then((page) => ({ default: page.Duplicates })));
-const GroupDetail = lazy(() => pages.groups().then((page) => ({ default: page.GroupDetail })));
-const Groups = lazy(() => pages.groups().then((page) => ({ default: page.Groups })));
-const Import = lazy(() => pages.import().then((page) => ({ default: page.Import })));
-const ItemDetail = lazy(() => pages.itemDetail().then((page) => ({ default: page.ItemDetail })));
-const Items = lazy(() => pages.items().then((page) => ({ default: page.Items })));
-const LifecycleRules = lazy(() =>
+const Geography = retriedPart(() =>
+  pages.geography().then((page) => ({ default: page.Geography })),
+);
+const Duplicates = retriedPart(() =>
+  pages.reports().then((page) => ({ default: page.Duplicates })),
+);
+const GroupDetail = retriedPart(() =>
+  pages.groups().then((page) => ({ default: page.GroupDetail })),
+);
+const Groups = retriedPart(() => pages.groups().then((page) => ({ default: page.Groups })));
+const Import = retriedPart(() => pages.import().then((page) => ({ default: page.Import })));
+const ItemDetail = retriedPart(() =>
+  pages.itemDetail().then((page) => ({ default: page.ItemDetail })),
+);
+const Items = retriedPart(() => pages.items().then((page) => ({ default: page.Items })));
+const LifecycleRules = retriedPart(() =>
   pages.lifecycleRules().then((page) => ({ default: page.LifecycleRules })),
 );
-const ManagementReport = lazy(() =>
+const ManagementReport = retriedPart(() =>
   pages.reports().then((page) => ({ default: page.ManagementReport })),
 );
-const Networks = lazy(() => pages.networks().then((page) => ({ default: page.Networks })));
-const OperatorDetail = lazy(() =>
+const Networks = retriedPart(() => pages.networks().then((page) => ({ default: page.Networks })));
+const OperatorDetail = retriedPart(() =>
   pages.operators().then((page) => ({ default: page.OperatorDetail })),
 );
-const Operators = lazy(() => pages.operators().then((page) => ({ default: page.Operators })));
-const OwnerDetail = lazy(() => pages.owners().then((page) => ({ default: page.OwnerDetail })));
-const Owners = lazy(() => pages.owners().then((page) => ({ default: page.Owners })));
-const Scoreboard = lazy(() => pages.scoreboard().then((page) => ({ default: page.Scoreboard })));
-const Roles = lazy(() => pages.roles().then((page) => ({ default: page.Roles })));
-const Summary = lazy(() => pages.reports().then((page) => ({ default: page.Summary })));
-const Settings = lazy(() => pages.settings().then((page) => ({ default: page.Settings })));
-const Tags = lazy(() => pages.tags().then((page) => ({ default: page.Tags })));
-const UserDetail = lazy(() => pages.userDetail().then((page) => ({ default: page.UserDetail })));
-const Users = lazy(() => pages.users().then((page) => ({ default: page.Users })));
-const VendorDetail = lazy(() => pages.vendors().then((page) => ({ default: page.VendorDetail })));
-const Vendors = lazy(() => pages.vendors().then((page) => ({ default: page.Vendors })));
+const Operators = retriedPart(() =>
+  pages.operators().then((page) => ({ default: page.Operators })),
+);
+const OwnerDetail = retriedPart(() =>
+  pages.owners().then((page) => ({ default: page.OwnerDetail })),
+);
+const Owners = retriedPart(() => pages.owners().then((page) => ({ default: page.Owners })));
+const Scoreboard = retriedPart(() =>
+  pages.scoreboard().then((page) => ({ default: page.Scoreboard })),
+);
+const Roles = retriedPart(() => pages.roles().then((page) => ({ default: page.Roles })));
+const Summary = retriedPart(() => pages.reports().then((page) => ({ default: page.Summary })));
+const Settings = retriedPart(() => pages.settings().then((page) => ({ default: page.Settings })));
+const Tags = retriedPart(() => pages.tags().then((page) => ({ default: page.Tags })));
+const UserDetail = retriedPart(() =>
+  pages.userDetail().then((page) => ({ default: page.UserDetail })),
+);
+const Users = retriedPart(() => pages.users().then((page) => ({ default: page.Users })));
+const VendorDetail = retriedPart(() =>
+  pages.vendors().then((page) => ({ default: page.VendorDetail })),
+);
+const Vendors = retriedPart(() => pages.vendors().then((page) => ({ default: page.Vendors })));
 // 0.8.0: circuits and circuit groups (P-145 to P-154).
-const Circuits = lazy(() => pages.circuits().then((page) => ({ default: page.Circuits })));
-const CircuitDetail = lazy(() =>
+const Circuits = retriedPart(() => pages.circuits().then((page) => ({ default: page.Circuits })));
+const CircuitDetail = retriedPart(() =>
   pages.circuits().then((page) => ({ default: page.CircuitDetail })),
 );
-const CircuitGroups = lazy(() =>
+const CircuitGroups = retriedPart(() =>
   pages.circuitGroups().then((page) => ({ default: page.CircuitGroups })),
 );
-const CircuitGroupDetail = lazy(() =>
+const CircuitGroupDetail = retriedPart(() =>
   pages.circuitGroups().then((page) => ({ default: page.CircuitGroupDetail })),
 );
 // 0.8.0, web lane B: the report of what circuits cost (P-151).
-const CircuitCostsReport = lazy(() =>
+const CircuitCostsReport = retriedPart(() =>
   pages.circuitCosts().then((page) => ({ default: page.CircuitCostsReport })),
 );
 // End of 0.8.0, web lane B.
 // 0.9.0: every reference, Admin › Files (P-162).
-const Files = lazy(() => pages.files().then((page) => ({ default: page.Files })));
+const Files = retriedPart(() => pages.files().then((page) => ({ default: page.Files })));
 
 // How long after the first page is shown the other pages are fetched, in milliseconds.
 const WARM_AFTER = 400;

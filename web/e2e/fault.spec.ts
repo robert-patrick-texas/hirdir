@@ -242,6 +242,36 @@ test("a part of the page that cannot be fetched says so beneath the menu bar", a
     .getByRole("link", { name: "Owners" })
     .click();
   await expect(page.getByRole("heading", { level: 1, name: "Owners" })).toBeVisible();
+  // The file is back: the next opening of the page fetches it again, and draws it.
+  await page.unroute("**/assets/Vendors-*.js");
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Vendors" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: "Vendors" })).toBeVisible();
+  await expect(fault(page)).toHaveCount(0);
+});
+
+test("a part that stays missing is fetched once for each opening, not again and again", async ({
+  page,
+  account,
+}) => {
+  let asked = 0;
+  await page.route("**/assets/Vendors-*.js", (route) => {
+    asked += 1;
+    return route.abort();
+  });
+  await signIn(page, account);
+  // Fetched ahead once, a moment after signing in.
+  await page.waitForTimeout(1_500);
+  const ahead = asked;
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Vendors" })
+    .click();
+  await expect(fault(page)).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(2_000);
+  expect(asked - ahead).toBeLessThanOrEqual(1);
 });
 
 test("a fault in the frame itself says so over the whole page", async ({ page, account }) => {

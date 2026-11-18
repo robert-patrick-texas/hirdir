@@ -2391,7 +2391,8 @@ one again, as Items in the menu bar on the list of items, or Find an item; a fau
 frame itself, the menu bar or what stands with it, stands over the whole page, and Back or
 Forward clears it. A part of the web page that cannot be fetched, the file of one of its
 pages, says the same, and that a new version may have been installed since the page was
-loaded. The fault is written to the browser's console and sent nowhere. The text of the
+loaded; it is fetched again the next time the page is opened after a move, once for each
+opening, so that a file put back is drawn without loading the page again. The fault is written to the browser's console and sent nowhere. The text of the
 fault holds what was thrown, the address of the page, the version of the web page, the
 time, and where in the page it happened. Before its script runs the page holds words:
 the product's name, written into it by the server as it writes the tab's title, and
