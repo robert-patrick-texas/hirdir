@@ -44,7 +44,7 @@ After the MVP, in the order currently expected: RADIUS sign-in; access-code rule
 discovery observations and reconciliation; the observed status of items and groups
 written by monitoring tools, which until then is set by hand or by an import (D-92);
 outward change feed and host lists for monitoring tools; the names and addresses that changes add, remove and alter, read from the audit trail and worked in batches into the IPAM, the DNS and the monitoring tools, with a queue where it is turned on (P-223); planning views for draft sites and items; cell-range selection and
-editing in the grid; an Admin's deletion of a mistake for the kinds of record other than
+editing in the grid; a row of a list shown as selected by its colour or another mark, where the column of boxes is not on show (P-233); an Admin's deletion of a mistake for the kinds of record other than
 items and device groups, which have it from 0.9.7, under the same rule, that nothing else
 depends on the record and that the deletion is audited (P-227); choosing a place from a map,
 Google Maps first, where 0.9.7 opens a map from a place's coordinates (P-229); the codes of places looked at again, whether one may be shared and a location is found before a site and a site before a region (P-237); PostgreSQL; a container image; a colour theme for the web page that
