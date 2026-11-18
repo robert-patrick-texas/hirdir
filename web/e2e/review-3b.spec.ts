@@ -122,6 +122,23 @@ async function counted(
     });
   }
   await make(request, headers, "/items", { parent_item_hid: first.hid, name: `${prefix}-psu` });
+  // A major item of the model in a state the component count leaves out, as the settings
+  // say: it is among the row's items and not among its components.
+  const settings = await request.get("./api/v1/settings", { headers });
+  expect(settings.ok(), "the settings are read").toBe(true);
+  const count = (
+    (await settings.json()) as { key: string; value: unknown; options: unknown }[]
+  ).find((setting) => setting.key === "count_states");
+  const counting = (count?.value ?? []) as string[];
+  const uncounted = ((count?.options ?? []) as string[]).find(
+    (state) => !counting.includes(state) && state !== "Released" && state !== "Archived",
+  );
+  expect(uncounted, "a state the component count leaves out").toBeTruthy();
+  await make(request, headers, "/items", {
+    catalog_entry_hid: model.hid,
+    hostname: `${prefix}-04.example.net`,
+    lifecycle_state: uncounted,
+  });
   return { vendor: name, model: model.hid, prefix };
 }
 
@@ -151,11 +168,35 @@ test("P-206: each count of the summary opens the items it counts", async ({
   await expect(page.getByText("Counting…")).toBeVisible();
   release();
   const row = page.getByTestId("summary-rows").locator(`tr[data-key="${made.model}"]`);
-  await expect(row.locator('[data-measure="items"]')).toHaveText("3");
+  await expect(row.locator('[data-measure="items"]')).toHaveText("4");
   await expect(row.locator('[data-measure="components"]')).toHaveText("3");
+  await expect(row.locator('[data-measure="components"]').getByRole("link")).toBeVisible();
   await page.unroute("**/api/v1/reports/summary?*");
 
-  // The components of the row: its three major items, and not the one in an item.
+  // A switch of the view turned: while the answer of the new view is held back, no count
+  // of the answer before leads anywhere, since its links would be of the view before.
+  let again: () => void = () => {};
+  const later = new Promise<void>((resolve) => {
+    again = resolve;
+  });
+  let asked = 0;
+  await page.route("**/api/v1/reports/summary?*", async (route) => {
+    asked += 1;
+    await later;
+    await route.continue();
+  });
+  await page.getByLabel("Include drafts").check();
+  await expect.poll(() => asked, "the summary of the new view is asked for").toBe(1);
+  await expect(page.getByText("Counting…")).toBeVisible();
+  const counts = page.getByTestId("summary-rows").locator("[data-measure], [data-health]");
+  await expect(counts.getByRole("link")).toHaveCount(0);
+  await expect(page.getByTestId("total-items").getByRole("link")).toHaveCount(0);
+  again();
+  await expect(row.locator('[data-measure="components"]').getByRole("link")).toBeVisible();
+  await page.unroute("**/api/v1/reports/summary?*");
+
+  // The components of the row: three of its four major items, not the one in a state the
+  // count leaves out, and not the one in an item.
   await row.locator('[data-measure="components"]').getByRole("link").click();
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
   await page.goBack();
@@ -170,9 +211,9 @@ test("P-206: each count of the summary opens the items it counts", async ({
 
   // The totals of the view, with the minor item among its items.
   await page.goto(`./reports?filter=${encodeURIComponent(`name:contains:${made.prefix}`)}`);
-  await expect(page.getByTestId("total-items")).toHaveText("4");
+  await expect(page.getByTestId("total-items")).toHaveText("5");
   await page.getByTestId("total-items").getByRole("link").click();
-  await expect(page.getByTestId("grid-total")).toHaveText("4 items");
+  await expect(page.getByTestId("grid-total")).toHaveText("5 items");
   await expectClean(page, seen);
 });
 
@@ -190,12 +231,14 @@ test("P-206: a count of the management report opens its items, and money leads n
   await page.goto(`./reports/management?filter=${byVendor}&by=vendor`);
   const rows = page.getByTestId("management-rows").locator("tbody tr");
   await expect(rows).toHaveCount(1);
-  await expect(rows.locator('[data-measure="items"]')).toHaveText("3");
+  // The vendor's four major items, the one in a state the component count leaves out
+  // among them.
+  await expect(rows.locator('[data-measure="items"]')).toHaveText("4");
   await expect(rows.locator('[data-measure="items"]').getByRole("link")).toBeVisible();
   await expect(rows.locator('[data-measure="value"]').getByRole("link")).toHaveCount(0);
   await expect(rows.locator('[data-measure="cost"]').getByRole("link")).toHaveCount(0);
   await rows.locator('[data-measure="items"]').getByRole("link").click();
-  await expect(page.getByTestId("grid-total")).toHaveText("3 items");
+  await expect(page.getByTestId("grid-total")).toHaveText("4 items");
   await expectClean(page, seen);
 });
 
