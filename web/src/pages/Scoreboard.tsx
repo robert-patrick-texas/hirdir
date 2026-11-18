@@ -1,6 +1,7 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
+import { useFirstRows } from "../components/FirstRows";
 import { saveFile } from "../components/grid/save";
 import { HealthSplit } from "../components/HealthSplit";
 import { OperatorMark } from "../components/Operator";
@@ -40,7 +41,7 @@ import {
   underOpenLabels,
 } from "../lib/scoreboard";
 import type { SortState } from "../lib/sort";
-import { amountText, countText } from "../lib/summary";
+import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 
 // The health of a row sorts by what failed, then what is degraded: the worst first at once.
@@ -52,31 +53,6 @@ const MOST_GIVEN = { column: "own", descending: true } as const;
 // What is said of the column of health, beneath each table that has one.
 const HEALTH_HINT =
   "Health is the components of a row that are good, degraded, failed and unknown, in that order: a bar in four parts, each as long as its share of the row's components, with the four numbers beneath it. It sorts by what failed, then what is degraded, the worst first; the file that is saved has the four as columns of their own.";
-
-// 0.9.5: a table of more rows than this shows this many, as it is sorted, and a button
-// that shows them all (P-196).
-const FIRST_ROWS = 20;
-
-/**
- * The rows a table shows: the first twenty as it is sorted, until Show all is pressed.
- * The sort, the rank, the bars and a file saved are of all the rows (P-196).
- */
-function useFirstRows<T>(rows: readonly T[], what: string): { shown: T[]; more: ReactNode } {
-  const [all, setAll] = useState(false);
-  const many = rows.length > FIRST_ROWS && !all;
-  return {
-    shown: many ? rows.slice(0, FIRST_ROWS) : [...rows],
-    more: many ? (
-      <p className="actions">
-        <button type="button" onClick={() => setAll(true)}>
-          Show all {countText(rows.length)}
-          <span className="visually-hidden"> {what}</span>
-        </button>
-        <span className="muted"> The first {FIRST_ROWS} are shown, as the table is sorted.</span>
-      </p>
-    ) : null,
-  };
-}
 
 // The tables of the page, as its links name them.
 const TABLES = [

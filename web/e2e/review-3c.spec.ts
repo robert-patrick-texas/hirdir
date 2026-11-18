@@ -332,3 +332,79 @@ test("P-210: a site's name finds the lines going to it, Destination site and Exp
   expect(still.cut, "Still to come is cut short").toBe(false);
   await expectClean(page, seen);
 });
+
+test("P-211: a vendor's page shows twenty models, its items before its agreements, and narrows them by the filter box", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(240_000);
+  await setUp(request, account);
+  const headers = await session(request, account);
+  // A vendor of 22 models, an item of each: one model loses support soon, one has no date.
+  const vendor = (await make(request, headers, "/vendors", { name: label("Fernbrook Optics") }))
+    .hid;
+  for (let n = 1; n <= 22; n += 1) {
+    const ldos =
+      n === 3 ? "2027-02-01" : n === 7 ? null : `2031-${String(n % 12 || 12).padStart(2, "0")}-01`;
+    const model = (
+      await make(request, headers, "/catalog-entries", {
+        vendor_hid: vendor,
+        pid: `FB-${String(n).padStart(2, "0")}-${upper}`,
+        ...(ldos ? { ldos } : {}),
+      })
+    ).hid;
+    await make(request, headers, "/items", {
+      hostname: `fb-edge-${n}-${id}`,
+      catalog_entry_hid: model,
+    });
+  }
+  // An item of another vendor, which a search on this vendor's page does not find.
+  await make(request, headers, "/items", {
+    hostname: `fb-edge-99-${id}`,
+    catalog_entry_hid: made?.model,
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto(`./vendors/${encodeURIComponent(vendor)}`);
+  const models = page.getByTestId("portfolio-models");
+  await expect(models.locator("tbody tr")).toHaveCount(20);
+
+  // Sorted by LDoS, the model with none comes last, whichever way.
+  await models.getByRole("button", { name: "LDoS" }).click();
+  await expect(models.locator("tbody tr").first()).toHaveAttribute("data-pid", `FB-03-${upper}`);
+  await page.getByRole("button", { name: "Show all 22 models" }).click();
+  await expect(models.locator("tbody tr")).toHaveCount(22);
+  await expect(models.locator("tbody tr").last()).toHaveAttribute("data-pid", `FB-07-${upper}`);
+  await models.getByRole("button", { name: "LDoS" }).click();
+  await expect(models.locator("tbody tr").first()).not.toHaveAttribute(
+    "data-pid",
+    `FB-07-${upper}`,
+  );
+  await expect(models.locator("tbody tr").last()).toHaveAttribute("data-pid", `FB-07-${upper}`);
+
+  // Its items stand above its agreements and contracts.
+  const items = page.getByRole("heading", { name: "Its items", exact: true });
+  const agreements = page.getByRole("heading", { name: "Support agreements", exact: true });
+  const contracts = page.getByRole("heading", { name: "Contracts", exact: true });
+  const itemsAt = (await items.boundingBox())?.y ?? Number.POSITIVE_INFINITY;
+  expect(itemsAt).toBeLessThan((await agreements.boundingBox())?.y ?? 0);
+  expect(itemsAt).toBeLessThan((await contracts.boundingBox())?.y ?? 0);
+
+  // The filter box narrows within the vendor's items: by a condition, and by plain words.
+  const section = page.getByRole("region", { name: "Its items" });
+  const total = section.getByTestId("grid-total");
+  await expect(total).toHaveText("22 items");
+  const box = section.getByLabel("Filter", { exact: true });
+  await box.fill("effective.ldos:lt:2028-01-01");
+  await box.press("Enter");
+  await expect(total).toHaveText("1 item");
+  await expect(section.getByRole("link", { name: `fb-edge-3-${id}`, exact: true })).toBeVisible();
+  await box.fill(`fb-edge-99-${id}`);
+  await box.press("Enter");
+  await expect(total).toHaveText("No items");
+  await box.fill(`fb-edge-12-${id}`);
+  await box.press("Enter");
+  await expect(total).toHaveText("1 item");
+  await expectClean(page, seen);
+});
