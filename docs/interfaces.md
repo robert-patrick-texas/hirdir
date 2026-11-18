@@ -1734,6 +1734,26 @@ What 0.9.6 changes:
   each value stand behind a line, Why it has each value, closed when the page opens;
   a press opens them, and they are read from the server then (P-198). The table of
   the values in force and the source of each stays open.
+- **Every form.** A field that offered every record of a kind as one list, where
+  there can be many, is searched as it is typed in, as the Location field is: the
+  catalog entry of New item and of an item's details, and the successor of a catalog
+  entry, among them (P-200). New item offers to add a model that the search does not
+  find, within the page, and keeps what was typed (P-201). What is typed into a form
+  after its Save, while the page reads the record again, stays (P-202). A page that has
+  made a record says so, with a link to it (P-204).
+- **Every grid.** Coming back to a list from a record shows the page it was on, where
+  it was scrolled to, with the row that was opened marked; a new filter or sort begins
+  at the top (P-203). The preview of a bulk edit speaks of the bulk edit, and the export
+  of the item list as it first stands holds the host name (P-204).
+- **Contacts.** A contact's page lists every record that names the contact, by kind,
+  each a link, with the role the contact has there, from `GET /contacts/{hid}/uses`
+  (P-205).
+- **Reports.** Every count of the summary and of the management report is a link to
+  the items it counts, by the filter the server gives with it; Home's totals of health
+  use the same (P-206).
+- **A refusal.** Where a record is refused because another has its serial number, asset
+  tag, PID or name, the page names that record as a link; a filter refused for a field
+  its list does not have names the nearest one it has (P-207).
 
 ### The grid
 
