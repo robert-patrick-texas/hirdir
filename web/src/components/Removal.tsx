@@ -189,7 +189,7 @@ function DeleteAsk({ kind, hids, onDone, onCancel }: AskProps) {
           onClick={go}
           disabled={action.busy || !answer || count === 0 || !reasonGiven(reason)}
         >
-          Delete {countOf(kind, count)}
+          {answer ? `Delete ${countOf(kind, count)}` : "Delete"}
         </button>
       </p>
     </>
