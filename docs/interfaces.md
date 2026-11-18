@@ -1864,7 +1864,8 @@ What 0.9.6 changes:
   annual cost of each of its contracts, which is always the contract's own, and a row
   of their total, beside the agreement's own figure and not in place of it: a contract
   with no cost counts as none, and the row says how many have none; a draft is not
-  counted (P-215).
+  counted, nor is a contract cancelled or expired, and the row says how many were left
+  out for that (P-215).
 - **A minor item.** Under its heading, one line: its type and model, its position in
   the item it is in, that item as a link, and the site it has in force; and a link,
   Spares of this model here, to the item list filtered to its catalog entry, that site

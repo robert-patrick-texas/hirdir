@@ -599,6 +599,25 @@ export function flaggedItemsPath(contractHid: string): string {
   return `/items?filter=${encodeURIComponent(filterText(flaggedFilter(contractHid)))}&minor=1`;
 }
 
+/**
+ * 0.9.6 (P-215): the contracts of an agreement whose costs its total counts: those that
+ * are active records and neither cancelled nor expired. How many are left out for each
+ * of the two, as the row says.
+ */
+export function costCounted<C extends { record_status: string; status: string }>(
+  contracts: readonly C[],
+): { counted: C[]; drafts: number; ended: number } {
+  const records = contracts.filter((contract) => contract.record_status === "active");
+  const counted = records.filter(
+    (contract) => contract.status !== "cancelled" && contract.status !== "expired",
+  );
+  return {
+    counted,
+    drafts: contracts.length - records.length,
+    ended: records.length - counted.length,
+  };
+}
+
 /** What the contracts of an agreement cost a year together, as the page says it. */
 export interface CostTotal {
   /** The sum, as a decimal with the places of the most precise cost: `1201500.00`. */

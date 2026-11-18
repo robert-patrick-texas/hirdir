@@ -467,6 +467,18 @@ test("P-215: an agreement's page says what each of its contracts costs a year, a
       ...(cost ? { annual_cost: cost } : {}),
     });
   }
+  // A contract cancelled and one expired, with a cost each: neither is in the total.
+  for (const [number, status] of [
+    [`EFC-${upper}-34`, "cancelled"],
+    [`EFC-${upper}-35`, "expired"],
+  ] as const) {
+    await make(request, headers, "/contracts", {
+      number,
+      agreement_hid: agreementHid,
+      status,
+      annual_cost: "90000.00",
+    });
+  }
 
   await signIn(page, account);
   await page.goto(`./agreements/${agreementHid}`);
@@ -484,7 +496,7 @@ test("P-215: an agreement's page says what each of its contracts costs a year, a
   await expect(total.locator('[data-field="annual_cost"]')).toHaveText("1,201,500.00");
   await expect(total.locator("th")).toHaveText("What its 3 contracts cost a year");
   await expect(total.getByTestId("agreement-own-cost")).toHaveText(
-    "The agreement's own: 663,000.00. 1 contract has no cost, and counts as none.",
+    "The agreement's own: 663,000.00. 1 contract has no cost, and counts as none. 2 contracts are cancelled or expired, and not counted.",
   );
   await expectClean(page, seen);
 });

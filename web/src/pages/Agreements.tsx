@@ -31,6 +31,7 @@ import {
   type Contract,
   contractPath,
   contractsOfPath,
+  costCounted,
   costTotal,
   INHERITED,
   inForce,
@@ -625,13 +626,9 @@ function AgreementContracts({
   });
   const holdsAll = found.data !== undefined && found.data.total <= rows.length;
   // 0.9.6 (P-215): what its contracts cost a year together, beside the agreement's own
-  // figure: each its own cost in force, a draft left out.
-  const drafts = rows.filter((contract) => contract.record_status !== "active").length;
-  const cost = costTotal(
-    rows
-      .filter((contract) => contract.record_status === "active")
-      .map((contract) => contract.annual_cost),
-  );
+  // figure: each its own cost in force, a draft and a contract cancelled or expired left out.
+  const { counted, drafts, ended } = costCounted(rows);
+  const cost = costTotal(counted.map((contract) => contract.annual_cost));
 
   return (
     <section aria-labelledby="agreement-contracts">
@@ -788,6 +785,8 @@ function AgreementContracts({
                   {cost.none > 0 &&
                     ` ${plural(cost.none, "contract has", "contracts have")} no cost, and ${cost.none === 1 ? "counts" : "count"} as none.`}
                   {drafts > 0 && ` ${plural(drafts, "draft is", "drafts are")} not counted.`}
+                  {ended > 0 &&
+                    ` ${plural(ended, "contract is", "contracts are")} cancelled or expired, and not counted.`}
                 </td>
               </tr>
             </tfoot>

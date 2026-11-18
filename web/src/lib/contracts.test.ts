@@ -11,6 +11,7 @@ import {
   contractLabel,
   contractPath,
   contractsOfPath,
+  costCounted,
   costTotal,
   countedUnder,
   coverageDay,
@@ -767,6 +768,25 @@ describe("what the renewal form says of the items marked not to be renewed (P-21
 });
 
 describe("what an agreement's contracts cost a year (P-215)", () => {
+  it("counts the active contracts that are neither cancelled nor expired", () => {
+    const of = (hid: string, status: string, record_status = "active") => ({
+      hid,
+      status,
+      record_status,
+    });
+    const found = costCounted([
+      of("CT-1", "active"),
+      of("CT-2", "renewal_pending"),
+      of("CT-3", "pending"),
+      of("CT-4", "cancelled"),
+      of("CT-5", "expired"),
+      of("CT-6", "active", "draft"),
+    ]);
+    expect(found.counted.map((contract) => contract.hid)).toEqual(["CT-1", "CT-2", "CT-3"]);
+    expect(found.drafts).toBe(1);
+    expect(found.ended).toBe(2);
+  });
+
   it("adds the costs exactly, a contract with none counting as none", () => {
     expect(costTotal(["600000.00", "450000.00", "151500.00"])).toEqual({
       total: "1201500.00",
