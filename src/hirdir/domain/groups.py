@@ -36,7 +36,7 @@ from hirdir.domain import (
     tags,
 )
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
 
 RECORD_TYPE = "device_group"
 MEMBER_TYPE = "device_group_member"
@@ -619,6 +619,99 @@ def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> 
             db, context, RECORD_TYPE, group, None, _observed_master(db, seen, group, group.type)
         )
     return group
+
+
+# What a stack made of a switch that stands alone takes from it, and the switch gives up
+# in the same change (P-243): the four it has from the stack from then on, beside its
+# name, which a stack holds for its members, and its addresses.
+STACK_HOLDS = (
+    "hostname",
+    "fqdn",
+    "location_hid",
+    "planned_location_hid",
+    "owner_hid",
+    "operator_hid",
+)
+
+
+def make_stack(
+    db: Session,
+    context: AuditContext,
+    item_hid: str,
+    row_version: int,
+    name: Any = None,
+    members: Sequence[dict[str, Any]] = (),
+) -> DeviceGroup:
+    """Make a stack of an item that is in none, with the item as its first member.
+
+    The stack takes from the item what a stack holds for its members: its host name and
+    FQDN, its addresses, each moved as it is, and the location, planned location, owner
+    and operator it has of its own. The item gives each up in the same change, and has
+    them from the stack from then on, so that nothing is held twice. The rest of it stays
+    its own. `members` are added after it, each as a member that joins a stack is. Every
+    change of the item and each address moved says the stack it was made for, in
+    `joining_group` (P-243).
+    """
+    dialect.hold_other_writers(db)
+    item = items.get_item(db, item_hid)
+    if item.row_version != row_version:
+        raise StaleVersion(
+            f"this record is at version {item.row_version}, "
+            f"and the change was made against version {row_version}"
+        )
+    shown = items.shown_name(item)
+    if item.parent_item_hid is not None:
+        raise Invalid(
+            f"{shown} is a minor item",
+            {"item_hid": "a stack is made of a major item, and this one has a parent"},
+        )
+    if item.record_status == "retired":
+        raise Invalid(f"{shown} is retired", {"item_hid": "this item is retired"})
+    if item.lifecycle_state in items.OUT_OF_HANDS:
+        raise Invalid(
+            f"{shown} has left the team's hands",
+            {"item_hid": f"an item in {item.lifecycle_state} is in no group"},
+        )
+    for other in items.major_only_groups(db, item.hid):
+        if other.type == "stack":
+            raise Conflict(
+                f"the item {shown} is a member of the stack {other.name}",
+                {"item_hid": f"an item is a member of one stack at a time: {other.name}"},
+                Existing(RECORD_TYPE, other.hid, other.name),
+            )
+    called = records.clean(name) or item.name or item.hostname
+    if called is None:
+        raise Invalid(
+            "the stack has no name", {"name": "give the stack a name: the item has none of its own"}
+        )
+    group = create_group(
+        db,
+        context,
+        {"type": "stack", "name": called, **{field: getattr(item, field) for field in STACK_HOLDS}},
+    )
+    joining = audit.because(context, "joining_group", None, group.hid)
+    add_members(db, joining, group.hid, [{"item_hid": item.hid, "position": 1}])
+    for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
+        addresses.move_to_group(db, joining, address.hid, group.hid)
+    items.update_item(db, joining, item.hid, item.row_version, dict.fromkeys(STACK_HOLDS))
+    if members:
+        with _within_members():
+            add_members(db, context, group.hid, list(members))
+    return group
+
+
+@contextmanager
+def _within_members() -> Generator[None]:
+    """Name each field of a refusal of the more members of a request under `members`,
+    where the rule has not named it by its place in the list already."""
+    try:
+        yield
+    except (Invalid, Conflict) as error:
+        error.fields = {
+            (name if name.startswith("members") else f"members.{name}"): message
+            for name, message in error.fields.items()
+        }
+        raise
 
 
 def update_group(

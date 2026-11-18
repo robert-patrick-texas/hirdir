@@ -386,19 +386,24 @@ is in none, and puts the item into it as its first member, at position 1 (P-243)
 - `members` are more members, each as `POST /device-groups/{hid}/members` takes one,
   `drop_identity`, `disposition` and `expected_online` among them (P-217), added after
   the first by the rules of that route: a member given no position takes the lowest
-  free one, 2 for the first. A refusal of one names it by its place in the list, from 0:
-  `members.0.item_hid`, `members.0.disposition`.
+  free one, 2 for the first. A refusal of one names its field under `members`: by its
+  place in the list, from 0, where that route names it so, `members.0.disposition`,
+  and otherwise as `members.item_hid`, `members.position`.
+- The item is a member with the role `member`: the intended master is marked on the
+  page of the stack, as for any member.
 - It is refused, a `422` on `item_hid`, for a minor item, for an item that is retired,
   and for one that has left the team's hands, in Released or Archived; and, a `409` on
   `item_hid`, for one that is a current member of a stack already, naming that stack as
-  `existing`. A refusal of any part leaves no stack made and the item as it was.
+  `existing`; and, a `422` on `name`, where neither the request nor the item gives a
+  name. A refusal of any part leaves no stack made and the item as it was.
 - The answer, `201`, is the new device group, as `POST /device-groups` answers. The
   audit trail holds the stack made, the membership, the change of the item, its host
   name, its FQDN and the four it gives up, and each address moved, as an `update` of
   the address whose `item_hid` and `group_hid` change. Each of these but the stack's own
   creation holds among its `changes` the entry `joining_group`, with the HID of the
-  stack as `new`, and is found by `GET /audit-events?record_hid=` from the item, the
-  stack and the address alike.
+  stack as `new`. All of them share the request ID of the request: from the stack's
+  `create`, found by `GET /audit-events?record_hid=` with the stack's HID, and from the
+  item's history, each event leads to the others by `request_id`.
 
 ### Retiring several, and deleting
 

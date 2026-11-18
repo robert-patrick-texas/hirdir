@@ -299,6 +299,23 @@ def update_address(
     return address
 
 
+def move_to_group(db: Session, context: AuditContext, hid: str, group_hid: str) -> Address:
+    """Give an item's address to a group as it is, in one change that names both holders.
+
+    It keeps its HID, its history, its network, its role and whether it is the primary
+    one. This is the one place an address changes its holder: a switch that stands
+    alone is made a stack, which takes the switch's addresses (P-243). Everywhere else
+    an address is removed and given anew.
+    """
+    address = get_address(db, hid)
+    if address.item_hid is None:
+        raise Invalid("the address is not an item's", {"address": "it belongs to a group already"})
+    records.apply(
+        db, context, RECORD_TYPE, address, None, {"item_hid": None, "group_hid": group_hid}
+    )
+    return address
+
+
 def delete_address(db: Session, context: AuditContext, hid: str) -> None:
     """Remove an address. The audit event holds what it was."""
     address = get_address(db, hid)

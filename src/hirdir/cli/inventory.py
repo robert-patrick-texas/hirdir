@@ -1343,6 +1343,43 @@ groups.command("retire")(_retire_many("/device-groups", find_group, "device grou
 groups.command("delete")(_delete_many("/device-groups", find_group, "device groups", "GROUP..."))
 
 
+@items.command("make-stack")
+def make_stack(
+    item: Annotated[str, typer.Argument(help="An HID, serial number, asset tag or name.")],
+    name: Annotated[
+        str | None, typer.Option(help="The stack's name. Left out, the item's own.")
+    ] = None,
+    member: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="One more member, which takes the stack's name and place as it joins. "
+            "Given again for each."
+        ),
+    ] = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Make a stack of an item that stands alone, with the item as its first member.
+
+    The stack takes the item's host name, FQDN and addresses, and the location, planned
+    location, owner and operator it has of its own, which it has from the stack from
+    then on (P-243).
+    """
+    target = client.load_target(url, token)
+    found = find_item(target, item)
+    body: dict[str, Any] = {"row_version": found["row_version"]}
+    if name is not None:
+        body["name"] = name
+    if member:
+        body["members"] = [
+            {"item_hid": find_item(target, text)["hid"], "drop_identity": True} for text in member
+        ]
+    stack = client.call(target, "POST", f"/items/{found['hid']}/make-stack", body)
+    typer.echo(f"made the stack {stack['name']}  {stack['hid']}")
+    for one in client.call(target, "GET", f"/device-groups/{stack['hid']}/members")["items"]:
+        typer.echo(f"  {one['position']}: {_named(one['item'])}")
+
+
 # --- places --------------------------------------------------------------------------
 
 LEVELS = {"region": "regions", "site": "sites", "location": "locations"}

@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from tests.api import test_cli
 from tests.api.inventory import API, Maker, errors
 from tests.api.test_stack_work import (
     LATER,
@@ -20,6 +21,8 @@ from tests.api.test_stack_work import (
 )
 
 NOBODY = "01900000-0000-7000-8000-000000000000"
+# The fixture that runs `hirdir` against the test client.
+run = test_cli.run
 
 
 def _replace(make: Maker, old: dict[str, Any], expect: int = 201, **body: Any) -> dict[str, Any]:
@@ -237,3 +240,206 @@ def test_replacing_with_what_each_carries_needs_the_inventory_role(
     )
     assert response.status_code == 403
     assert make.get(f"/device-groups/{stack['hid']}")["hostname"] == STACK
+
+
+# --- a stack made of a switch that stands alone (P-243) ------------------------------
+
+
+def _alone(make: Maker, places: dict[str, Any]) -> dict[str, Any]:
+    """A switch in service that stands alone, with a name, a place and addresses of its own."""
+    owner = make.owner()
+    operator = make.post("/operators", {"label": "LM"})
+    plan = make.site("Site-3", places["central"], record_status="draft")
+    places["suite"] = make.location("Suite 300", plan, kind="room")
+    return _spare(
+        make,
+        31,
+        places["room"],
+        hostname="cw07-idf04-acc1",
+        fqdn="cw07-idf04-acc1.example.net",
+        name="cw07-idf04-acc1",
+        disposition="Production",
+        expected_online=True,
+        owner_hid=owner["hid"],
+        operator_hid=operator["hid"],
+        planned_location_hid=places["suite"]["hid"],
+        condition="good",
+    )
+
+
+def _make_stack(make: Maker, item: dict[str, Any], expect: int = 201, **body: Any) -> dict:
+    now = _item(make, item)
+    return make.post(
+        f"/items/{item['hid']}/make-stack", {"row_version": now["row_version"], **body}, expect
+    )
+
+
+STACK_HOLDS = (
+    "hostname",
+    "fqdn",
+    "location_hid",
+    "planned_location_hid",
+    "owner_hid",
+    "operator_hid",
+)
+
+
+def test_a_switch_that_stands_alone_is_made_a_stack_in_one_request(make: Maker) -> None:
+    places = _places(make)
+    switch = _alone(make, places)
+    network = make.network("CORP-MGMT")
+    primary = make.address(switch, "192.0.2.31", network, is_primary=True)
+    loopback = make.address(switch, "198.51.100.31", role="loopback")
+    before = _item(make, switch)
+
+    stack = _make_stack(make, switch)
+
+    # The stack has the switch's own name, and what a stack holds for its members.
+    assert (stack["type"], stack["name"], stack["hostname"], stack["fqdn"]) == (
+        "stack",
+        "cw07-idf04-acc1",
+        "cw07-idf04-acc1",
+        "cw07-idf04-acc1.example.net",
+    )
+    for field in ("location_hid", "planned_location_hid", "owner_hid", "operator_hid"):
+        assert stack[field] == before[field], field
+    # Each address moved as it is: its HID, network, role and primary mark.
+    moved = {one["hid"]: one for one in stack["addresses"]}
+    assert set(moved) == {primary["hid"], loopback["hid"]}
+    assert (moved[primary["hid"]]["is_primary"], moved[primary["hid"]]["network"]) == (
+        True,
+        "CORP-MGMT",
+    )
+    assert moved[loopback["hid"]]["role"] == "loopback"
+    # The switch gave each up, has them from the stack, and kept the rest.
+    after = _item(make, switch)
+    for field in STACK_HOLDS:
+        assert after[field] is None, field
+    assert after["addresses"] == []
+    for field in ("location_hid", "owner_hid", "operator_hid", "planned_location_hid"):
+        assert after["effective"][field]["source_hid"] == stack["hid"], field
+    for field in ("name", "serial_number", "lifecycle_state", "disposition", "condition"):
+        assert after[field] == before[field], field
+    assert [(one["group_hid"], one["position"]) for one in after["groups"]] == [(stack["hid"], 1)]
+
+    # Every part is audited, and each but the stack's making names the stack.
+    events = make.audit(request_id=make.audit(record_hid=stack["hid"])[0]["request_id"])
+    by_kind = {(one["record_type"], one["action"]) for one in events}
+    assert by_kind >= {
+        ("device_group", "create"),
+        ("device_group_member", "create"),
+        ("item", "update"),
+        ("address", "update"),
+    }
+    joined = {"field": "joining_group", "old": None, "new": stack["hid"]}
+    for one in events:
+        if one["record_type"] != "device_group":
+            assert joined in one["changes"], one
+    change = next(one for one in events if one["record_type"] == "item")
+    assert _changed(change)["hostname"] == ("cw07-idf04-acc1", None)
+    assert _changed(change)["owner_hid"] == (before["owner_hid"], None)
+    address_event = next(one for one in events if one["record_hid"] == primary["hid"])
+    assert _changed(address_event)["item_hid"] == (switch["hid"], None)
+    assert _changed(address_event)["group_hid"] == (None, stack["hid"])
+    assert make.audit(record_hid=primary["hid"])[0]["hid"] == address_event["hid"]
+
+
+def test_a_stack_made_with_a_name_and_a_second_switch(make: Maker) -> None:
+    places = _places(make)
+    switch = _alone(make, places)
+    spare = _spare(make, 32, places["depot"])
+    make.address(spare, "192.0.2.32")
+
+    stack = _make_stack(
+        make,
+        switch,
+        name="cw07-idf04-stack",
+        members=[
+            {
+                "item_hid": spare["hid"],
+                "drop_identity": True,
+                "disposition": "Production",
+                "expected_online": True,
+            }
+        ],
+    )
+
+    assert (stack["name"], stack["member_count"]) == ("cw07-idf04-stack", 2)
+    assert [(one["position"], one["item_hid"]) for one in make.members(stack)] == [
+        (1, switch["hid"]),
+        (2, spare["hid"]),
+    ]
+    second = _item(make, spare)
+    assert (second["hostname"], second["addresses"], second["disposition"]) == (
+        None,
+        [],
+        "Production",
+    )
+
+
+def test_a_stack_is_not_made_of_what_may_not_be_in_one(make: Maker) -> None:
+    places = _places(make)
+    switch = _alone(make, places)
+    others, _ = _in_service(make, places["room"])
+    member = make.members(others)[0]["item"]
+    part = make.item(name="PS-A", parent_item_hid=switch["hid"])
+    gone = _spare(make, 33)
+    make.move(_item(make, gone), "Pending-Removal", reason="rma")
+    make.move(_item(make, gone), "Released", reason="returned")
+    retired = _spare(make, 34)
+    make.post(f"/items/{retired['hid']}/retire", {"row_version": retired["row_version"]}, 200)
+    model = switch["catalog_entry_hid"]
+    unnamed = make.item(serial_number="FCW9000X0035", catalog_entry_hid=model)
+    make.group("cw07-idf05-acc1", "custom")
+
+    problem = _make_stack(make, part, 422)
+    assert set(errors(problem)) == {"item_hid"}
+    for item in (gone, retired):
+        assert set(errors(_make_stack(make, item, 422))) == {"item_hid"}
+    in_one = _make_stack(make, member, 409)
+    assert in_one["existing"]["hid"] == others["hid"]
+    taken = _make_stack(make, switch, 409, name="cw07-idf05-acc1")
+    assert set(errors(taken)) == {"name"}
+    assert set(errors(_make_stack(make, unnamed, 422))) == {"name"}
+    # A refusal of a further member leaves no stack made and the switch as it was.
+    problem = _make_stack(make, switch, 422, members=[{"item_hid": NOBODY}])
+    assert set(errors(problem)) == {"members.item_hid"}
+    problem = _make_stack(
+        make, switch, 422, members=[{"item_hid": gone["hid"], "disposition": "Production"}]
+    )
+    assert set(errors(problem)) == {"members.item_hid"}
+    stale = make.post(
+        f"/items/{switch['hid']}/make-stack", {"row_version": switch["row_version"] + 9}, 409
+    )
+    assert stale["title"] == "Stale version"
+    assert make.get("/device-groups", filter="name:eq:cw07-idf04-acc1")["total"] == 0
+    assert _item(make, switch)["hostname"] == "cw07-idf04-acc1"
+
+
+def test_making_a_stack_needs_the_inventory_role(
+    client: TestClient, make: Maker, viewer: dict
+) -> None:
+    switch = make.item(name="cw07-idf06-acc1")
+    response = client.post(
+        f"{API}/items/{switch['hid']}/make-stack", json={"row_version": 1}, headers=viewer
+    )
+    assert response.status_code == 403
+
+
+def test_the_command_makes_a_stack_of_a_switch(run: Any, make: Maker) -> None:
+    places = _places(make)
+    switch = _alone(make, places)
+    spare = _spare(make, 36, places["depot"])
+
+    said = run(
+        "items", "make-stack", "cw07-idf04-acc1", "--name", "cw07-idf04-stack",
+        "--member", spare["serial_number"],
+    ).stdout.splitlines()  # fmt: skip
+
+    stack = make.get("/device-groups", filter="name:eq:cw07-idf04-stack")["items"][0]
+    assert said[0] == f"made the stack cw07-idf04-stack  {stack['hid']}"
+    assert said[1:] == ["  1: cw07-idf04-acc1", f"  2: {spare['serial_number']}"]
+    # The member that joins takes the stack's name and place.
+    assert _item(make, spare)["hostname"] is None
+    assert _item(make, switch)["hostname"] is None
+    run("items", "make-stack", "cw07-idf04-acc1", expect=5)
