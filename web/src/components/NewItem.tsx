@@ -3,6 +3,7 @@ import { api, type Schemas } from "../api";
 import { itemName } from "../lib/format";
 import { useOwnerOptions, useTags } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
+import { OffersNewModel } from "./AddModel";
 import { Problem } from "./Problem";
 import { CreateForm } from "./RecordForm";
 
@@ -130,43 +131,46 @@ export function NewItem({ states, within, onCancel, onCreated, onAnother }: NewI
     ];
   }, [owners.data, tags.data, states, minor]);
 
+  // 0.9.6: a model the catalog does not have is added here, within the page (P-201).
   return (
-    <CreateForm<Schemas["ItemCreate"], Item>
-      title={minor ? "New minor item" : "New item"}
-      specs={specs}
-      create={(body) =>
-        api.request("post", "/api/v1/items", {
-          body: within ? { ...body, parent_item_hid: within.hid } : body,
-        })
-      }
-      onCreated={onCreated}
-      onCancel={onCancel}
-      submitLabel={minor ? "Create minor item" : "Create item"}
-      {...(onAnother
-        ? {
-            another: {
-              label: "Create and add another like it",
-              keep: SHARED_WITH_THE_NEXT,
-              focus: "serial_number",
-              onCreated: onAnother,
-            },
-          }
-        : {})}
-    >
-      <Problem error={owners.error ?? tags.error} />
-      {within ? (
-        <p className="hint">
-          A minor item of {within.name}: a power supply, a module, a transceiver. Left blank, its
-          owner, its location and its lifecycle state are those of the item it is in, and follow it.
-          It needs something to know it by: a serial number with a catalog entry, an asset tag, a
-          name or a hostname.
-        </p>
-      ) : (
-        <p className="hint">
-          An item needs something to know it by: a serial number with a catalog entry, an asset tag,
-          a name or a hostname. Everything else may be left blank and filled in later.
-        </p>
-      )}
-    </CreateForm>
+    <OffersNewModel.Provider value={true}>
+      <CreateForm<Schemas["ItemCreate"], Item>
+        title={minor ? "New minor item" : "New item"}
+        specs={specs}
+        create={(body) =>
+          api.request("post", "/api/v1/items", {
+            body: within ? { ...body, parent_item_hid: within.hid } : body,
+          })
+        }
+        onCreated={onCreated}
+        onCancel={onCancel}
+        submitLabel={minor ? "Create minor item" : "Create item"}
+        {...(onAnother
+          ? {
+              another: {
+                label: "Create and add another like it",
+                keep: SHARED_WITH_THE_NEXT,
+                focus: "serial_number",
+                onCreated: onAnother,
+              },
+            }
+          : {})}
+      >
+        <Problem error={owners.error ?? tags.error} />
+        {within ? (
+          <p className="hint">
+            A minor item of {within.name}: a power supply, a module, a transceiver. Left blank, its
+            owner, its location and its lifecycle state are those of the item it is in, and follow
+            it. It needs something to know it by: a serial number with a catalog entry, an asset
+            tag, a name or a hostname.
+          </p>
+        ) : (
+          <p className="hint">
+            An item needs something to know it by: a serial number with a catalog entry, an asset
+            tag, a name or a hostname. Everything else may be left blank and filled in later.
+          </p>
+        )}
+      </CreateForm>
+    </OffersNewModel.Provider>
   );
 }

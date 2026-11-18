@@ -608,6 +608,19 @@ tr.dim th {
   background-color: color-mix(in srgb, var(--accent) 10%, var(--bg));
 }
 
+/* 0.9.6: beneath the search for a catalog entry in New item, a model added (P-201). */
+.add-model {
+  margin: 0.4rem 0 0;
+}
+
+.add-model-small .change-link {
+  margin-left: 0;
+}
+
+.add-model-form {
+  margin-top: 0.6rem;
+}
+
 /* 0.9.5: the buttons of a form that changes a record stay at the foot of the window while
    the form is in the window and its own foot is below it (P-190). */
 .form-foot {

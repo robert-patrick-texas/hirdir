@@ -4,11 +4,13 @@
 // looked for in the PID, the model name and the vendor's name, and the first few that
 // match are offered, those with the most items first, each with its vendor beside its PID.
 
+import { useContext } from "react";
 import { api } from "../api";
 import { queryParams } from "../lib/gridQuery";
 import { useLoad } from "../lib/hooks";
 import type { Option } from "../lib/patch";
 import { entryLabel, entrySearch, entrySeen, PICK_LIMIT, sawEntries } from "../lib/pick";
+import { AddModel, addedOption, nextField, OffersNewModel } from "./AddModel";
 import { type Found, PickField, type PickFieldProps } from "./PickField";
 
 /** The first few catalog entries that match what was typed, the most used first. */
@@ -58,9 +60,13 @@ function useNamed(value: string, known: readonly Option[]): Option[] {
   return named ? [...known, { value: named.hid, label: entryLabel(named) }] : [...known];
 }
 
-/** A field of a form that holds a catalog entry, chosen by searching for it (P-200). */
+/**
+ * A field of a form that holds a catalog entry, chosen by searching for it (P-200). In New
+ * item it offers to add a model the catalog does not have (P-201).
+ */
 export function EntryField(props: PickFieldProps) {
   const known = useNamed(props.value, props.known ?? []);
+  const offers = useContext(OffersNewModel);
   return (
     <PickField
       {...props}
@@ -68,6 +74,22 @@ export function EntryField(props: PickFieldProps) {
       noun={["catalog entry", "catalog entries"]}
       how="To choose one, type words of its PID, of its model name or of its vendor's name. Those with the most items come first."
       find={findEntries}
+      {...(offers && !props.disabled
+        ? {
+            after: ({ typed, nothing, choose }) => (
+              <AddModel
+                typed={typed}
+                nothing={nothing}
+                onAdded={(entry, from) => {
+                  // The item's next field, found while this part of the form is still there.
+                  const next = nextField(from);
+                  choose(addedOption(entry));
+                  requestAnimationFrame(() => next?.focus());
+                }}
+              />
+            ),
+          }
+        : {})}
     />
   );
 }

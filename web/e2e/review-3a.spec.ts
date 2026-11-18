@@ -423,3 +423,68 @@ test("a catalog entry is chosen by searching for it, in New item, in an item's d
 
   await expectClean(page, seen);
 });
+
+test("a model that is not in the catalog is added from New item, and what was typed stays (P-201)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  const headers = await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = page.getByRole("region", { name: "New item", exact: true });
+  // What is typed into the item first, which must not be lost on the way.
+  await form.getByLabel("Hostname").fill(host("new-model-01"));
+  await form.getByLabel("Asset tag").fill(`AT-${id}-M1`);
+
+  // A model the catalog does not have: the search finds nothing, and offers to add it.
+  const pid = `SN-8X-${id}`;
+  await form.getByLabel("Catalog entry").fill(pid);
+  await expect(form.getByText("No catalog entry matches.")).toBeVisible();
+  await form.getByRole("button", { name: "Add this model to the catalog" }).click();
+  const add = form.getByRole("group", { name: "Add a model to the catalog" });
+  await expect(add.getByLabel("PID")).toHaveValue(pid);
+
+  // Refused by the server: its answer is shown, and everything typed stays.
+  await add.getByLabel("Model name").fill(label("Uplink Module"));
+  await add.getByLabel("Kind").selectOption("hardware");
+  await add.getByRole("button", { name: "Add to the catalog" }).click();
+  await expect(add.getByText("Choose the vendor.")).toBeVisible();
+  await add.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
+  await add.getByLabel("PID").fill(made.pid ?? "");
+  await add.getByRole("button", { name: "Add to the catalog" }).click();
+  await expect(add.locator(".field-error, .alert-error").first()).toBeVisible();
+  await expect(add.getByLabel("Model name")).toHaveValue(label("Uplink Module"));
+  await expect(form.getByLabel("Hostname")).toHaveValue(host("new-model-01"));
+
+  // Added: the entry is chosen for the item and the keyboard goes on to its next field.
+  await add.getByLabel("PID").fill(pid);
+  await add.getByLabel("PID").press("Enter");
+  await expect(form.getByTestId("chosen-catalog_entry_hid")).toHaveText(
+    `${pid} · ${label("Sample Networks")} · ${label("Uplink Module")}`,
+  );
+  await expect(add).toHaveCount(0);
+  await expect(form.getByLabel("Serial number")).toBeFocused();
+  await expect(form.getByLabel("Hostname")).toHaveValue(host("new-model-01"));
+  await expect(form.getByLabel("Asset tag")).toHaveValue(`AT-${id}-M1`);
+  await form.getByLabel("Serial number").fill(`SER-${id}-M1`);
+  await form.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: host("new-model-01") })).toBeVisible();
+  const hid = page.url().split("/").pop() ?? "";
+  const item = await read(request, headers, `/items/${hid}`);
+  expect(item.serial_number).toBe(`SER-${id}-M1`);
+  const entry = await read(request, headers, `/catalog-entries/${String(item.catalog_entry_hid)}`);
+  expect(entry.pid).toBe(pid);
+
+  // Where the search finds models, adding another is offered as a small link.
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  await form.getByLabel("Catalog entry").fill(id);
+  await expect(entriesFound(form).getByRole("button").first()).toBeVisible();
+  await expect(form.getByRole("button", { name: "Add a model to the catalog" })).toBeVisible();
+
+  await expectClean(page, seen, ["409 POST"]);
+});
