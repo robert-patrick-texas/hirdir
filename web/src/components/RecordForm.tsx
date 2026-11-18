@@ -14,12 +14,15 @@ import {
 } from "react";
 import { useAction } from "../lib/hooks";
 import {
+  atFields,
   buildCreate,
   buildPatch,
+  changedValues,
   type FieldSpec,
   type FormValue,
   type FormValues,
   formOf,
+  sentNames,
 } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
 import {
@@ -119,7 +122,9 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
   const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
   const built = buildPatch<B>(specs, base.record as R & Readonly<Record<string, unknown>>, values);
-  const refused = fieldErrors(action.error, names).shown;
+  // 0.9.8: a field sent as other fields of the request shows their refusals (P-250).
+  const sent = sentNames(specs);
+  const refused = atFields(specs, fieldErrors(action.error, sent).shown);
   const [form, refusedNow] = useShownRefusal();
 
   // The page read the record again: what was typed since the form took it stays.
@@ -161,7 +166,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
   });
 
   function change(name: string, value: FormValue) {
-    setValues((was) => ({ ...was, [name]: value }));
+    setValues((was) => changedValues(specs, was, name, value));
     setFound((was) => {
       const { [name]: _, ...rest } = was;
       return rest;
@@ -190,7 +195,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
     <form onSubmit={submit} className="stack" noValidate ref={form}>
       <Problem
         error={action.error}
-        shown={names}
+        shown={sent}
         onReload={onReload}
         {...(labels ? { labels } : {})}
       />
@@ -364,8 +369,8 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
   const [again, setAgain] = useState(0);
   const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
-  const names = specs.map((spec) => spec.name);
-  const refused = fieldErrors(action.error, names).shown;
+  const sent = sentNames(specs);
+  const refused = atFields(specs, fieldErrors(action.error, sent).shown);
   const [form, refusedNow] = useShownRefusal();
   const headingId = `new-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   const section = useRef<HTMLElement>(null);
@@ -379,7 +384,7 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
   }, [again, focus, form]);
 
   function change(name: string, value: FormValue) {
-    setValues((was) => ({ ...was, [name]: value }));
+    setValues((was) => changedValues(specs, was, name, value));
     setFound((was) => {
       const { [name]: _, ...rest } = was;
       return rest;
@@ -424,7 +429,7 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
         ref={form}
         {...(another && again > 0 ? { onKeyDown: enterAsAnother } : {})}
       >
-        <Problem error={action.error} shown={names} {...(labels ? { labels } : {})} />
+        <Problem error={action.error} shown={sent} {...(labels ? { labels } : {})} />
         <FormFields
           specs={specs}
           values={values}

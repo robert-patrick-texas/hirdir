@@ -17,16 +17,23 @@ import {
   type SourceRecord,
 } from "../lib/descent";
 import { useLoad } from "../lib/hooks";
+import type { HostLink } from "../lib/hosting";
 import { placePath } from "../lib/places";
 
 /**
  * Where a location in force came from, after the location itself: "Set here" for the
  * record's own, or that it is inherited, with the item or the group it came from.
  */
-export function FromAbove({ effective }: { effective: PlaceInForce }) {
+export function FromAbove({
+  effective,
+  host = null,
+}: {
+  effective: PlaceInForce;
+  host?: HostLink;
+}) {
   if (effective.value === null) return null;
   if (!isFromAbove(effective)) return <span className="muted"> · Set here</span>;
-  return <InheritedFrom from={placeSource(effective)} />;
+  return <InheritedFrom from={placeSource(effective, host)} />;
 }
 
 /**
@@ -72,6 +79,8 @@ export function OwnerNote({ effective, from, what }: OwnerNoteProps) {
 interface PlaceNoteProps {
   kind: PlaceKind;
   effective: PlaceInForce;
+  /** 0.9.8: what the record runs on, which the place may come from (P-246). */
+  host?: HostLink;
   /** What the form is of: "item", "group". */
   what: string;
 }
@@ -81,9 +90,9 @@ interface PlaceNoteProps {
  * none of its own and has one from above: which, from which record, and that one chosen
  * here overrides it. Nothing where there is none from above.
  */
-export function PlaceNote({ kind, effective, what }: PlaceNoteProps) {
+export function PlaceNote({ kind, effective, what, host = null }: PlaceNoteProps) {
   if (!isFromAbove(effective) || typeof effective.value !== "string") return null;
-  const from = placeSource(effective);
+  const from = placeSource(effective, host);
   return (
     <p className="form-note inherited" data-testid={`${kind}-note`} data-source={effective.source}>
       <span className="badge badge-plain mark">Inherited</span>{" "}

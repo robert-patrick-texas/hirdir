@@ -4,6 +4,7 @@
 // "open". The colour is never all there is: the label is always written out.
 
 import { Link } from "react-router";
+import type { HostLink } from "../lib/hosting";
 import {
   type Mark,
   markOf,
@@ -50,6 +51,8 @@ export function OperatorMark({ mark, withPerson = false, testId }: OperatorMarkP
 interface OperatorProps {
   /** The operator in force, as the server resolved it. */
   effective: OperatorInForce;
+  /** 0.9.8: what the record runs on, which the operator may come from (P-246). */
+  host?: HostLink;
   testId?: string;
 }
 
@@ -58,7 +61,7 @@ interface OperatorProps {
  * record's own, or inherited from the item, the group or the place that is named and
  * linked, shown lighter and marked in words. Nobody is said plainly.
  */
-export function Operator({ effective, testId }: OperatorProps) {
+export function Operator({ effective, testId, host = null }: OperatorProps) {
   const mark = markOf(effective);
   if (!mark) {
     return (
@@ -67,7 +70,7 @@ export function Operator({ effective, testId }: OperatorProps) {
       </span>
     );
   }
-  const from = operatorSource(effective);
+  const from = operatorSource(effective, host);
   return (
     <span data-testid={testId} data-source={effective.source}>
       <OperatorMark mark={mark} withPerson />
@@ -86,6 +89,8 @@ export function Operator({ effective, testId }: OperatorProps) {
 
 interface OperatorNoteProps {
   effective: OperatorInForce;
+  /** 0.9.8: what the record runs on, which the operator may come from (P-246). */
+  host?: HostLink;
   /** What the form is of: "item", "group". */
   what: string;
 }
@@ -95,7 +100,7 @@ interface OperatorNoteProps {
  * is seen what applies before one is chosen: the operator it has from above, with the
  * record that one comes from, or that nobody is assigned.
  */
-export function OperatorNote({ effective, what }: OperatorNoteProps) {
+export function OperatorNote({ effective, what, host = null }: OperatorNoteProps) {
   const mark = markOf(effective);
   if (!mark) {
     return (
@@ -104,7 +109,7 @@ export function OperatorNote({ effective, what }: OperatorNoteProps) {
       </p>
     );
   }
-  const from = operatorSource(effective);
+  const from = operatorSource(effective, host);
   return (
     <p className="form-note inherited" data-testid="operator-note" data-source={effective.source}>
       <span className="badge badge-plain mark">Inherited</span>{" "}

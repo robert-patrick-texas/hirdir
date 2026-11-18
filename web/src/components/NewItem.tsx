@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { api, type Schemas } from "../api";
 import { itemName } from "../lib/format";
+import { HOST_FIELD, hostSpecs, sentHost } from "../lib/hosting";
 import { useOwnerOptions, useTags } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
+import { entrySeen } from "../lib/pick";
 import { OffersNewModel } from "./AddModel";
 import { Problem } from "./Problem";
 import { CreateForm } from "./RecordForm";
@@ -26,6 +28,8 @@ interface NewItemProps {
  */
 export const SHARED_WITH_THE_NEXT = [
   "catalog_entry_hid",
+  // 0.9.8: a run of virtual machines on one host (P-250).
+  HOST_FIELD,
   "owner_hid",
   "operator_hid",
   "location_hid",
@@ -86,6 +90,8 @@ export function NewItem({ states, within, onCancel, onCreated, onAnother }: NewI
         maxLength: 40,
         hint: "In any common notation",
       },
+      // 0.9.8: what it runs on, where its model is of a kind that does (P-250).
+      ...(minor ? [] : hostSpecs({ kindOf: (hid) => entrySeen(hid)?.kind })),
       {
         name: "owner_hid",
         label: "Owner",
@@ -139,7 +145,7 @@ export function NewItem({ states, within, onCancel, onCreated, onAnother }: NewI
         specs={specs}
         create={(body) =>
           api.request("post", "/api/v1/items", {
-            body: within ? { ...body, parent_item_hid: within.hid } : body,
+            body: within ? { ...body, parent_item_hid: within.hid } : sentHost(body, true),
           })
         }
         onCreated={onCreated}

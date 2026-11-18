@@ -18,6 +18,7 @@ import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
+import { WhatRunsOnIt } from "../components/Hosted";
 import { LEAVING_FIELDS, WhatBecomesOfIt } from "../components/LeaveStack";
 import { MemberPicker } from "../components/MemberPicker";
 import { Operator, OperatorNote } from "../components/Operator";
@@ -885,6 +886,13 @@ export function DeviceGroupDetail() {
             />
           )}
           <Members group={record} mayEdit={open} onChanged={changed} onReload={group.reload} />
+          {/* 0.9.8: what runs on a stack or a cluster, and on those (P-250). */}
+          <WhatRunsOnIt
+            of="group"
+            hid={record.hid}
+            count={record.hosted_count}
+            version={String(record.row_version)}
+          />
           <Nested group={record} />
           {/* 0.8.0: the circuits it is connected to, each with its side (P-147). */}
           <ConnectedCircuits circuits={record.circuits} whose={record.name} />
