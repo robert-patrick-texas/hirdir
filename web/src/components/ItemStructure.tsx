@@ -10,7 +10,6 @@ import { itemsPath } from "../lib/filter";
 import { itemName, plural, today } from "../lib/format";
 import { groupTypeLabel, membershipText } from "../lib/groups";
 import { useAction, useLoad } from "../lib/hooks";
-import { useEntryOptions } from "../lib/lists";
 import { choiceLabel, choiceOptions } from "../lib/options";
 import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
 import { pickLabel } from "../lib/pick";
@@ -543,7 +542,6 @@ const WITH_NEW = "new";
 const WITH_EXISTING = "existing";
 
 function Replace({ item, choices, onCancel, onChanged, onReload }: ReplaceProps) {
-  const entries = useEntryOptions();
   const [how, setHow] = useState(WITH_EXISTING);
   const [chosen, setChosen] = useState<Item | null>(null);
   const [reason, setReason] = useState("");
@@ -554,9 +552,9 @@ function Replace({ item, choices, onCancel, onChanged, onReload }: ReplaceProps)
       {
         name: "catalog_entry_hid",
         label: "Catalog entry",
-        kind: "choice",
+        // 0.9.6: searched for, not a list of every model, as in New item (P-200).
+        kind: "entry",
         blank: "No catalog entry",
-        options: entries.data ?? [],
         hint: "The vendor and PID. A serial number needs one.",
       },
       { name: "serial_number", label: "Serial number", kind: "text", maxLength: 100 },
@@ -564,7 +562,7 @@ function Replace({ item, choices, onCancel, onChanged, onReload }: ReplaceProps)
       { name: "name", label: "Name", kind: "text", maxLength: 200 },
       { name: "hostname", label: "Hostname", kind: "text", maxLength: 255 },
     ],
-    [entries.data],
+    [],
   );
   const [values, setValues] = useState<FormValues>(() => ({
     ...formOf(specs),
@@ -689,7 +687,6 @@ function Replace({ item, choices, onCancel, onChanged, onReload }: ReplaceProps)
         {how === WITH_NEW && (
           <fieldset className="plain">
             <legend>The new item</legend>
-            <Problem error={entries.error} />
             <FormFields
               specs={specs}
               values={values}

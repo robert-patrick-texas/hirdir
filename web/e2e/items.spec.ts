@@ -148,14 +148,15 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   expect(await gridNames(page)).toEqual([first, second]);
   const grid = page.getByTestId("grid-items");
-  // Hide four columns, to bring the last ones into view, and ask for the estimated
+  // Hide five columns, to bring the last ones into view, and ask for the estimated
   // value, which the grid does not show until it is asked for. Location and Site are
-  // shown from the start, and Expected online is not (P-193).
+  // shown from the start, and Expected online is not (P-193); and since 0.9.6 Stack
+  // (P-220).
   await page.getByText("Columns", { exact: true }).click();
   const shown = page.getByRole("group", { name: "Columns to show" });
   await expect(shown.getByLabel("Estimated value", { exact: true })).not.toBeChecked();
   await expect(shown.getByLabel("Expected online", { exact: true })).not.toBeChecked();
-  for (const column of ["Owner", "Location", "Site", "Tags"]) {
+  for (const column of ["Stack", "Owner", "Location", "Site", "Tags"]) {
     await shown.getByLabel(column, { exact: true }).uncheck();
   }
   await shown.getByLabel("Estimated value", { exact: true }).check();
@@ -347,9 +348,10 @@ test("the item grid is sorted by the server by any column, also by its tags and 
     });
 
   // Room is made for the columns looked at here: the grid draws only those in view.
+  // Stack is among the first since 0.9.6 (P-220).
   await page.getByText("Columns", { exact: true }).click();
   const columns = page.getByRole("group", { name: "Columns to show" });
-  for (const column of ["Vendor", "PID", "Serial number", "Health", "LDoS"]) {
+  for (const column of ["Stack", "Vendor", "PID", "Serial number", "Health", "LDoS"]) {
     await columns.getByLabel(column, { exact: true }).uncheck();
   }
   await columns.getByLabel("Addresses", { exact: true }).check();

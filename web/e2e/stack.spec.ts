@@ -502,10 +502,9 @@ test("S21: the master of the stack is replaced, and the stack stays the stack", 
     .getByLabel("What takes its place")
     .selectOption({ label: "A new item, created now" });
   const fresh = replace.getByRole("group", { name: "The new item" });
-  // The same model is offered, as it is more often than not.
-  await expect(fresh.getByLabel("Catalog entry").locator("option:checked")).toContainText(
-    switchPid,
-  );
+  // The same model is offered, as it is more often than not, in the field searched for a
+  // model since 0.9.6 (P-200).
+  await expect(fresh.getByTestId("chosen-catalog_entry_hid")).toContainText(switchPid);
   await fresh.getByLabel("Serial number").fill(spareSerial);
   await fresh.getByLabel("Hostname").fill(spare);
   await replace.getByRole("button", { name: "Replace", exact: true }).click();

@@ -21,6 +21,7 @@ import { EditForm } from "../components/RecordForm";
 import { References } from "../components/References";
 import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
+import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
 // 0.8.0: a default and a minimum of the support weight of a major item (P-155).
 import { Raised } from "../components/Weight";
@@ -183,6 +184,7 @@ export function ItemDetail() {
             item={record}
             choices={choices.data}
             mayChange={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
           />
           <Doing
             key={`doing ${record.hid} ${record.row_version}`}
@@ -461,9 +463,11 @@ interface FactsProps {
   choices: readonly Choice[] | undefined;
   /** Whether the person may change the item, and the form of details is on the page. */
   mayChange: boolean;
+  /** Said at the top of the page when a change among the facts was made: the item is read again. */
+  onChanged: (text: string) => void;
 }
 
-function Facts({ item, choices, mayChange }: FactsProps) {
+function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
   const { catalog } = item;
   // The owner in force: an item with none of its own has the owner of the item it is
   // in, or of its group.
@@ -480,6 +484,8 @@ function Facts({ item, choices, mayChange }: FactsProps) {
       <h2 id="identity">Identity</h2>
       <dl className="facts">
         <Fact label="Name">{item.name}</Fact>
+        {/* 0.9.6: the stack it is a member of, with the stack's names, or Join a stack (P-222). */}
+        <StackFacts item={item} mayChange={mayChange} onChanged={onChanged} />
         <Fact label="Hostname">{item.hostname}</Fact>
         <Fact label="FQDN">{item.fqdn}</Fact>
         <Fact label="Serial number">

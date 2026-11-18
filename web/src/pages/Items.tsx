@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { BulkEdit } from "../components/BulkEdit";
 import { CoverItems } from "../components/Coverage";
+import { GroupsNamed } from "../components/GroupsNamed";
 import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "../components/grid/itemColumns";
 import { madeLink, NewItem } from "../components/NewItem";
@@ -14,6 +15,7 @@ import { useTitle } from "../lib/hooks";
 import { stateNames } from "../lib/lifecycle";
 import { useChoices, useRules } from "../lib/lists";
 import { allows } from "../lib/roles";
+import { groupWords, sameWords } from "../lib/stacks";
 import type { Chosen, GridView } from "../lib/transfer";
 
 type Item = Schemas["ItemOut"];
@@ -49,6 +51,8 @@ export function Items() {
   const [reloads, setReloads] = useState(0);
   const [done, setDone] = useState("");
   const [made, setMade] = useState<Item | null>(null); // By add another like it (P-192).
+  // 0.9.6: the words the list looks for in the names of groups, as it last asked (P-220).
+  const [words, setWords] = useState<readonly string[]>([]);
   const mayChange = allows(user.role, "inventory");
   const choices = useChoices();
   const rules = useRules();
@@ -70,7 +74,10 @@ export function Items() {
 
   return (
     <>
-      <h1>Items</h1>
+      <div className="list-head">
+        <h1>Items</h1>
+        <GroupsNamed words={words} />
+      </div>
       <Problem error={choices.error ?? rules.error} />
       <Notice text={done} {...(made && done === "Created" ? { link: madeLink(made) } : {})} />
       {adding && (
@@ -131,9 +138,14 @@ export function Items() {
               }
             : {})}
           columns={columns}
-          load={(request, signal) =>
-            api.request("post", "/api/v1/items/query", { body: queryBody(request), signal })
-          }
+          load={(request, signal) => {
+            // The first rows of what is asked: the words it holds for the groups' names.
+            if (request.offset === 0) {
+              const asked = groupWords(request.filter);
+              setWords((was) => (sameWords(was, asked) ? was : asked));
+            }
+            return api.request("post", "/api/v1/items/query", { body: queryBody(request), signal });
+          }}
           rowId={(item) => item.hid}
           rowLink={(item) => `/items/${encodeURIComponent(item.hid)}`}
           dimmed={itemIsDimmed}

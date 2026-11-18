@@ -1,0 +1,214 @@
+// 0.9.6: what becomes of a member that leaves a stack, in the form that ends its
+// membership (P-218). A person chooses; each choice fills the fields, which the person may
+// change; the lifecycle rules and the choices the server publishes say what is offered,
+// and the server decides. Nothing follows from the end by a rule.
+
+import { useId, useState } from "react";
+import { api } from "../api";
+import { useLoad } from "../lib/hooks";
+import { dispositionsIn, intentChoices, nextStates } from "../lib/lifecycle";
+import { useChoices, useRules } from "../lib/lists";
+import { choiceOptions } from "../lib/options";
+import {
+  LEAVING,
+  LEAVING_LABELS,
+  type Leaving,
+  type LeavingBody,
+  type LeavingValues,
+  leavingBody,
+  leavingPreset,
+} from "../lib/stacks";
+import { SelectField, TextField } from "./Field";
+import { LocationField } from "./LocationField";
+import { Problem } from "./Problem";
+
+/** The fields of `item` that a refusal names, as `item.hostname`. */
+export const LEAVING_FIELDS = [
+  "item.hostname",
+  "item.fqdn",
+  "item.location_hid",
+  "item.lifecycle_state",
+  "item.state_reason",
+  "item.disposition",
+  "item.expected_online",
+];
+
+interface WhatBecomesOfItProps {
+  itemHid: string;
+  /** What the server refused, by the names of LEAVING_FIELDS. */
+  errors: Readonly<Record<string, string>>;
+  /** What is to be sent as `item`, or null for nothing. */
+  onChange: (body: LeavingBody | null) => void;
+  disabled?: boolean;
+}
+
+/**
+ * What becomes of it: to the spare pool, to be returned to the manufacturer, excess, or
+ * nothing now, which is where it starts. The item is read when the form opens, for its
+ * state and disposition.
+ */
+export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBecomesOfItProps) {
+  const id = useId();
+  const item = useLoad(`leaving ${itemHid}`, (signal) =>
+    api.request("get", "/api/v1/items/{hid}", { path: { hid: itemHid }, signal }),
+  );
+  const rules = useRules();
+  const choices = useChoices();
+  const [choice, setChoice] = useState<Leaving>("nothing");
+  const [values, setValues] = useState<LeavingValues | null>(null);
+  const ruled = rules.data ?? [];
+  const record = item.data;
+  const state = record?.lifecycle_state ?? null;
+  const kept = record?.disposition ?? null;
+  const reasons = choiceOptions(choices.data, "state_reason");
+  const ready = record !== undefined && rules.data !== undefined && choices.data !== undefined;
+
+  function update(next: LeavingValues | null) {
+    setValues(next);
+    onChange(next ? leavingBody(next) : null);
+  }
+
+  function choose(chosen: Leaving) {
+    setChoice(chosen);
+    update(
+      leavingPreset(chosen, state, {
+        next: nextStates(ruled, state),
+        dispositions: (inState) => dispositionsIn(ruled, inState, kept),
+        reasons: reasons.map((reason) => reason.value),
+      }),
+    );
+  }
+
+  function set(field: keyof LeavingValues, value: string) {
+    if (!values) return;
+    const next = { ...values, [field]: value };
+    // A reason is for a move: none is kept once the state is left as it is.
+    if (field === "lifecycle_state" && value === "") next.state_reason = "";
+    update(next);
+  }
+
+  const target = values?.lifecycle_state || state;
+  const dispositions = dispositionsIn(ruled, target, kept);
+  const intents = intentChoices(ruled, target, values?.disposition || kept);
+  return (
+    <fieldset className="plain leaving" data-testid="what-becomes-of-it">
+      <legend>What becomes of it</legend>
+      <Problem error={item.error ?? rules.error ?? choices.error} />
+      <div className="leaving-choices">
+        {LEAVING.map((one) => (
+          <div className="field field-check" key={one}>
+            <input
+              type="radio"
+              id={`${id}-${one}`}
+              name={`${id}-leaving`}
+              value={one}
+              checked={choice === one}
+              disabled={disabled || !ready}
+              onChange={() => choose(one)}
+            />
+            <label htmlFor={`${id}-${one}`}>{LEAVING_LABELS[one]}</label>
+          </div>
+        ))}
+      </div>
+      {!ready && !item.error && (
+        <p className="muted loading-late" role="status">
+          Reading the item…
+        </p>
+      )}
+      {values && (
+        <div className="fields">
+          <TextField
+            label="Hostname"
+            name="leaving-hostname"
+            value={values.hostname}
+            onChange={(value) => set("hostname", value)}
+            disabled={disabled}
+            error={errors["item.hostname"]}
+            hint="Its own name from now. Blank, left as it is."
+          />
+          <TextField
+            label="FQDN"
+            name="leaving-fqdn"
+            value={values.fqdn}
+            onChange={(value) => set("fqdn", value)}
+            disabled={disabled}
+            error={errors["item.fqdn"]}
+            hint="Blank, left as it is."
+          />
+          <LocationField
+            label="Location"
+            name="leaving-location"
+            value={values.location_hid}
+            onChange={(value) => set("location_hid", value)}
+            blank="Left as it is"
+            disabled={disabled}
+            error={errors["item.location_hid"]}
+            hint="Where it goes: it has the stack's place no more."
+          />
+          <SelectField
+            label="Lifecycle state"
+            name="leaving-state"
+            value={values.lifecycle_state}
+            onChange={(value) => set("lifecycle_state", value)}
+            disabled={disabled}
+            error={errors["item.lifecycle_state"]}
+          >
+            <option value="">As it is{state ? ` (${state})` : ""}</option>
+            {nextStates(ruled, state).map((one) => (
+              <option key={one} value={one}>
+                {one}
+              </option>
+            ))}
+          </SelectField>
+          {values.lifecycle_state !== "" && (
+            <SelectField
+              label="Reason"
+              name="leaving-reason"
+              value={values.state_reason}
+              onChange={(value) => set("state_reason", value)}
+              disabled={disabled}
+              error={errors["item.state_reason"]}
+            >
+              <option value="">None</option>
+              {reasons.map((reason) => (
+                <option key={reason.value} value={reason.value}>
+                  {reason.label}
+                </option>
+              ))}
+            </SelectField>
+          )}
+          <SelectField
+            label="Disposition"
+            name="leaving-disposition"
+            value={values.disposition}
+            onChange={(value) => set("disposition", value)}
+            disabled={disabled}
+            error={errors["item.disposition"]}
+          >
+            <option value="">As it is{kept ? ` (${kept})` : ""}</option>
+            {dispositions.map((one) => (
+              <option key={one} value={one}>
+                {one}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Expected online"
+            name="leaving-online"
+            value={values.online}
+            onChange={(value) => set("online", value)}
+            disabled={disabled}
+            error={errors["item.expected_online"]}
+          >
+            <option value="">As it is</option>
+            {intents.map((one) => (
+              <option key={String(one)} value={String(one)}>
+                {one ? "Yes" : "No"}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      )}
+    </fieldset>
+  );
+}

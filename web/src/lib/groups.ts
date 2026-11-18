@@ -10,6 +10,7 @@
 
 import type { Schemas } from "../api/client";
 import type { Option } from "./patch";
+import type { Joining } from "./stacks";
 
 export type DeviceGroup = Schemas["DeviceGroupOut"];
 export type GroupType = DeviceGroup["type"];
@@ -40,6 +41,13 @@ const ROLE_LABELS: Readonly<Record<string, string>> = {
   controller: "Controller",
   endpoint: "Endpoint",
 };
+
+/**
+ * What the plain words of the list of groups are looked for in: the name, the host name,
+ * and since 0.9.6 the serial number of any current member, so that a stack is found by a
+ * member's (P-220).
+ */
+export const GROUP_WORDS: readonly string[] = ["name", "hostname", "member.serial_number"];
 
 export const MASTER = "master";
 // The largest position the server takes.
@@ -100,6 +108,16 @@ export interface PendingMember {
   role: string;
   /** As typed. Blank is no position. */
   position: string;
+  /**
+   * 0.9.6, a member of a stack (P-217): whether it takes the stack's name and place, and
+   * the disposition and intent it is then given, blank to leave each as it is. Unticked,
+   * nothing of the item is sent.
+   */
+  drop?: boolean;
+  disposition?: string;
+  online?: string;
+  /** What the switch has, read when it was chosen: what the box would remove, its standing. */
+  joining?: Joining;
 }
 
 export interface MembersBuilt {
@@ -131,11 +149,17 @@ export function buildMembers(
       errors[row.item_hid] = `One of ${allowed.map(roleLabel).join(", ")}.`;
       continue;
     }
+    // A member of a stack that takes the stack's name and place, with what it becomes.
+    const drops = type === "stack" && row.drop === true;
+    const online = row.online === "true" ? true : row.online === "false" ? false : null;
     members.push({
       item_hid: row.item_hid,
       role: row.role,
       ...(position === "" ? {} : { position: Number(position) }),
       ...(joinedOn === "" ? {} : { joined_on: joinedOn }),
+      ...(drops ? { drop_identity: true } : {}),
+      ...(drops && row.disposition ? { disposition: row.disposition } : {}),
+      ...(drops && online !== null ? { expected_online: online } : {}),
     });
   }
   return { members, errors };

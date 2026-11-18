@@ -1,17 +1,20 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import type { Schemas } from "../api";
 import { itemName } from "../lib/format";
 import {
   defaultRole,
   groupTypeLabel,
-  nextPosition,
   type PendingMember,
   roleLabel,
   roleOptions,
 } from "../lib/groups";
-import { MAJOR_ONLY } from "../lib/pick";
+import { dispositionsIn, intentChoices, type Rule } from "../lib/lifecycle";
+import { MAJOR_ONLY, memberOffer, SPARES } from "../lib/pick";
 import { nextSort, type SortColumns, type SortState, sortRows } from "../lib/sort";
+import { dropsText, type Joining, joinStanding, offeredPosition } from "../lib/stacks";
 import type { SortControl } from "../lib/useSorting";
+import { CheckField, SelectField } from "./Field";
 import { ItemPicker } from "./ItemPicker";
 import { SortTh } from "./SortTh";
 
@@ -27,8 +30,21 @@ interface MemberPickerProps {
   taken?: readonly string[];
   /** The positions that are taken already, to offer the next one. */
   positions?: ReadonlyArray<number | null>;
+  /**
+   * 0.9.6: the position the server offers the next member, the stack's `next_position`:
+   * the lowest that no current member holds (P-219). Left out, the lowest free from 1.
+   */
+  next?: number | null;
   /** What is wrong with a row, by the HID of its item. */
   errors?: Readonly<Record<string, string>>;
+  /** The member that holds the position a row was refused, as a link, by the HID of its item (P-219). */
+  holders?: Readonly<Record<string, { to: string; label: string }>>;
+  /**
+   * 0.9.6: the members join a stack that is there, by Add members: each has the box of
+   * the stack's name and place (P-217). The lifecycle rules say what a spare is offered.
+   */
+  joins?: boolean;
+  rules?: readonly Rule[];
   disabled?: boolean;
 }
 
@@ -63,7 +79,17 @@ function inOrder(pending: readonly PendingMember[], order: readonly string[]): P
  * headers; that changes the order on show only, not the order the members are sent in.
  */
 export function MemberPicker(props: MemberPickerProps) {
-  const { type, pending, onChange, taken = [], positions = [], errors = {}, disabled } = props;
+  const {
+    type,
+    pending,
+    onChange,
+    taken = [],
+    positions = [],
+    next: nextFree,
+    errors = {},
+    disabled,
+  } = props;
+  const { holders = {}, rules = [], joins = false } = props;
   const roles = roleOptions(type);
   const numbered = type === "stack";
   // The members of a stack and of a cluster are major items.
@@ -92,7 +118,10 @@ export function MemberPicker(props: MemberPickerProps) {
         item_hid: item.hid,
         name: itemName(item),
         role: defaultRole(type),
-        position: numbered ? String(nextPosition(used)) : "",
+        position: numbered ? String(offeredPosition(nextFree, used)) : "",
+        // 0.9.6: a switch that joins a stack takes its name and place, ticked from the
+        // start, and a spare is offered Production and expected online (P-217).
+        ...(numbered && joins ? joining(item, rules) : {}),
       },
     ]);
   }
@@ -111,6 +140,9 @@ export function MemberPicker(props: MemberPickerProps) {
             : "Type a part of its name, serial number or asset tag."
         }
         only={majorOnly ? MAJOR_ONLY : null}
+        // 0.9.6: the spares first, each with where it stands (P-221).
+        first={SPARES}
+        standing={(item) => memberOffer(item, type)}
         taken={[...taken, ...pending.map((row) => row.item_hid)]}
         onPick={add}
         {...(disabled === undefined ? {} : { disabled })}
@@ -141,7 +173,20 @@ export function MemberPicker(props: MemberPickerProps) {
                   <th scope="row">
                     {row.name}
                     {errors[row.item_hid] && (
-                      <span className="field-error"> {errors[row.item_hid]}</span>
+                      <span className="field-error" data-testid="member-error">
+                        {" "}
+                        {errors[row.item_hid]}
+                        {holders[row.item_hid] && (
+                          <>
+                            {" "}
+                            It is held by{" "}
+                            <Link to={holders[row.item_hid]?.to ?? ""}>
+                              {holders[row.item_hid]?.label}
+                            </Link>
+                            .
+                          </>
+                        )}
+                      </span>
                     )}
                   </th>
                   <td>
@@ -189,6 +234,110 @@ export function MemberPicker(props: MemberPickerProps) {
           </table>
         </div>
       )}
+      {numbered &&
+        joins &&
+        rows.map((row) => (
+          <JoinBox
+            key={row.item_hid}
+            row={row}
+            rules={rules}
+            onChange={(change) => set(row.item_hid, change)}
+            {...(disabled === undefined ? {} : { disabled })}
+          />
+        ))}
     </div>
+  );
+}
+
+/** What of an item chosen for a stack the box needs, and what it is offered from the start. */
+export function joining(item: Item, rules: readonly Rule[]): Partial<PendingMember> {
+  const has: Joining = {
+    hostname: item.hostname,
+    fqdn: item.fqdn,
+    addresses: item.addresses,
+    location: item.location,
+    lifecycle_state: item.lifecycle_state,
+    disposition: item.disposition,
+  };
+  const state = item.lifecycle_state;
+  const standing = joinStanding(
+    has,
+    dispositionsIn(rules, state, item.disposition),
+    intentChoices(rules, state, "Production"),
+  );
+  return { joining: has, drop: true, ...standing };
+}
+
+interface JoinBoxProps {
+  row: PendingMember;
+  rules: readonly Rule[];
+  onChange: (change: Partial<PendingMember>) => void;
+  disabled?: boolean;
+}
+
+/**
+ * Under the members chosen for a stack, for each: the box, ticked from the start, "It
+ * takes the stack's name and place", with the line of exactly what it removes from this
+ * switch, read from the switch as it was chosen; and for a spare, the disposition and the
+ * intent it is given, as the rule of its state allows. Unticked, nothing of it is sent.
+ */
+export function JoinBox({ row, rules, onChange, disabled }: JoinBoxProps) {
+  const has = row.joining ?? {};
+  const state = has.lifecycle_state;
+  const kept = has.disposition ?? null;
+  const drop = row.drop === true;
+  const dispositions = dispositionsIn(rules, state, kept);
+  const disposition = row.disposition ?? "";
+  const intents = intentChoices(rules, state, disposition || kept);
+  const spare = kept === "Spare";
+  return (
+    <fieldset className="plain join-box" data-testid="join-box" data-item={row.item_hid}>
+      <legend>{row.name}</legend>
+      <CheckField
+        label="It takes the stack's name and place"
+        name={`drop-${row.item_hid}`}
+        checked={drop}
+        disabled={disabled}
+        onChange={(on) => onChange({ drop: on })}
+      />
+      <p className="hint" data-testid="drops">
+        {drop
+          ? dropsText(row.name, has)
+          : `${row.name} keeps its own name, addresses and place: nothing of it is changed.`}
+      </p>
+      {drop && spare && (
+        <div className="fields">
+          <SelectField
+            label="Disposition"
+            name={`disposition-${row.item_hid}`}
+            value={disposition}
+            disabled={disabled}
+            onChange={(value) => onChange({ disposition: value })}
+            hint="A spare that joins a stack is in production."
+          >
+            <option value="">As it is ({kept})</option>
+            {dispositions.map((one) => (
+              <option key={one} value={one}>
+                {one}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Expected online"
+            name={`online-${row.item_hid}`}
+            value={row.online ?? ""}
+            disabled={disabled}
+            onChange={(value) => onChange({ online: value })}
+          >
+            <option value="">As it is</option>
+            {intents.map((one) => (
+              <option key={String(one)} value={String(one)}>
+                {one ? "Yes" : "No"}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      )}
+    </fieldset>
   );
 }

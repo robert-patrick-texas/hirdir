@@ -36,6 +36,7 @@ import {
 import type { Option } from "../../lib/patch";
 import { nameOf } from "../../lib/places";
 import { MISMATCH_NOTE } from "../../lib/purchases";
+import { memberText } from "../../lib/stacks";
 import { registeredWith } from "../../lib/systems";
 import type { GridColumn } from "./columns";
 
@@ -89,6 +90,8 @@ function groupTypes(item: Item): string {
  */
 export const FIRST_IN_VIEW: readonly string[] = [
   "name",
+  // 0.9.6: a member of a stack, which has no name of its own, by its stack (P-220).
+  "stack",
   "catalog.pid",
   "serial_number",
   "lifecycle_state",
@@ -162,7 +165,7 @@ export function itemColumns(
       kind: "text",
       value: itemName,
       link: true,
-      width: 220,
+      width: 190,
       // 0.9.6: it shows the name, or the host name where there is none: an export holds
       // both, so that a file of the list as it first stands has the host name (P-204).
       column: ["name", "hostname"],
@@ -173,6 +176,19 @@ export function itemColumns(
       kind: "text",
       value: (item) => item.hostname,
       hide: true,
+    },
+    {
+      // 0.9.6: the stack it is a member of and its position, "cw07-idf03-acc1 #2", from
+      // the groups every row carries (P-220). It is filtered and sorted by the names of
+      // its groups, as the Groups column is.
+      id: "stack",
+      header: "Stack",
+      kind: "text",
+      field: "group.name",
+      sortField: "group.name",
+      column: null,
+      value: (item) => memberText(item.groups),
+      width: 200,
     },
     {
       id: "catalog.vendor",
@@ -186,7 +202,7 @@ export function itemColumns(
       header: "PID",
       kind: "text",
       value: (item) => item.catalog?.pid,
-      width: 150,
+      width: 130,
     },
     {
       id: "catalog.model_name",
@@ -201,7 +217,7 @@ export function itemColumns(
       kind: "text",
       value: (item) => item.serial_number,
       mono: true,
-      width: 150,
+      width: 140,
     },
     {
       id: "asset_tag",
@@ -288,7 +304,7 @@ export function itemColumns(
       mark: (item) => item.health.value,
       hint: (item) => reasonsText(item.health),
       choices: HEALTHS,
-      width: 130,
+      width: 120,
     },
     {
       id: "condition",
@@ -397,7 +413,7 @@ export function itemColumns(
       effective: (item) => item.effective.location_hid,
       hint: (item) => locationHint(item.effective.location_hid),
       // Shown from the start, with the site: a list of items says where each is (P-193).
-      width: 200,
+      width: 170,
     },
     {
       // Where the item is going: a place that is not in use yet, by its own plan or by
@@ -424,7 +440,7 @@ export function itemColumns(
       kind: "text",
       value: (item) => item.effective.location_hid.site,
       effective: (item) => item.effective.location_hid,
-      width: 150,
+      width: 120,
     },
     {
       // The region that site is in, by its name: what `region` filters, sorts and exports.
