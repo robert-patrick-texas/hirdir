@@ -661,13 +661,31 @@ function OpenList({ report, opened, query, keep }: OpenListProps) {
   // 0.9.6 (P-212): a list that is opened comes into the window, with the keyboard on
   // its heading, as a table named by the address does on the Scoreboard (P-196). It is
   // drawn after the counts, which are on show before it opens, so nothing above it
-  // moves it away again; a new list is a new one of these, and is brought too.
+  // moves it away; a new list is a new one of these, and is brought too. Its rows come
+  // after it, and until they have the page may be too short for the heading to stand
+  // at the top: while the keyboard is on the heading and the person has not scrolled,
+  // it is brought there again as the list grows (as a field is followed, P-189).
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const shown = headingRef.current;
     if (!shown) return;
-    shown.scrollIntoView({ block: "start" });
+    const bring = () => shown.scrollIntoView({ block: "start" });
+    bring();
     shown.focus({ preventScroll: true });
+    let held = true;
+    const release = () => {
+      held = false;
+    };
+    const growing = new ResizeObserver(() => {
+      if (held && document.activeElement === shown) bring();
+    });
+    if (shown.parentElement) growing.observe(shown.parentElement);
+    const moves = ["wheel", "touchstart", "keydown", "mousedown"] as const;
+    for (const move of moves) window.addEventListener(move, release, { passive: true });
+    return () => {
+      growing.disconnect();
+      for (const move of moves) window.removeEventListener(move, release);
+    };
   }, []);
 
   return (
