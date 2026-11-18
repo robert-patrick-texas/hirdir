@@ -74,27 +74,25 @@ export function VendorPortfolio({ vendor }: { vendor: { hid: string; name: strin
         </p>
       )}
       {data && (
-        <>
-          <PortfolioCounts portfolio={data} money={money} choices={choices.data}>
-            {/* 0.9.6: the items come before the agreements and the contracts (P-211). */}
-            <section aria-labelledby="portfolio-items-heading">
-              <h3 id="portfolio-items-heading">Its items</h3>
-              <p className="hint">
-                The item list, for the models of {vendor.name}. What is typed in its filter narrows
-                within them, as <span className="mono">effective.ldos:lt:2027-12-31</span> for those
-                that lose support before then, with the contracts that cover each. Export CSV or
-                Export JSON writes these rows with the columns on show: add Covered until, Contracts
-                and the money columns under Columns for a renewal list.
-              </p>
-              <ItemsGrid
-                id="vendor-items"
-                within={within}
-                shown={["covered", "covered_until", "contract.number"]}
-                filterBox
-              />
-            </section>
-          </PortfolioCounts>
-        </>
+        <PortfolioCounts portfolio={data} money={money} choices={choices.data}>
+          {/* 0.9.6: the items come before the agreements and the contracts (P-211). */}
+          <section aria-labelledby="portfolio-items-heading">
+            <h3 id="portfolio-items-heading">Its items</h3>
+            <p className="hint">
+              The item list, for the models of {vendor.name}. What is typed in its filter narrows
+              within them, as <span className="mono">effective.ldos:lt:2027-12-31</span> for those
+              that lose support before then, with the contracts that cover each. Export CSV or
+              Export JSON writes these rows with the columns on show: add Covered until, Contracts
+              and the money columns under Columns for a renewal list.
+            </p>
+            <ItemsGrid
+              id="vendor-items"
+              within={within}
+              shown={["covered", "covered_until", "contract.number"]}
+              filterBox
+            />
+          </section>
+        </PortfolioCounts>
       )}
     </section>
   );
