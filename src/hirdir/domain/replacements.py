@@ -16,7 +16,7 @@ from hirdir.db import dialect
 from hirdir.db.models import Item, ItemReplacement
 from hirdir.domain import audit, choices, circuit_records, groups, items, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound, StaleVersion
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
 
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
@@ -58,16 +58,22 @@ def of_items(
     return replaced_by, replaces
 
 
-def _line_before(db: Session, item_hid: str) -> set[str]:
-    """Return the items that an item took the place of, and those before them."""
-    before: set[str] = set()
-    current: str | None = item_hid
-    while current is not None and current not in before:
-        before.add(current)
-        current = db.scalar(
-            select(ItemReplacement.old_item_hid).where(ItemReplacement.new_item_hid == current)
+def _refuse_same_day(db: Session, old: Item, new: Item, day: date) -> None:
+    """Refuse a second replacement of one item by the same other on one day (P-241)."""
+    twin = db.scalar(
+        select(ItemReplacement).where(
+            ItemReplacement.old_item_hid == old.hid,
+            ItemReplacement.new_item_hid == new.hid,
+            ItemReplacement.replaced_on == day,
         )
-    return before - {item_hid}
+    )
+    if twin is not None:
+        label = f"{items.shown_name(old)} replaced by {items.shown_name(new)}"
+        raise Conflict(
+            f"{label} on {day} is recorded already",
+            {"new_item_hid": f"this item took the place of the other on {day} already"},
+            Existing(RECORD_TYPE, twin.hid, label),
+        )
 
 
 def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: date) -> None:
@@ -144,12 +150,6 @@ def replace(
             "the reference is too long", {"reference": f"at most {MAX_REFERENCE} characters"}
         )
     day = groups.today(db) if replaced_on is None else replaced_on
-    taken = db.scalar(select(ItemReplacement).where(ItemReplacement.old_item_hid == old.hid))
-    if taken is not None:
-        raise Conflict(
-            "this item has been replaced already",
-            {"new_item_hid": f"it was replaced by {taken.new_item_hid} on {taken.replaced_on}"},
-        )
     if new_item is not None:
         new = items.create_item(db, context, dict(new_item))
     else:
@@ -166,17 +166,7 @@ def replace(
         if found.record_status == "retired":
             raise Invalid("the item is retired", {"new_item_hid": "this item is retired"})
         new = found
-        taken = db.scalar(select(ItemReplacement).where(ItemReplacement.new_item_hid == new.hid))
-        if taken is not None:
-            raise Conflict(
-                "this item took the place of another already",
-                {"new_item_hid": f"it took the place of {taken.old_item_hid}"},
-            )
-        if new.hid in _line_before(db, old.hid):
-            raise Invalid(
-                "an item does not take the place of one that took its own",
-                {"new_item_hid": "this item was replaced, in the end, by the one it would replace"},
-            )
+        _refuse_same_day(db, old, new, day)
     replacement = ItemReplacement(
         old_item_hid=old.hid,
         new_item_hid=new.hid,

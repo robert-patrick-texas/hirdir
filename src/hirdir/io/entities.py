@@ -2427,15 +2427,28 @@ class ItemReplacements(Entity):
     renamed: ClassVar[Mapping[str, str]] = {"old_item_hid": "old_item", "new_item_hid": "new_item"}
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
-        """Match a row to a replacement by the item that left: an item is replaced once."""
-        old = values.get("old_item")
-        if not old:
+        """Match a row with no HID to a replacement by its two items and its day (P-241).
+
+        A row with no day is the one replacement of its two items where there is one, and
+        a new one where there is none; where there are several, it asks for the day.
+        """
+        old, new = values.get("old_item"), values.get("new_item")
+        if not old or not new:
             return None
-        return run.db.scalar(
-            select(ItemReplacement).where(
-                ItemReplacement.old_item_hid == run.item(old, "old_item").hid
-            )
+        query = select(ItemReplacement).where(
+            ItemReplacement.old_item_hid == run.item(old, "old_item").hid,
+            ItemReplacement.new_item_hid == run.item(new, "new_item").hid,
         )
+        day = values.get("replaced_on")
+        if day is not None:
+            return run.db.scalar(query.where(ItemReplacement.replaced_on == day))
+        found = list(run.db.scalars(query.order_by(*replacements.latest_first()).limit(2)))
+        if len(found) > 1:
+            raise Invalid(
+                "these two items were in more than one replacement",
+                {"replaced_on": "give the day of the replacement this row is about"},
+            )
+        return found[0] if found else None
 
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         return " by ".join(

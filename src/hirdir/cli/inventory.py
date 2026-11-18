@@ -376,11 +376,11 @@ def show(
         lines.append(("controller", _named(controller) + within))
     for address in found["addresses"]:
         lines.append(("address", _address(address)))
-    for name in ("replaces", "replaced_by"):
-        if found[name]:
-            other = found[name]
-            why = " ".join(part for part in (other["reason"], other["reference"]) if part)
-            lines.append((name, f"{_named(other)} on {other['replaced_on']} ({why})"))
+    # Every replacement it is part of, the latest first (P-241).
+    for one in found.get("replacements") or []:
+        why = " ".join(part for part in (one["reason"], one["reference"]) if part)
+        name = "replaced_by" if one["part"] == "left" else "replaces"
+        lines.append((name, f"{_named(one['item'])} on {one['replaced_on']} ({why})"))
     for name, effective in found["effective"].items():
         shown = ("owner_hid", "operator_hid", "location_hid", *FROM_ABOVE)
         if name not in shown and effective["value"] is not None:
