@@ -270,3 +270,38 @@ test("a failed member is replaced from its row in one press: the spare takes its
   await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
   await expectClean(page, seen);
 });
+
+test("a member that leaves by End is given its condition in the same form: Failed for one to be returned, which the person may change (P-245)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openStack(page, firstStack);
+  const leaving = spareSerials[0] ?? "";
+  await memberRow(page, leaving)
+    .getByRole("button", { name: `End the membership of ${leaving}` })
+    .click();
+  const ending = page.getByRole("region", { name: `End the membership of ${leaving}` });
+  const what = ending.getByRole("group", { name: "What becomes of it" });
+  await what.getByLabel("To the spare pool").check();
+  await expect(what.getByLabel("Condition")).toHaveValue("");
+  await what.getByLabel("To be returned to the manufacturer").check();
+  await expect(what.getByLabel("Condition")).toHaveValue("failed");
+  // The person may change it: this one is dead, not merely failed.
+  await what.getByLabel("Condition").selectOption({ label: "Dead" });
+  await ending.getByRole("button", { name: "End membership" }).click();
+  const said = page.locator(".alert-ok");
+  await expect(said).toContainText(`The membership of ${leaving} ended on`);
+  await expect(said).toContainText("marked Dead");
+  await said.getByRole("link", { name: leaving }).click();
+  await expect(page.getByRole("heading", { level: 1, name: leaving })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Condition and health" })).toContainText(
+    "ConditionDead",
+  );
+  await expect(page.getByTestId("standing-fact")).toContainText("Pending-Removal");
+  await expectClean(page, seen);
+});

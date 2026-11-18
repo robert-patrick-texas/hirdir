@@ -2312,7 +2312,9 @@ What 0.9.6 changes:
   state allows), which the person may change, and a field left blank or As it is is not
   sent: to the spare pool fills Spare and not expected online, the state as it is, and
   leaves the name and the place to be typed; to be returned fills Pending-Removal for the
-  reason RMA, not expected online; excess fills Pending-Removal for the reason Retired,
+  reason RMA, not expected online, and the Condition Failed, a field of the
+  `item_condition` list beside them that the others leave as it is, sent as
+  `item.condition` with the end and said in the answer as marked Failed (P-245); excess fills Pending-Removal for the reason Retired,
   Excess, not expected online. The ended row stays among the members, marked Ended,
   until the page is left, and the answer says what was sent and names the item as a link. The position offered
   is the lowest that is free, and one that a current member holds is refused (P-219):

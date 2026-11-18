@@ -67,11 +67,24 @@ import {
   stackProblem,
   takesTheMark,
 } from "../lib/groups";
-import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
+import {
+  CONDITION_LIST,
+  healthLabel,
+  OBSERVED,
+  observedLabel,
+  reasonsText,
+} from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { useGroupOptions, useOwnerOptions, useRules, useTags, withCurrent } from "../lib/lists";
+import {
+  useChoices,
+  useGroupOptions,
+  useOwnerOptions,
+  useRules,
+  useTags,
+  withCurrent,
+} from "../lib/lists";
 import { markOf, operatorHint, operatorOptionLabel, operatorPath } from "../lib/operators";
-import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
+import { choiceLabel, optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import {
   buildCreate,
@@ -1260,6 +1273,8 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   // 0.9.6: the memberships ended on this page, which stay in view, marked ended, until the
   // page is left (P-218).
   const [endedHere, setEndedHere] = useState<readonly Member[]>([]);
+  // What a condition given with an end is called (P-245).
+  const choices = useChoices();
   const action = useAction();
   // The server sorts the members, over all of them: another order starts at its first page.
   const sort = useServerSort<Member>({ fields: MEMBERS_SORT, onChange: () => setOffset(0) });
@@ -1330,7 +1345,12 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
         onEnded={(ended, item) => {
           setEndedHere((was) => [...was.filter((one) => one.hid !== ended.hid), ended]);
           // 0.9.6: the answer names the item as a link, and says what became of it (P-218).
-          const what = item ? leavingText(item) : "";
+          const what = item
+            ? leavingText(
+                item,
+                (value) => choiceLabel(choices.data, CONDITION_LIST, value) || value,
+              )
+            : "";
           const name = item?.hostname ?? itemName(member.item);
           changed(
             `The membership of ${itemName(member.item)} ended on ${ended.left_on ?? ""}${what ? `; it was ${what}` : ""}. The item:`,
@@ -1940,6 +1960,8 @@ function EndMembership({
           <WhatBecomesOfIt
             itemHid={member.item_hid}
             errors={refused}
+            // 0.9.8: the condition is given with the end (P-245).
+            condition
             onChange={setItem}
             disabled={action.busy}
           />
