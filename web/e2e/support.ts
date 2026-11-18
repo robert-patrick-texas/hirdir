@@ -45,7 +45,9 @@
 //      have ended. stale-term.spec.ts is one: it makes a day come by changing the
 //      `time_zone` setting, which says what today is for every file, and puts it back.
 //      It runs in the project "after the others", which waits for the files of every
-//      browser to end, and is not run at all when one of them failed. A file whose
+//      browser to end, and which Playwright does not run at all when one of them
+//      failed; scripts/browser.sh runs each such project with --no-deps, after the
+//      others, whatever failed before. A file whose
 //      changes are large enough to hold the database's one writer for seconds, as
 //      cover-many.spec.ts does with a thousand rows at once, cannot run beside the
 //      others either: a sign-in or a save of another file that waits longer than the
@@ -58,7 +60,8 @@
 //      side, and the run is as long as its longest file: scenarios that need nothing of
 //      each other go in files of their own, each loading what it needs, as
 //      minor-items.spec.ts, stack.spec.ts and wireless.spec.ts do with what they share
-//      in structure.ts.
+//      in structure.ts, and the three geography files with what they share in
+//      geographySteps.ts.
 
 // 0.7.0, the renewal alert (P-128): whether the banner shows depends on every contract
 // of the inventory, so renewal-alert.spec.ts reads what every other file changes, which

@@ -45,11 +45,17 @@ A hold is never left in place silently.
 
 1. `make upgrade`.
 2. Set the version.
-3. `make check`, `make acceptance`, `make docs`, `make deb`, `make e2e`. The last installs
-   the package in containers and runs every package check, the upgrade from the
-   previous release among them, and the browser scenarios; `make package-test` is the
-   same without the browser. See "The previous release's package" below. `make deb`
-   builds the web UI and the documentation first, because the package carries both.
+3. `make check`, `make acceptance`, `make browser ARGS="--since v<previous version>"`,
+   `make docs`, `make deb`, `make e2e`. The host run of the browser scenarios, `make
+   browser`, runs on a fresh scratch inventory only the spec files that changed since
+   the previous release, every project that runs alone among them whatever failed
+   before, and ends with one list of every scenario that failed; `make browser
+   ARGS="--last-failed --built"` checks a fix ("The browser scenarios on the host" in
+   [architecture.md](architecture.md#testing)). The last, `make e2e`, installs the
+   package in containers and runs every package check, the upgrade from the previous
+   release among them, and every browser scenario; `make package-test` is the same
+   without the browser. See "The previous release's package" below. `make deb` builds
+   the web UI and the documentation first, because the package carries both.
 4. `make facts > /tmp/facts.md`, and write `docs/releases/v<version>.md` from the
    template below.
 5. `make docs`, and read the built pages once. Then `make deb` and `make package-test`
