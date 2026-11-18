@@ -343,7 +343,7 @@ test("P-224: items are left out of the renewal from the contract's grid, and one
   test.setTimeout(180_000);
   const seen = await watch(page.context());
   const headers = await session(request, account);
-  const number = `EFC-${upper}-16`;
+  const number = `EFC-${upper}-17`;
   const hosts = ["a", "b", "c", "d"].map((side) => `sw-out-${side}-${id}`);
   const contract = await contractOver(request, headers, number, hosts, {
     starts: `${year}-01-01`,
