@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { type GridLayout, GridStore, gridKey, mergeLayout, parseLayout } from "./gridStore";
+import {
+  type GridLayout,
+  GridStore,
+  gridKey,
+  mergeLayout,
+  parseLayout,
+  withoutFilters,
+} from "./gridStore";
 import { memoryStorage } from "./session";
 
 const VERA = "0193a1f4-0000-7000-8000-00000000000a";
@@ -179,5 +186,17 @@ describe("mergeLayout", () => {
   it("lists a column once, however often it was stored", () => {
     const stored: GridLayout = { ...LAYOUT, columns: [...LAYOUT.columns, ...LAYOUT.columns] };
     expect(mergeLayout(DEFAULTS, stored).columns).toEqual(LAYOUT.columns);
+  });
+});
+
+describe("withoutFilters", () => {
+  it("keeps the columns, the sort and the switches of a record's grid, and no filter", () => {
+    const kept = withoutFilters(LAYOUT);
+    expect(kept.filter).toEqual({});
+    expect(kept.short).toBe("");
+    expect(kept.columns).toEqual(LAYOUT.columns);
+    expect(kept.sort).toEqual(LAYOUT.sort);
+    expect(kept.includeArchived).toBe(true);
+    expect(kept.includeMinor).toBe(true);
   });
 });

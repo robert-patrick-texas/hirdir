@@ -61,7 +61,7 @@ import { all, type FilterNode, fieldsText, parseFilter, type QuickFields } from 
 import { plural } from "../../lib/format";
 import { type GridPlace, GridPlaces, placeFor, tabStorage, viewText } from "../../lib/gridPlace";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
-import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
+import { type GridLayout, GridStore, mergeLayout, withoutFilters } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
 import { useSite } from "../../lib/product";
 import { browserStorage } from "../../lib/session";
@@ -238,6 +238,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // The part of the list the grid is of, the same object until what it says changes.
   const withinText = JSON.stringify(props.within ?? {});
   const within = useMemo(() => JSON.parse(withinText) as GridWithin, [withinText]);
+  // A grid of one record's part of a list, under the same id on every record's page,
+  // remembers no filter: one typed on one record's page is not in force on another's.
+  const ofRecord = Boolean(within.filter);
   const { user } = useAuth();
   const { productName } = useSite();
   const navigate = useNavigate();
@@ -252,7 +255,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // filter is the only one, and the column filters remembered are not put back.
   const [fromLink] = useState(() => (props.startFilter ?? null) !== null);
   const [start] = useState(() => {
-    const layout = mergeLayout(defaults, store.load(id));
+    const merged = mergeLayout(defaults, store.load(id));
+    const layout = ofRecord ? withoutFilters(merged) : merged;
     const asked = props.startSwitches;
     const switched = {
       ...layout,
@@ -316,7 +320,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   /** Remember the layout as the grid has it now, with the filter box and the switches. */
   function saveLayout(api: GridApi<T>, view: View) {
     if (api.isDestroyed()) return;
-    store.save(id, layoutOf(api.getColumnState(), api.getFilterModel(), view));
+    const layout = layoutOf(api.getColumnState(), api.getFilterModel(), view);
+    store.save(id, ofRecord ? withoutFilters(layout) : layout);
   }
 
   const read = useEffectEvent(props.load);
@@ -387,7 +392,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const layout = mergeLayout(defaults, store.load(id));
+    const merged = mergeLayout(defaults, store.load(id));
+    const layout = ofRecord ? withoutFilters(merged) : merged;
     const base = routerBasename(document.baseURI);
     let made: GridApi<T> | null = null;
     const toTop = () => {
@@ -492,7 +498,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       setGrid(null);
       api.destroy();
     };
-  }, [columns, defaults, store, id, fromLink]);
+  }, [columns, defaults, store, id, fromLink, ofRecord]);
 
   // Give the grid its source of rows, and a new one whenever what is asked for changes.
   // A new source empties the grid's cache, so every row on show is read again.

@@ -415,5 +415,15 @@ test("P-211: a vendor's page shows twenty models, its items before its agreement
   await box.fill(`fb-edge-12-${id}`);
   await box.press("Enter");
   await expect(total).toHaveText("1 item");
+
+  // What was typed there is of this vendor's page alone: another vendor's items are not
+  // filtered by it, and it is not remembered for this vendor either.
+  await page.goto(`./vendors/${encodeURIComponent(made?.vendor ?? "")}`);
+  const other = page.getByRole("region", { name: "Its items" });
+  await expect(other.getByLabel("Filter", { exact: true })).toHaveValue("");
+  await expect(other.getByRole("link", { name: `fb-edge-99-${id}`, exact: true })).toBeVisible();
+  await page.goto(`./vendors/${encodeURIComponent(vendor)}`);
+  await expect(section.getByLabel("Filter", { exact: true })).toHaveValue("");
+  await expect(total).toHaveText("22 items");
   await expectClean(page, seen);
 });

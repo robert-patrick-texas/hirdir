@@ -1836,7 +1836,9 @@ What 0.9.6 changes:
 - **A vendor.** The table of models shows twenty, as it is sorted, and a button, Show
   all, with the number; sorted by a date, the models with none come last, whichever
   way. The vendor's items stand above its agreements and contracts, with the filter box
-  of the item list and its plain words, which narrow within the vendor's items (P-211).
+  of the item list and its plain words, which narrow within the vendor's items; what is
+  typed there is not remembered, so that it is never in force on another vendor's page,
+  and the same holds of the items a contract covers (P-211).
 - **Contracts.** The grid of every contract comes first, with the contracts that have
   lapsed counted above it, and the tables by agreement after it, folded closed behind a
   line that says how many agreements there are and read when it is opened; on Renewals
