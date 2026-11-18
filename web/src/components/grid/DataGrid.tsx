@@ -5,6 +5,13 @@
 // component turns that into the server's filter grammar. The reader's column layout,
 // last filter and switches are remembered in localStorage.
 //
+// 0.9.6: a list keeps its place (P-203). Where the grid was scrolled to, and the row
+// that was opened from it, are kept for the tab in session storage, by the grid's `id`.
+// Coming back to the list, by Back or by a link, under the same filter, sort and
+// switches, shows the same rows with the row opened marked; a new filter or sort
+// begins at the top. A link that brings a filter of its own shows it from the top,
+// unless it is the browser's Back that comes to it.
+//
 // Rows are selected whole: one, a range, several, or all that the filter keeps. "All"
 // is never a list of rows: it is shown as a count and sent to the server as the filter.
 // Copy and Export are one export of the rows chosen, with the grid's sort and columns:
@@ -44,7 +51,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router";
+import { NavigationType, useNavigate, useNavigationType } from "react-router";
 import { api } from "../../api";
 import type { ApiError } from "../../api/client";
 import { useAuth } from "../../auth";
@@ -52,6 +59,7 @@ import { routerBasename } from "../../lib/base";
 import { ClipboardRefused, copyText } from "../../lib/clipboard";
 import { all, type FilterNode, fieldsText, parseFilter, type QuickFields } from "../../lib/filter";
 import { plural } from "../../lib/format";
+import { type GridPlace, GridPlaces, placeFor, tabStorage, viewText } from "../../lib/gridPlace";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
@@ -89,6 +97,14 @@ ModuleRegistry.registerModules([
 
 // How many rows the grid asks the server for at a time.
 const BLOCK = 100;
+
+/**
+ * The part of a grid whose rows scroll. Rows the grid has not read yet cannot be gone to
+ * by their index: the grid is scrolled to where it was, and reads the rows there (P-203).
+ */
+function scrolledRows(host: HTMLElement | null): HTMLElement | null {
+  return host?.querySelector<HTMLElement>(".ag-grid-viewport, .ag-body-viewport") ?? null;
+}
 
 export interface Page<T> {
   items: T[];
@@ -227,6 +243,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const navigate = useNavigate();
   const host = useRef<HTMLDivElement>(null);
   const store = useMemo(() => new GridStore(browserStorage(), user.hid), [user.hid]);
+  const places = useMemo(() => new GridPlaces(tabStorage(), user.hid), [user.hid]);
+  const how = useNavigationType();
   const defaults = useMemo(() => columnDefaults(columns), [columns]);
   const query = useMemo(() => queryColumns(columns), [columns]);
 
@@ -243,6 +261,17 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     };
     return fromLink ? { ...switched, short: props.startFilter ?? "", filter: {} } : switched;
   });
+  // Where the list was left, to go back to (P-203): not when a link brought a filter of
+  // its own, unless the browser's Back came to it.
+  const kept = useRef<GridPlace | null | undefined>(undefined);
+  if (kept.current === undefined) {
+    kept.current = fromLink && how !== NavigationType.Pop ? null : places.load(id);
+  }
+  // The place being gone back to until the rows it is at have been read, the row that
+  // was opened and is marked, and what the grid showed when the place was taken.
+  const restoring = useRef<GridPlace | null>(null);
+  const opened = useRef<{ id: string; index: number } | null>(null);
+  const shownView = useRef<string | null>(null);
   const [draft, setDraft] = useState(start.short);
   const [short, setShort] = useState(start.short);
   // What is wrong with the text in force, from the start: a link or a remembered filter
@@ -304,12 +333,65 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     saveLayout(api, { short, includeArchived, includeDrafts, includeMinor: minorChosen.current });
   });
 
+  /** What the grid shows, as the place of the list is kept with it (P-203). */
+  const viewNow = useEffectEvent((api: GridApi<T>) =>
+    viewText({
+      short,
+      filter: api.getFilterModel(),
+      sort: sortModelOf(api.getColumnState()),
+      includeArchived,
+      includeDrafts,
+      includeMinor,
+      within: withinText,
+    }),
+  );
+  /** Keep where the list is now, and the row opened from it, for the tab. */
+  const keepPlace = useEffectEvent((api: GridApi<T>) => {
+    if (api.isDestroyed() || restoring.current !== null) return;
+    places.save(id, {
+      view: viewNow(api),
+      top: Math.max(0, Math.round(scrolledRows(host.current)?.scrollTop ?? 0)),
+      windowY: Math.max(0, Math.round(window.scrollY)),
+      opened: opened.current,
+    });
+  });
+  /** A row is being left for: it is the row opened, kept with the place. */
+  const leaving = useEffectEvent((api: GridApi<T>, row: T) => {
+    if (api.isDestroyed()) return;
+    const rowId = idOf(row);
+    const index = api.getRowNode(rowId)?.rowIndex;
+    opened.current = typeof index === "number" ? { id: rowId, index } : null;
+    restoring.current = null;
+    keepPlace(api);
+  });
+  /**
+   * Whether the grid now shows something else than it did: then it begins at its top,
+   * no row is marked, and the place kept is let go.
+   */
+  const viewChanged = useEffectEvent((api: GridApi<T>): boolean => {
+    const now = viewNow(api);
+    if (shownView.current === now) return false;
+    shownView.current = now;
+    restoring.current = null;
+    places.clear(id);
+    if (opened.current !== null) {
+      opened.current = null;
+      api.redrawRows();
+    }
+    return true;
+  });
+
   // Make the grid. It is made again only if the page gives it other columns.
   useEffect(() => {
     const element = host.current;
     if (!element) return;
     const layout = mergeLayout(defaults, store.load(id));
     const base = routerBasename(document.baseURI);
+    let made: GridApi<T> | null = null;
+    const toTop = () => {
+      const rows = scrolledRows(element);
+      if (rows) rows.scrollTop = 0;
+    };
     const api = createGrid<T>(element, {
       theme: "legacy",
       rowModelType: "infinite",
@@ -321,9 +403,15 @@ export function DataGrid<T>(props: DataGridProps<T>) {
           const path = linkOf(row);
           return path === null ? null : base + path.replace(/^\/+/, "");
         },
-        open,
+        open: (row) => {
+          if (made) leaving(made, row);
+          open(row);
+        },
         hrefOf: (path) => base + path.replace(/^\/+/, ""),
-        go,
+        go: (path, row) => {
+          if (made && row !== undefined) leaving(made, row);
+          go(path);
+        },
       }),
       defaultColDef: { resizable: true, sortable: true, minWidth: 60 },
       initialState: { filter: { filterModel: fromLink ? {} : layout.filter } },
@@ -334,7 +422,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         headerCheckbox: false,
         enableClickSelection: true,
       },
-      rowClassRules: { "row-dim": (params) => params.data !== undefined && isDimmed(params.data) },
+      rowClassRules: {
+        "row-dim": (params) => params.data !== undefined && isDimmed(params.data),
+        // The row that was opened, on coming back to the list (P-203).
+        "row-opened": (params) =>
+          params.data !== undefined && opened.current?.id === idOf(params.data),
+      },
       suppressDragLeaveHidesColumns: true,
       tooltipShowDelay: 300,
       onSelectionChanged: (event) => {
@@ -343,8 +436,13 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         // Choosing particular rows takes the place of "all that match".
         if (count > 0) setAllMatching(false);
       },
-      onSortChanged: (event) => remember(event.api),
+      onSortChanged: (event) => {
+        if (viewChanged(event.api)) toTop();
+        remember(event.api);
+      },
+      onBodyScrollEnd: (event) => keepPlace(event.api),
       onFilterChanged: (event) => {
+        if (viewChanged(event.api)) toTop();
         // Another filter keeps other rows: what was chosen under the last one is let go.
         event.api.deselectAll();
         setAllMatching(false);
@@ -358,11 +456,15 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         if (event.finished) remember(event.api);
       },
       onRowDoubleClicked: (event) => {
-        if (event.data) open(event.data);
+        if (!event.data) return;
+        leaving(event.api, event.data);
+        open(event.data);
       },
       onCellKeyDown: (event) => {
         const key = event.event instanceof KeyboardEvent ? event.event.key : "";
-        if (key === "Enter" && event.data) open(event.data);
+        if (key !== "Enter" || !event.data) return;
+        leaving(event.api, event.data);
+        open(event.data);
       },
       // What a cell shows on hover it also says when it has the focus, beneath the grid,
       // for whoever moves through the grid with the keyboard.
@@ -377,6 +479,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         setNote(column && hint ? `${column.header}: ${hint}` : "");
       },
     });
+    made = api;
+    // Back where the list was left, if it shows what it showed then (P-203).
+    shownView.current = viewNow(api);
+    const back = placeFor(kept.current ?? null, shownView.current);
+    restoring.current = back;
+    opened.current = back?.opened ?? null;
     setGrid(api);
     return () => {
       setGrid(null);
@@ -417,6 +525,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     const pending = new Set<() => void>();
     grid.deselectAll();
     setAllMatching(false);
+    // Another filter or switch: the list begins at its top (P-203).
+    const fromTop = viewChanged(grid);
     grid.setGridOption("datasource", {
       getRows: (params) => {
         if (!wanted.readable) {
@@ -449,6 +559,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             setError(null);
             setTotal(page.total);
             params.successCallback(page.items, page.total);
+            if (params.startRow === 0) arrived(grid, fromTop);
           },
           (thrown: unknown) => {
             if (controller.signal.aborted) return;
@@ -466,6 +577,28 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       pending.clear();
     };
   }, [grid, query, wanted]);
+
+  /**
+   * The first rows of what is asked for have come: the grid goes back to where the list was
+   * left, or to its top for a new filter, once the grid has drawn them.
+   */
+  const arrived = useEffectEvent((api: GridApi<T>, fromTop: boolean) => {
+    const place = restoring.current;
+    if (!place && !fromTop) return;
+    requestAnimationFrame(() => {
+      if (api.isDestroyed()) return;
+      const rows = scrolledRows(host.current);
+      if (!place) {
+        if (rows) rows.scrollTop = 0;
+        return;
+      }
+      if (restoring.current !== place) return;
+      if (rows) rows.scrollTop = place.top;
+      window.scrollTo(0, place.windowY);
+      restoring.current = null;
+      if (place.opened) setNote("Back where the list was left. The row opened last is marked.");
+    });
+  });
 
   function showShort(text: string) {
     const result = parseFilter(text, quick);

@@ -1784,6 +1784,12 @@ One grid component is used on every list page.
   creates an override; clearing an override returns it to inheriting.
 - Archived and retired records are hidden until "Include archived" is on, then greyed.
 - Column layout and the last filter are remembered per user in `localStorage`.
+- Where a list was left, how far it was scrolled and the row opened from it, is kept
+  for the tab in `sessionStorage`, by the grid. Coming back to the list by Back or by a
+  link, under the same filter, sort and switches, shows the same rows with that row
+  marked; a new filter or sort begins at the top, and a link that brings a filter of
+  its own shows it from the top. A browser that refuses the storage shows the list from
+  its top (P-203).
 
 Cell-range selection and editing in the grid are LATER.
 

@@ -185,3 +185,126 @@ test("what is typed into an item's details after Save, while the page reads it a
 
   await expectClean(page, seen);
 });
+
+/** The part of a grid whose rows scroll, and how far it is scrolled. */
+function scrolled(grid: Locator): Promise<number> {
+  return grid.locator(".ag-grid-viewport").evaluate((rows) => Math.round(rows.scrollTop));
+}
+
+/** Sixty items of the file's own, for a list longer than its window. */
+async function rows(request: APIRequestContext, headers: Headers): Promise<void> {
+  const answer = await request.post("./api/v1/items/query", {
+    headers,
+    data: {
+      filter: { field: "hostname", op: "prefix", value: host("row-") },
+      limit: 1,
+    },
+  });
+  expect(answer.status(), "the items of the file are looked for").toBe(200);
+  const { total } = (await answer.json()) as { total: number };
+  for (let at = total; at < 60; at += 1) {
+    await make(request, headers, "/items", {
+      hostname: host(`row-${String(at).padStart(2, "0")}`),
+      location_hid: made.location,
+    });
+  }
+}
+
+test("a list keeps its place: Back and a link back show the rows it was on, with the row opened marked; a new sort begins at the top (P-203)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await records(request, account);
+  await rows(request, headers);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  const grid = page.getByTestId("grid-items");
+  await page.getByLabel("Filter", { exact: true }).fill(`hostname:prefix:${host("row-")}`);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByText("60 items", { exact: true })).toBeVisible();
+  await expect(grid.locator(".ag-row[row-index='0']")).toBeVisible();
+
+  // Down the list, and a row opened by its link.
+  await grid.locator(".ag-grid-viewport").evaluate((rows) => {
+    rows.scrollTop = 1000;
+  });
+  await expect(grid.locator(".ag-row[row-index='40']")).toBeVisible();
+  // The place is kept once the scrolling has ended.
+  await page.waitForTimeout(500);
+  const row = grid.locator(".ag-row[row-index='40']");
+  const rowId = await row.getAttribute("row-id");
+  expect(rowId).toBeTruthy();
+  const opened = grid.locator(`.ag-row[row-id="${rowId}"]`);
+  const name = (await row.locator('[col-id="name"] a').textContent()) ?? "";
+  await row.locator('[col-id="name"] a').click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+
+  // The browser's Back: the same rows, scrolled as they were, the row opened marked.
+  await page.goBack();
+  await expect(opened).toHaveClass(/row-opened/);
+  await expect(opened).toBeInViewport();
+  expect(await scrolled(grid)).toBeGreaterThan(900);
+  await expect(page.getByTestId("grid-cell-note")).toHaveText(
+    "Back where the list was left. The row opened last is marked.",
+  );
+
+  // A link back to the list, while the server answers late: the same once the rows come.
+  await opened.locator('[col-id="name"] a').click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await page.route("**/api/v1/items/query", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue().catch(() => {});
+  });
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Items", exact: true })
+    .click();
+  await expect(opened).toHaveClass(/row-opened/, { timeout: 15_000 });
+  await expect(opened).toBeInViewport();
+  await page.unroute("**/api/v1/items/query");
+
+  // A new sort begins at the top, with no row marked.
+  await grid.locator('[role="columnheader"][col-id="name"]').click();
+  await expect(grid.locator(".ag-row[row-index='0']")).toBeInViewport();
+  await expect.poll(() => scrolled(grid)).toBe(0);
+  await expect(grid.locator(".row-opened")).toHaveCount(0);
+
+  await expectClean(page, seen);
+});
+
+test("a list shows its rows where the browser refuses session storage (P-203)", async ({
+  browser,
+  baseURL,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await records(request, account);
+  await rows(request, headers);
+  const context = await browser.newContext(baseURL ? { baseURL } : {});
+  await context.addInitScript(() => {
+    Object.defineProperty(window, "sessionStorage", {
+      get() {
+        throw new DOMException("refused", "SecurityError");
+      },
+    });
+  });
+  const page = await context.newPage();
+  const seen = await watch(context);
+  await signIn(page, account);
+  await page.goto(`./items?filter=${encodeURIComponent(`hostname:prefix:${host("row-")}`)}`);
+  const grid = page.getByTestId("grid-items");
+  await expect(page.getByText("60 items", { exact: true })).toBeVisible();
+  const row = grid.locator(".ag-row[row-index='2']");
+  const name = (await row.locator('[col-id="name"] a').textContent()) ?? "";
+  await row.locator('[col-id="name"] a').click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByText("60 items", { exact: true })).toBeVisible();
+  await expect(grid.locator(".ag-row[row-index='0']")).toBeVisible();
+  await expectClean(page, seen);
+  await context.close();
+});
