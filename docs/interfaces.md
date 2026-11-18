@@ -2276,8 +2276,10 @@ One grid component is used on every list page.
   name in the heading of a row, which opens the row's own record, is the link it is, and a
   value in another cell that names a record is a link in the style of its text, as the
   vendor of a contract, the agreement of a term or a contract, the system of a
-  registration, the model of a minor item, the carrier or the place a contact is
-  inherited from, the contact of a place and the user groups of a user, for an Admin.
+  registration, the model of a minor item and of a member of a group, the vendor of a
+  contract that covers an item, the carrier or the place a contact is inherited from, the
+  contact of a place and the user groups of a user, for an Admin. In the grid of the items
+  a contract covers, the PID is a link to the model.
 
 Cell-range selection and editing in the grid are LATER.
 
@@ -2384,11 +2386,13 @@ A page that cannot be drawn says so (P-230): "This page could not be drawn", wit
 text of the fault in a box that is read and selected as any text, a button Copy the text,
 and two ways on, Load again, which loads the page at its present address, and The first
 page, at the prefix the page is served under. A fault in what is beneath the menu bar
-leaves the menu bar where it is, and opening another page clears it; a fault in the frame
-itself, the menu bar or what stands with it, stands over the whole page, and Back or
+leaves the menu bar where it is, and any move clears it, to another page or to the same
+one again, as Items in the menu bar on the list of items, or Find an item; a fault in the
+frame itself, the menu bar or what stands with it, stands over the whole page, and Back or
 Forward clears it. A part of the web page that cannot be fetched, the file of one of its
 pages, says the same, and that a new version may have been installed since the page was
-loaded. The fault is written to the browser's console and sent nowhere. The text of the
+loaded; it is fetched again the next time the page is opened after a move, once for each
+opening, so that a file put back is drawn without loading the page again. The fault is written to the browser's console and sent nowhere. The text of the
 fault holds what was thrown, the address of the page, the version of the web page, the
 time, and where in the page it happened. Before its script runs the page holds words:
 the product's name, written into it by the server as it writes the tab's title, and

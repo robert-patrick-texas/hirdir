@@ -59,8 +59,30 @@ test("a script that does not arrive leaves words, and to load again after a whil
 });
 
 test("the words before the script are replaced when the page draws", async ({ page, account }) => {
+  // The page's script is held back a moment: until it runs, the page says what it is.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/assets/index-*.js", async (route) => {
+    await held;
+    await route.continue();
+  });
+  // The script is deferred: the page has neither loaded nor parsed until it runs.
+  await page.goto("./", { waitUntil: "commit" });
+  const boot = page.locator("#root .boot");
+  await expect(boot).toBeVisible();
+  await expect(boot).toContainText("hirdir");
+  await expect(boot).toContainText("Loading…");
+  release();
+  // Once it runs, the page it draws takes the place of the words.
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Sign in to hirdir", exact: true }),
+  ).toBeVisible();
+  await expect(boot).toHaveCount(0);
+  await page.unroute("**/assets/index-*.js");
   await signIn(page, account);
-  await expect(page.locator("#root .boot")).toHaveCount(0);
+  await expect(boot).toHaveCount(0);
 });
 
 const SHAPES: Record<string, string> = { null: "null", "{}": "{}", "[]": "[]" };
@@ -162,6 +184,28 @@ test("a page that cannot be drawn says so; another page clears it; Load again lo
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toBe(await page.getByTestId("fault-text").inputValue());
 
+  // A move within the same path clears it too: Items in the menu bar, on the faulted list
+  // of items, and Find an item, which opens that list with words.
+  await page.unroute("**/api/v1/**");
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Items" }).click();
+  await expect(fault(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  await page.route("**/api/v1/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  await back(page);
+  await expect(fault(page)).toBeVisible();
+  await page.unroute("**/api/v1/**");
+  await page.getByRole("searchbox", { name: "Find an item" }).fill(`site4-sw-${suffix}`);
+  await page.getByRole("searchbox", { name: "Find an item" }).press("Enter");
+  await expect(fault(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  await page.route("**/api/v1/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  await back(page);
+  await expect(fault(page)).toBeVisible();
+
   // Going to another page clears it.
   await page.unroute("**/api/v1/**");
   await page
@@ -220,6 +264,36 @@ test("a part of the page that cannot be fetched says so beneath the menu bar", a
     .getByRole("link", { name: "Owners" })
     .click();
   await expect(page.getByRole("heading", { level: 1, name: "Owners" })).toBeVisible();
+  // The file is back: the next opening of the page fetches it again, and draws it.
+  await page.unroute("**/assets/Vendors-*.js");
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Vendors" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: "Vendors" })).toBeVisible();
+  await expect(fault(page)).toHaveCount(0);
+});
+
+test("a part that stays missing is fetched once for each opening, not again and again", async ({
+  page,
+  account,
+}) => {
+  let asked = 0;
+  await page.route("**/assets/Vendors-*.js", (route) => {
+    asked += 1;
+    return route.abort();
+  });
+  await signIn(page, account);
+  // Fetched ahead once, a moment after signing in.
+  await page.waitForTimeout(1_500);
+  const ahead = asked;
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Vendors" })
+    .click();
+  await expect(fault(page)).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(2_000);
+  expect(asked - ahead).toBeLessThanOrEqual(1);
 });
 
 test("a fault in the frame itself says so over the whole page", async ({ page, account }) => {

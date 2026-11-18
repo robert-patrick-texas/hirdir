@@ -36,6 +36,7 @@ import { fieldErrors } from "../lib/problems";
 import { dateValue } from "../lib/sort";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
 import { useSorting } from "../lib/useSorting";
+import { oneLink, page } from "../lib/valueLinks";
 import { ConfirmButton } from "./ConfirmButton";
 import { ContractField } from "./ContractField";
 import { TextField } from "./Field";
@@ -44,6 +45,7 @@ import { DataGrid } from "./grid/DataGrid";
 import { ItemPicker } from "./ItemPicker";
 import { Notice, Problem } from "./Problem";
 import { SortTh } from "./SortTh";
+import { ValueLink } from "./ValueLink";
 
 type Item = Schemas["ItemOut"];
 
@@ -448,7 +450,11 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
                         </span>
                       )}
                     </th>
-                    <td>{row.contract.vendor}</td>
+                    <td>
+                      <ValueLink kind="vendor" hid={row.contract.vendor_hid}>
+                        {row.contract.vendor}
+                      </ValueLink>
+                    </td>
                     <td
                       title={
                         row.contract.status === RENEWAL_PENDING ? RENEWAL_PENDING_NOTE : undefined
@@ -743,6 +749,7 @@ const COVERAGE_COLUMNS: GridColumn<Coverage>[] = [
     kind: "text",
     column: null,
     value: (row) => row.item.pid,
+    links: (row) => oneLink(row.item.pid, page("catalog_entry", row.item.catalog_entry_hid)),
     width: 150,
   },
   {

@@ -2,7 +2,7 @@
 
 import { Component, type ErrorInfo, type ReactNode, useId, useMemo, useState } from "react";
 import { copyText } from "../lib/clipboard";
-import { faultText, isMissingPart } from "../lib/fault";
+import { faultText, isMissingPart, retryFailedParts } from "../lib/fault";
 import { useSite } from "../lib/product";
 import { BUILT_AS } from "../lib/version";
 import { NewVersionNotice, versionStore } from "./NewVersion";
@@ -19,9 +19,14 @@ interface BoundaryState {
   caught: boolean;
   error: unknown;
   componentStack: string | null;
+  /**
+   * The address the fault was caught at, once it is known: a move away from it clears
+   * the fault. A fault caught in the very render that moved there is not cleared by it.
+   */
+  caughtAt: string | null;
 }
 
-const CLEAR: BoundaryState = { caught: false, error: null, componentStack: null };
+const CLEAR: BoundaryState = { caught: false, error: null, componentStack: null, caughtAt: null };
 
 /**
  * What stands where a page could not be drawn, or a part of it could not be fetched. The
@@ -32,12 +37,15 @@ export class FaultBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = CLEAR;
 
   static getDerivedStateFromError(error: unknown): Partial<BoundaryState> {
-    return { caught: true, error, componentStack: null };
+    return { caught: true, error, componentStack: null, caughtAt: null };
   }
 
   override componentDidCatch(error: unknown, info: ErrorInfo): void {
     console.error("The page could not be drawn:", error, info.componentStack ?? "");
-    this.setState({ componentStack: info.componentStack ?? null });
+    this.setState({
+      componentStack: info.componentStack ?? null,
+      caughtAt: this.props.resetKey ?? "",
+    });
     void versionStore.check();
   }
 
@@ -50,12 +58,16 @@ export class FaultBoundary extends Component<BoundaryProps, BoundaryState> {
     window.removeEventListener("popstate", this.clear);
   }
 
-  override componentDidUpdate(previous: BoundaryProps): void {
-    if (this.state.caught && previous.resetKey !== this.props.resetKey) this.clear();
+  override componentDidUpdate(): void {
+    const { caught, caughtAt } = this.state;
+    if (caught && caughtAt !== null && caughtAt !== (this.props.resetKey ?? "")) this.clear();
   }
 
   private readonly clear = (): void => {
-    if (this.state.caught) this.setState(CLEAR);
+    if (!this.state.caught) return;
+    // A part that could not be fetched is fetched anew when it is next opened.
+    retryFailedParts();
+    this.setState(CLEAR);
   };
 
   override render(): ReactNode {

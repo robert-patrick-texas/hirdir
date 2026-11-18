@@ -3,6 +3,8 @@
 // What is said of a fault, and the text of it that the page shows and copies for whoever
 // is asked about it. The fault is written to the browser's console and sent nowhere.
 
+import { type ComponentType, createElement, lazy } from "react";
+
 /** A part of the web page, the file of one of its pages, that could not be fetched. */
 export class PartNotFetched extends Error {
   constructor(cause: unknown) {
@@ -20,6 +22,49 @@ export function part<T>(load: () => Promise<T>): () => Promise<T> {
     load().catch((thrown: unknown) => {
       throw thrown instanceof PartNotFetched ? thrown : new PartNotFetched(thrown);
     });
+}
+
+// The parts whose fetch failed, each with what makes it be fetched anew.
+const failedParts = new Set<() => void>();
+
+/**
+ * A page that is a part of its own, as `lazy` makes one, save that a fetch that failed is
+ * tried again the next time the page is opened. `lazy` keeps a rejection for good, so the
+ * part is made anew, though only when the fault is cleared by a move to a page: never
+ * while it is drawn, where a part that stays missing would be fetched again and again.
+ */
+export function retriedPart<C extends ComponentType<never>>(
+  load: () => Promise<{ default: C }>,
+): C {
+  const make = () =>
+    lazy(
+      () =>
+        load().catch((thrown: unknown) => {
+          failedParts.add(reset);
+          throw thrown;
+        }) as unknown as Promise<{ default: ComponentType<object> }>,
+    );
+  const held: HeldPart = { current: make() };
+  const reset = () => {
+    held.current = make();
+  };
+  return DrawnPart.bind(held) as unknown as C;
+}
+
+/** What a part draws now: the one made last. */
+interface HeldPart {
+  current: ComponentType<object>;
+}
+
+/** A part, drawn as the one it holds now; bound to what it holds by `retriedPart`. */
+function DrawnPart(this: HeldPart, props: object) {
+  return createElement(this.current, props);
+}
+
+/** Make every part that could not be fetched be fetched anew when it is next opened. */
+export function retryFailedParts(): void {
+  for (const reset of failedParts) reset();
+  failedParts.clear();
 }
 
 // What browsers say of a module that could not be fetched: Chromium, Firefox, Safari, and

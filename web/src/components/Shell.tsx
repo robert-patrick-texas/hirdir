@@ -82,7 +82,7 @@ function FindItem() {
 export function Shell() {
   const { user, signOut } = useAuth();
   const { productName } = useSite();
-  const { pathname } = useLocation();
+  const { pathname, key } = useLocation();
   const how = useNavigationType();
   const main = useRef<HTMLElement>(null);
   const shown = useRef(pathname);
@@ -209,8 +209,8 @@ export function Shell() {
       <RenewalAlert />
       <main ref={main} tabIndex={-1}>
         {/* 0.9.7: a page that cannot be drawn, or fetched, says so beneath the menu bar,
-            until another page is opened (P-230). */}
-        <FaultBoundary resetKey={pathname}>
+            until the page moves, to another page or to the same one again (P-230). */}
+        <FaultBoundary resetKey={key}>
           {/* A page whose code is still on its way. It says so only if that takes a while. */}
           <Suspense
             fallback={

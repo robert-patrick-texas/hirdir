@@ -1113,8 +1113,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         Click a heading to sort, and hold Shift to sort by a further column. Click a row to select
         it, with Shift for a range and Ctrl for several, or tick the box at its left to add it to
         those ticked; the box in the heading ticks every row on show, and clears them. A double
-        click opens the row. With the keyboard: Enter on a heading sorts, Ctrl+Enter opens its
-        filter, Space selects a row and Enter opens it.
+        click opens the row, and a press on a link opens what it names. With the keyboard: Enter on
+        a heading sorts, Ctrl+Enter opens its filter, Space selects a row, and Enter opens it, or on
+        a value that names another record opens that record.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
         {entity &&

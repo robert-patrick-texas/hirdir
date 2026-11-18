@@ -28,6 +28,7 @@ import { Registrations } from "../components/Registrations";
 import { DeleteRecord, useDeletedNote, useTickedRemoval } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { ValueLink } from "../components/ValueLink";
 import { WhyEachValue } from "../components/WhyEachValue";
 import { addressList, managementText, networkLabels } from "../lib/addresses";
 import {
@@ -1370,7 +1371,15 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
                       <Link to={itemPath(member.item_hid)}>{name}</Link>
                       {ended && <span className="badge badge-plain">Ended</span>}
                     </th>
-                    <td>{member.item.pid || <Dash />}</td>
+                    <td>
+                      {member.item.pid ? (
+                        <ValueLink kind="catalog_entry" hid={member.item.catalog_entry_hid}>
+                          {member.item.pid}
+                        </ValueLink>
+                      ) : (
+                        <Dash />
+                      )}
+                    </td>
                     <td className="mono">{member.item.serial_number || <Dash />}</td>
                     <td>{roleLabel(member.role)}</td>
                     {group.type === "stack" && <td>{seen ? "Seen as master" : ""}</td>}
