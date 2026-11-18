@@ -9906,6 +9906,8 @@ export interface components {
       status: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
       /** The name of its vendor. */
       vendor: string;
+      /** Its vendor, which `vendor` names (P-232). */
+      vendor_hid: string;
     };
     /**
      * A renewal: the new number, the new period, or both, and what else changes with
@@ -10013,6 +10015,8 @@ export interface components {
     /** A controller of an endpoint, with the cluster it is in. */
     ControllerRef: {
       asset_tag: string | null;
+      /** Its model, which `pid` names (P-232). */
+      catalog_entry_hid: string | null;
       /** The name of its cluster, when it is in one. */
       cluster: string | null;
       cluster_hid: string | null;
@@ -11006,6 +11010,8 @@ export interface components {
     /** An item, as named on another record. */
     ItemRef: {
       asset_tag: string | null;
+      /** Its model, which `pid` names (P-232). */
+      catalog_entry_hid: string | null;
       hid: string;
       /** Its name, or its hostname when it has no name. */
       name: string | null;
