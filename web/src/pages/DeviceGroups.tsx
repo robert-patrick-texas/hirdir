@@ -25,6 +25,7 @@ import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
+import { useTickedRemoval } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { WhyEachValue } from "../components/WhyEachValue";
@@ -424,10 +425,13 @@ export function DeviceGroups() {
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
+  // 0.9.7: the rows ticked retired, and deleted by an Admin (P-227, P-228).
+  const removal = useTickedRemoval<DeviceGroup>("device_group");
 
   return (
     <>
       <h1>Groups</h1>
+      {removal.shown}
       {adding && (
         <NewGroup
           onCancel={() => setAdding(false)}
@@ -439,6 +443,9 @@ export function DeviceGroups() {
         id="device-groups"
         noun={["group", "groups"]}
         entity="device_groups"
+        reloadKey={removal.turn}
+        tickAfter={{ reload: removal.turn, ids: removal.keep }}
+        actions={removal.actions}
         columns={COLUMNS}
         load={(request, signal) =>
           api.request("post", "/api/v1/device-groups/query", { body: queryBody(request), signal })

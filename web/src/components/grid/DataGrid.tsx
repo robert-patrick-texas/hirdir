@@ -182,6 +182,12 @@ export interface DataGridProps<T> {
   minor?: { label: string; without: FilterNode; start?: boolean };
   /** Change it to read the list again, as after a record was created. */
   reloadKey?: number;
+  /**
+   * 0.9.7: rows to tick again once the list is read again, by their ids, as those that a
+   * Retire or a Delete of the rows ticked refused (P-228): once, when the list is read
+   * for the `reloadKey` given with them, and not again for another filter.
+   */
+  tickAfter?: { reload: number; ids: readonly string[] };
   /** The kind of record the rows are, as an export names it. With it, Copy and Export are offered. */
   entity?: Entity;
   /** Open the form that changes many rows at once. With it, Bulk edit is offered. */
@@ -335,6 +341,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const read = useEffectEvent(props.load);
   const idOf = useEffectEvent(props.rowId);
   const isDimmed = useEffectEvent((row: T) => props.dimmed?.(row) === true);
+  // The reload whose rows to tick were ticked already.
+  const tickedFor = useRef<number | null>(null);
+  const tickAfter = useEffectEvent((reload: number): readonly string[] => {
+    const asked = props.tickAfter;
+    if (!asked || asked.reload !== reload || tickedFor.current === reload) return [];
+    tickedFor.current = reload;
+    return asked.ids;
+  });
   const linkOf = useEffectEvent((row: T) => props.rowLink?.(row) ?? null);
   const open = useEffectEvent((row: T) => {
     const path = linkOf(row);
@@ -555,6 +569,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     const pending = new Set<() => void>();
     grid.deselectAll();
     setAllMatching(false);
+    // The rows to tick again as they come, as those a Retire refused (P-228).
+    const toTick = new Set(tickAfter(wanted.reloadKey));
     // Another filter or switch: the list begins at its top (P-203).
     const fromTop = viewChanged(grid);
     grid.setGridOption("datasource", {
@@ -589,6 +605,16 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             setError(null);
             setTotal(page.total);
             params.successCallback(page.items, page.total);
+            if (toTick.size > 0) {
+              const nodes = [];
+              for (const row of page.items) {
+                const rowId = idOf(row);
+                const node = toTick.has(rowId) ? grid.getRowNode(rowId) : undefined;
+                if (node) nodes.push(node);
+                toTick.delete(rowId);
+              }
+              if (nodes.length > 0) grid.setNodesSelected({ nodes, newValue: true });
+            }
             if (params.startRow === 0) arrived(grid, fromTop);
             else if (marking.current !== null) requestAnimationFrame(() => markOpened(grid));
           },
