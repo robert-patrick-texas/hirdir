@@ -1,4 +1,4 @@
-.PHONY: help version dev web check fmt test test-changed acceptance e2e deb package-test docs docs-watch facts release-body upgrade guard contract examples fixture time-filters time-import
+.PHONY: help version dev web check fmt test test-changed acceptance browser e2e deb package-test docs docs-watch facts release-body upgrade guard contract examples fixture time-filters time-import
 
 # The tests run several at once: as many as the host has cores and memory free. Before
 # they start, a busy host is waited for, ten minutes at the most. HIRDIR_TEST_WORKERS
@@ -57,6 +57,9 @@ time-import:    ## time a preview and an apply of 10,000 new items, on a copy of
 
 acceptance:     ## the scenarios of docs/build-plan.md against a server started from an empty database
 	$(PYTEST) tests/acceptance
+
+browser:        ## the browser scenarios on this host, on a fresh scratch inventory, with one list of every failure; ARGS="--last-failed", "--since <commit>", "--built", "--plan" or spec files
+	scripts/browser.sh $(ARGS)
 
 e2e:            ## package-test, with the browser scenarios run against the fresh install
 	packaging/package-test.sh --e2e

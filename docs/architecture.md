@@ -507,6 +507,7 @@ volume.
 | `make test` | the Python tests of `make check`, alone |
 | `make test-changed` | only the Python tests that what has changed since their last run can reach; for use while working, never in place of `make check` |
 | `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server |
+| `make browser` | the browser scenarios on the host, against a fresh scratch inventory, with one list of every scenario that failed; `ARGS="--last-failed"`, `ARGS="--since <commit>"` or spec files, see "The browser scenarios on the host" below |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
 | `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
@@ -544,6 +545,13 @@ itself is done once.
   as the contract, an example or a script of the package, and it does not cover the
   acceptance scenarios, whose server is another process. So it is for the minutes
   between changes, and `make check` and `make acceptance` are what a task is done by.
+- **A change to the web UI alone is checked by the web's checks.** A change that
+  touches only `web/` reaches no Python test. While working on it, what is run is
+  `npm --prefix web run check` (the types, Biome and the unit tests of the web UI) and
+  the browser scenarios of the spec files it touches, with `make browser ARGS="<spec
+  files>"` or `make browser ARGS="--since <commit>"`, and `make browser
+  ARGS="--last-failed --built"` after a fix; not `make test`, `make test-changed` or
+  `make acceptance`, which would run again what nothing changed.
 
 Measured on the four-core build host with nothing else running, at 0.4.1: the 672
 Python tests of `make check` take 33 seconds, and the 22 scenarios of `make acceptance`
@@ -602,6 +610,55 @@ A run is as long as its longest file, so a file holds only scenarios that build 
 another. The scenarios of 0.4.0 were one file and are three for that reason,
 `minor-items.spec.ts`, `stack.spec.ts` and `wireless.spec.ts`: each loads the catalog,
 the owners and the items it needs, and what they do alike is in `web/e2e/structure.ts`.
+The scenarios of places, of 0.5.0, were one file of four minutes, the longest of the
+suite, and are three since 0.9.6: `geography.spec.ts` lays out the places, their
+contacts and the move of a site; `geography-plans.spec.ts` makes an owner outside the
+team and plans a new site; `geography-shipping.spec.ts` types a shipping address once
+and rebuilds a room. Each of the two new files lays out the region and loads the people
+and items that it took from the scenarios before it, and what the three do alike is in
+`web/e2e/geographySteps.ts`. Measured on the build host with two at once while other
+work held the host: the one file took 2.6 minutes; the three, run together, 1.5, 1.2
+and 0.8 minutes, and in a run of the whole suite 2.3, 1.8 and 1.3.
+
+**The browser scenarios on the host.** `make browser` (`scripts/browser.sh`) runs them
+on the build host in one pass that reports every failure:
+
+1. It makes a fresh scratch inventory in `dev-data/browser/`, git-ignored, with one
+   Admin, `e2e-admin`, the Admin of the environment, as the package test does; the
+   examples are not loaded, since every spec file makes what it needs. It builds the web
+   UI, unless `--built` says the build is current, and serves it with
+   `hirdir admin serve --dev` on a free port, never 8715. When it ends, or is
+   interrupted, it stops that server by its port; the inventory is kept until the next
+   run.
+2. It waits for a quiet host and takes the number of files at once as every other run
+   of tests does: `E2E_WORKERS`, or `scripts/test_load.py`.
+3. It runs the ordinary project, and then each project that runs alone, in the order of
+   `playwright.config.ts`, each with `--no-deps`, whatever failed before. Playwright's
+   own dependencies would leave a project that runs alone unrun after one failure of
+   another, and hide what fails in it until the next run.
+4. It ends with what each project counted, the files that took longest, and one list of
+   every scenario that failed, by project, file and title, and exits non-zero if any
+   did.
+
+`make browser ARGS="--last-failed --built"` then runs only what failed, or did not run
+after a failure in its file, on the same inventory and port, project by project with
+Playwright's `--last-failed`: a fix is checked in seconds. `make browser ARGS="<spec
+files>"` runs only those files, and `make browser ARGS="--since <commit>"` only the spec
+files that differ from that commit in the tree as it is, with the files that import a
+helper module that differs, and every file when `support.ts` or the configuration does.
+A project that runs alone is then run only when its file is among them. `--plan` says
+which projects and files a run would take, and runs nothing.
+
+Every project that runs alone may be run after a failure elsewhere: none of them reads
+what an ordinary file leaves half done but as it would read any other file's records.
+`stale-term.spec.ts` puts `time_zone` back in a `finally`, and `weights.spec.ts` and
+`product.spec.ts` put their settings back in an `afterAll`, which run when a test of
+theirs fails too; only a run that is killed outright leaves a setting changed, and the
+next full run starts from a fresh inventory.
+
+A release's host run is `make browser ARGS="--since v<previous version>"`: the package
+test of `make e2e` runs every browser scenario against the fresh install, so the host
+run is for the files that changed, where a failure is quickest to see and to rerun.
 
 Measured against a development server on the four-core build host, the browser in
 Playwright's container: one file after another, which is how they ran before 0.5.0, the
