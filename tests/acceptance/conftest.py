@@ -31,7 +31,16 @@ class Server:
     def admin(self, *arguments: str) -> str:
         """Run `hirdir admin` with arguments and return what it printed."""
         result = subprocess.run(  # noqa: S603 - our own command with fixed arguments
-            [*HIRDIR, "admin", *arguments], env=self.env, capture_output=True, text=True, check=True
+            [*HIRDIR, "admin", *arguments],
+            env=self.env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        # A command that fails says why: its own words, which the exit status alone hides.
+        assert result.returncode == 0, (
+            f"hirdir admin {' '.join(arguments[:1])} ended with {result.returncode}: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
         )
         return result.stdout
 
