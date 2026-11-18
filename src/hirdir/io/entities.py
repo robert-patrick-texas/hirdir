@@ -189,6 +189,10 @@ class Run:
         # row that names one says something else than the first, and is refused.
         self.row = 0
         self.masters: dict[tuple[str, str], int] = {}
+        # The rows that moved a current member of a stack to another position, by the
+        # group and the membership: whether two then hold one is judged when every row
+        # is in, so that a file may swap two members or renumber them all (P-219).
+        self.moved: dict[tuple[str, str], int] = {}
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
         self._held: dict[str, Any] = {}
@@ -362,6 +366,10 @@ class Run:
                 {field: f"row {before} of the file names the {which} master of this stack"},
             )
         self._learn(self.masters, (group_hid, which), self.row)
+
+    def moves(self, group_hid: str, member_hid: str) -> None:
+        """Note that this row moved a member of a stack to another position."""
+        self._learn(self.moved, (group_hid, member_hid), self.row)
 
     def place(self, text: str, field: str, level: str | None = None) -> geography.Place:
         """Return the region, site or location a row names, by its HID or its path."""
@@ -4086,11 +4094,31 @@ class DeviceGroupMembers(Entity):
         if given.get("joined_on", _MISSING) is None:
             raise Invalid("a membership has a day it began", {"joined_on": "is not cleared"})
         self._marks(run, groups.get_group(db, record.group_hid), given, values)
-        changed = groups.update_member(
-            db, context, record.group_hid, record.hid, record.row_version, given
+        moving = (
+            given.get("position") is not None
+            and given["position"] != record.position
+            and record.left_on is None
         )
+        changed = groups.update_member(
+            db, context, record.group_hid, record.hid, record.row_version, given, held_later=moving
+        )
+        if moving:
+            run.moves(record.group_hid, record.hid)
         self._seen_as_master(run, changed, values)
         return changed
+
+    def finish(self, run: Run) -> dict[int, list[dict[str, str]]]:
+        """Return the rows that moved a member of a stack to a position that another
+        current member still holds once every row is in (P-219)."""
+        wrong: dict[int, list[dict[str, str]]] = {}
+        for (group_hid, member_hid), row in run.moved.items():
+            group = groups.get_group(run.db, group_hid)
+            other = groups.doubled(run.db, group_hid, member_hid) if group.type == "stack" else None
+            if other is not None:
+                name = items.shown_name(run.db.get_one(Item, other.item_hid))
+                held = f"another current member holds position {other.position}: {name}"
+                wrong[row] = [{"field": "position", "message": held}]
+        return wrong
 
     @staticmethod
     def _marks(run: Run, group: Any, given: Mapping[str, Any], values: Mapping[str, Any]) -> None:

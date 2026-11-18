@@ -226,7 +226,7 @@ memberships made.
   holds among its `changes` the entry `joining_group`, with the HID of the group as
   `new`. The item's event holds the host name, the FQDN and the location it had, and
   the event of each address what it was: its item, the address, its network and its
-  role (O-02).
+  role (P-223).
 
 `PATCH /device-groups/{hid}/members/{member_hid}` that gives `left_on` may carry `item`
 (P-218): what the item is to have from the end, any of `hostname`, `fqdn`,
@@ -244,14 +244,24 @@ Without `lifecycle_state`, or with the state the item has already, which is no m
 `item.hostname`, `item.lifecycle_state` and so on, and leaves the membership and the
 item as they were. `item` without `left_on`, or on a membership that has ended, is
 refused. Each change of the item is audited as its change, and holds among its
-`changes` the entry `leaving_group`, with the HID of the group as `old`.
+`changes` the entry `leaving_group`, with the HID of the group as `old`; what follows
+from a move of the item, the end of its other memberships and of its coverage when it
+is released, is audited as it always is, with no such entry. `item` is given with a
+`left_on` that has come, today or before: what becomes of the item is done with the
+request, so a day to come is refused with it. A membership ended with a `left_on` to
+come, without `item`, is ended as the request is made, and its position is free at once.
 
 A position in a stack is held by one current member (P-219). A member added at a
 position that another current member of the stack holds, or moved to it, is refused
 with a `409` that names that member's item as `existing`, and two members of one request
 at one position with a `422`. A membership that has ended keeps its number and holds
 nothing. A stack that holds two members at one position already is left as it is, and
-other changes of it go through; either of the two may be moved to a free position. A
+other changes of it go through; either of the two may be moved to a free position. By
+the API two members change places by way of a free position, or of none: one is given
+`position` `null`, the other its place, and the first the place left. A file of members
+is judged when all of its rows are in, so that it may swap two members or renumber
+them all: a row that leaves its member at a position another current member still
+holds is rejected then. A
 member added to a stack with no position takes the lowest from 1 that no current member
 holds and that no other member of the same request is given; `next_position` of the
 stack, on `GET /device-groups/{hid}` and in the lists of groups, is that position, and

@@ -110,6 +110,8 @@ export function MemberPicker(props: MemberPickerProps) {
     enabled: true,
   };
 
+  const waiting = numbered && joins && rules.length === 0;
+
   function add(item: Item) {
     const used = [...positions, ...pending.map((row) => Number(row.position) || null)];
     onChange([
@@ -145,7 +147,9 @@ export function MemberPicker(props: MemberPickerProps) {
         standing={(item) => memberOffer(item, type)}
         taken={[...taken, ...pending.map((row) => row.item_hid)]}
         onPick={add}
-        {...(disabled === undefined ? {} : { disabled })}
+        // A switch picked before the lifecycle rules are read would not be offered
+        // Production, and would join as the spare it was: the picker waits for them.
+        {...(waiting ? { disabled: true } : disabled === undefined ? {} : { disabled })}
       />
       {pending.length > 0 && (
         <div className="scroll">

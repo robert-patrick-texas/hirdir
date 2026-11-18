@@ -14,13 +14,17 @@ class AuditContext:
 
     `cause`, where there is one, is what a change was made by beside the request that
     asked for it, as `(field, old, new)`: an item changed by joining a group (P-217). It
-    is one more entry of the `changes` of every event made in this context.
+    is one more entry of the `changes` of every event made in this context, or, where
+    `cause_of` names a record by its type and HID, of the events of that record alone:
+    what follows from a change of an item, the end of its other memberships when it is
+    released, is not said to have been made by leaving the group (P-218).
     """
 
     actor_hid: str | None
     via: str
     request_id: str = ""
     cause: tuple[str, Any, Any] | None = None
+    cause_of: tuple[str, str] | None = None
 
 
 SYSTEM = AuditContext(actor_hid=None, via="system")
@@ -31,9 +35,16 @@ def change(field: str, old: Any, new: Any) -> dict[str, Any]:
     return {"field": field, "old": old, "new": new}
 
 
-def because(context: AuditContext, field: str, old: Any, new: Any) -> AuditContext:
-    """Return the context of changes that are made by something, which each event says."""
-    return replace(context, cause=(field, old, new))
+def because(
+    context: AuditContext,
+    field: str,
+    old: Any,
+    new: Any,
+    of: tuple[str, str] | None = None,
+) -> AuditContext:
+    """Return the context of changes that are made by something, which each event says,
+    or each event of the one record `of` names."""
+    return replace(context, cause=(field, old, new), cause_of=of)
 
 
 def record(
@@ -46,7 +57,8 @@ def record(
 ) -> AuditEvent:
     """Add one event to the trail. It is written with the caller's transaction."""
     entries = list(changes or [])
-    if context.cause is not None:
+    caused = context.cause_of is None or context.cause_of == (record_type, record_hid)
+    if context.cause is not None and caused:
         entries.append(change(*context.cause))
     event = AuditEvent(
         actor_hid=context.actor_hid,

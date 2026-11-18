@@ -84,6 +84,14 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
     const next = { ...values, [field]: value };
     // A reason is for a move: none is kept once the state is left as it is.
     if (field === "lifecycle_state" && value === "") next.state_reason = "";
+    // What the form shows is what is sent: a disposition or an intent that the state now
+    // aimed at does not offer is shown as "As it is", so it is not kept to be sent.
+    const aimed = next.lifecycle_state || state;
+    if (next.disposition !== "" && !dispositionsIn(ruled, aimed, kept).includes(next.disposition)) {
+      next.disposition = "";
+    }
+    const offered = intentChoices(ruled, aimed, next.disposition || kept).map(String);
+    if (next.online !== "" && !offered.includes(next.online)) next.online = "";
     update(next);
   }
 
@@ -124,7 +132,11 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             onChange={(value) => set("hostname", value)}
             disabled={disabled}
             error={errors["item.hostname"]}
-            hint="Its own name from now. Blank, left as it is."
+            hint={
+              values.hostname === "" && !record?.hostname
+                ? "Its own name from now. Left blank, it has no name: it was known by the stack's."
+                : "Its own name from now. Blank, left as it is."
+            }
           />
           <TextField
             label="FQDN"
@@ -143,7 +155,11 @@ export function WhatBecomesOfIt({ itemHid, errors, onChange, disabled }: WhatBec
             blank="Left as it is"
             disabled={disabled}
             error={errors["item.location_hid"]}
-            hint="Where it goes: it has the stack's place no more."
+            hint={
+              values.location_hid === "" && !record?.location_hid
+                ? "Where it goes. Left as it is, it is nowhere: it has the stack's place no more."
+                : "Where it goes: it has the stack's place no more."
+            }
           />
           <SelectField
             label="Lifecycle state"

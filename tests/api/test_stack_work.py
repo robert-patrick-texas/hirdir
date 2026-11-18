@@ -345,6 +345,12 @@ def _end(
     )
 
 
+def _day(make: Maker, stack: dict[str, Any]) -> str:
+    """Today where the application is: the day the members of a stack just made joined.
+    What becomes of an item is given with an end on a day that has come."""
+    return make.members(stack)[0]["joined_on"]
+
+
 def _in_service(make: Maker, room: dict[str, Any]) -> tuple[dict, list[dict]]:
     """A stack of three switches in service, which have nothing of their own."""
     switches = [
@@ -366,7 +372,7 @@ def test_a_member_pulled_to_the_spare_pool_is_given_a_name_and_a_place_with_the_
         make,
         stack,
         pulled,
-        left_on=LATER,
+        left_on=_day(make, stack),
         item={
             "hostname": "spare-sw-901",
             "fqdn": "spare-sw-901.example.net",
@@ -376,7 +382,7 @@ def test_a_member_pulled_to_the_spare_pool_is_given_a_name_and_a_place_with_the_
         },
     )
 
-    assert ended["left_on"] == LATER
+    assert ended["left_on"] == _day(make, stack)
     spare = _item(make, pulled)
     assert (spare["hostname"], spare["fqdn"], spare["location_hid"]) == (
         "spare-sw-901",
@@ -408,7 +414,7 @@ def test_a_failed_member_is_moved_for_return_or_as_excess_with_the_end(make: Mak
         make,
         stack,
         failed,
-        left_on=LATER,
+        left_on=_day(make, stack),
         item={"lifecycle_state": "Pending-Removal", "state_reason": "rma"},
     )
     returned = _item(make, failed)
@@ -424,7 +430,7 @@ def test_a_failed_member_is_moved_for_return_or_as_excess_with_the_end(make: Mak
         make,
         stack,
         worn,
-        left_on=LATER,
+        left_on=_day(make, stack),
         item={
             "lifecycle_state": "Pending-Removal",
             "state_reason": "retired",
@@ -446,19 +452,27 @@ def test_an_item_that_leaves_for_good_does_not_collide_with_its_other_groups(
     make.move(_item(make, failed), "Pending-Removal", reason="rma")
 
     # A move to Released ends the memberships the item has: the stack's has ended first,
-    # on its own day, and the other group's ends today, as any such move ends it.
+    # and the other group's ends today, as any such move ends it.
+    day = _day(make, stack)
     _end(
         make,
         stack,
         failed,
-        left_on=LATER,
+        left_on=day,
         item={"lifecycle_state": "Released", "state_reason": "returned"},
     )
     gone = _item(make, failed)
     assert (gone["lifecycle_state"], gone["groups"]) == ("Released", [])
     past = make.members(stack, include_past="true")
-    assert [one["left_on"] for one in past if one["item_hid"] == failed["hid"]] == [LATER]
+    assert [one["left_on"] for one in past if one["item_hid"] == failed["hid"]] == [day]
     assert make.members(lab) == []
+    # The end of the other membership follows from the move: it is not said to have
+    # been made by leaving the stack, which the item's own events alone say (P-223).
+    other = make.audit(record_type="device_group_member")[0]
+    assert _changed(other)["left_on"] == (None, day)
+    assert _cause(other) == []
+    moved = make.audit(record_type="item", record_hid=failed["hid"])[0]
+    assert _cause(moved) == [{"field": "leaving_group", "old": stack["hid"], "new": None}]
     assert make.get(f"/device-groups/{lab['hid']}")["member_count"] == 0
 
 
@@ -468,7 +482,10 @@ def test_a_refused_part_of_what_becomes_of_it_leaves_the_membership_and_the_item
     places = _places(make)
     stack, switches = _in_service(make, places["room"])
     member = switches[2]
-    day = LATER
+    day = _day(make, stack)
+    # What becomes of the item is done with the request: not with an end on a day to come.
+    problem = _end(make, stack, member, 422, left_on=LATER, item={"hostname": "spare-sw-902"})
+    assert set(errors(problem)) == {"left_on"}
 
     refusals = [
         # A disposition its state does not allow, given with a name that would be taken.
@@ -728,3 +745,35 @@ def test_a_file_numbers_the_members_it_gives_no_position(make: Maker, files: Fil
         (5, "FCW90000004"),
         (6, "FCW90000006"),
     ]
+
+
+def test_a_file_swaps_two_members_and_renumbers_a_stack(make: Maker, files: Files) -> None:
+    places = _places(make)
+    stack, _ = _in_service(make, places["room"])
+    assert _positions(make, stack) == [(1, "FCW90000001"), (2, "FCW90000002"), (3, "FCW90000003")]
+
+    # Two members change places: each row moves its member to where the other is, and
+    # the two are judged together when both are in.
+    swap = f"group,item,position\n{STACK},FCW90000001,2\n{STACK},FCW90000002,1\n"
+    preview = files.preview("device_group_members", swap)
+    assert counts(preview["job"]) == (0, 2, 0, 0)
+    files.apply(preview)
+    assert _positions(make, stack) == [(1, "FCW90000002"), (2, "FCW90000001"), (3, "FCW90000003")]
+
+    # Every member one up.
+    shift = (
+        "group,item,position\n"
+        f"{STACK},FCW90000002,2\n{STACK},FCW90000001,3\n{STACK},FCW90000003,4\n"
+    )
+    preview = files.preview("device_group_members", shift)
+    assert counts(preview["job"]) == (0, 3, 0, 0)
+    files.apply(preview)
+    assert _positions(make, stack) == [(2, "FCW90000002"), (3, "FCW90000001"), (4, "FCW90000003")]
+
+    # A row that leaves its member where another still is, once all are in, is rejected.
+    clash = f"group,item,position\n{STACK},FCW90000002,3\n"
+    preview = files.preview("device_group_members", clash)
+    assert counts(preview["job"]) == (0, 0, 0, 1)
+    assert [entry["field"] for entry in preview["rows"][0]["reasons"]] == ["position"]
+    assert "FCW90000001" in preview["rows"][0]["reasons"][0]["message"]
+    assert _positions(make, stack) == [(2, "FCW90000002"), (3, "FCW90000001"), (4, "FCW90000003")]

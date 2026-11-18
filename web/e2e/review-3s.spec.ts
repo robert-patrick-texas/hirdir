@@ -429,7 +429,17 @@ test("a member leaves a stack to the spare pool with a new name and a place, in 
     .click();
   const ending = page.getByRole("region", { name: `End the membership of ${leaving}` });
   const what = ending.getByRole("group", { name: "What becomes of it" });
+  // What the form shows is what is sent: Excess is of the state it moves to, and is
+  // not kept, out of sight, once the state is put back as it is.
+  await what.getByLabel("Excess").check();
+  await expect(what.getByLabel("Lifecycle state")).toHaveValue("Pending-Removal");
+  await expect(what.getByLabel("Disposition")).toHaveValue("Excess");
+  await what.getByLabel("Lifecycle state").selectOption("");
+  await expect(what.getByLabel("Disposition")).toHaveValue("");
   await what.getByLabel("To the spare pool").check();
+  // A spare with no name and no place is said to be so, before it is sent.
+  await expect(what).toContainText("Left blank, it has no name");
+  await expect(what).toContainText("Left as it is, it is nowhere");
   await expect(what.getByLabel("Disposition")).toHaveValue("Spare");
   await expect(what.getByLabel("Expected online")).toHaveValue("false");
   await expect(what.getByLabel("Lifecycle state")).toHaveValue("");

@@ -840,6 +840,17 @@ def _refuse_held(
     )
 
 
+def doubled(db: Session, group_hid: str, member_hid: str) -> DeviceGroupMember | None:
+    """Return another current member that holds the position of a member of a stack."""
+    member = db.get(DeviceGroupMember, member_hid)
+    if member is None or member.left_on is not None or member.position is None:
+        return None
+    for other in current_members(db, group_hid):
+        if other.hid != member.hid and other.position == member.position:
+            return other
+    return None
+
+
 def add_members(
     db: Session,
     context: AuditContext,
@@ -957,8 +968,14 @@ def update_member(
     member_hid: str,
     row_version: int | None,
     fields: dict[str, Any],
+    *,
+    held_later: bool = False,
 ) -> DeviceGroupMember:
     """Change a membership: its role, its position or its dates. Giving it `left_on` ends it.
+
+    `held_later` is for a file, which may move several members of a stack at once, two
+    of them into each other's places: whether a position is held by two is then judged
+    when every row of the file is in (`doubled`), and not a row at a time.
 
     Marking a member as the intended master of a stack takes the mark from the member
     that had it, in the same change. No rule stops a member leaving, the master among
@@ -1004,8 +1021,14 @@ def update_member(
             "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
         )
     leaving = left is not None and not ended
+    if back and leaving and left > today(db):
+        # What becomes of the item is done as the request is, and not on a day to come.
+        raise Invalid(
+            "the item is given what becomes of it on the day it leaves",
+            {"left_on": "with item, a day that has come: today or before"},
+        )
     moved = values.get("position") if "position" in changing else None
-    if group.type == "stack" and left is None and moved is not None:
+    if group.type == "stack" and left is None and moved is not None and not held_later:
         # A current member is moved only to a position nobody else holds (P-219). Two
         # that hold one from before stay so until one of them is moved.
         for other in current_members(db, group.hid):
@@ -1037,8 +1060,10 @@ def _give_back(
     and the disposition and intent as named; otherwise these are an edit, and a reason
     is refused. Each change is audited as the item's, and says it was made by leaving.
     """
-    leaving = audit.because(context, "leaving_group", group.hid, None)
     item = items.get_item(db, item_hid)
+    leaving = audit.because(
+        context, "leaving_group", group.hid, None, of=(items.RECORD_TYPE, item.hid)
+    )
     with _named_at("item.", {"to": "lifecycle_state", "reason": "state_reason"}):
         state = given.get("lifecycle_state")
         if "lifecycle_state" in given and state is None:

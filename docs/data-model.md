@@ -1524,7 +1524,8 @@ one of its addresses, made by its joining a device group holds among its `change
 entry `joining_group` with the group's HID as `new`, and one made by its leaving a
 group `leaving_group` with the group's HID as `old` (P-217, P-218): what a joining
 stack member gave up, its host name, FQDN, location and each address, is read from
-these events (O-02).
+these events (P-223). The entry is of the item's own events, and of the removal of its
+addresses: what follows from a move of the item is audited without it.
 
 ### `import_jobs` and `import_rows`
 
