@@ -1556,7 +1556,8 @@ by the place's coordinates, as the answer writes them, six places of decimal deg
 ```
 
 It is null where the place has no coordinates of its own, which are not inherited, and
-where the setting is blank, as an installation with no access to the internet sets it.
+where the setting is blank, as an installation with no access to the internet sets it,
+or holds a value stored before its rule was what it is, which the rule now refuses.
 Nothing else of the place is in it. A region has no coordinates and no `map_url`.
 
 ## Contacts of agreements and contracts

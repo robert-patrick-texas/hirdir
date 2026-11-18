@@ -9,12 +9,14 @@ decided, with the decision, and the limits that protect the service. Each is the
 value that is used, read from where it lives.
 """
 
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -187,12 +189,18 @@ MAP_PLACES = ("{latitude}", "{longitude}")
 DEFAULT_MAP = "https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
 
 
+# What the address of a map may hold nowhere, beside a control character (P-229).
+MAP_REFUSED = frozenset(['"', "'", "<", ">", "\\"])
+
+
 def _map_link() -> Check:
-    """Blank, or an address on the web, as a link is, that holds where the latitude and
-    the longitude go."""
+    """Blank, or an address on the web, as a link is, of a host of its own, with where
+    the latitude and the longitude go after the host."""
     expected = (
-        "blank, or an address that begins with https:// or http://, with no space, that "
-        "holds both {latitude} and {longitude}"
+        "blank, or an address that begins with https:// or http://, with no space, of a "
+        "host with no user or password before it, that holds both {latitude} and "
+        "{longitude} after the host, and none of the characters \" ' < > \\ nor a "
+        "control character"
     )
 
     def check(value: Any) -> str:
@@ -204,11 +212,35 @@ def _map_link() -> Check:
             url = records.checked_url(MAP_LINK, value)
         except Invalid:
             raise _refuse(MAP_LINK, expected) from None
-        if url is None or not all(place in url for place in MAP_PLACES):
+        if url is None or any(
+            character in MAP_REFUSED or unicodedata.category(character).startswith("C")
+            for character in url
+        ):
+            raise _refuse(MAP_LINK, expected)
+        parts = urlsplit(url)
+        host = parts.netloc
+        after = f"{parts.path}?{parts.query}#{parts.fragment}"
+        if (
+            not host
+            or "@" in host
+            or "{" in host
+            or "}" in host
+            or not all(place in after for place in MAP_PLACES)
+        ):
             raise _refuse(MAP_LINK, expected)
         return url
 
     return Check(expected, check)
+
+
+def usable_map_link(value: Any) -> str | None:
+    """Return the address of a map that the setting holds where its rule takes it, and
+    None where it is blank or a value stored before the rule was what it is: no place's
+    answer is made of that."""
+    try:
+        return _map_link().check(value) or None
+    except Invalid:
+        return None
 
 
 def _states() -> tuple[str, ...]:

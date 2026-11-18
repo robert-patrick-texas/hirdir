@@ -5,7 +5,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from hirdir.db.models import Setting
 from tests.api.inventory import API, Maker, errors
 
 GOOGLE = "https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
@@ -77,10 +79,35 @@ def test_the_setting_is_listed_and_takes_a_web_address_with_both_coordinates_or_
         "javascript:alert({latitude},{longitude})",
         5,
         ["https://maps.example.net/{latitude}/{longitude}"],
+        # A host of its own, with no user or password before it and neither place in it.
+        "https://user:secret@maps.example.net/?q={latitude},{longitude}",
+        "https://{latitude}.example.net/{longitude}",
+        "https://maps.example.net{latitude}/?q={longitude}",
+        "https:///?q={latitude},{longitude}",
+        # Nothing that would end an attribute or begin a tag, and no control character.
+        'https://maps.example.net/"><script>{latitude}{longitude}',
+        "https://maps.example.net/?q='{latitude}',{longitude}",
+        "https://maps.example.net/<{latitude}>{longitude}",
+        "https://maps.example.net/" + chr(92) + "{latitude}/{longitude}",
+        "https://maps.example.net/" + chr(7) + "{latitude}/{longitude}",
+        "https://maps.example.net/" + chr(0x202E) + "{latitude}/{longitude}",
     ):
         refused = _put(client, admin, wrong, 422)
         assert "{latitude} and {longitude}" in errors(refused)["value"], wrong
     assert _put(client, admin, "   ")["value"] == ""
+    # The default passes, and so does a map with both places in its path or its query.
+    for right in (GOOGLE, OTHER, "http://maps.example.net:8080/{latitude}/{longitude}"):
+        assert _put(client, admin, right)["value"] == right
+
+
+def test_a_value_stored_before_the_rule_tightened_leaves_no_map(
+    client: TestClient, make: Maker, db: Session
+) -> None:
+    site = make.site("Site-2", make.region("Americas"), latitude="41.8781", longitude="-87.6298")
+    db.add(Setting(key="map_link", value="https://{latitude}.example.net/{longitude}"))
+    db.commit()
+    assert make.get(f"/sites/{site['hid']}")["map_url"] is None
+    assert make.get("/sites")["items"][0]["map_url"] is None
 
 
 @pytest.mark.parametrize("value", [OTHER, ""])

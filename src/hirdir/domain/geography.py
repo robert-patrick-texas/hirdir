@@ -500,8 +500,9 @@ def the_place(db: Session, text: str, field_: str, level: str | None = None) -> 
 
 def map_link(db: Session) -> str | None:
     """Return the address of the map that the coordinates of a place open, with where
-    they go in it, or None where the setting `map_link` is blank."""
-    return settings.value(db, settings.MAP_LINK) or None
+    they go in it, or None where the setting `map_link` is blank, or holds a value that
+    its rule no longer takes."""
+    return settings.usable_map_link(settings.value(db, settings.MAP_LINK))
 
 
 def map_url(link: str | None, place: Site | Location) -> str | None:
