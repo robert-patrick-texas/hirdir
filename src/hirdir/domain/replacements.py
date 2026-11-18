@@ -85,12 +85,15 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
                     f"the item it would replace is a member of {group.name}"
                 },
             )
+        # The old membership ends first, so that its position is free for the new item,
+        # which takes it as it is (P-219).
         groups.update_member(db, context, group.hid, member.hid, None, {"left_on": day})
         groups.add_members(
             db,
             context,
             group.hid,
             [{"item_hid": new.hid, "role": role, "position": position, "joined_on": day}],
+            handed_over=True,
         )
 
 

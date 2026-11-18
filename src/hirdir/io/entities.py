@@ -4009,6 +4009,18 @@ class DeviceGroupMembers(Entity):
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         return " ".join(str(values[name]) for name in ("group", "item") if values.get(name))
 
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work the rows that end a membership first, then those that give a position, and
+        those that give none last, each in the order of the file: a member of a stack
+        given no position takes the lowest that no other row holds (P-219)."""
+
+        def rank(values: Mapping[str, Any]) -> int:
+            if values.get("left_on") is not None:
+                return 0
+            return 1 if values.get("position") is not None else 2
+
+        return sorted(range(1, len(rows) + 1), key=lambda number: (rank(rows[number - 1]), number))
+
     # --- an apply in batches (D-185) ---
 
     def together(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[Any]:

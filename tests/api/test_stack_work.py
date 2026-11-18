@@ -2,13 +2,17 @@
 leaves is given what becomes of it (P-218), and a position is held by one member (P-219).
 """
 
-from typing import Any
+import threading
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import update
 
-from tests.api.inventory import Maker, errors
+from hirdir.db.models import DeviceGroupMember
+from tests.api.inventory import API, Maker, errors
 from tests.api.test_files import Files, counts, table
+from tests.api.test_hardening import _together
 
 STACK = "cw07-idf03-acc1"
 # A day after whichever day the test runs on, when a member joins "today".
@@ -507,3 +511,220 @@ def test_a_refused_part_of_what_becomes_of_it_leaves_the_membership_and_the_item
         422,
     )
     assert set(errors(problem)) == {"item"}
+
+
+# --- a position is held by one member (P-219) ----------------------------------------
+
+
+def _positions(make: Maker, stack: dict[str, Any]) -> list[tuple[int | None, str]]:
+    """Return the current members of a stack by position, each as its serial number."""
+    return [(member["position"], member["item"]["serial_number"]) for member in make.members(stack)]
+
+
+def _next(make: Maker, group: dict[str, Any]) -> int | None:
+    return make.get(f"/device-groups/{group['hid']}")["next_position"]
+
+
+def test_a_position_is_held_by_one_current_member_and_freed_by_its_end(make: Maker) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    first, second, third = switches
+    assert (stack["next_position"], _next(make, stack)) == (4, 4)
+
+    # A position another current member holds is refused, naming that member's item.
+    taken = make.add(stack, [{"item_hid": _switch(make, 4)["hid"], "position": 2}], 409)
+    assert taken["existing"] == {
+        "hid": second["hid"],
+        "record_type": "item",
+        "label": second["serial_number"],
+    }
+    assert errors(taken) == {
+        "members.0.position": f"another current member holds position 2: {second['serial_number']}"
+    }
+    assert taken["detail"] == f"position 2 of {STACK} is held by {second['serial_number']}"
+    # So is one that two members of one request are given.
+    doubled = make.add(
+        stack,
+        [
+            {"item_hid": _switch(make, 5)["hid"], "position": 4},
+            {"item_hid": _switch(make, 6)["hid"], "position": 4},
+        ],
+        expect=422,
+    )
+    assert set(errors(doubled)) == {"members.1.position"}
+    # And a member moved to a position another holds.
+    member = make.members(stack)[2]
+    moved = make.patch(
+        f"/device-groups/{stack['hid']}/members/{member['hid']}",
+        {"row_version": member["row_version"], "position": 1},
+        409,
+    )
+    assert (set(errors(moved)), moved["existing"]["hid"]) == ({"position"}, first["hid"])
+    assert _positions(make, stack) == [
+        (1, first["serial_number"]),
+        (2, second["serial_number"]),
+        (3, third["serial_number"]),
+    ]
+
+    # A member that has left keeps its number and holds nothing: the lowest free one is
+    # offered, and a member added with none takes it.
+    _end(make, stack, second, left_on=LATER)
+    assert _next(make, stack) == 2
+    spare = _spare(make, 18, places["depot"])
+    assert make.add(stack, [{"item_hid": spare["hid"]}])[0]["position"] == 2
+    past = make.members(stack, include_past="true")
+    assert [
+        (one["position"], one["left_on"]) for one in past if one["item_hid"] == second["hid"]
+    ] == [(2, LATER)]
+    assert _next(make, stack) == 4
+
+
+def test_members_given_no_position_take_the_lowest_free_ones(make: Maker) -> None:
+    places = _places(make)
+    stack = make.group(STACK, "stack")
+    assert stack["next_position"] == 1
+    made = make.add(stack, [{"item_hid": _switch(make, number)["hid"]} for number in (1, 2)])
+    assert [member["position"] for member in made] == [1, 2]
+    # A position given in the request is not taken by a member given none before it.
+    made = make.add(
+        stack,
+        [
+            {"item_hid": _switch(make, 3)["hid"]},
+            {"item_hid": _switch(make, 4)["hid"], "position": 3},
+            {"item_hid": _switch(make, 5)["hid"]},
+        ],
+    )
+    assert [member["position"] for member in made] == [4, 3, 5]
+    # The members of another kind of group are not numbered.
+    cluster = make.group("site2-fw-edge", "cluster", location_hid=places["room"]["hid"])
+    assert cluster["next_position"] is None
+    made = make.add(
+        cluster,
+        [
+            {"item_hid": _switch(make, 6)["hid"]},
+            {"item_hid": _switch(make, 7)["hid"], "position": 1},
+            {"item_hid": _switch(make, 8)["hid"], "position": 1},
+        ],
+    )
+    assert [member["position"] for member in made] == [None, 1, 1]
+
+
+def test_two_members_that_held_one_position_from_before_stay_and_may_be_worked(
+    make: Maker, client: TestClient
+) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    _, second, third = make.members(stack)
+    # As 0.9.5 let two members take one position.
+    app = cast(Any, client.app)
+    with app.state.sessions() as db:
+        db.execute(
+            update(DeviceGroupMember)
+            .where(DeviceGroupMember.hid == third["hid"])
+            .values(position=1)
+        )
+        db.commit()
+
+    # Other changes of the stack go through, and the two stay as they are.
+    renamed = make.patch(
+        f"/device-groups/{stack['hid']}",
+        {"row_version": stack["row_version"], "expected_members": 4},
+    )
+    assert renamed["expected_members"] == 4
+    assert _role_of(make, stack, second, "master")["role"] == "master"
+    assert make.add(stack, [{"item_hid": _switch(make, 4)["hid"]}])[0]["position"] == 3
+    assert [position for position, _ in _positions(make, stack)] == [1, 1, 2, 3]
+    # A replacement of one of the two hands the position over as it is.
+    spare = _spare(make, 19, places["depot"])
+    old = _item(make, switches[0])
+    make.post(
+        f"/items/{old['hid']}/replace",
+        {"row_version": old["row_version"], "reason": "rma", "new_item_hid": spare["hid"]},
+    )
+    held = {member["item_hid"]: member["position"] for member in make.members(stack)}
+    assert (held[spare["hid"]], held[switches[2]["hid"]]) == (1, 1)
+    # Either of the two is moved to a free position.
+    doubled = next(one for one in make.members(stack) if one["item_hid"] == switches[2]["hid"])
+    make.patch(
+        f"/device-groups/{stack['hid']}/members/{doubled['hid']}",
+        {"row_version": doubled["row_version"], "position": 5},
+    )
+    assert [position for position, _ in _positions(make, stack)] == [1, 2, 3, 5]
+
+
+def _role_of(make: Maker, stack: dict, member: dict, role: str) -> dict[str, Any]:
+    now = next(one for one in make.members(stack) if one["hid"] == member["hid"])
+    return make.patch(
+        f"/device-groups/{stack['hid']}/members/{now['hid']}",
+        {"row_version": now["row_version"], "role": role},
+    )
+
+
+def test_a_replacement_takes_the_position_of_the_member_it_replaces(make: Maker) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    failed = _item(make, switches[1])
+    spare = _spare(make, 18, places["depot"])
+
+    make.post(
+        f"/items/{failed['hid']}/replace",
+        {"row_version": failed["row_version"], "reason": "rma", "new_item_hid": spare["hid"]},
+    )
+
+    assert _positions(make, stack) == [
+        (1, switches[0]["serial_number"]),
+        (2, spare["serial_number"]),
+        (3, switches[2]["serial_number"]),
+    ]
+    assert _next(make, stack) == 4
+
+
+def test_two_requests_at_one_moment_do_not_both_take_a_position(
+    make: Maker, client: TestClient
+) -> None:
+    places = _places(make)
+    stack, _ = _in_service(make, places["room"])
+    gate = threading.Barrier(2, timeout=5)
+
+    def add(member: dict[str, Any]) -> Any:
+        def call(caller: TestClient) -> Any:
+            gate.wait()
+            return caller.post(
+                f"{API}/device-groups/{stack['hid']}/members",
+                json={"members": [member]},
+                headers=make.headers,
+            )
+
+        return call
+
+    asked = [{"item_hid": _switch(make, number)["hid"], "position": 4} for number in (4, 5)]
+    assert _together(client, [add(one) for one in asked]) == [201, 409]
+    gate.reset()
+    blank = [{"item_hid": _switch(make, number)["hid"]} for number in (6, 7)]
+    assert _together(client, [add(one) for one in blank]) == [201, 201]
+    assert [position for position, _ in _positions(make, stack)] == [1, 2, 3, 4, 5, 6]
+
+
+def test_a_file_numbers_the_members_it_gives_no_position(make: Maker, files: Files) -> None:
+    places = _places(make)
+    stack, _ = _in_service(make, places["room"])
+    for number in (4, 5, 6, 7):
+        _switch(make, number)
+    text = (
+        "group,item,position\n"
+        f"{STACK},FCW90000004,\n"
+        f"{STACK},FCW90000005,4\n"
+        f"{STACK},FCW90000006,\n"
+        f"{STACK},FCW90000007,2\n"
+    )
+
+    preview = files.preview("device_group_members", text)
+
+    assert counts(preview["job"]) == (3, 0, 0, 1)
+    assert [entry["field"] for entry in preview["rows"][3]["reasons"]] == ["position"]
+    files.apply(preview, skip_rejected="true")
+    assert _positions(make, stack)[3:] == [
+        (4, "FCW90000005"),
+        (5, "FCW90000004"),
+        (6, "FCW90000006"),
+    ]

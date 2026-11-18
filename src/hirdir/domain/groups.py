@@ -785,6 +785,61 @@ def _take_on(
                 addresses.delete_address(db, joining, address.hid)
 
 
+class _Positions:
+    """The positions of a stack as the members of one request are added to it (P-219).
+
+    It is read once the one writer's place is taken (D-104), so that of two requests at
+    one moment the second sees what the first stored. A position is held by a current
+    member; one that has ended keeps its number and holds nothing.
+    """
+
+    def __init__(self, db: Session, group: DeviceGroup, members: Sequence[Mapping[str, Any]]):
+        self.db = db
+        self.group = group
+        self.held: dict[int, DeviceGroupMember] = {}
+        for member in current_members(db, group.hid):
+            if member.position is not None:
+                self.held.setdefault(member.position, member)
+        # What the request gives, which a member given none does not take.
+        self.asked = {
+            given["position"]
+            for given in members
+            if given.get("left_on") is None and _is_position(given.get("position"))
+        }
+        self.given: set[int] = set()
+
+    def place(self, position: int | None, where: str) -> int:
+        """Return the position a member takes, or refuse one that is held."""
+        if position is None:
+            position = lowest_free([*self.held, *self.asked, *self.given])
+        elif position in self.given:
+            raise Invalid(
+                "two members are given one position",
+                {f"{where}position": f"another of these members is given position {position}"},
+            )
+        elif position in self.held:
+            _refuse_held(self.db, self.group, self.held[position], position, f"{where}position")
+        self.given.add(position)
+        return position
+
+
+def _is_position(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _refuse_held(
+    db: Session, group: DeviceGroup, holder: DeviceGroupMember, position: int, field: str
+) -> None:
+    """Refuse a position of a stack that another current member holds, naming its item."""
+    item = db.get_one(Item, holder.item_hid)
+    name = items.shown_name(item)
+    raise Conflict(
+        f"position {position} of {group.name} is held by {name}",
+        {field: f"another current member holds position {position}: {name}"},
+        items.existing_item(item),
+    )
+
+
 def add_members(
     db: Session,
     context: AuditContext,
@@ -792,6 +847,7 @@ def add_members(
     members: Sequence[dict[str, Any]],
     *,
     indexed: bool = True,
+    handed_over: bool = False,
 ) -> list[DeviceGroupMember]:
     """Add items to a group, all together, or none of them.
 
@@ -800,11 +856,14 @@ def add_members(
     marked as the master that is intended: one that is added so takes the mark from
     the member that had it. A member that joins a stack with `drop_identity` gives up
     its own host name, FQDN, addresses and location in the same change, and one given
-    a `disposition` or `expected_online` has them from it (P-217).
+    a `disposition` or `expected_online` has them from it (P-217). A current member of
+    a stack holds its position alone, and one given none takes the lowest free one
+    (P-219).
 
     `indexed` names the fields of a refusal of what a member brings with it by the
     member's place in the list, `members.0.disposition`, as a request has them; a row
-    of a file, which is one member, names them as they are.
+    of a file, which is one member, names them as they are. `handed_over` is a
+    replacement's: the new item takes the old one's position as it is.
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
@@ -817,6 +876,9 @@ def add_members(
     settings.check_items(db, len(members), "members", "members")
     day = today(db)
     made = []
+    # The members of a stack are numbered (P-219). A replacement hands its position over
+    # as it is, which another member may hold from before this rule.
+    numbered = _Positions(db, group, members) if group.type == "stack" and not handed_over else None
     for place, given in enumerate(members):
         where = f"members.{place}." if indexed else ""
         item_hid = given.get("item_hid") or ""
@@ -847,6 +909,9 @@ def add_members(
             )
         drop, taken_on = _joining(group, given, left is not None, where)
         role = _checked_role(group, given.get("role"))
+        position = _checked_position(given.get("position"))
+        if numbered is not None and left is None:
+            position = numbered.place(position, where)
         if left is None and group.type == "stack" and role == MASTER:
             if any(one.role == MASTER and one.left_on is None for one in made):
                 raise Invalid(
@@ -858,7 +923,7 @@ def add_members(
             group_hid=group.hid,
             item_hid=item.hid,
             role=role,
-            position=_checked_position(given.get("position")),
+            position=position,
             joined_on=joined,
             left_on=left,
         )
@@ -939,6 +1004,13 @@ def update_member(
             "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
         )
     leaving = left is not None and not ended
+    moved = values.get("position") if "position" in changing else None
+    if group.type == "stack" and left is None and moved is not None:
+        # A current member is moved only to a position nobody else holds (P-219). Two
+        # that hold one from before stay so until one of them is moved.
+        for other in current_members(db, group.hid):
+            if other.position == moved and other.hid != member.hid:
+                _refuse_held(db, group, other, moved, "position")
     marking = values.get("role") == MASTER and member.role != MASTER
     if group.type == "stack" and marking and not leaving and not ended:
         _unmark_master(db, context, group.hid, member.hid)
