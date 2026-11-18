@@ -433,3 +433,90 @@ test("P-215: an agreement's page says what each of its contracts costs a year, a
   );
   await expectClean(page, seen);
 });
+
+test("P-216: a minor item's page says what it is and where, and leads to the spares of its model there", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const { vendor, model } = await vendorAndModel(request, headers);
+  const region = await make(request, headers, "/regions", { name: label("Westmarch") });
+  const siteName = label("Harbor Point");
+  const site = await make(request, headers, "/sites", {
+    name: siteName,
+    code: `HP-${upper}`,
+    region_hid: region.hid,
+  });
+  const otherSite = await make(request, headers, "/sites", {
+    name: label("Ridge Point"),
+    code: `RP-${upper}`,
+    region_hid: region.hid,
+  });
+  const room = await make(request, headers, "/locations", {
+    name: label("Room 2"),
+    code: `R2-${upper}`,
+    site_hid: site.hid,
+  });
+  const away = await make(request, headers, "/locations", {
+    name: label("Room 9"),
+    code: `R9-${upper}`,
+    site_hid: otherSite.hid,
+  });
+  const supply = `EF-PSU-${upper}`;
+  const entry = await make(request, headers, "/catalog-entries", {
+    vendor_hid: vendor,
+    pid: supply,
+    model_name: "Example 650 W supply",
+    type: "power-supply",
+  });
+  const switchName = `sw-harbor-${id}`;
+  const chassis = await make(request, headers, "/items", {
+    catalog_entry_hid: model,
+    hostname: switchName,
+    serial_number: `EFS${upper}160`,
+    location_hid: room.hid,
+  });
+  const fitted = await make(request, headers, "/items", {
+    catalog_entry_hid: entry.hid,
+    serial_number: `EFP${upper}161`,
+    parent_item_hid: chassis.hid,
+    position: "PS1",
+  });
+  // Two spares of the model: one at this site, one at another; and one in use here.
+  const spareHere = `EFP${upper}162`;
+  for (const [serial, where, disposition] of [
+    [spareHere, room.hid, "Spare"],
+    [`EFP${upper}163`, away.hid, "Spare"],
+    [`EFP${upper}164`, room.hid, "Production"],
+  ] as const) {
+    await make(request, headers, "/items", {
+      catalog_entry_hid: entry.hid,
+      serial_number: serial,
+      location_hid: where,
+      lifecycle_state: "Prod",
+      disposition,
+    });
+  }
+
+  await signIn(page, account);
+  await page.goto(`./items/${fitted.hid}`);
+  const line = page.getByTestId("minor-line");
+  await expect(line).toHaveText(
+    `Power supply · ${supply}, Example 650 W supply · PS1 in ${switchName} · ${siteName} Spares of this model here`,
+  );
+  await expect(line.getByRole("link", { name: switchName, exact: true })).toHaveAttribute(
+    "href",
+    `/items/${chassis.hid}`,
+  );
+  await line.getByRole("link", { name: "Spares of this model here" }).click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await expect(gridRow(page, "grid-items", spareHere)).toBeVisible();
+  // A major item has no such line.
+  await page.goto(`./items/${chassis.hid}`);
+  await expect(page.getByRole("heading", { level: 1, name: switchName })).toBeVisible();
+  await expect(page.getByTestId("minor-line")).toHaveCount(0);
+  await expectClean(page, seen);
+});
