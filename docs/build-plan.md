@@ -43,7 +43,7 @@ reading; it does not settle a policy question in code.
 After the MVP, in the order currently expected: RADIUS sign-in; access-code rules; SAML;
 discovery observations and reconciliation; the observed status of items and groups
 written by monitoring tools, which until then is set by hand or by an import (D-92);
-outward change feed and host lists for monitoring tools; planning views for draft sites and items; cell-range selection and
+outward change feed and host lists for monitoring tools; the names and addresses that changes add, remove and alter, read from the audit trail and worked in batches into the IPAM, the DNS and the monitoring tools, with a queue where it is turned on (P-223); planning views for draft sites and items; cell-range selection and
 editing in the grid; PostgreSQL; a container image; a colour theme for the web page that
 each person chooses, kept in the browser's local storage and never in a cookie, from the
 themes of the owner's Texas2Step project, with a reminder to the owner to make them easy
