@@ -24,6 +24,16 @@ interface Counts {
   flagged: number;
 }
 
+/**
+ * A link to the items it covers, further down this page. The page's own address with the
+ * section's id, as the section links of an item (P-189): a bare `#…` is read against the
+ * document's base, and would leave the page, and what was typed in the form.
+ */
+function CoverageLink() {
+  const here = `${window.location.pathname}${window.location.search}`;
+  return <a href={`${here}#contract-coverage`}>The items it covers</a>;
+}
+
 /** The contract's own last day in force, or blank for a term that names none. */
 function lastDay(contract: Contract): string {
   const value = contract.effective.ends_on.value;
@@ -64,8 +74,7 @@ export function RenewScope({ contract }: { contract: Contract }) {
     return (
       <p className="hint">
         The present term names no end: <strong>{plural(contract.items_in_scope, "item")}</strong> in
-        scope {contract.items_in_scope === 1 ? "follows" : "follow"}.{" "}
-        <a href="#contract-coverage">The items it covers</a>
+        scope {contract.items_in_scope === 1 ? "follows" : "follow"}. <CoverageLink />
       </p>
     );
   }
@@ -114,7 +123,7 @@ export function RenewScope({ contract }: { contract: Contract }) {
         </ul>
       )}
       <p>
-        <a href="#contract-coverage">The items it covers</a>, with the days of each.
+        <CoverageLink />, with the days of each.
       </p>
     </div>
   );

@@ -273,6 +273,13 @@ test("P-214: the renewal form starts from what follows, and says what follows, s
   );
   // Nothing more is typed than the new reference: the renewal is kept as the next term.
   await form.getByLabel("Purchase reference").fill(`REQ-${upper}-NEW`);
+  // The link to the items it covers goes down this page, and the form and what was typed
+  // stay.
+  await form.getByRole("link", { name: "The items it covers" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Items it covers" })).toBeInViewport();
+  expect(new URL(page.url()).pathname).toMatch(new RegExp(`/contracts/${contract.hid}$`));
+  await expect(page.getByRole("heading", { level: 1, name: number })).toBeVisible();
+  await expect(form.getByLabel("Purchase reference")).toHaveValue(`REQ-${upper}-NEW`);
   await form.getByRole("button", { name: /^Renew for \d+ items?$/ }).click();
   await expect(page.getByText(/^The renewal is kept as the next term\./)).toBeVisible();
   await expect(page.getByTestId("next-term")).toHaveAttribute("data-starts", `${year + 2}-01-01`);
