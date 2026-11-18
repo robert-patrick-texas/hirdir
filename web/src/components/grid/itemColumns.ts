@@ -25,6 +25,7 @@ import {
   observedLabel,
   reasonsText,
 } from "../../lib/health";
+import { hostHint, hostPath, REVIEW_REASONS, reviewsText } from "../../lib/hosting";
 import { DISPOSITIONS } from "../../lib/lifecycle";
 import { markOf, operatorHint, operatorPath } from "../../lib/operators";
 import {
@@ -191,6 +192,31 @@ export function itemColumns(
       value: (item) => memberText(item.groups),
       links: (item) =>
         oneLink(memberText(item.groups), page("device_group", stackOf(item.groups)?.group_hid)),
+      width: 200,
+    },
+    {
+      // 0.9.8: what it runs on, an item or a stack or a cluster, as a link (P-250). The list
+      // finds the items of a host by `host.name`, the name of either; an export writes
+      // the item in `host` and the group in `host_group`.
+      id: "host.name",
+      header: "Runs on",
+      kind: "text",
+      column: ["host", "host_group"],
+      value: (item) => item.host?.name,
+      links: (item) => oneLink(item.host?.name, item.host ? hostPath(item.host) : null),
+      hint: (item) => (item.host ? hostHint(item.host) : ""),
+      hide: true,
+      width: 190,
+    },
+    {
+      // 0.9.8: the reasons it is to be looked at, in words (P-249): `review:eq:no_host`,
+      // and `review:empty:false` for every item with one.
+      id: "review",
+      header: "To be looked at",
+      kind: "choice",
+      value: (item) => reviewsText(item.review),
+      choices: REVIEW_REASONS,
+      hide: true,
       width: 200,
     },
     {
@@ -384,7 +410,7 @@ export function itemColumns(
       column: "operator",
       value: (item) => effectiveLabel(item.effective.operator_hid),
       effective: (item) => item.effective.operator_hid,
-      hint: (item) => operatorHint(item.effective.operator_hid),
+      hint: (item) => operatorHint(item.effective.operator_hid, item.host),
       chip: (item) => {
         const mark = markOf(item.effective.operator_hid);
         return (
@@ -429,7 +455,7 @@ export function itemColumns(
           page("location", item.effective.location_hid.value),
         ),
       effective: (item) => item.effective.location_hid,
-      hint: (item) => locationHint(item.effective.location_hid),
+      hint: (item) => locationHint(item.effective.location_hid, item.host),
       // Shown from the start, with the site: a list of items says where each is (P-193).
       width: 170,
     },
@@ -452,7 +478,7 @@ export function itemColumns(
           page("location", item.effective.planned_location_hid.value),
         ),
       effective: (item) => item.effective.planned_location_hid,
-      hint: (item) => locationHint(item.effective.planned_location_hid),
+      hint: (item) => locationHint(item.effective.planned_location_hid, item.host),
       hide: true,
       width: 200,
     },
