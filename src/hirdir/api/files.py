@@ -3,7 +3,7 @@
 from itertools import chain
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -14,7 +14,7 @@ from hirdir.api.idempotent import IdempotentRoute, limited_body
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
-from hirdir.io import background, exports, imports, tables
+from hirdir.io import background, exports, imports, made, tables
 
 imports_ = APIRouter(prefix="/imports", tags=["Files"], route_class=IdempotentRoute)
 exports_ = APIRouter(prefix="/exports", tags=["Files"])
@@ -191,7 +191,31 @@ def list_import_created(
     is now; and after them, whole, the vendors and catalog entries it made only because a
     row named them (P-234). Nothing new is stored: each is read from the rows and the
     audit trail."""
-    raise HTTPException(501, "not built yet")
+    page, total, also = made.created(db, hid, limit, offset)
+    return r.ImportCreated(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[
+            r.CreatedRecord(
+                row=one.row,
+                record_type=one.record_type,
+                record_hid=one.record_hid,
+                label=one.label,
+                state=one.state,
+            )
+            for one in page
+        ],
+        also=[
+            r.MadeForARow(
+                record_type=one.record_type,
+                record_hid=one.record_hid,
+                label=one.label,
+                state=one.state,
+            )
+            for one in also
+        ],
+    )
 
 
 @exports_.post(

@@ -987,6 +987,47 @@ def apply_import(
     _apply_job(target, path, skip_rejected, as_json=format_ == "json", wait=not no_wait)
 
 
+@imports_.command("created")
+def created(
+    hid: Annotated[str, typer.Argument(help="The HID of the import.")],
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """List the records an import made, each with what it is now, and then the vendors
+    and catalog entries it made because a row named them (P-234)."""
+    target = client.load_target(url, token)
+    found: list[dict[str, Any]] = []
+    while True:
+        page = client.call(
+            target, "GET", f"/imports/{hid}/created", params={"limit": 1000, "offset": len(found)}
+        )
+        found += page["items"]
+        if not page["items"] or len(found) >= page["total"]:
+            break
+    if format_ == "json":
+        typer.echo(json.dumps({**page, "items": found, "limit": len(found), "offset": 0}, indent=2))
+        return
+    if found:
+        rows = [["row", "kind", "name", "state", "hid"]]
+        rows += [
+            [str(one["row"]), one["record_type"], one["label"], one["state"], one["record_hid"]]
+            for one in found
+        ]
+        _table(rows)
+    else:
+        typer.echo("the import made no record", err=True)
+    if page["also"]:
+        typer.echo("")
+        typer.echo("made because a row named them:")
+        rows = [["kind", "name", "state", "hid"]]
+        rows += [
+            [one["record_type"], one["label"], one["state"], one["record_hid"]]
+            for one in page["also"]
+        ]
+        _table(rows)
+
+
 GROUPS["imports"] = imports_
 
 
@@ -1145,6 +1186,147 @@ def set_(
         as_json=format_ == "json",
         wait=not no_wait,
     )
+
+
+# --- several retired or deleted at once (P-227, P-228) -------------------------------
+
+# How many one request retires or deletes, at most, as the server takes them.
+AT_ONCE = 1000
+OUTCOMES = ("retired", "already", "refused", "missing")
+Records = Annotated[
+    list[str], typer.Argument(help="Each by its HID, or as the other commands name one.")
+]
+Yes = Annotated[bool, typer.Option("--yes", help="Go on without asking. For a script.")]
+
+
+def _hids(target: Target, named: list[str], find: Any) -> list[str]:
+    """Return the HIDs of the records named, each once: an HID as it is, anything else
+    as the server finds it."""
+    return list(
+        dict.fromkeys(text if _is_hid(text) else find(target, text)["hid"] for text in named)
+    )
+
+
+def _in_pieces(target: Target, path: str, hids: list[str], **body: Any) -> dict[str, Any]:
+    """Send the HIDs a thousand at a time, and return the answers as one."""
+    whole: dict[str, Any] = {}
+    for start in range(0, len(hids), AT_ONCE):
+        answer = client.call(target, "POST", path, {"hids": hids[start : start + AT_ONCE], **body})
+        for name, value in answer.items():
+            whole[name] = whole.get(name, []) + value if isinstance(value, list) else value
+    return whole
+
+
+def _said(found: list[dict[str, Any]], what: str) -> None:
+    for one in found:
+        typer.echo(f"{what}: {one['label']}  {one['hid']}")
+
+
+def _depends(one: dict[str, Any]) -> str:
+    return "; ".join(
+        f"{tie['record_type']} {tie['label']} ({tie['hid']})" for tie in one["depends_on"]
+    )
+
+
+def _retire_many(path: str, find: Any, plural: str) -> Any:
+    def retire(
+        records: Records,
+        format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+        url: Url = None,
+        token: Token = None,
+    ) -> None:
+        target = client.load_target(url, token)
+        done = _in_pieces(target, f"{path}/retire", _hids(target, records, find))
+        if format_ == "json":
+            typer.echo(json.dumps(done, indent=2))
+        else:
+            _said(done["retired"], "retired")
+            _said(done["already"], "retired already")
+            for one in done["refused"]:
+                typer.echo(f"refused: {one['label']}  {one['hid']}: {one['detail']}")
+            for hid in done["missing"]:
+                typer.echo(f"not found: {hid}")
+        counts = [f"{len(done['retired'])} retired", f"{len(done['already'])} retired already"]
+        counts += [f"{len(done['refused'])} refused", f"{len(done['missing'])} not found"]
+        if done["refused"] or done["missing"]:
+            raise client.fail(", ".join(counts), client.EXIT_INVALID)
+        typer.echo(", ".join(counts), err=True)
+
+    retire.__doc__ = (
+        f"Retire several {plural} at once, each as its own page retires it. One retired "
+        "already is counted, not refused."
+    )
+    return retire
+
+
+def _delete_many(path: str, find: Any, plural: str) -> Any:
+    def delete(
+        records: Records,
+        reason: Annotated[
+            str | None, typer.Option(help="Why they are deleted: kept in the audit trail.")
+        ] = None,
+        yes: Yes = False,
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help="Say what would be done, and do nothing.")
+        ] = False,
+        format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+        url: Url = None,
+        token: Token = None,
+    ) -> None:
+        if not dry_run and not (reason or "").strip():
+            raise client.fail("--reason says why they are deleted", 2)
+        target = client.load_target(url, token)
+        hids = _hids(target, records, find)
+        # Asked first: what would be deleted, and what refused with what depends on it.
+        tried = _in_pieces(target, f"{path}/delete", hids, reason=reason, dry_run=True)
+        as_json = format_ == "json"
+        if not as_json or dry_run:
+            if as_json:
+                typer.echo(json.dumps(tried, indent=2))
+            else:
+                _said(tried["deleted"], "to be deleted" if not dry_run else "would be deleted")
+                for one in tried["refused"]:
+                    typer.echo(f"refused: {one['label']}  {one['hid']}, depends on {_depends(one)}")
+                for hid in tried["missing"]:
+                    typer.echo(f"not found: {hid}")
+        left_out = len(tried["refused"]) + len(tried["missing"])
+        if dry_run:
+            if left_out:
+                raise client.fail(f"{left_out} would not be deleted", client.EXIT_INVALID)
+            return
+        going = [one["hid"] for one in tried["deleted"]]
+        if not going:
+            raise client.fail("none of them can be deleted", client.EXIT_INVALID)
+        if not yes:
+            typer.confirm(
+                f"Delete {len(going)} {plural}? They are removed for good; the audit trail "
+                "keeps each as it was.",
+                abort=True,
+            )
+        done = _in_pieces(target, f"{path}/delete", going, reason=reason, dry_run=False)
+        if as_json:
+            typer.echo(json.dumps(done, indent=2))
+        else:
+            _said(done["deleted"], "deleted")
+            for one in done["refused"]:
+                typer.echo(f"refused: {one['label']}  {one['hid']}, depends on {_depends(one)}")
+        left_out += len(done["refused"]) + len(done["missing"])
+        said = f"{len(done['deleted'])} deleted" + (f", {left_out} not" if left_out else "")
+        if left_out:
+            raise client.fail(said, client.EXIT_INVALID)
+        typer.echo(said, err=True)
+
+    delete.__doc__ = (
+        f"Delete {plural} that were a mistake, for an Admin: says what it would do, and "
+        "asks. One that another record depends on is refused, naming what."
+    )
+    return delete
+
+
+items.command("retire")(_retire_many("/items", find_item, "items"))
+items.command("delete")(_delete_many("/items", find_item, "items"))
+groups.command("retire")(_retire_many("/device-groups", find_group, "device groups"))
+groups.command("delete")(_delete_many("/device-groups", find_group, "device groups"))
 
 
 # --- places --------------------------------------------------------------------------

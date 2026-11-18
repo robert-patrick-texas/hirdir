@@ -1,0 +1,142 @@
+"""The records an import made, and the commands that retire and delete several (P-227,
+P-228, P-234)."""
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.api import test_cli
+from tests.api.inventory import API, Maker
+from tests.api.test_files import Files
+
+# The fixture that runs `hirdir` against the test client.
+run = test_cli.run
+
+WRONG = """vendor,pid,serial_number,hostname
+Cisco,C9300-48P,FCW0000W001,site9-sw-01
+Cisco,C9300-48P,FCW0000W002,site9-sw-02
+Cisco,C9300-24P,FCW0000W003,site9-sw-03
+"""
+
+
+@pytest.fixture
+def files(client: TestClient, inventory: dict[str, str]) -> Files:
+    return Files(client, inventory)
+
+
+def _made(make: Maker, job: dict[str, Any], **params: Any) -> dict[str, Any]:
+    return make.get(f"/imports/{job['hid']}/created", **params)
+
+
+def test_a_past_import_lists_the_records_it_made_with_what_each_is_now(
+    client: TestClient, make: Maker, files: Files, admin: dict[str, str], viewer: dict[str, str]
+) -> None:
+    make.vendor("Cisco")
+    job = files.load("items", WRONG)
+    made = _made(make, job)
+    hids = [one["record_hid"] for one in made["items"]]
+
+    assert made["total"] == 3
+    assert [
+        (one["row"], one["record_type"], one["label"], one["state"]) for one in made["items"]
+    ] == [
+        (1, "item", "site9-sw-01", "active"),
+        (2, "item", "site9-sw-02", "active"),
+        (3, "item", "site9-sw-03", "active"),
+    ]
+    # Cisco was there; the two models were made because the rows named them.
+    assert [(one["record_type"], one["label"], one["state"]) for one in made["also"]] == [
+        ("catalog_entry", "Cisco C9300-24P", "active"),
+        ("catalog_entry", "Cisco C9300-48P", "active"),
+    ]
+    # What each is now: one retired, one deleted, by what it was known by then.
+    client.post(f"{API}/items/retire", json={"hids": [hids[0]]}, headers=make.headers)
+    client.post(
+        f"{API}/items/delete", json={"hids": [hids[1]], "reason": "a wrong file"}, headers=admin
+    )
+    again = Maker(client, viewer).get(f"/imports/{job['hid']}/created", limit=2, offset=1)
+    assert (again["total"], again["limit"], again["offset"]) == (3, 2, 1)
+    assert [(one["label"], one["state"]) for one in again["items"]] == [
+        ("site9-sw-02", "deleted"),
+        ("site9-sw-03", "active"),
+    ]
+    assert len(again["also"]) == 2
+    assert [one["state"] for one in _made(make, job)["items"]] == ["retired", "deleted", "active"]
+
+
+def test_an_import_of_places_lists_them_by_path_and_a_preview_made_nothing(
+    make: Maker, files: Files
+) -> None:
+    job = files.load("regions", "name,parent\nAmericas,\nCentral,Americas\n")
+    made = _made(make, job)
+    assert [one["label"] for one in made["items"]] == ["Americas", "Americas > Central"]
+    assert {one["record_type"] for one in made["items"]} == {"region"}
+    preview = files.preview("regions", "name\nEMEA\n")
+    assert _made(make, preview["job"]) == {
+        "total": 0,
+        "limit": 100,
+        "offset": 0,
+        "items": [],
+        "also": [],
+    }
+    make.get("/imports/01900000-0000-7000-8000-000000000000/created", 404)
+
+
+def test_the_commands_retire_and_delete_several_and_list_what_an_import_made(
+    run,
+    make: Maker,
+    files: Files,
+    admin: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    make.vendor("Cisco")
+    job = files.load("items", WRONG)
+
+    listed = run("imports", "created", job["hid"]).stdout.splitlines()
+    assert listed[0].split() == ["ROW", "KIND", "NAME", "STATE", "HID"]
+    assert [line.split()[:4] for line in listed[1:4]] == [
+        ["1", "item", "site9-sw-01", "active"],
+        ["2", "item", "site9-sw-02", "active"],
+        ["3", "item", "site9-sw-03", "active"],
+    ]
+    assert "made because a row named them:" in listed
+    whole = json.loads(run("imports", "created", job["hid"], "--format", "json").stdout)
+    hids = [one["record_hid"] for one in whole["items"]]
+
+    # By what each is known by, or its HID; one named twice counts once.
+    retired = run("items", "retire", "site9-sw-01", hids[0], hids[1])
+    assert retired.stdout.splitlines() == [
+        f"retired: site9-sw-01  {hids[0]}",
+        f"retired: site9-sw-02  {hids[1]}",
+    ]
+    again = run("items", "retire", hids[0], "--format", "json", expect=0)
+    assert [one["hid"] for one in json.loads(again.stdout)["already"]] == [hids[0]]
+
+    # Deleting is for an Admin: the Inventory role is refused.
+    refused = run("items", "delete", hids[2], "--reason", "a wrong file", "--yes", expect=3)
+    assert "admin role" in refused.output
+    monkeypatch.setenv("HIRDIR_TOKEN", admin["Authorization"].removeprefix("Bearer "))
+    assert "--reason" in run("items", "delete", hids[2], expect=2).output
+    tried = run("items", "delete", hids[2], "--dry-run")
+    assert tried.stdout.splitlines() == [f"would be deleted: site9-sw-03  {hids[2]}"]
+    make.get(f"/items/{hids[2]}")
+    # Asked, and answered no: nothing is done.
+    declined = run("items", "delete", hids[2], "--reason", "a wrong file", expect=1)
+    assert "Delete 1 items?" in declined.output
+    make.get(f"/items/{hids[2]}")
+    done = run("items", "delete", hids[0], hids[2], "--reason", "a wrong file", "--yes")
+    assert f"deleted: site9-sw-01  {hids[0]}" in done.stdout
+    make.get(f"/items/{hids[2]}", 404)
+    # One that is not there is said so, and the command exits 4.
+    missing = run("items", "delete", hids[2], "--reason", "a wrong file", "--yes", expect=4)
+    assert f"not found: {hids[2]}" in missing.stdout
+
+    stack = make.stack("site9-stack-wrong", [make.item(hostname="site9-sw-09")])
+    run("groups", "retire", "site9-stack-wrong")
+    assert make.get(f"/device-groups/{stack['hid']}")["record_status"] == "retired"
+    run("groups", "delete", "site9-stack-wrong", "--reason", "a wrong file", "--yes")
+    make.get(f"/device-groups/{stack['hid']}", 404)
