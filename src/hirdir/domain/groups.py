@@ -5,7 +5,7 @@ hold a cluster. Membership keeps its own dates, so that the stack a switch belon
 last year can still be answered: a membership is ended, and never removed.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
 from typing import Any
 
@@ -149,6 +149,39 @@ def member_counts(db: Session, group_hids: Sequence[str]) -> dict[str, int]:
         for group_hid, count in counted:
             counts[group_hid] = count
     return counts
+
+
+def lowest_free(held: Iterable[int | None]) -> int:
+    """Return the lowest position from 1 that is not among those held."""
+    taken = {position for position in held if position is not None}
+    position = 1
+    while position in taken:
+        position += 1
+    return position
+
+
+def next_positions(db: Session, found: Sequence[DeviceGroup]) -> dict[str, int | None]:
+    """Return, for each stack, the position a member added with none takes (P-219).
+
+    It is the lowest from 1 that no current member holds. A group of another type has
+    none: its members have a position only where one is given.
+    """
+    stacks = [group.hid for group in found if group.type == "stack"]
+    held: dict[str, set[int]] = {hid: set() for hid in stacks}
+    if stacks:
+        rows = db.execute(
+            select(DeviceGroupMember.group_hid, DeviceGroupMember.position).where(
+                DeviceGroupMember.group_hid.in_(stacks),
+                DeviceGroupMember.left_on.is_(None),
+                DeviceGroupMember.position.is_not(None),
+            )
+        )
+        for group_hid, position in rows:
+            held[group_hid].add(position)
+    return {
+        group.hid: lowest_free(held[group.hid]) if group.type == "stack" else None
+        for group in found
+    }
 
 
 def masters(db: Session, group_hids: Sequence[str]) -> dict[str, Item]:
