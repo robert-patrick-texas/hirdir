@@ -2238,8 +2238,9 @@ One grid component is used on every list page.
   its left, one to a row: ticking one adds its row to those selected, and clearing it
   takes the row out, whatever else is ticked. The box in the heading ticks the rows the
   grid has read from the server so far, a hundred at a time as the list is scrolled,
-  and clears them when every one of those is ticked; its name says which, with their
-  number, `Tick the 100 rows read so far`. It shows itself ticked only when every row
+  and clears every row ticked when every one of those is ticked; its name says which,
+  with their number, `Tick the 100 rows read so far`, or `Clear the 150 rows ticked`,
+  which after a sort may be more than the rows read again. It shows itself ticked only when every row
   of the list is read and ticked, and the half mark while some are ticked, as when the
   first 100 of 260 are; it waits, not to be pressed, until the first rows have come. All that match the filter stays the
   button Select all that match, since it is a count and not a list of rows. Pressing a
