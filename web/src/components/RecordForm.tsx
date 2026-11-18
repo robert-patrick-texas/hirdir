@@ -22,6 +22,7 @@ import {
   formOf,
 } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
+import { carryTyped, forgetLeft, leave, peekLeft, savedRecord } from "../lib/typedAfterSave";
 import { FormFields } from "./FormFields";
 import { Problem } from "./Problem";
 
@@ -63,6 +64,14 @@ interface EditFormProps<R, B> {
 /**
  * A form that changes a record. Only the fields that were changed are sent. A stale
  * version is never sent again by the form: the reader is told, and reloads.
+ *
+ * 0.9.6: what is typed after a save, while the page reads the record again, stays
+ * (P-202). The form compares what it holds with the record as it last took it: after a
+ * save that is the record as saved, with the version the server answered, so that the
+ * next save is not refused as stale; once the page has read the record again, a field
+ * the person has changed keeps what was typed and the others take what was read. A page
+ * that makes a new form for the record it read again, by a `key` with its version, is
+ * handed what the form before it held.
  */
 export function EditForm<R extends { row_version: number }, B extends { row_version: number }>(
   props: EditFormProps<R, B>,
@@ -70,13 +79,51 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
   const { specs, record, hints, notes, save, onSaved, onReload, submitLabel = "Save" } = props;
   const { labels } = props;
   const stored = record as R & Readonly<Record<string, unknown>>;
-  const [values, setValues] = useState<FormValues>(() => formOf(specs, stored));
+  const names = specs.map((spec) => spec.name);
+  const hid = typeof stored.hid === "string" ? stored.hid : null;
+  const leftKey = hid === null ? null : `${hid} ${names.join(" ")}`;
+  // The record the form compares with, and the values it filled the form with from it.
+  const [base, setBase] = useState<{ record: R; taken: FormValues }>(() => ({
+    record,
+    taken: formOf(specs, stored),
+  }));
+  const [values, setValues] = useState<FormValues>(() => {
+    const held = leftKey === null ? null : peekLeft(leftKey, record, Date.now());
+    const taken = formOf(specs, stored);
+    return held ? carryTyped(specs, held.taken, held.values, stored) : taken;
+  });
+  // The record as the page last gave it, to see when it has been read again.
+  const [given, setGiven] = useState(`${hid} ${record.row_version}`);
   const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
-  const names = specs.map((spec) => spec.name);
-  const built = buildPatch<B>(specs, stored, values);
+  const built = buildPatch<B>(specs, base.record as R & Readonly<Record<string, unknown>>, values);
   const refused = fieldErrors(action.error, names).shown;
   const [form, refusedNow] = useShownRefusal();
+
+  // The page read the record again: what was typed since the form took it stays.
+  const now = `${hid} ${record.row_version}`;
+  if (now !== given) {
+    setGiven(now);
+    if ((base.record as { hid?: unknown }).hid !== hid) {
+      setBase({ record, taken: formOf(specs, stored) });
+      setValues(formOf(specs, stored));
+    } else if (record.row_version >= base.record.row_version) {
+      setBase({ record, taken: formOf(specs, stored) });
+      setValues(carryTyped(specs, base.taken, values, stored));
+    }
+  }
+
+  // Once it has saved, what the form holds is kept for a form of the same record that
+  // takes its place: the page makes that one as it renders, before this one has gone.
+  const saved = useRef(false);
+  useEffect(() => {
+    if (leftKey !== null) forgetLeft(leftKey);
+  }, [leftKey]);
+  useEffect(() => {
+    if (leftKey === null || !saved.current) return;
+    const record = base.record as R & Readonly<Record<string, unknown>>;
+    leave(leftKey, { record, taken: base.taken, values, at: Date.now() });
+  });
 
   function change(name: string, value: FormValue) {
     setValues((was) => ({ ...was, [name]: value }));
@@ -94,11 +141,15 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
       refusedNow();
       return;
     }
+    const sent = values;
     const result = await action.run(() => save(built.body));
-    if (result.ok) onSaved();
-    else refusedNow();
+    if (result.ok) {
+      saved.current = true;
+      const after = savedRecord(base.record, built.body, result.value);
+      if (after !== base.record) setBase({ record: after, taken: sent });
+      onSaved();
+    } else refusedNow();
   }
-
   return (
     <form onSubmit={submit} className="stack" noValidate ref={form}>
       <Problem
@@ -129,7 +180,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
           type="button"
           disabled={action.busy || built.changed.length === 0}
           onClick={() => {
-            setValues(formOf(specs, stored));
+            setValues(base.taken);
             setFound({});
             action.clear();
           }}
