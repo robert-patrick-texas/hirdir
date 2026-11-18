@@ -202,7 +202,32 @@ describe("a row of the summary by group and by model", () => {
   it("says nothing more of the blank row, nor of a row by anything else", () => {
     expect(rowDetail("group", row(null, 2))).toBeNull();
     expect(rowDetail("site", row(CORE, 2, { type: "stack" }))).toBeNull();
-    expect(rowRecordPath("site", CORE)).toBeNull();
     expect(rowRecordPath("group", null)).toBeNull();
+  });
+});
+
+// 0.9.8: the row of a record is a link to its page wherever the key is its HID (P-240).
+describe("a row of the summary by a vendor, an owner or a place", () => {
+  it("leads to the page of the record it is of", () => {
+    expect(rowRecordPath("vendor", CORE)).toBe(`/vendors/${CORE}`);
+    expect(rowRecordPath("owner", CORE)).toBe(`/owners/${CORE}`);
+    expect(rowRecordPath("site", CORE)).toBe(`/geography/site/${CORE}`);
+    expect(rowRecordPath("region", CORE)).toBe(`/geography/region/${CORE}`);
+  });
+
+  it("is no link where the row is of a value, a tag, or of nothing", () => {
+    for (const by of [
+      "kind",
+      "type",
+      "function",
+      "lifecycle_state",
+      "condition",
+      "health",
+      "tag",
+    ]) {
+      expect(rowRecordPath(by, "core")).toBeNull();
+    }
+    expect(rowRecordPath("site", null)).toBeNull();
+    expect(rowRecordPath("owner", null)).toBeNull();
   });
 });

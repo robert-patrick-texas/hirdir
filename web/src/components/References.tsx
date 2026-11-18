@@ -6,7 +6,15 @@
 // opens in a new tab. With the Inventory role, files are added, chosen or dropped on the
 // section, and links; and each reference is changed in a panel of its own.
 
-import { type DragEvent, type FormEvent, Fragment, type ReactNode, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type FormEvent,
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { plural } from "../lib/format";
@@ -35,6 +43,7 @@ import {
   sourceKind,
   titleOf,
   tooLarge,
+  withFirstKinds,
 } from "../lib/references";
 import { TextAreaField, TextField } from "./Field";
 import { PictureViewer } from "./PictureViewer";
@@ -69,6 +78,8 @@ interface Chosen {
   file: File;
   title: string;
   kind: string;
+  /** True once the person has chosen its kind, which is then never changed for them. */
+  kindChosen: boolean;
   /** Ready to send, refused before it was sent, on its way, sent, or refused by the server. */
   state: "ready" | "refused" | "sending" | "done" | "failed";
   reason: string;
@@ -94,6 +105,7 @@ function chosenOf(
     file,
     title: titleOf(file.name),
     kind: firstKind(holder.kind, file.name, kinds),
+    kindChosen: false,
     state: refusal ? "refused" : "ready",
     reason: refusal ?? "",
     sent: 0,
@@ -136,6 +148,13 @@ export function References({ holder, mayEdit, level = 2, children }: ReferencesP
   const kinds = (choices.data ?? [])
     .filter((choice) => choice.list === KIND_LIST && choice.active)
     .map((choice) => choice.value);
+  // 0.9.8: a file chosen before the kinds of file were read is given its first kind when
+  // they are, unless the person has chosen one. The kinds are values with no space.
+  const kindsRead = kinds.join(" ");
+  useEffect(() => {
+    if (kindsRead === "") return;
+    setChosen((was) => withFirstKinds(was, holder.kind, kindsRead.split(" ")));
+  }, [kindsRead, holder.kind]);
 
   function changed(text: string, gone = false) {
     setDone(text);
@@ -564,7 +583,7 @@ function AddFiles(props: AddFilesProps) {
                         choices={choices}
                         name={`${one.key}-kind`}
                         value={one.kind}
-                        onChange={(kind) => change(one.key, { kind })}
+                        onChange={(kind) => change(one.key, { kind, kindChosen: true })}
                         disabled={busy}
                         error={
                           missing.has(one.key) && one.kind === "" ? "Choose its kind." : undefined

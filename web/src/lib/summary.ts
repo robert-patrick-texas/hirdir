@@ -20,6 +20,7 @@ import { groupTypeLabel } from "./groups";
 import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
 import { CATALOG_KINDS, choiceLabel, optionLabel } from "./options";
 import type { Option } from "./patch";
+import { kindPath } from "./preview";
 import type { CountColumns } from "./rank";
 import { decimalValue } from "./sort";
 
@@ -164,12 +165,24 @@ export function rowDetail(by: string, row: RowFacts, choices?: readonly Choice[]
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-/** The page of the record a row is of, for a row by group or by model. */
+/**
+ * The kind of record a row is of, by what a report is by, where the row's key is that
+ * record's HID. 0.9.8: a vendor, an owner, a site and a region as well (P-240). A tag has
+ * no page, and a kind, a type, a function, a state, a condition and a health are values.
+ */
+const RECORD_OF_ROW: Readonly<Record<string, string>> = {
+  group: "device_group",
+  model: "catalog_entry",
+  vendor: "vendor",
+  owner: "owner",
+  site: "site",
+  region: "region",
+};
+
+/** The page of the record a row is of, for a row by group, model, vendor, owner or place. */
 export function rowRecordPath(by: string, key: string | null): string | null {
-  if (key === null) return null;
-  if (by === "group") return `/groups/${encodeURIComponent(key)}`;
-  if (by === "model") return `/catalog/${encodeURIComponent(key)}`;
-  return null;
+  const kind = RECORD_OF_ROW[by];
+  return kind === undefined ? null : kindPath(kind, key);
 }
 
 /** What to call the components of one condition, in the totals. Those with none say so. */
