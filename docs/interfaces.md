@@ -340,9 +340,11 @@ replacement the item is part of, the latest first, by `replaced_on` and then by 
 was entered. Each holds its `hid`, `part`, which is `left` where this item left and
 `item` took its place, and `came` where this item took the place of `item`; `item`, the
 other item as another record names it; `reason`, `reference`, `replaced_on` and
-`row_version`. `replaces` and `replaced_by` are the latest of each part, or `null`, and
-are what the list, its filter and an export read, so that an item replaced twice is one
-row of the list and of a report.
+`row_version`. `replaces` and `replaced_by` are the latest of each part, or `null`, on
+the record of an item and in `hirdir items show`, beside the whole list. The item list
+has no field of them to filter by, and an export of items no column: the replacements
+travel as the file of `item_replacements`, a row each, and the report of replacements
+lists them a row each, so that an item replaced twice is one row of the list of items.
 
 An Admin removes a replacement that was a mistake, that a wrong file or a wrong press
 recorded, with `POST /item-replacements/{hid}/remove` (P-238):

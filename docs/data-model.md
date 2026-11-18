@@ -373,7 +373,9 @@ the same other twice on one day, which is the uniqueness of the table: the two i
 with the day. An item's record lists its `replacements`, each with the other item,
 whether this one `left` or `came`, the reason, the reference and the day, the latest
 first, by the day and then by when it was entered; `replaces` and `replaced_by` are
-the latest of each, or null, and are what a list, a filter and an export show.
+the latest of each, or null, on the record of an item and in `hirdir items show`; the
+item list has no field of them and an export of items no column, since the
+replacements travel as their own file.
 
 **A replacement moves neither item by a rule, and changes of each what its request
 names** (P-242). With `drop_identity`, where the item that leaves is a current member
