@@ -1688,7 +1688,16 @@ test("the audit list is sorted by the server over all of it, and paging keeps th
   }).toPass();
 
   // Another click turns the order round, over the whole list, from the first page.
-  answer = asked("-action");
+  // The page may first ask for the new order in the place it was at and let that go: the
+  // answer waited for is the one from the first page.
+  answer = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname.endsWith("/api/v1/audit-events") &&
+      url.searchParams.get("sort") === "-action" &&
+      (url.searchParams.get("offset") ?? "0") === "0"
+    );
+  });
   await table.getByRole("button", { name: "Action", exact: true }).click();
   const turned = await answer;
   expect(turned.status()).toBe(200);

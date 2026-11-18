@@ -220,6 +220,10 @@ test("S15: an import is previewed, and a row whose record has changed since is l
 
   // The vendor the import had to create is marked unreviewed, and is reviewed here.
   await main(page).getByRole("link", { name: "Vendors" }).click();
+  // The list is every file's: it is filtered to the vendor before its row is looked for
+  // (rule 4 of support.ts), by its name as plain words (P-187).
+  await page.getByLabel("Filter", { exact: true }).fill(vendor);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await page.getByTestId("grid-vendors").getByRole("link", { name: vendor }).click();
   await expect(page.getByRole("heading", { level: 1, name: vendor })).toContainText("Unreviewed");
   await expect(page.getByTestId("review-status")).toHaveText("Unreviewed");
