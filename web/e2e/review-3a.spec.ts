@@ -188,6 +188,74 @@ test("what is typed into an item's details after Save, while the page reads it a
   await expectClean(page, seen);
 });
 
+test("a kept field that someone else changed meanwhile says so under it, and a field not touched takes the new value (P-202)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await records(request, account);
+  const item = (
+    await make(request, headers, "/items", {
+      hostname: host("mill-sw-02"),
+      location_hid: made.location,
+    })
+  ).hid;
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto(`./items/${item}`);
+  await expect(page.getByRole("heading", { level: 1, name: host("mill-sw-02") })).toBeVisible();
+  const form = details(page);
+  const tag = form.getByLabel("Asset tag");
+  const save = form.getByRole("button", { name: "Save", exact: true });
+  const saved = page.getByRole("status").filter({ hasText: "The item was saved." });
+
+  const reread = await holdBack(page, `**/api/v1/items/${item}`, "GET");
+  await form.getByLabel("Serial number").fill(`SER2-${id}`);
+  await save.click();
+  await expect(saved).toBeVisible();
+  await expect.poll(reread.asked, "the page reads the item again").toBeGreaterThan(0);
+  await tag.fill(`MINE-${id}`);
+  // Another person saves the asset tag and the FQDN before the page has read the item.
+  const now = await read(request, headers, `/items/${item}`);
+  const other = await request.patch(`./api/v1/items/${item}`, {
+    headers,
+    data: {
+      row_version: now.row_version,
+      asset_tag: `THEIRS-${id}`,
+      fqdn: `${host("mill-sw-02")}.example.net`,
+    },
+  });
+  expect(other.status(), await other.text()).toBe(200);
+  const answered = page.waitForResponse(
+    (answer) =>
+      answer.url().endsWith(`/api/v1/items/${item}`) && answer.request().method() === "GET",
+  );
+  reread.release();
+  await answered;
+  await reread.done();
+
+  // What was typed stays, and the person is told what saving it replaces.
+  const note = `Changed meanwhile to “THEIRS-${id}”; saving replaces it.`;
+  await expect(form.getByLabel("FQDN")).toHaveValue(`${host("mill-sw-02")}.example.net`);
+  await expect(tag).toHaveValue(`MINE-${id}`);
+  await expect(form.getByText(note, { exact: true })).toBeVisible();
+  await expect(tag).toHaveAccessibleDescription(new RegExp(`THEIRS-${id}.*saving replaces it`));
+  await expect(form.getByRole("status").filter({ hasText: `Asset tag: ${note}` })).toHaveCount(1);
+  // The field the person did not touch takes the new value, and nothing is said of it.
+  await expect(form.getByLabel("FQDN")).not.toHaveAccessibleDescription(/meanwhile/);
+
+  // Saving replaces it, as the person was told, and the note goes.
+  await save.click();
+  await expect(saved).toBeVisible();
+  await expect
+    .poll(async () => (await read(request, headers, `/items/${item}`)).asset_tag)
+    .toBe(`MINE-${id}`);
+  await expect(form.getByText("Changed meanwhile", { exact: false })).toHaveCount(0);
+
+  await expectClean(page, seen);
+});
+
 /** The part of a grid whose rows scroll, and how far it is scrolled. */
 function scrolled(grid: Locator): Promise<number> {
   return grid.locator(".ag-grid-viewport").evaluate((rows) => Math.round(rows.scrollTop));

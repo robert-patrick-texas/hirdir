@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildPatch, type FieldSpec, formOf } from "./patch";
-import { carryTyped, forgetLeft, leave, peekLeft, savedRecord, touched } from "./typedAfterSave";
+import {
+  carryTyped,
+  changedMeanwhile,
+  forgetLeft,
+  leave,
+  meanwhileNote,
+  peekLeft,
+  savedRecord,
+  touched,
+} from "./typedAfterSave";
 
 const SPECS: FieldSpec[] = [
   { name: "name", label: "Name", kind: "text" },
@@ -47,6 +56,46 @@ describe("carryTyped", () => {
   });
 });
 
+describe("changedMeanwhile", () => {
+  const taken = formOf(SPECS, SAVED);
+  const typed = { ...taken, name: "edge-mine.example.net", comments: "mine" };
+
+  it("names a kept field that someone else changed meanwhile to something else", () => {
+    // Someone saved the name and the tags; the person typed the name and the comments.
+    const read = { ...SAVED, row_version: 5, name: "edge-theirs.example.net", tags: [] };
+    expect(changedMeanwhile(SPECS, taken, typed, read)).toEqual(["name"]);
+  });
+
+  it("names nothing when the record kept the field, or took what was typed", () => {
+    expect(changedMeanwhile(SPECS, taken, typed, { ...SAVED, row_version: 5 })).toEqual([]);
+    const same = { ...SAVED, row_version: 5, name: "edge-mine.example.net" };
+    expect(changedMeanwhile(SPECS, taken, typed, same)).toEqual([]);
+  });
+});
+
+describe("meanwhileNote", () => {
+  it("says what the record now has, a choice by its label", () => {
+    const choice: FieldSpec = {
+      name: "status",
+      label: "Status",
+      kind: "choice",
+      options: [{ value: "in_service", label: "In service" }],
+    };
+    expect(meanwhileNote(SPECS[0] as FieldSpec, "edge-b.example.net")).toBe(
+      "Changed meanwhile to “edge-b.example.net”; saving replaces it.",
+    );
+    expect(meanwhileNote(choice, "in_service")).toBe(
+      "Changed meanwhile to “In service”; saving replaces it.",
+    );
+    expect(meanwhileNote(SPECS[3] as FieldSpec, true)).toBe(
+      "Changed meanwhile to “Yes”; saving replaces it.",
+    );
+    expect(meanwhileNote(SPECS[0] as FieldSpec, "")).toBe(
+      "Emptied meanwhile by someone else; saving replaces that.",
+    );
+  });
+});
+
 describe("savedRecord", () => {
   it("is what was sent over the record, with the version the server answered", () => {
     const before = { ...SAVED, comments: null };
@@ -72,6 +121,7 @@ describe("what a form left", () => {
     record: SAVED,
     taken: formOf(SPECS, SAVED),
     values: { ...formOf(SPECS, SAVED), comments: "typed" },
+    meanwhile: [],
     at: 1_000,
   };
 

@@ -1794,7 +1794,10 @@ What 0.9.6 changes:
   vendor's name, those with the most items first, each offered with its vendor beside its
   PID. A list that stays a list is read to its end, past the first 1,000 (P-200). New item offers to add a model that the search does not
   find, within the page, and keeps what was typed (P-201). What is typed into a form
-  after its Save, while the page reads the record again, stays (P-202). A page that has
+  after its Save, while the page reads the record again, stays; where the record read
+  again has a new value in a field kept so, from someone else, the field says so beneath
+  it, "Changed meanwhile to …; saving replaces it", and a field not typed in takes the
+  new value without a word (P-202). A page that has
   made a record says so, with a link to it (P-204).
 - **Every grid.** Coming back to a list from a record shows the page it was on, where
   it was scrolled to, with the row that was opened marked; a new filter or sort begins

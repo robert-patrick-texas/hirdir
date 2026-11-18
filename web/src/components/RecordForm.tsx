@@ -22,7 +22,16 @@ import {
   formOf,
 } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
-import { carryTyped, forgetLeft, leave, peekLeft, savedRecord } from "../lib/typedAfterSave";
+import {
+  carryTyped,
+  changedMeanwhile,
+  forgetLeft,
+  leave,
+  meanwhileNote,
+  peekLeft,
+  savedRecord,
+  touched,
+} from "../lib/typedAfterSave";
 import { FormFields } from "./FormFields";
 import { Problem } from "./Problem";
 
@@ -71,7 +80,9 @@ interface EditFormProps<R, B> {
  * next save is not refused as stale; once the page has read the record again, a field
  * the person has changed keeps what was typed and the others take what was read. A page
  * that makes a new form for the record it read again, by a `key` with its version, is
- * handed what the form before it held.
+ * handed what the form before it held. A kept field that someone else changed meanwhile
+ * says so beneath it, with what the record now has: saving replaces that, and the person
+ * is told before, never after.
  */
 export function EditForm<R extends { row_version: number }, B extends { row_version: number }>(
   props: EditFormProps<R, B>,
@@ -87,11 +98,22 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
     record,
     taken: formOf(specs, stored),
   }));
+  const [held] = useState(() => (leftKey === null ? null : peekLeft(leftKey, record, Date.now())));
   const [values, setValues] = useState<FormValues>(() => {
-    const held = leftKey === null ? null : peekLeft(leftKey, record, Date.now());
     const taken = formOf(specs, stored);
     return held ? carryTyped(specs, held.taken, held.values, stored) : taken;
   });
+  // The kept fields whose value someone else changed meanwhile (P-202).
+  const [meanwhile, setMeanwhile] = useState<readonly string[]>(() =>
+    held
+      ? [
+          ...new Set([
+            ...held.meanwhile,
+            ...changedMeanwhile(specs, held.taken, held.values, stored),
+          ]),
+        ]
+      : [],
+  );
   // The record as the page last gave it, to see when it has been read again.
   const [given, setGiven] = useState(`${hid} ${record.row_version}`);
   const [found, setFound] = useState<Record<string, string>>({});
@@ -107,10 +129,23 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
     if ((base.record as { hid?: unknown }).hid !== hid) {
       setBase({ record, taken: formOf(specs, stored) });
       setValues(formOf(specs, stored));
+      setMeanwhile([]);
     } else if (record.row_version >= base.record.row_version) {
+      const changed = changedMeanwhile(specs, base.taken, values, stored);
       setBase({ record, taken: formOf(specs, stored) });
       setValues(carryTyped(specs, base.taken, values, stored));
+      if (changed.length > 0) setMeanwhile((was) => [...new Set([...was, ...changed])]);
     }
+  }
+  // Said while the field still holds something other than what the record has.
+  const replaces = touched(specs, base.taken, values).filter((name) => meanwhile.includes(name));
+  const said: Record<string, string> = { ...hints };
+  const told: string[] = [];
+  for (const spec of specs) {
+    if (!replaces.includes(spec.name)) continue;
+    const note = meanwhileNote(spec, base.taken[spec.name]);
+    said[spec.name] = [note, hints?.[spec.name] ?? spec.hint].filter(Boolean).join(" ");
+    told.push(`${spec.label}: ${note}`);
   }
 
   // Once it has saved, what the form holds is kept for a form of the same record that
@@ -122,7 +157,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
   useEffect(() => {
     if (leftKey === null || !saved.current) return;
     const record = base.record as R & Readonly<Record<string, unknown>>;
-    leave(leftKey, { record, taken: base.taken, values, at: Date.now() });
+    leave(leftKey, { record, taken: base.taken, values, meanwhile, at: Date.now() });
   });
 
   function change(name: string, value: FormValue) {
@@ -147,6 +182,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
       saved.current = true;
       const after = savedRecord(base.record, built.body, result.value);
       if (after !== base.record) setBase({ record: after, taken: sent });
+      setMeanwhile([]);
       onSaved();
     } else refusedNow();
   }
@@ -158,12 +194,17 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
         onReload={onReload}
         {...(labels ? { labels } : {})}
       />
+      {told.length > 0 && (
+        <p role="status" className="visually-hidden" data-testid="changed-meanwhile">
+          {told.join(" ")}
+        </p>
+      )}
       <FormFields
         specs={specs}
         values={values}
         onChange={change}
         errors={{ ...refused, ...found }}
-        {...(hints ? { hints } : {})}
+        hints={said}
         {...(notes ? { notes } : {})}
         disabled={action.busy}
       />
@@ -182,6 +223,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
           onClick={() => {
             setValues(base.taken);
             setFound({});
+            setMeanwhile([]);
             action.clear();
           }}
         >

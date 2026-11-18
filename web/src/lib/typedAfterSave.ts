@@ -43,6 +43,42 @@ export function carryTyped(
 }
 
 /**
+ * The fields whose typed value is kept over a value someone else saved meanwhile: changed
+ * by the person since `taken`, changed in the record read again since `taken` too, and to
+ * something other than what was typed. Saving replaces what the record now has, and the
+ * person is told so under each of them.
+ */
+export function changedMeanwhile(
+  specs: readonly FieldSpec[],
+  taken: FormValues,
+  values: FormValues,
+  record: Stored,
+): string[] {
+  const fresh = formOf(specs, record);
+  return touched(specs, taken, values).filter(
+    (name) => !same(fresh[name], taken[name]) && !same(fresh[name], values[name]),
+  );
+}
+
+/** What a field holds, in the words the form shows it in: a choice by its label. */
+function shown(spec: FieldSpec, value: FormValue | undefined): string {
+  const label = (one: string) => spec.options?.find((option) => option.value === one)?.label ?? one;
+  if (value === undefined || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.map(label).join(", ");
+  if (spec.kind === "tristate") return value === "true" ? "Yes" : value === "false" ? "No" : value;
+  return label(value);
+}
+
+/** What is said under a kept field whose value someone else changed meanwhile. */
+export function meanwhileNote(spec: FieldSpec, value: FormValue | undefined): string {
+  const now = shown(spec, value);
+  return now === ""
+    ? "Emptied meanwhile by someone else; saving replaces that."
+    : `Changed meanwhile to “${now}”; saving replaces it.`;
+}
+
+/**
  * The record as a save left it, before the page has read it again: what was sent, over
  * the record as it was, with the version the server answered. Without a version in the
  * answer there is nothing to go on, and the record stays as it was.
@@ -67,6 +103,8 @@ export interface Left {
   taken: FormValues;
   /** What the form held. */
   values: FormValues;
+  /** The fields kept over a value someone else saved meanwhile. */
+  meanwhile: readonly string[];
   at: number;
 }
 
