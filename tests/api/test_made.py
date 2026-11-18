@@ -189,6 +189,11 @@ def test_the_commands_retire_and_delete_several_and_list_what_an_import_made(
     # One that is not there is said so, and the command exits 4.
     missing = run("items", "delete", hids[2], "--reason", "a wrong file", "--yes", expect=4)
     assert f"not found: {hids[2]}" in missing.stdout
+    # Asked for, a deleted item says when, by whom and why: the reason once.
+    shown = run("items", "show", hids[2], expect=4).output
+    assert f"the item {hids[2]} was deleted on " in shown
+    assert shown.count("a wrong file") == 1
+    assert shown.rstrip().endswith("by ada: a wrong file")
 
     stack = make.stack("site9-stack-wrong", [make.item(hostname="site9-sw-09")])
     run("groups", "retire", "site9-stack-wrong")

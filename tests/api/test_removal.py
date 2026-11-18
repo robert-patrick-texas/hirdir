@@ -199,7 +199,9 @@ def test_an_admin_deletes_items_a_wrong_file_made_with_what_belongs_to_them_alon
     assert gone["deleted"]["actor_name"] == "ada"
     assert gone["deleted"]["reason"] == "a wrong file of 2026-11-18"
     assert f"the item {one['hid']} was deleted on " in gone["detail"]
-    assert gone["detail"].endswith("by ada: a wrong file of 2026-11-18")
+    # The reason is in `deleted` alone: it may be long, and is not said twice.
+    assert gone["detail"].endswith(" by ada")
+    assert "a wrong file" not in gone["detail"]
     # Its event holds every field as it was, what went with it, and the reason.
     (event,) = make.audit(record_hid=one["hid"], action="delete")
     said = _changes(event)
