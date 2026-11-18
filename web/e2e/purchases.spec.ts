@@ -36,8 +36,8 @@ const pid = `EN-9300-24T-${suffix}`;
 const otherPid = `EN-9300-48T-${suffix}`;
 
 /** 0.9.6: a catalog entry is chosen by searching for it, here by its PID (P-200). */
-async function chooseEntry(form: Locator, pid: string) {
-  await form.getByLabel("Catalog entry").fill(pid);
+async function chooseEntry(form: Locator, pid: string, field = "Catalog entry") {
+  await form.getByLabel(field, { exact: true }).fill(pid);
   await form
     .getByRole("list", { name: "Catalog entries that match" })
     .getByRole("button", { name: new RegExp(`^${pid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} ·`) })
@@ -94,9 +94,7 @@ test("S32: a request with a line of ten switches: six are received, then four as
   await expect(region(page, "Lines")).toContainText(`${reference} has no line yet.`);
   await page.getByRole("button", { name: "Add a line" }).click();
   const newLine = region(page, `New line of ${reference}`);
-  await newLine
-    .getByLabel("Model", { exact: true })
-    .selectOption({ label: `${pid} (Example 9300 24-port)` });
+  await chooseEntry(newLine, pid, "Model");
   await newLine.getByLabel("Quantity (required)").fill("10");
   await newLine.getByRole("button", { name: "Add line" }).click();
   await expect(page.getByText(`${line} was added: 10 × ${vendor} ${pid}.`)).toBeVisible();
@@ -314,9 +312,7 @@ test("D-161: an item put on a line is of its model, and what 0.6.0 let in is mar
   await openRequest(page);
   await page.getByRole("button", { name: "Add a line" }).click();
   const newLine = region(page, `New line of ${reference}`);
-  await newLine
-    .getByLabel("Model", { exact: true })
-    .selectOption({ label: `${pid} (Example 9300 24-port)` });
+  await chooseEntry(newLine, pid, "Model");
   await newLine.getByLabel("Quantity (required)").fill("2");
   await newLine.getByRole("button", { name: "Add line" }).click();
   await expect(page.getByText(`${secondLine} was added: 2 × ${vendor} ${pid}.`)).toBeVisible();

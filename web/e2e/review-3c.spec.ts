@@ -113,6 +113,15 @@ async function setUp(request: APIRequestContext, account: Account): Promise<Made
   return made;
 }
 
+/** 0.9.6: the model of a line is chosen by searching for it, here by its PID (P-200). */
+async function chooseModel(form: Locator, pid: string) {
+  await form.getByLabel("Model", { exact: true }).fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid} ·`) })
+    .click();
+}
+
 function lineRow(page: Page, name: string): Locator {
   return page.getByTestId("purchase-lines").locator(`tr[data-line="${name}"]`);
 }
@@ -229,11 +238,11 @@ test("P-208: the next line like the last, a draft site, the lines in the window 
   ).toBeVisible();
 
   // Two lines more, the second like the first: to the draft site, on the same day.
-  const modelLabel = `TW-2400-${upper} (Tidewater 2400)`;
+  const modelPid = `TW-2400-${upper}`;
   const draftSite = `${label("Saltmarsh")} > ${label("Ridge Annex")} (draft)`;
   await page.getByRole("button", { name: "Add a line" }).click();
   const form = page.getByRole("region", { name: `New line of ${reference}` });
-  await form.getByLabel("Model", { exact: true }).selectOption({ label: modelLabel });
+  await chooseModel(form, modelPid);
   await form.getByLabel("Quantity (required)").fill("5");
   await form.getByLabel("Destination site").selectOption({ label: draftSite });
   await form.getByLabel("Expected on").fill("2031-04-02");
@@ -243,7 +252,7 @@ test("P-208: the next line like the last, a draft site, the lines in the window 
   await expect(form.getByLabel("Model", { exact: true })).toBeFocused();
   await expect(form.getByLabel("Destination site")).toHaveValue(made?.annex ?? "");
   await expect(form.getByLabel("Expected on")).toHaveValue("2031-04-02");
-  await form.getByLabel("Model", { exact: true }).selectOption({ label: modelLabel });
+  await chooseModel(form, modelPid);
   await form.getByLabel("Quantity (required)").fill("6");
   await form.getByRole("button", { name: "Add line" }).click();
   const fourth = lineRow(page, `${reference}/4`);

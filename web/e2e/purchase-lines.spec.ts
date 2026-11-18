@@ -36,6 +36,15 @@ const partNumber = `CAB-TIE-${upper}`;
 const description = "Hook-and-loop cable ties, a bag of 100";
 const serials = [1, 2].map((place) => `ENL${upper}0${place}`);
 
+/** 0.9.6: the model of a line is chosen by searching for it, here by its PID (P-200). */
+async function chooseModel(form: Locator, pid: string) {
+  await form.getByLabel("Model", { exact: true }).fill(pid);
+  await form
+    .getByRole("list", { name: "Catalog entries that match" })
+    .getByRole("button", { name: new RegExp(`^${pid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} ·`) })
+    .click();
+}
+
 function lineRow(page: Page, name: string): Locator {
   return page.getByTestId("purchase-lines").locator(`tr[data-line="${name}"]`);
 }
@@ -57,7 +66,7 @@ async function addLine(
   await page.getByRole("button", { name: "Add a line" }).click();
   const form = region(page, `New line of ${reference}`);
   if (line.model) {
-    await form.getByLabel("Model", { exact: true }).selectOption({ label: line.model });
+    await chooseModel(form, line.model);
   }
   if (line.partNumber) await form.getByLabel("Part number").fill(line.partNumber);
   if (line.description) await form.getByLabel("Description").fill(line.description);
@@ -142,7 +151,7 @@ test("P-120: a line's model is corrected after items arrived, and the items foll
   await openRequest(page);
 
   // A line of the first model, and two switches received on it.
-  await addLine(page, { model: `${pid} (${model})`, quantity: "2" });
+  await addLine(page, { model: pid, quantity: "2" });
   await expect(page.getByText(`${corrects} was added: 2 × ${vendor} ${pid}.`)).toBeVisible();
   const row = lineRow(page, corrects);
   await expect(row).toHaveAttribute("data-tracked", "true");
@@ -156,18 +165,15 @@ test("P-120: a line's model is corrected after items arrived, and the items foll
   await expect(row).toHaveAttribute("data-received", "2");
 
   // The request was typed with the wrong model. The line keeps a model, since items
-  // are on it: the form offers no blank, and asks what becomes of the two once another
+  // are on it: the form offers no Clear, and asks what becomes of the two once another
   // model is chosen.
   await row.getByRole("button", { name: `Change ${corrects}` }).click();
   const change = page.getByTestId("change-line");
-  const modelField = change.getByLabel("Model", { exact: true });
   await expect(change).toContainText("2 items have arrived on it, so it keeps a model");
-  await expect(
-    modelField.locator("option", { hasText: "None: the line is not tracked" }),
-  ).toHaveCount(0);
+  await expect(change.getByRole("button", { name: "Clear the model" })).toHaveCount(0);
   const question = change.getByLabel("What becomes of the 2 items that arrived on it");
   await expect(question).toHaveCount(0);
-  await modelField.selectOption({ label: `${correctedPid} (${corrected})` });
+  await chooseModel(change, correctedPid);
   await expect(question).toBeVisible();
   await expect(change).toContainText("Follow gives every item on the line that is not retired");
   await expect(change).toContainText("Stay leaves each item with the model it has");
@@ -200,7 +206,7 @@ test("P-135: a model is taken off a line on which nothing has arrived", async ({
   await signIn(page, account);
   await openRequest(page);
 
-  await addLine(page, { model: `${pid} (${model})`, partNumber: `${pid}=`, quantity: "1" });
+  await addLine(page, { model: pid, partNumber: `${pid}=`, quantity: "1" });
   await expect(page.getByText(`${takenOff} was added: 1 × ${vendor} ${pid}.`)).toBeVisible();
   const row = lineRow(page, takenOff);
   await expect(row).toHaveAttribute("data-tracked", "true");
@@ -209,9 +215,10 @@ test("P-135: a model is taken off a line on which nothing has arrived", async ({
   await expect(change).toContainText(
     "Nothing has arrived on it, so the model may also be taken off",
   );
-  await change
-    .getByLabel("Model", { exact: true })
-    .selectOption({ label: "None: the line is not tracked" });
+  await change.getByRole("button", { name: "Clear the model" }).click();
+  await expect(change.getByTestId("chosen-catalog_entry_hid")).toHaveText(
+    "None: the line is not tracked",
+  );
   // Nothing has arrived, so nothing is asked of the items.
   await expect(change.getByLabel(/What becomes of the/)).toHaveCount(0);
   await change.getByRole("button", { name: "Save" }).click();
