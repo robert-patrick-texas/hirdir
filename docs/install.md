@@ -1520,6 +1520,59 @@ database as 0.9.6 leaves it:
 sudo apt install --allow-downgrades ./hirdir_0.9.5_amd64.deb
 ```
 
+### From 0.9.6 to 0.9.7
+
+The schema stays at revision `0012`: 0.9.7 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+A web page that was open while the upgrade ran goes on working, and says under its menu
+bar, the next time its person comes back to it, that a new version has been installed,
+with a button, Load again. Nothing is loaded again unasked.
+
+What is new, for the work of each day:
+
+- **A page never stands empty.** One that cannot be drawn says so, with the text of the
+  fault to copy, and offers Load again and the first page; and a page that has not
+  loaded yet says that it is loading. If the fault page is ever seen, its text is what
+  to send to whoever looks after the installation.
+- **Lists.** Every value that names another record, a stack, a place, an owner, a
+  vendor, a model, opens that record; rows are ticked by a box at their left; and the
+  rows ticked are retired at once by the Inventory role.
+- **A wrong import.** A past import lists the records it made. Those that should never
+  have been are retired there, or deleted by an Admin where nothing else depends on
+  them, with a reason, and the audit trail keeps each record as it was. "Fixing a wrong
+  import", in [Interfaces](interfaces.md#fixing-a-wrong-import), says what to do in
+  each case.
+- **Places.** A place is named in a file, a filter and a command by its codes, as
+  `S2 > R102`, as well as by its path of names; and the coordinates of a site or a
+  location open a map.
+
+There is one new setting of the inventory, `map_link`, under Admin, Settings: the
+address of the map that a place's coordinates open, with `{latitude}` and `{longitude}`
+where they go. It is Google Maps unless changed. On a network with no way out to the
+internet, blank it, and the coordinates are plain numbers again. Following the link
+sends the two coordinates of that place to the map's site, and nothing else.
+
+A layout of a list that a person kept before the upgrade stays as it was, with the
+column of boxes added at its left.
+
+For a script that reads the API: nothing is taken away. New are
+`POST /items/retire`, `POST /device-groups/retire`, `POST /items/delete`,
+`POST /device-groups/delete` and `GET /imports/{hid}/created`; `map_url` on a site and
+a location; `place_codes` on an export; `catalog_entry_hid` on an item named by another
+record and `vendor_hid` on a contract named so; and a `404` for an item or a device
+group that was deleted says so, with when, by whom and why in `deleted`. A script that
+asks for a record by a HID it kept must now expect that answer.
+
+Going back to 0.9.6 needs no backup, because the schema is the same and 0.9.6 reads the
+database as 0.9.7 leaves it; a `map_link` that was set is kept and not used:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.6_amd64.deb
+```
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,

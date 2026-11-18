@@ -107,8 +107,8 @@ counts of the reports that open their rows by the server's own filter, an improv
 to each page of purchases, contracts and vendors, a switch that joins and leaves a
 stack in one step, and a host run of the browser scenarios that reports every failure
 at once.
-0.9.7 is to follow 0.9.6 with what its first days of use asked for, and changes nothing
-that is held: a page that cannot be drawn says so and offers to load again, and a page
+0.9.7 follows 0.9.6 with what its first days of use asked for (P-227 to P-236), and
+changes nothing that is held: a page that cannot be drawn says so and offers to load again, and a page
 older than the server says that a new version is installed; every value of a list that
 names a record is a link; rows are ticked; the records an import made are listed, to be
 retired by the rows ticked (P-228) or deleted by an Admin where they were a mistake

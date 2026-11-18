@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.6, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.7, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -39,6 +39,12 @@ a long page kept in reach, and counts that come sooner and open what they count.
 found by its name, a catalog entry chosen by searching, a list that keeps its place, a
 contact's page that lists where the contact is named, counts of the reports that open
 their rows, and an improvement to each page of purchases, vendors and contracts.
+0.9.7 is what the first days of use asked for: a page that cannot be drawn says so and
+offers to load again, and one older than the server says that a new version is
+installed; every value of a list that names a record opens it; rows are ticked, and the
+rows ticked are retired at once; a past import lists the records it made, to be retired,
+or deleted by an Admin where they were a mistake; a place is named by its codes; and the
+coordinates of a place open a map.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are
