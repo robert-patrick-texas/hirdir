@@ -370,6 +370,56 @@ export function endable(coverage: Pick<Coverage, "ends_on">, today: string): boo
   return !coverage.ends_on || coverage.ends_on >= today;
 }
 
+/** 0.9.6 (P-213): how an item is left out of a renewal, where an end on the last day is not. */
+export const LEAVE_OUT_NOTE =
+  "To leave an item out of a renewal, mark it not to be renewed before the contract is renewed (Not to be renewed, in the item's details or its model's), or end its coverage on an earlier day.";
+
+/**
+ * 0.9.6 (P-213): whether ending a coverage on `day` would change nothing, because the
+ * day is the contract's own last day. The server keeps such a day as blank (D-156): the
+ * coverage keeps the contract's period and follows it into a renewal. The contract's
+ * end is given where the page has it; otherwise a coverage that has no end of its own
+ * has the contract's in force. A coverage that has the day as its own already keeps it,
+ * as the end a renewal gave an item not to be renewed (D-182).
+ */
+export function followsOnEnd(
+  coverage: Pick<Coverage, "ends_on" | "effective_ends_on">,
+  day: string,
+  contractEnds?: string | null,
+): boolean {
+  if (day === "" || coverage.ends_on === day) return false;
+  if (contractEnds) return day === contractEnds;
+  return !coverage.ends_on && coverage.effective_ends_on === day;
+}
+
+/**
+ * 0.9.6 (P-213): what the page says once coverages were sent an end of `day`, read from
+ * what the server answered for each: a coverage whose own end is now that day was
+ * ended; one the server kept with no end of its own, or with another, was not.
+ */
+export function endedText(day: string, answers: ReadonlyArray<Pick<Coverage, "ends_on">>): string {
+  const kept = answers.filter((answer) => answer.ends_on === day).length;
+  const open = answers.length - kept;
+  const said: string[] = [];
+  if (kept > 0) {
+    said.push(
+      `${kept.toLocaleString("en-US")} ${kept === 1 ? "coverage was" : "coverages were"} ended on ${day}. Nothing was removed.`,
+    );
+  }
+  if (open > 0) {
+    const which =
+      kept === 0
+        ? open === 1
+          ? "The coverage was not ended"
+          : `None of the ${open.toLocaleString("en-US")} coverages was ended`
+        : `${open.toLocaleString("en-US")} ${open === 1 ? "was" : "were"} not ended`;
+    said.push(
+      `${which}: ${day} is the contract's own last day, so the server kept the contract's period, which follows a renewal. ${LEAVE_OUT_NOTE}`,
+    );
+  }
+  return said.join(" ");
+}
+
 /** A contract as a search offers it: its number, then its vendor. */
 export function contractLabel(contract: {
   number: string;

@@ -19,9 +19,12 @@ import {
   coveringNumbers,
   coveringStatuses,
   endable,
+  endedText,
+  followsOnEnd,
   INHERITED,
   inForce,
   LAPSED,
+  LEAVE_OUT_NOTE,
   nextTermText,
   overrides,
   periodText,
@@ -604,5 +607,45 @@ describe("paths and labels", () => {
   it("call a contract by its number and its vendor", () => {
     expect(contractLabel(contract)).toBe("CON-2025-0002 · Cisco");
     expect(contractLabel({ number: "CON-1", vendor: "Juniper" })).toBe("CON-1 · Juniper");
+  });
+});
+
+describe("ending a coverage on the contract's own last day (P-213)", () => {
+  const open = { ends_on: null, effective_ends_on: "2026-12-31" };
+  const own = { ends_on: "2026-06-30", effective_ends_on: "2026-06-30" };
+
+  it("is said to change nothing where the day is the contract's end", () => {
+    expect(followsOnEnd(open, "2026-12-31", "2026-12-31")).toBe(true);
+    expect(followsOnEnd(own, "2026-12-31", "2026-12-31")).toBe(true);
+    expect(followsOnEnd(open, "2026-12-30", "2026-12-31")).toBe(false);
+  });
+
+  it("reads the contract's end from a coverage that has none of its own", () => {
+    expect(followsOnEnd(open, "2026-12-31")).toBe(true);
+    expect(followsOnEnd(open, "2026-11-30")).toBe(false);
+    // One with an end of its own does not say what the contract's is.
+    expect(followsOnEnd(own, "2026-12-31")).toBe(false);
+  });
+
+  it("leaves alone an end that is the coverage's own already, and no day", () => {
+    const kept = { ends_on: "2026-12-31", effective_ends_on: "2026-12-31" };
+    expect(followsOnEnd(kept, "2026-12-31", "2026-12-31")).toBe(false);
+    expect(followsOnEnd(open, "", "2026-12-31")).toBe(false);
+  });
+
+  it("says what the server kept, not what was asked", () => {
+    const day = "2026-12-31";
+    expect(endedText(day, [{ ends_on: day }, { ends_on: day }])).toBe(
+      "2 coverages were ended on 2026-12-31. Nothing was removed.",
+    );
+    const none = endedText(day, [{ ends_on: null }, { ends_on: null }, { ends_on: null }]);
+    expect(none).toContain("None of the 3 coverages was ended");
+    expect(none).not.toContain("were ended");
+    expect(none).toContain(LEAVE_OUT_NOTE);
+    expect(endedText(day, [{ ends_on: null }])).toMatch(/^The coverage was not ended: /);
+    const some = endedText(day, [{ ends_on: day }, { ends_on: null }]);
+    expect(some).toMatch(
+      /^1 coverage was ended on 2026-12-31\. Nothing was removed\. 1 was not ended: /,
+    );
   });
 });

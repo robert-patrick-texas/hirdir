@@ -19,6 +19,9 @@ import {
   coverBatches,
   coverBody,
   endable,
+  endedText,
+  followsOnEnd,
+  LEAVE_OUT_NOTE,
   pieceSize,
   RENEWAL_PENDING,
   RENEWAL_PENDING_NOTE,
@@ -101,6 +104,11 @@ interface EndCoverageProps {
   onClose: () => void;
   /** Read the coverages again, as when one of them has changed since. */
   onReload: () => void;
+  /**
+   * 0.9.6 (P-213): the contract's own last day, where the page has it: an end given on
+   * that day changes nothing (D-156).
+   */
+  contractEnds?: string | null;
 }
 
 /**
@@ -108,7 +116,13 @@ interface EndCoverageProps {
  * year's answer stays on record. Each coverage is one change of its own; the first that
  * is refused stops the rest, and the page says how many were ended.
  */
-export function EndCoverage({ coverages, onEnded, onClose, onReload }: EndCoverageProps) {
+export function EndCoverage({
+  coverages,
+  onEnded,
+  onClose,
+  onReload,
+  contractEnds,
+}: EndCoverageProps) {
   const [day, setDay] = useState(() => today());
   const [ended, setEnded] = useState(0);
   const action = useAction();
@@ -118,22 +132,29 @@ export function EndCoverage({ coverages, onEnded, onClose, onReload }: EndCovera
     event.preventDefault();
     let count = 0;
     setEnded(0);
+    // What the server kept of each: the page says what it did, not what was asked.
+    const answers: Coverage[] = [];
     const result = await action.run(async () => {
       for (const coverage of coverages) {
-        await api.request("patch", "/api/v1/contracts/{hid}/coverage/{coverage_hid}", {
-          path: { hid: coverage.contract_hid, coverage_hid: coverage.hid },
-          body: { row_version: coverage.row_version, ends_on: day },
-        });
-        count += 1;
+        const answer = await api.request(
+          "patch",
+          "/api/v1/contracts/{hid}/coverage/{coverage_hid}",
+          {
+            path: { hid: coverage.contract_hid, coverage_hid: coverage.hid },
+            body: { row_version: coverage.row_version, ends_on: day },
+          },
+        );
+        answers.push(answer);
+        if (answer.ends_on === day) count += 1;
         setEnded(count);
       }
     });
-    if (result.ok) {
-      onEnded(
-        `${plural(count, "coverage was", "coverages were")} ended on ${day}. Nothing was removed.`,
-      );
-    }
+    if (result.ok) onEnded(endedText(day, answers));
   }
+
+  // 0.9.6 (P-213): an end on the contract's own last day is kept as blank by the
+  // server, and the coverage follows a renewal: said before anything is sent.
+  const follow = coverages.filter((coverage) => followsOnEnd(coverage, day, contractEnds)).length;
 
   const [first] = coverages;
   const what =
@@ -173,6 +194,21 @@ export function EndCoverage({ coverages, onEnded, onClose, onReload }: EndCovera
             required
           />
         </div>
+        {follow > 0 && (
+          <div className="warning coverage-follows" role="status" data-testid="end-follows">
+            <p>
+              {day} is the contract&apos;s own last day:{" "}
+              {follow === coverages.length
+                ? coverages.length === 1
+                  ? "ending on it changes nothing."
+                  : `ending on it changes nothing for any of the ${coverages.length.toLocaleString("en-US")}.`
+                : `ending on it changes nothing for ${follow.toLocaleString("en-US")} of the ${coverages.length.toLocaleString("en-US")}.`}{" "}
+              Such a coverage keeps the contract&apos;s period, and follows the contract into a
+              renewal.
+            </p>
+            <p>{LEAVE_OUT_NOTE}</p>
+          </div>
+        )}
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || day === ""}>
             End {coverages.length === 1 ? "coverage" : `${coverages.length} coverages`}
@@ -817,6 +853,9 @@ const COVERAGE_COLUMNS: GridColumn<Coverage>[] = [
   { id: "hid", header: "HID", kind: "reference", value: (row) => row.hid, mono: true, hide: true },
 ];
 
+/** 0.9.6 (P-213): the fields of a coverage that plain words in the filter box look in. */
+const COVERAGE_QUICK_FIELDS = ["item.name", "item.serial_number", "item.asset_tag"] as const;
+
 interface ContractCoverageProps {
   contract: Contract;
   mayEdit: boolean;
@@ -887,6 +926,11 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
         <EndCoverage
           key={ending.map((one) => `${one.hid} ${one.row_version}`).join(" ")}
           coverages={ending}
+          contractEnds={
+            typeof contract.effective.ends_on.value === "string"
+              ? contract.effective.ends_on.value
+              : null
+          }
           onEnded={changed}
           onClose={() => setEnding(null)}
           onReload={() => setReloads((count) => count + 1)}
@@ -898,6 +942,9 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
         entity="contract_coverage"
         columns={COVERAGE_COLUMNS}
         within={within}
+        // 0.9.6 (P-213): plain words find an item by its name, serial number or asset tag.
+        shortFilter="in_force:eq:true item.lifecycle_state:eq:Prod"
+        quickFields={COVERAGE_QUICK_FIELDS}
         // Read again when a coverage changed here, and when the contract did: a renewal
         // or a change of its period changes the days in force of every row. Neither
         // number goes down, so the sum changes with either.

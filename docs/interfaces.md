@@ -1768,8 +1768,11 @@ What 0.9.6 changes:
 - **Contracts.** The grid of every contract comes first, with the tables by agreement
   after it, folded closed; on Renewals the rows of a count that is opened come into the
   window; the list of agreements shows the account manager (P-212). The items a
-  contract covers have the filter box, and ending a coverage on the contract's last
-  day is said to change nothing before it is sent (P-213). Renew begins with the dates
+  contract covers have the filter box, its plain words looking in the item's name,
+  serial number and asset tag; ending a coverage on the contract's last day is said to
+  change nothing before it is sent, with how to leave an item out of a renewal, and
+  after an End the page says what the server kept, never that a coverage it kept open
+  was ended (P-213). Renew begins with the dates
   that follow the present term and a blank purchase reference, and says how many items
   follow, stay behind and begin with the new term (P-214). An agreement's page has the
   annual cost of each of its contracts and their total (P-215).
