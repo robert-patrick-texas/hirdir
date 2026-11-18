@@ -305,6 +305,8 @@ def test_a_switch_that_stands_alone_is_made_a_stack_in_one_request(make: Maker) 
         "cw07-idf04-acc1",
         "cw07-idf04-acc1.example.net",
     )
+    # An active item makes an active stack.
+    assert stack["record_status"] == "active"
     for field in ("location_hid", "planned_location_hid", "owner_hid", "operator_hid"):
         assert stack[field] == before[field], field
     # Each address moved as it is: its HID, network, role and primary mark.
@@ -346,6 +348,15 @@ def test_a_switch_that_stands_alone_is_made_a_stack_in_one_request(make: Maker) 
     assert _changed(address_event)["item_hid"] == (switch["hid"], None)
     assert _changed(address_event)["group_hid"] == (None, stack["hid"])
     assert make.audit(record_hid=primary["hid"])[0]["hid"] == address_event["hid"]
+
+
+def test_a_stack_made_of_a_draft_is_a_draft(make: Maker) -> None:
+    places = _places(make)
+    draft = _spare(make, 37, places["depot"], record_status="draft")
+    stack = _make_stack(make, draft)
+    assert (stack["name"], stack["record_status"]) == ("spare-sw-037", "draft")
+    assert [one["item_hid"] for one in make.members(stack)] == [draft["hid"]]
+    assert _item(make, draft)["record_status"] == "draft"
 
 
 def test_a_stack_made_with_a_name_and_a_second_switch(make: Maker) -> None:

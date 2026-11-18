@@ -386,7 +386,8 @@ is in none, and puts the item into it as its first member, at position 1 (P-243)
   The item gives each of them up in the same change, and has the four from the stack
   from then on, read when it is read, as any member has them: nothing is held twice.
   Its serial number, model, asset tag, state, tags, coverage, registrations and
-  circuits stay its own. The stack is active, and has no parent group.
+  circuits stay its own. The stack has the item's `record_status`: the stack made of a
+  draft is a draft, and of an active item active. It has no parent group.
 - `members` are more members, each as `POST /device-groups/{hid}/members` takes one,
   `drop_identity`, `disposition` and `expected_online` among them (P-217), added after
   the first by the rules of that route: a member given no position takes the lowest

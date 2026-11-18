@@ -684,10 +684,16 @@ def make_stack(
         raise Invalid(
             "the stack has no name", {"name": "give the stack a name: the item has none of its own"}
         )
+    # The stack is as far along as the item: a draft of a draft, active of an active one.
     group = create_group(
         db,
         context,
-        {"type": "stack", "name": called, **{field: getattr(item, field) for field in STACK_HOLDS}},
+        {
+            "type": "stack",
+            "name": called,
+            "record_status": item.record_status,
+            **{field: getattr(item, field) for field in STACK_HOLDS},
+        },
     )
     joining = audit.because(context, "joining_group", None, group.hid)
     add_members(db, joining, group.hid, [{"item_hid": item.hid, "position": 1}])

@@ -475,7 +475,9 @@ Rules, checked on every write:
   each up in the same change, and has those four from the stack from then on, resolved
   when read as for any member: nothing is held twice. Everything else of the item
   stays its own: its serial number, model and asset tag, its state, its tags, its
-  coverage, its registrations and the circuits connected to it. The request may name
+  coverage, its registrations and the circuits connected to it. The stack has the
+  item's record status: a draft is made a draft stack, an active item an active one.
+  The request may name
   more members, each added as any member of a stack is (P-217). Each part is audited,
   and each change of the item and each address moved says the stack it was made for,
   in `joining_group`. It is refused for a minor item, for an item that is retired or
