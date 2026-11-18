@@ -558,6 +558,52 @@ test("a model that is not in the catalog is added from New item, and what was ty
   await expectClean(page, seen, ["409 POST"]);
 });
 
+test("a model the catalog has already is offered to be used, and the part that adds one closes once an entry is chosen (P-201)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = page.getByRole("region", { name: "New item", exact: true });
+  await form.getByLabel("Hostname").fill(host("new-model-02"));
+  const chosen = form.getByTestId("chosen-catalog_entry_hid");
+  const entryName = `${made.pid} · ${label("Sample Networks")} · ${label("Edge Switch")}`;
+
+  // The part that adds a model is open; an entry chosen from the search closes it.
+  await form.getByLabel("Catalog entry").fill(id);
+  await form.getByRole("button", { name: "Add a model to the catalog" }).click();
+  const add = form.getByRole("group", { name: "Add a model to the catalog" });
+  await expect(add).toBeVisible();
+  await entriesFound(form).getByRole("button", { name: entryName }).click();
+  await expect(chosen).toHaveText(entryName);
+  await expect(add).toHaveCount(0);
+  await form.getByRole("button", { name: "Clear the catalog entry" }).click();
+
+  // The PID the catalog has already: the refusal offers that entry, to use or to open
+  // in a new tab, and Use it chooses it with what was typed kept.
+  await form.getByLabel("Catalog entry").fill(`${id}-none`);
+  await expect(form.getByText("No catalog entry matches.")).toBeVisible();
+  await form.getByRole("button", { name: "Add this model to the catalog" }).click();
+  await add.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
+  await add.getByLabel("PID").fill(made.pid ?? "");
+  await add.getByRole("button", { name: "Add to the catalog" }).click();
+  await expect(add.getByText("The catalog entry that has it:")).toBeVisible();
+  const existing = add.getByRole("link", { name: /opens in a new tab/ });
+  await expect(existing).toHaveAttribute("target", "_blank");
+  await expect(existing).toHaveAttribute("href", new RegExp(`/catalog/${made.entry}$`));
+  await add.getByRole("button", { name: "Use it" }).click();
+  await expect(chosen).toHaveText(entryName);
+  await expect(add).toHaveCount(0);
+  await expect(form.getByLabel("Hostname")).toHaveValue(host("new-model-02"));
+
+  await expectClean(page, seen, ["409 POST"]);
+});
+
 test("small words: a create says so with a link, a bulk edit's preview speaks of the items, and the first export holds the host name (P-204)", async ({
   page,
   account,
