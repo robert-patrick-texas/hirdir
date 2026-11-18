@@ -346,9 +346,10 @@ With `dry_run` nothing is changed and the answer is the same: it is what the web
 shows before it asks. Without it, what `deleted` names is gone when the answer comes,
 in one change. Each deletion is the audit event `delete` of its record, with who, when,
 the reason, every field of the record as it was, and what went with it, as `audit_events`
-on the [data model](data-model.md#audit_events) page says. Nothing is removed from the
-audit trail: the events the record had before stay, and `GET /audit-events?record_hid=`
-finds them by its HID. A HID that was deleted is never given again. `GET` and `PATCH`
+on the [data model](data-model.md#audit_events) page says. A deletion removes nothing
+from the audit trail: the events the record had before stay, and `GET
+/audit-events?record_hid=` finds them by its HID; `hirdir admin reset`, on the server,
+is the one thing that clears the trail of what it clears. A HID that was deleted is never given again. `GET` and `PATCH`
 of a record that was deleted, and its other routes that read the record first, its
 retire, history, members and children among them, answer `404`, whose `detail` says that
 it was deleted, when and by whom, and whose `deleted` holds `at`, `actor_hid`,

@@ -1550,7 +1550,8 @@ with it, each as `old`: `addresses`, `memberships` and `registrations`, a list o
 each was. Each address, membership and registration that went with it has an event
 `delete` of its own beside, with what it was and `deleted_with`, the HID of the record,
 as `new`; a stack whose seen master it was has an `update` that clears it. The events
-the record had before stay, and are found by its HID; nothing is removed from the trail.
+the record had before stay, and are found by its HID: a deletion removes nothing from
+the trail, and `hirdir admin reset` is the one thing that does.
 
 ### `import_jobs` and `import_rows`
 
