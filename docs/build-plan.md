@@ -47,7 +47,7 @@ outward change feed and host lists for monitoring tools; the names and addresses
 editing in the grid; an Admin's deletion of a mistake for the kinds of record other than
 items and device groups, which have it from 0.9.7, under the same rule, that nothing else
 depends on the record and that the deletion is audited (P-227); choosing a place from a map,
-Google Maps first, where 0.9.7 opens a map from a place's coordinates (P-229); PostgreSQL; a container image; a colour theme for the web page that
+Google Maps first, where 0.9.7 opens a map from a place's coordinates (P-229); the codes of places looked at again, whether one may be shared and a location is found before a site and a site before a region (P-237); PostgreSQL; a container image; a colour theme for the web page that
 each person chooses, kept in the browser's local storage and never in a cookie, from the
 themes of the owner's Texas2Step project, with a reminder to the owner to make them easy
 to reuse there first if they cannot be taken as they stand (P-144). Then views of the data,
@@ -116,7 +116,10 @@ retired by the rows ticked (P-228) or deleted by an Admin where they were a mist
 a map (P-229). 0.9.8 is to follow it with a stack's member replaced, and a stack made of
 a switch that stands alone, in one press each (O-02), and with the things that run on
 another, a virtual device context, a virtual machine and a container, as items with a
-host (P-226).
+host (P-226); and with what the owner answered when 0.9.7 was built: a code of a region
+refused for a site and the reverse (P-237), a replacement that was a mistake removed by
+an Admin (P-238), the username of a contact a link for an Admin (P-239), and the tables
+not yet looked at one by one for values that should be links (P-240).
 
 ## From 0.6.1 to 0.9.0
 
