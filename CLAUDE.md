@@ -33,7 +33,8 @@ The next release is the first row of the table in
 - **Every record is referenced by HID.** Names are for people and for matching imports.
 - **Inherited values are never copied down.** They are resolved when read, and returned
   with their source.
-- **Items are retired or archived, never deleted.**
+- **Items are retired or archived; only an Admin deletes one, and every deletion is
+  audited.**
 - **Latest production releases only.** Do not pin below the latest without a waiver in
   `docs/waivers.md`.
 - **SQL that differs between SQLite and PostgreSQL goes in `src/hirdir/db/dialect.py`.**
