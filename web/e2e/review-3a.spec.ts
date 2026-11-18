@@ -10,6 +10,7 @@
 // to them. The scenarios need nothing of each other but what the first makes, and run in
 // order.
 
+import { readFile } from "node:fs/promises";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
@@ -487,4 +488,76 @@ test("a model that is not in the catalog is added from New item, and what was ty
   await expect(form.getByRole("button", { name: "Add a model to the catalog" })).toBeVisible();
 
   await expectClean(page, seen, ["409 POST"]);
+});
+
+test("small words: a create says so with a link, a bulk edit's preview speaks of the items, and the first export holds the host name (P-204)", async ({
+  page,
+  account,
+  request,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  const headers = await records(request, account);
+  await rows(request, headers);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // Geography: a new region is said to be created, its name a link to it.
+  await page.goto("./geography");
+  await page.getByRole("button", { name: "New region", exact: true }).click();
+  const newRegion = page.getByRole("region", { name: "New region", exact: true });
+  await newRegion.getByLabel("Name (required)").fill(label("Northreach"));
+  await newRegion.getByRole("button", { name: "Create region" }).click();
+  const said = page.getByRole("status").filter({ hasText: "was created." });
+  await expect(said).toHaveText(`Region ${label("Northreach")} was created.`);
+  await expect(said).toBeInViewport();
+  const link = said.getByRole("link", { name: label("Northreach") });
+  await expect(link).toHaveAttribute("href", /\/geography\/region\//);
+
+  // The catalog: a new entry's page says it was created.
+  await page.goto("./catalog");
+  await page.getByRole("button", { name: "New catalog entry" }).click();
+  const newEntry = page.getByRole("region", { name: "New catalog entry", exact: true });
+  await newEntry.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
+  await newEntry.getByLabel("PID").fill(`SN-4X-${id}`);
+  await newEntry.getByRole("button", { name: "Create catalog entry" }).click();
+  await expect(said).toHaveText(
+    `Catalog entry ${label("Sample Networks")} SN-4X-${id} was created.`,
+  );
+
+  // A bulk edit's preview: nothing to create, and the rows in the order of the items.
+  await page.goto(`./items?filter=${encodeURIComponent(`hostname:prefix:${host("row-0")}`)}`);
+  const grid = page.getByTestId("grid-items");
+  await expect(page.getByText("10 items", { exact: true })).toBeVisible();
+  await grid.locator(".ag-row[row-index='0'] [col-id='catalog.pid']").click();
+  await page.getByRole("button", { name: "Bulk edit" }).click();
+  const bulk = page.getByTestId("bulk-edit");
+  await bulk.getByLabel("Field to change").selectOption({ label: "Comments" });
+  await bulk.getByRole("button", { name: "Add", exact: true }).click();
+  await bulk.getByLabel("Set to").fill(label("Checked"));
+  await bulk.getByRole("button", { name: "Preview the change" }).click();
+  const counts = page.getByTestId("preview-counts");
+  await expect(counts.locator('[data-count="updated"] dd')).toHaveText("1");
+  await expect(counts.locator('[data-count="created"]')).toHaveCount(0);
+  await expect(page.getByTestId("preview-rows").locator("caption")).toHaveText(
+    "What each row would do, in the order of the items until a header is clicked",
+  );
+  await bulk.getByRole("button", { name: "Cancel" }).click();
+
+  // The export of the list as it first stands holds the host name of each item.
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByRole("button", { name: "Reset layout and filters" }).click();
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByLabel("Filter", { exact: true }).fill(`hostname:prefix:${host("row-0")}`);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByText("10 items", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  const file = await download;
+  const path = testInfo.outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const lines = (await readFile(path, "utf8")).replace(/\n$/, "").split("\n");
+  expect(lines[0]?.split(",")).toContain("hostname");
+  expect(lines.some((line) => line.includes(host("row-00")))).toBe(true);
+
+  await expectClean(page, seen);
 });

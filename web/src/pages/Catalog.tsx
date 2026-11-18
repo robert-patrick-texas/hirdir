@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { Created, createdState, useCreated } from "../components/Created";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Links } from "../components/Links";
@@ -306,7 +307,12 @@ export function Catalog() {
         <NewEntry
           choices={choices.data}
           onCancel={() => setAdding(false)}
-          onCreated={(entry) => navigate(`/catalog/${encodeURIComponent(entry.hid)}`)}
+          onCreated={(entry) => {
+            const to = `/catalog/${encodeURIComponent(entry.hid)}`;
+            // 0.9.6: its page says it was created (P-204).
+            const name = `${entry.vendor.name} ${entry.pid}`;
+            navigate(to, { state: createdState({ kind: "Catalog entry", name, to }) });
+          }}
         />
       )}
       {choices.loading && <p role="status">Loading…</p>}
@@ -391,6 +397,7 @@ export function CatalogEntryDetail() {
   );
   const choices = useChoices();
   const [done, setDone] = useState("");
+  const created = useCreated();
   const record = entry.data;
   useTitle(record ? `${record.vendor.name} ${record.pid}` : "Catalog entry");
 
@@ -413,6 +420,7 @@ export function CatalogEntryDetail() {
       <Problem error={entry.error} />
       <Problem error={choices.error} />
       <Notice text={done} />
+      <Created made={created} />
       {entry.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>

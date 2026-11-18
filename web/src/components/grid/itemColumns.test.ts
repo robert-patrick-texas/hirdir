@@ -360,6 +360,15 @@ describe("groups and addresses in the item grid", () => {
     expect(asked("tags")).toMatchObject({ field: "tags", sortField: "tags" });
   });
 
+  it("exports the host name with the name, which the Name column shows where there is none (P-204)", () => {
+    const first = columnDefaults(COLUMNS).filter((one) => !one.hide);
+    const exported = exportColumns(
+      COLUMNS,
+      first.map((one) => ({ colId: one.id })),
+    );
+    expect(exported.slice(0, 3)).toEqual(["hid", "name", "hostname"]);
+  });
+
   it("exports only the columns a file of items has", () => {
     const every = COLUMNS.map((one) => ({ colId: one.id }));
     const exported = exportColumns(COLUMNS, every);
@@ -382,7 +391,7 @@ describe("groups and addresses in the item grid", () => {
 
   it("exports the management address as a column of each family", () => {
     const exported = exportColumns(COLUMNS, [{ colId: "name" }, { colId: "mgmt_address" }]);
-    expect(exported).toEqual(["hid", "name", "mgmt_ipv4", "mgmt_ipv6"]);
+    expect(exported).toEqual(["hid", "name", "hostname", "mgmt_ipv4", "mgmt_ipv6"]);
   });
 });
 
@@ -469,6 +478,7 @@ describe("the operator in the item grid", () => {
     expect(exportColumns(COLUMNS, [{ colId: "name" }, { colId: "operator.label" }])).toEqual([
       "hid",
       "name",
+      "hostname",
       "operator",
     ]);
     expect(columnDefaults(COLUMNS).find((one) => one.id === "operator.label")?.hide).toBe(false);
@@ -605,6 +615,7 @@ describe("the location, the site and the region in the item grid", () => {
     expect(exported).toEqual([
       "hid",
       "name",
+      "hostname",
       "location",
       "site",
       "owner_exception",
@@ -707,6 +718,7 @@ describe("the planned location in the item grid", () => {
     expect(exportColumns(COLUMNS, [{ colId: "name" }, { colId: "planned_location" }])).toEqual([
       "hid",
       "name",
+      "hostname",
       "planned_location",
     ]);
     expect(columnDefaults(COLUMNS).find((one) => one.id === "planned_location")?.hide).toBe(true);

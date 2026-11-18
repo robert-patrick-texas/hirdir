@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { Created, createdState, useCreated } from "../components/Created";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { OperatorMark } from "../components/Operator";
@@ -173,7 +174,10 @@ export function Contacts() {
           specs={specs}
           start={{ record_status: "active" }}
           create={(body) => api.request("post", "/api/v1/contacts", { body })}
-          onCreated={(contact) => navigate(`/contacts/${encodeURIComponent(contact.hid)}`)}
+          onCreated={(contact) => {
+            const to = `/contacts/${encodeURIComponent(contact.hid)}`;
+            navigate(to, { state: createdState({ kind: "Contact", name: contact.name, to }) });
+          }}
           onCancel={() => setAdding(false)}
           submitLabel="Create contact"
         >
@@ -225,6 +229,7 @@ export function ContactDetail() {
   );
   const tags = useTags();
   const [done, setDone] = useState("");
+  const created = useCreated();
   const record = contact.data;
   useTitle(record ? record.name : "Contact");
   const specs = useMemo(
@@ -255,6 +260,7 @@ export function ContactDetail() {
       <Problem error={contact.error} />
       <Problem error={tags.error} />
       <Notice text={done} />
+      <Created made={created} />
       {contact.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>

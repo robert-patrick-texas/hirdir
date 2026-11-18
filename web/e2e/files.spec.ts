@@ -50,9 +50,12 @@ const SENT = {
     { field: "is_major", op: "eq", value: true },
   ],
 };
+// 0.9.6: the Name column shows the host name where there is no name, and an export of it
+// holds both (P-204).
 const SHOWN = [
   "hid",
   "name",
+  "hostname",
   "pid",
   "serial_number",
   "lifecycle_state",
@@ -383,7 +386,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
   expect(records.map((record) => SHOWN.map((name) => asCell(record[name])))).toEqual(
     exported.slice(1),
   );
-  expect(clipboard.slice(1).map((row) => row[3])).toEqual([serials[0], serials[2]]);
+  expect(clipboard.slice(1).map((row) => row[4])).toEqual([serials[0], serials[2]]);
   for (const row of clipboard.slice(1)) expect(row[0]).toMatch(/^[0-9a-f-]{36}$/);
   // The value in force, as the grid shows it: the item's own description is not a column
   // on show, and so is in none of the three.
@@ -417,7 +420,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
     "hid",
     "name",
     "hostname",
-    ...SHOWN.slice(2).filter((name) => name !== "tags"),
+    ...SHOWN.slice(3).filter((name) => name !== "tags"),
   ]);
   expect(everything.slice(1).map((row) => row[2])).toEqual([...hosts].reverse());
 

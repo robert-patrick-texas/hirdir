@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { Created, createdState, useCreated } from "../components/Created";
 import { FindPlace } from "../components/FindPlace";
 import { NewPlace, PlaceDetail } from "../components/PlaceParts";
 import { Problem } from "../components/Problem";
@@ -37,6 +38,16 @@ type Choice = Schemas["ChoiceOut"];
  * so the page does not wait for every rack of every site. The view the counts are of,
  * a filter of the item list and the two switches, is in the address of the page.
  */
+/** A place just made, as the page that shows it says so (P-204). */
+function placeMade(
+  level: "region" | "site" | "location",
+  made: { hid: string; name: string },
+  search: string,
+) {
+  const kind = { region: "Region", site: "Site", location: "Location" }[level];
+  return createdState({ kind, name: made.name, to: `${placePath(level, made.hid)}${search}` });
+}
+
 export function Geography() {
   useTitle("Geography");
   const { level, hid = "" } = useParams();
@@ -52,6 +63,7 @@ export function Geography() {
   // The sites whose inside is on show.
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const chosen = isLevel(level) && hid !== "" ? { level, hid } : null;
+  const created = useCreated();
 
   function openSite(site: string, open = true) {
     setOpened((was) => {
@@ -66,6 +78,8 @@ export function Geography() {
   return (
     <div className="geography">
       <h1>Geography</h1>
+      {/* 0.9.6: a place made here is said to be, with a link to it (P-204). */}
+      <Created made={created} />
       <p>
         Where things are: regions, the sites in them, and the locations within a site. Each place
         shows the items and the components at or beneath it, and a place that is chosen shows what
@@ -87,7 +101,10 @@ export function Geography() {
           onCreated={(made) => {
             setAdding(false);
             setTurn((count) => count + 1);
-            navigate({ pathname: placePath("region", made.hid), search });
+            navigate(
+              { pathname: placePath("region", made.hid), search },
+              { state: placeMade("region", made, search) },
+            );
           }}
         />
       )}
@@ -123,7 +140,10 @@ export function Geography() {
               onTreeChanged={() => setTurn((count) => count + 1)}
               onSite={openSite}
               onCreated={(madeLevel, made) =>
-                navigate({ pathname: placePath(madeLevel, made.hid), search })
+                navigate(
+                  { pathname: placePath(madeLevel, made.hid), search },
+                  { state: placeMade(madeLevel, made, search) },
+                )
               }
             />
           ) : (
