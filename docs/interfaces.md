@@ -2525,7 +2525,8 @@ the audit trail links each change to the page of its record, where it has one (P
 A record that an event on show deleted is named as text, by each of its events, and said
 to be deleted; one deleted in an event not on show is a link, to a page that says it was
 deleted, when, by whom and why. The user who made the change is a link to the user's
-page for an Admin, and text for everyone else (P-240).
+page for an Admin, and text for everyone else (P-240); so is Who in the History of an
+item, where the event was made by a user.
 
 The menu bar has a box, Find an item, on every page: what is typed there opens the list
 of items with those words, minor items among them (P-187). Text the list cannot read is

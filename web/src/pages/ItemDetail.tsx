@@ -24,6 +24,7 @@ import { DeleteRecord } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
+import { ValueLink } from "../components/ValueLink";
 // 0.8.0: a default and a minimum of the support weight of a major item (P-155).
 import { Raised } from "../components/Weight";
 import { WhyEachValue } from "../components/WhyEachValue";
@@ -1578,6 +1579,9 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
  * was and what is.
  */
 function History({ item }: { item: Item }) {
+  const { user } = useAuth();
+  // 0.9.8: the user who made a change opens the user's page, for an Admin (P-240).
+  const admin = allows(user.role, "admin");
   const [offset, setOffset] = useState(0);
   // The server sorts the events, over the whole history, each with its rows kept
   // together: another order starts at its first page.
@@ -1644,7 +1648,15 @@ function History({ item }: { item: Item }) {
                               <td className="nowrap" rowSpan={changes.length}>
                                 <Time at={event.at} />
                               </td>
-                              <td rowSpan={changes.length}>{event.actor_name ?? <Dash />}</td>
+                              <td rowSpan={changes.length}>
+                                {event.actor_name ? (
+                                  <ValueLink kind="user" hid={event.actor_hid} admin={admin}>
+                                    {event.actor_name}
+                                  </ValueLink>
+                                ) : (
+                                  <Dash />
+                                )}
+                              </td>
                               <td rowSpan={changes.length}>{event.action}</td>
                             </>
                           )}

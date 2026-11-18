@@ -186,6 +186,12 @@ test("a stack made of two spares by New group: each has the box, ticked, and Pro
       `There is no address on ${spareSerials[index]}.`,
     );
   }
+  // Who made each change is a link to the user's page, for an Admin (P-240).
+  const who = page
+    .getByRole("region", { name: "History" })
+    .getByRole("link", { name: account.username, exact: true })
+    .first();
+  await expect(who).toHaveAttribute("href", new RegExp(`/admin/users/${account.hid}$`));
   await expectClean(page, seen);
 });
 
