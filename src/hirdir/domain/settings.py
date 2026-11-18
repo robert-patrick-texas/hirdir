@@ -181,6 +181,36 @@ def _extensions(key: str) -> Check:
     return Check(expected, check, lambda: file_kinds.DEFAULT_TYPES)
 
 
+MAP_LINK = "map_link"
+# Where the coordinates of a place go in the address of a map (P-229, P-236).
+MAP_PLACES = ("{latitude}", "{longitude}")
+DEFAULT_MAP = "https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
+
+
+def _map_link() -> Check:
+    """Blank, or an address on the web, as a link is, that holds where the latitude and
+    the longitude go."""
+    expected = (
+        "blank, or an address that begins with https:// or http://, with no space, that "
+        "holds both {latitude} and {longitude}"
+    )
+
+    def check(value: Any) -> str:
+        if not isinstance(value, str):
+            raise _refuse(MAP_LINK, expected)
+        if not value.strip():
+            return ""
+        try:
+            url = records.checked_url(MAP_LINK, value)
+        except Invalid:
+            raise _refuse(MAP_LINK, expected) from None
+        if url is None or not all(place in url for place in MAP_PLACES):
+            raise _refuse(MAP_LINK, expected)
+        return url
+
+    return Check(expected, check)
+
+
 def _states() -> tuple[str, ...]:
     return lifecycle.STATES
 
@@ -376,6 +406,14 @@ SPECS: dict[str, Spec] = {
         "whether the sign-in page lists whom to ask as well, where anyone who reaches the "
         "site sees it",
         Check("true or false", product.check_flag("help_on_sign_in")),
+    ),
+    # 0.9.7: the map that the coordinates of a place open (P-229, P-236).
+    MAP_LINK: Spec(
+        DEFAULT_MAP,
+        "the address of a map, with {latitude} and {longitude} where the coordinates of a "
+        "site or a location go: the coordinates on its page open it in a new tab. Blank, "
+        "they are plain numbers, as where there is no access to the internet",
+        _map_link(),
     ),
 }
 

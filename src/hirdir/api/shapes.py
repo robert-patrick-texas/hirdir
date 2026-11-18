@@ -501,6 +501,7 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
     locations = _live_counts(db, Location, Location.site_hid, hids)
     marks = _Labels(db, {site.operator_hid for site in found})
     figures = weights.in_force(db)
+    link = geography.map_link(db)
     return [
         shapes.SiteOut(
             **_own(
@@ -508,7 +509,7 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
                 shapes.SiteOut,
                 ("region", "path", "tags", "locations", "operator", "effective", "map_url"),
             ),
-            map_url=None,
+            map_url=geography.map_url(link, site),
             effective=shapes.SiteEffective(
                 support_weight=weight_out(weights.of_site(site, figures))
             ),
@@ -539,6 +540,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
     planned = _live_counts(db, Item, Item.planned_location_hid, hids)
     planned_groups = _live_counts(db, DeviceGroup, DeviceGroup.planned_location_hid, hids)
     marks = _Labels(db, {location.operator_hid for location in found})
+    link = geography.map_link(db)
     out = []
     for location in found:
         site = atlas.site(location.site_hid)
@@ -564,7 +566,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                         "map_url",
                     ),
                 ),
-                map_url=None,
+                map_url=geography.map_url(link, location),
                 planned_items=planned[location.hid],
                 planned_groups=planned_groups[location.hid],
                 operator=marks.ref(location.operator_hid),

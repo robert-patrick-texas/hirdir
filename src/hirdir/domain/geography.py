@@ -35,7 +35,7 @@ from hirdir.db.models import (
     Region,
     Site,
 )
-from hirdir.domain import choices, records, tags
+from hirdir.domain import choices, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -493,6 +493,27 @@ def the_place(db: Session, text: str, field_: str, level: str | None = None) -> 
     if place is None or (level is not None and place.level != level):
         raise Invalid(f"there is no such {what}", {field_: f"there is no {what} {text}"})
     return place
+
+
+# --- the map of a place (P-229, P-236) -----------------------------------------------
+
+
+def map_link(db: Session) -> str | None:
+    """Return the address of the map that the coordinates of a place open, with where
+    they go in it, or None where the setting `map_link` is blank."""
+    return settings.value(db, settings.MAP_LINK) or None
+
+
+def map_url(link: str | None, place: Site | Location) -> str | None:
+    """Return the address of a map at a place's own coordinates, written as an answer
+    writes them, or None where the setting is blank or the place has none. Nothing else
+    of the place goes into it."""
+    latitude, longitude = place.latitude, place.longitude
+    if not link or latitude is None or longitude is None:
+        return None
+    return link.replace(settings.MAP_PLACES[0], f"{latitude:.{DEGREE_PLACES}f}").replace(
+        settings.MAP_PLACES[1], f"{longitude:.{DEGREE_PLACES}f}"
+    )
 
 
 def regions_beneath(hid: str) -> Select[Any]:
