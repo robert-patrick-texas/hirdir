@@ -107,6 +107,21 @@ def test_the_examples_list_only_what_each_file_made(make: Maker, db: Session) ->
     assert len(requests) == len(jobs)
 
 
+def test_a_bulk_edit_lists_the_model_it_made_and_no_item(
+    client: TestClient, make: Maker, files: Files
+) -> None:
+    make.vendor("Cisco")
+    job = files.load("items", WRONG)
+    hids = [one["record_hid"] for one in _made(make, job)["items"]]
+    preview = make.post("/items/bulk-update", {"hids": hids, "set": {"pid": "C9300-24UX"}})
+    edited = make.apply(f"/items/bulk-update/{preview['job']['hid']}/apply")
+    made = _made(make, edited)
+    assert (made["total"], made["items"]) == (0, [])
+    assert [(one["record_type"], one["label"]) for one in made["also"]] == [
+        ("catalog_entry", "Cisco C9300-24UX")
+    ]
+
+
 def test_an_import_of_places_lists_them_by_path_and_a_preview_made_nothing(
     make: Maker, files: Files
 ) -> None:
