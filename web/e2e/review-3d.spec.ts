@@ -335,6 +335,67 @@ test("P-214: for a term that names no end, the renewal form says how many items 
   await expectClean(page, seen);
 });
 
+test("P-224: items are left out of the renewal from the contract's grid, and one is renewed after all", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const number = `EFC-${upper}-16`;
+  const hosts = ["a", "b", "c", "d"].map((side) => `sw-out-${side}-${id}`);
+  const contract = await contractOver(request, headers, number, hosts, {
+    starts: `${year}-01-01`,
+    ends: `${year + 1}-12-31`,
+  });
+  await signIn(page, account);
+  await openContractPage(page, contract.hid, number);
+  const grid = "grid-contract-coverage";
+  const section = page.getByRole("region", { name: "Items it covers" });
+  await expect(section.getByTestId("grid-total")).toHaveText("4 coverages");
+  // The renewal form is open, and its counts are read again after the marks below.
+  await page
+    .getByRole("region", { name: "Renew" })
+    .getByRole("button", { name: "Renew", exact: true })
+    .click();
+  const flagged = page.getByTestId("renew-form").getByTestId("renew-flagged");
+  await expect(flagged).toHaveAttribute("data-count", "0");
+
+  // Three rows selected: the mark is said to be the item's, for every contract, first.
+  for (const [at, hostname] of hosts.slice(0, 3).entries()) {
+    await gridRow(page, grid, hostname)
+      .locator('[col-id="item.pid"]')
+      .click(at === 0 ? {} : { modifiers: ["ControlOrMeta"] });
+  }
+  await section.getByRole("button", { name: "Leave out of the renewal" }).click();
+  const marking = page.getByTestId("mark-renewal");
+  await expect(marking.getByTestId("mark-renewal-note")).toContainText(
+    "it holds for every contract that covers the item",
+  );
+  await marking.getByRole("button", { name: "Mark 3 items not to be renewed" }).click();
+  await expect(
+    page.getByText("3 items were marked not to be renewed: the renewal leaves them behind."),
+  ).toBeVisible();
+  await expect(flagged).toHaveAttribute("data-count", "3");
+  await expect(flagged).toContainText("3 items it covers today are marked not to be renewed");
+  for (const item of contract.items.slice(0, 3)) {
+    const read = await request.get(`./api/v1/items/${item}`, { headers });
+    expect(((await read.json()) as { do_not_renew: boolean | null }).do_not_renew).toBe(true);
+  }
+
+  // One renewed after all: its own mark is taken off, and it has its model's again.
+  await gridRow(page, grid, hosts[1] ?? "")
+    .locator('[col-id="item.pid"]')
+    .click();
+  await section.getByRole("button", { name: "Renew after all" }).click();
+  await marking.getByRole("button", { name: "Take the mark off 1 item" }).click();
+  await expect(flagged).toHaveAttribute("data-count", "2");
+  const back = await request.get(`./api/v1/items/${contract.items[1]}`, { headers });
+  expect(((await back.json()) as { do_not_renew: boolean | null }).do_not_renew).toBeNull();
+  await expectClean(page, seen);
+});
+
 /** The day `days` after today, as the server's clock and the browser's see it. */
 function fromToday(days: number): string {
   const moment = new Date();

@@ -1860,7 +1860,12 @@ What 0.9.6 changes:
   the present term), the coverages that begin after the present term, with the new one,
   and those that end on a day of their own by then; for a term that names no end, the
   items in scope and those marked. The counts are read again when a coverage is changed
-  on the page (P-214). An agreement's page has the
+  on the page (P-214). On the grid of the items a contract covers, Leave out of the
+  renewal sets the item's own mark Not to be renewed on the items of the rows selected,
+  after a line that says the mark holds for every contract that covers the item, and
+  says how many were marked; Renew after all takes the item's own mark off, so that each
+  has what its model says. Both take particular rows, not all that match, and the counts
+  under the renewal form are read again after them (P-224). An agreement's page has the
   annual cost of each of its contracts, which is always the contract's own, and a row
   of their total, beside the agreement's own figure and not in place of it: a contract
   with no cost counts as none, and the row says how many have none; a draft is not
