@@ -173,6 +173,35 @@ export function firstKind(holder: RecordKind, fileName: string, kinds: readonly 
   return kinds.includes(wanted) ? wanted : "";
 }
 
+/** A file chosen to upload, as far as its kind goes. */
+export interface ChosenKind {
+  file: { name: string };
+  kind: string;
+  /** True once the person has chosen the kind: it is theirs, and is never changed. */
+  kindChosen: boolean;
+}
+
+/**
+ * 0.9.8: the files chosen before the kinds of file were read, given their first kind now
+ * that they are: each that has none and whose kind the person has not chosen. The list
+ * itself where none changes.
+ */
+export function withFirstKinds<T extends ChosenKind>(
+  chosen: T[],
+  holder: RecordKind,
+  kinds: readonly string[],
+): T[] {
+  let changed = false;
+  const given = chosen.map((one) => {
+    if (one.kindChosen || one.kind !== "") return one;
+    const kind = firstKind(holder, one.file.name, kinds);
+    if (kind === "") return one;
+    changed = true;
+    return { ...one, kind };
+  });
+  return changed ? given : chosen;
+}
+
 /** The kinds of file a reference may be, as the settings say. */
 export interface FileTypes {
   /** What `reference_file_types` takes: null where the settings do not say. */
