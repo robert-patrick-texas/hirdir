@@ -125,24 +125,64 @@ def test_a_replacement_that_would_break_a_group_changes_nothing(make: Maker) -> 
     assert make.get(f"/items/{switches[0]['hid']}")["row_version"] == switches[0]["row_version"]
 
 
-def test_an_item_is_replaced_once_and_takes_the_place_of_one(make: Maker) -> None:
+def test_an_item_is_replaced_and_takes_a_place_more_than_once(make: Maker) -> None:
+    # A spare goes round a pool, and a switch swapped for another model is swapped back
+    # (P-241): neither is refused, and the record lists each, the latest first.
     _, switches = _switches(make)
     first, second, third = switches
-    _replace(make, first, new_item_hid=second["hid"])
+    _replace(make, first, new_item_hid=second["hid"], replaced_on="2026-01-05")
+    _replace(make, now(make, first), new_item_hid=third["hid"], replaced_on="2026-03-05")
+    _replace(make, now(make, third), new_item_hid=second["hid"], replaced_on="2026-05-05")
+    # And the one that took the place of first gives it back, as a loop.
+    _replace(make, now(make, second), new_item_hid=first["hid"], replaced_on="2026-07-05")
 
-    current = make.get(f"/items/{first['hid']}")
-    problem = _replace(make, current, new_item_hid=third["hid"], expect=409)
-    assert "replaced already" in problem["detail"]
-    problem = _replace(make, third, new_item_hid=second["hid"], expect=409)
-    assert "took the place of another already" in problem["detail"]
-    # A chain is fine: the one that took a place is itself replaced later.
-    second = make.get(f"/items/{second['hid']}")
-    _replace(make, second, new_item_hid=third["hid"], reason="refresh")
-    middle = make.get(f"/items/{second['hid']}")
+    middle = now(make, second)
+    assert [
+        (one["part"], one["item"]["hid"], one["replaced_on"]) for one in middle["replacements"]
+    ] == [
+        ("left", first["hid"], "2026-07-05"),
+        ("came", third["hid"], "2026-05-05"),
+        ("came", first["hid"], "2026-01-05"),
+    ]
+    # The latest of each part, as a list and an export read them.
     assert (middle["replaces"]["item_hid"], middle["replaced_by"]["item_hid"]) == (
-        first["hid"],
         third["hid"],
+        first["hid"],
     )
+    assert middle["replaces"]["replaced_on"] == "2026-05-05"
+    entry = middle["replacements"][0]
+    assert set(entry) == {
+        "hid",
+        "part",
+        "item",
+        "reason",
+        "reference",
+        "replaced_on",
+        "row_version",
+    }
+    assert entry["item"]["name"] == "site2-sw-stack1-01"
+    assert [one["part"] for one in now(make, first)["replacements"]] == ["came", "left", "left"]
+    # An item that was replaced twice is one row of the list, and of the report four rows.
+    listed = make.get("/items", filter="hostname:prefix:site2-sw-stack1")
+    assert listed["total"] == 3
+    assert make.get("/reports/replacements")["total"] == 4
+    # An item still does not take its own place.
+    problem = _replace(make, now(make, first), new_item_hid=first["hid"], expect=422)
+    assert errors(problem) == {"new_item_hid": "name another item"}
+
+
+def test_the_same_request_sent_twice_makes_one_replacement(make: Maker) -> None:
+    _, switches = _switches(make, 2)
+    old, new = switches
+    _replace(make, old, new_item_hid=new["hid"])
+    # The old item's version moved with the first, so the second is stale.
+    stale = _replace(make, old, new_item_hid=new["hid"], expect=409)
+    assert stale["title"] == "Stale version"
+    assert len(make.audit(record_type="item_replacement")) == 1
+
+
+def now(make: Maker, item: dict) -> dict:
+    return make.get(f"/items/{item['hid']}")
 
 
 def test_what_a_replacement_needs(make: Maker) -> None:

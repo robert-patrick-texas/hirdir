@@ -378,12 +378,50 @@ def test_systems_registrations_capacity_and_replacements_load_from_files(
         1,
         0,
     )
-    renamed = files.load("item_replacements", "old_item,reason,reference\nSW-001,refresh,CHG-2\n")
+    # A row with no day is the one replacement of its two items (P-241).
+    renamed = files.load(
+        "item_replacements", "old_item,new_item,reason,reference\nSW-001,SW-900,refresh,CHG-2\n"
+    )
     assert counts(renamed) == (0, 1, 0, 0)
-    # An item is replaced once: a row that names another new item is rejected.
-    other = files.preview("item_replacements", "old_item,new_item,reason\nSW-001,SW-003,rma\n")
-    assert counts(other["job"]) == (0, 0, 0, 1)
-    assert "new_item" in errors_of(other)
+    # A row of the same item replaced by another is a replacement of its own.
+    other = files.load("item_replacements", "old_item,new_item,reason\nSW-001,SW-003,rma\n")
+    assert counts(other) == (1, 0, 0, 0)
+    # A row that names one item alone is not matched by it.
+    alone = files.preview("item_replacements", "old_item,reason\nSW-001,rma\n")
+    assert counts(alone["job"]) == (0, 0, 0, 1)
+    assert "new_item" in errors_of(alone)
+
+
+def test_replacements_of_one_item_go_out_and_back_unchanged(
+    files: Files, make: Maker, base: dict
+) -> None:
+    # An item replaced twice, and two items that swapped places and back (P-241).
+    rows = (
+        "old_item,new_item,reason,replaced_on\n"
+        "SW-001,SW-002,rma,2026-01-05\n"
+        "SW-001,SW-003,refresh,2026-02-05\n"
+        "SW-002,SW-003,rma,2026-03-05\n"
+        "SW-003,SW-002,rma,2026-04-05\n"
+    )
+    assert counts(files.load("item_replacements", rows)) == (4, 0, 0, 0)
+    exported = files.export("item_replacements")
+    assert sorted(row["replaced_on"] for row in table(exported)) == [
+        "2026-01-05",
+        "2026-02-05",
+        "2026-03-05",
+        "2026-04-05",
+    ]
+    assert counts(files.load("item_replacements", exported)) == (0, 0, 4, 0)
+    # The same rows without their HIDs find the same replacements by their two items
+    # and their day.
+    assert counts(files.load("item_replacements", rows)) == (0, 0, 4, 0)
+    assert make.get("/reports/replacements")["total"] == 4
+    # A row with no day for two items of more than one replacement asks for the day.
+    twice = "old_item,new_item,reason,replaced_on\nSW-002,SW-003,rma,2026-05-05\n"
+    assert counts(files.load("item_replacements", twice)) == (1, 0, 0, 0)
+    no_day = files.preview("item_replacements", "old_item,new_item,reason\nSW-002,SW-003,rma\n")
+    assert counts(no_day["job"]) == (0, 0, 0, 1)
+    assert "replaced_on" in errors_of(no_day)
 
 
 def test_what_a_file_holds_of_a_term_goes_back_as_it_came(

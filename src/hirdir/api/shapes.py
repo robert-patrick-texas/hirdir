@@ -6,7 +6,7 @@ tags its rows refer to are each read once for the page and not once for each row
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -762,9 +762,9 @@ def _replacement_refs(
         )
 
     def entries(hid: str) -> list[shapes.ReplacementEntry]:
-        both = [(found, "left") for found in replaced_by[hid]] + [
-            (found, "came") for found in replaces[hid]
-        ]
+        both: list[tuple[ItemReplacement, Literal["left", "came"]]] = [
+            (found, "left") for found in replaced_by[hid]
+        ] + [(found, "came") for found in replaces[hid]]
         both.sort(
             key=lambda pair: (pair[0].replaced_on, pair[0].created_at, pair[0].hid), reverse=True
         )
