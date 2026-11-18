@@ -271,6 +271,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // was opened and is marked, and what the grid showed when the place was taken.
   const restoring = useRef<GridPlace | null>(null);
   const opened = useRef<{ id: string; index: number } | null>(null);
+  // The row opened, until the grid has it and it is drawn marked.
+  const marking = useRef<string | null>(null);
   const shownView = useRef<string | null>(null);
   const [draft, setDraft] = useState(start.short);
   const [short, setShort] = useState(start.short);
@@ -560,6 +562,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             setTotal(page.total);
             params.successCallback(page.items, page.total);
             if (params.startRow === 0) arrived(grid, fromTop);
+            else if (marking.current !== null) requestAnimationFrame(() => markOpened(grid));
           },
           (thrown: unknown) => {
             if (controller.signal.aborted) return;
@@ -596,8 +599,30 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       if (rows) rows.scrollTop = place.top;
       window.scrollTo(0, place.windowY);
       restoring.current = null;
-      if (place.opened) setNote("Back where the list was left. The row opened last is marked.");
+      if (place.opened) {
+        setNote("Back where the list was left.");
+        marking.current = place.opened.id;
+        markOpened(api);
+      }
     });
+  });
+
+  /**
+   * The row opened last, once the grid has it: drawn again with its mark, and only then
+   * said to be marked. Its rows may come after the first, as the grid reads them.
+   */
+  const markOpened = useEffectEvent((api: GridApi<T>) => {
+    const rowId = marking.current;
+    if (rowId === null || api.isDestroyed()) return;
+    if (opened.current?.id !== rowId) {
+      marking.current = null;
+      return;
+    }
+    const node = api.getRowNode(rowId);
+    if (!node || node.data === undefined) return;
+    marking.current = null;
+    api.redrawRows({ rowNodes: [node] });
+    setNote("Back where the list was left. The row opened last is marked.");
   });
 
   function showShort(text: string) {
