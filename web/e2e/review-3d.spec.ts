@@ -279,3 +279,104 @@ test("P-214: the renewal form starts from what follows, and says what follows, s
   await expect(page.getByTestId("next-term")).toContainText(`REQ-${upper}-NEW`);
   await expectClean(page, seen);
 });
+
+/** The day `days` after today, as the server's clock and the browser's see it. */
+function fromToday(days: number): string {
+  const moment = new Date();
+  moment.setUTCDate(moment.getUTCDate() + days);
+  return moment.toISOString().slice(0, 10);
+}
+
+/** The agreement the scenarios of an agreement share, made once, with its manager. */
+const agreed: { hid?: string } = {};
+const agreementName = label("Example Fabric Enterprise");
+const manager = `Avery Quill ${id}`;
+
+async function agreement(request: APIRequestContext, headers: Headers): Promise<string> {
+  if (agreed.hid === undefined) {
+    const { vendor } = await vendorAndModel(request, headers);
+    agreed.hid = (
+      await make(request, headers, "/agreements", {
+        name: agreementName,
+        vendor_hid: vendor,
+        number: `EFA-${upper}`,
+        starts_on: `${year}-01-01`,
+        ends_on: `${year + 2}-12-31`,
+        account_manager: manager,
+        annual_cost: "50000.00",
+      })
+    ).hid;
+  }
+  return agreed.hid;
+}
+
+test("P-212: every contract first, the tables by agreement folded; an opened count in the window; the account manager shown", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  const headers = await session(request, account);
+  const grouped = await agreement(request, headers);
+  const number = `EFC-${upper}-12`;
+  // A contract by itself that ends soon, for the worklist; one in the agreement.
+  await contractOver(request, headers, number, [], {
+    starts: `${year - 1}-01-01`,
+    ends: fromToday(20),
+  });
+  const member = `EFC-${upper}-21`;
+  await make(request, headers, "/contracts", { number: member, agreement_hid: grouped });
+
+  await signIn(page, account);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("./contracts");
+  // The grid of every contract comes first, in the window.
+  const every = page.getByRole("heading", { level: 2, name: "Every contract" });
+  const byAgreement = page.getByRole("heading", { level: 2, name: "By support agreement" });
+  await expect(every).toBeInViewport();
+  const [everyAt, byAt] = [await every.boundingBox(), await byAgreement.boundingBox()];
+  expect(everyAt?.y ?? 0).toBeLessThan(byAt?.y ?? 0);
+  // The tables by agreement are folded, with how many agreements, and read once opened.
+  const line = page.getByTestId("contracts-grouped-line");
+  await expect(line).toHaveText(/^The contracts of each agreement · [\d,]+ agreements?, and/);
+  const groupedTables = page.getByTestId("contracts-grouped").locator("table");
+  await expect(groupedTables).toHaveCount(0);
+  await line.click();
+  await expect(
+    page
+      .getByTestId("contracts-grouped")
+      .locator(`table[data-agreement="${agreementName}"] tr[data-contract="${member}"]`),
+  ).toBeVisible();
+
+  // On Renewals, an opened count brings its rows into the window, with the keyboard on
+  // their heading, also when the rows are read late.
+  await page.route(
+    (url) => url.pathname.endsWith("/api/v1/contracts"),
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    },
+  );
+  const vendorName = label("Example Fabric");
+  await page.goto(
+    `./contracts/renewals?${new URLSearchParams({ filter: `vendor:eq:${vendorName}` })}`,
+  );
+  await expect(page.getByTestId("renewals-count-ending")).toHaveAttribute("data-count", "1");
+  await page.getByTestId("renewals-count-ending").getByRole("link").click();
+  const heading = page.locator("#renewal-open");
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await expect(
+    page.getByTestId("renewal-open").getByRole("link", { name: number, exact: true }),
+  ).toBeVisible();
+  await expect(heading).toBeInViewport();
+  await page.unrouteAll();
+
+  // The list of agreements shows whom to go through from the start.
+  await page.goto(`./agreements?filter=${encodeURIComponent(`name:eq:${agreementName}`)}`);
+  const row = gridRow(page, "grid-agreements", agreementName);
+  await expect(row.locator('[col-id="account_manager"]')).toHaveText(manager);
+  await expect(row.locator('[col-id="account_manager"]')).toBeInViewport();
+  await expectClean(page, seen);
+});

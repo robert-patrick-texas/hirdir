@@ -95,6 +95,14 @@ const COLUMNS: GridColumn<Agreement>[] = [
     width: 140,
   },
   {
+    id: "account_manager",
+    header: "Account manager",
+    kind: "text",
+    value: (agreement) => agreement.account_manager,
+    // 0.9.6 (P-212): shown from the start, beside the vendor: whom to go through is the question most asked.
+    width: 240,
+  },
+  {
     id: "status",
     header: "Status",
     kind: "choice",
@@ -179,14 +187,6 @@ const COLUMNS: GridColumn<Agreement>[] = [
     kind: "text",
     value: (agreement) => agreement.purchase_reference,
     hide: true,
-  },
-  {
-    id: "account_manager",
-    header: "Account manager",
-    kind: "text",
-    value: (agreement) => agreement.account_manager,
-    hide: true,
-    width: 240,
   },
   {
     id: "support_contact",

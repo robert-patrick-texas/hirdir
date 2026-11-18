@@ -1765,9 +1765,11 @@ What 0.9.6 changes:
 - **A vendor.** The table of models shows twenty and a button, Show all; the vendor's
   items stand above its agreements and contracts, with the filter box of the item
   list (P-211).
-- **Contracts.** The grid of every contract comes first, with the tables by agreement
-  after it, folded closed; on Renewals the rows of a count that is opened come into the
-  window; the list of agreements shows the account manager (P-212). The items a
+- **Contracts.** The grid of every contract comes first, with the contracts that have
+  lapsed counted above it, and the tables by agreement after it, folded closed behind a
+  line that says how many agreements there are and read when it is opened; on Renewals
+  the rows of a count that is opened come into the window, with the keyboard on their
+  heading; the list of agreements shows the account manager, beside the vendor (P-212). The items a
   contract covers have the filter box, its plain words looking in the item's name,
   serial number and asset tag; ending a coverage on the contract's last day is said to
   change nothing before it is sent, with how to leave an item out of a renewal, and

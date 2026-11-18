@@ -5,7 +5,7 @@
 // filter the server gives for that list, so they are sorted, filtered, paged and
 // exported like any other.
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api } from "../api";
 import { ContractsNav } from "../components/ContractParts";
@@ -658,6 +658,17 @@ function OpenList({ report, opened, query, keep }: OpenListProps) {
     [filter, info.of, section],
   );
   const heading = narrowed && group ? `${info.label}: ${groupLabel(group)}` : info.label;
+  // 0.9.6 (P-212): a list that is opened comes into the window, with the keyboard on
+  // its heading, as a table named by the address does on the Scoreboard (P-196). It is
+  // drawn after the counts, which are on show before it opens, so nothing above it
+  // moves it away again; a new list is a new one of these, and is brought too.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const shown = headingRef.current;
+    if (!shown) return;
+    shown.scrollIntoView({ block: "start" });
+    shown.focus({ preventScroll: true });
+  }, []);
 
   return (
     <section
@@ -665,7 +676,9 @@ function OpenList({ report, opened, query, keep }: OpenListProps) {
       data-testid="renewal-open"
       data-section={opened.section}
     >
-      <h2 id="renewal-open">{heading}</h2>
+      <h2 id="renewal-open" ref={headingRef} tabIndex={-1}>
+        {heading}
+      </h2>
       <p className="hint">
         {plural(count, info.of === "items" ? "item" : "contract")}. {info.about}{" "}
         {narrowed && (

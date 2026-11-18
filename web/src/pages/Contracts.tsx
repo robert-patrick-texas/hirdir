@@ -369,7 +369,6 @@ export function Contracts() {
           submitLabel="Create contract"
         />
       )}
-      {startFilter === null && <Grouped />}
       <section aria-labelledby="all-contracts">
         <h2 id="all-contracts">{startFilter === null ? "Every contract" : "Contracts"}</h2>
         {startFilter !== null && (
@@ -377,6 +376,7 @@ export function Contracts() {
             <Link to="/contracts">Every contract, by agreement</Link>
           </p>
         )}
+        {startFilter === null && <Lapsed />}
         <DataGrid<Contract>
           key={startFilter ?? ""}
           id="contracts"
@@ -401,16 +401,67 @@ export function Contracts() {
           )}
         </DataGrid>
       </section>
+      {startFilter === null && <Grouped />}
     </>
+  );
+}
+
+/**
+ * 0.9.6 (P-212): the contracts that have lapsed, counted by the server, above the grid
+ * of every contract, where they were said above the tables by agreement before.
+ */
+function Lapsed() {
+  const found = useLoad("contracts-lapsed", (signal) =>
+    api.request("get", "/api/v1/contracts", { query: { filter: LAPSED, limit: 1 }, signal }),
+  );
+  const lapsed = found.data?.total ?? 0;
+  if (lapsed === 0) return null;
+  return (
+    <p className="warning" data-testid="lapsed-contracts" data-count={lapsed}>
+      <Link to={`/contracts?filter=${encodeURIComponent(LAPSED)}`}>
+        {plural(lapsed, "contract has", "contracts have")} lapsed
+      </Link>
+      : the period has ended and the status still says Active. A lapsed contract covers nothing:
+      renew it, or say that it has expired.
+    </p>
+  );
+}
+
+/**
+ * 0.9.6 (P-212): the tables by agreement, after the grid of every contract, behind a
+ * line closed when the page opens, which says how many agreements there are. They are
+ * read when the line is opened, and not before.
+ */
+function Grouped() {
+  const [open, setOpen] = useState(false);
+  const counted = useLoad("contracts-agreements-count", (signal) =>
+    api.request("get", "/api/v1/agreements", { query: { limit: 1 }, signal }),
+  );
+  const total = counted.data?.total;
+  return (
+    <section aria-labelledby="by-agreement" data-testid="contracts-grouped">
+      <h2 id="by-agreement">By support agreement</h2>
+      <details
+        className="contracts-by-agreement"
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
+        <summary data-testid="contracts-grouped-line" data-count={total ?? ""}>
+          The contracts of each agreement
+          {total !== undefined && ` · ${plural(total, "agreement")}`}, and those that stand by
+          themselves
+        </summary>
+        {open && <GroupedTables />}
+      </details>
+    </section>
   );
 }
 
 /**
  * The agreements, each with the contracts grouped into it, and after them the contracts
  * that stand by themselves. It is read whole, and says so when there is more than it
- * reads: the grid beneath holds every contract in any case.
+ * reads: the grid above holds every contract in any case.
  */
-function Grouped() {
+function GroupedTables() {
   const found = useLoad("contracts-grouped", async (signal) => {
     const [agreements, contracts] = await Promise.all([
       api.request("get", "/api/v1/agreements", { query: { limit: EVERY }, signal }),
@@ -424,11 +475,9 @@ function Grouped() {
     data !== undefined &&
     data.agreements.total <= data.agreements.items.length &&
     data.contracts.total <= data.contracts.items.length;
-  const lapsed = data?.contracts.items.filter((contract) => contract.lapsed).length ?? 0;
 
   return (
-    <section aria-labelledby="by-agreement" data-testid="contracts-grouped">
-      <h2 id="by-agreement">By support agreement</h2>
+    <div className="contracts-by-agreement-tables">
       <Problem error={found.error} />
       {found.loading && !data && (
         <p role="status" className="muted loading-late">
@@ -437,17 +486,8 @@ function Grouped() {
       )}
       {data && !whole && (
         <p className="warning">
-          There are more agreements or contracts than are grouped here at once. The grid beneath
-          holds all of them: filter it by <span className="mono">agreement.name</span>.
-        </p>
-      )}
-      {lapsed > 0 && (
-        <p className="warning" data-testid="lapsed-contracts" data-count={lapsed}>
-          <Link to={`/contracts?filter=${encodeURIComponent(LAPSED)}`}>
-            {plural(lapsed, "contract has", "contracts have")} lapsed
-          </Link>
-          : the period has ended and the status still says Active. A lapsed contract covers nothing:
-          renew it, or say that it has expired.
+          There are more agreements or contracts than are grouped here at once. The grid above holds
+          all of them: filter it by <span className="mono">agreement.name</span>.
         </p>
       )}
       {data && data.agreements.items.length === 0 && (
@@ -475,7 +515,7 @@ function Grouped() {
             agreement={agreement}
             empty={
               agreement.contracts > 0
-                ? "Its contracts are not among those read here: see the grid beneath."
+                ? "Its contracts are not among those read here: see the grid above."
                 : "No contract is grouped into it yet."
             }
           />
@@ -498,7 +538,7 @@ function Grouped() {
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
