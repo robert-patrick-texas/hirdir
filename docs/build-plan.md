@@ -44,7 +44,9 @@ After the MVP, in the order currently expected: RADIUS sign-in; access-code rule
 discovery observations and reconciliation; the observed status of items and groups
 written by monitoring tools, which until then is set by hand or by an import (D-92);
 outward change feed and host lists for monitoring tools; the names and addresses that changes add, remove and alter, read from the audit trail and worked in batches into the IPAM, the DNS and the monitoring tools, with a queue where it is turned on (P-223); planning views for draft sites and items; cell-range selection and
-editing in the grid; PostgreSQL; a container image; a colour theme for the web page that
+editing in the grid; an Admin's deletion of a mistake for the kinds of record other than
+items and device groups, which have it from 0.9.7, under the same rule, that nothing else
+depends on the record and that the deletion is audited (P-227); PostgreSQL; a container image; a colour theme for the web page that
 each person chooses, kept in the browser's local storage and never in a cookie, from the
 themes of the owner's Texas2Step project, with a reminder to the owner to make them easy
 to reuse there first if they cannot be taken as they stand (P-144). Then views of the data,
