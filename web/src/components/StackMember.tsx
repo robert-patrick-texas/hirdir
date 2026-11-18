@@ -3,7 +3,7 @@
 // among its first facts, each said to be the stack's and read from the stack when the
 // page is read, never kept on the item.
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import type { FilterNode } from "../lib/filter";
@@ -15,6 +15,7 @@ import { useRules } from "../lib/lists";
 import { fieldErrors } from "../lib/problems";
 import { joinedText, MEMBER_FIELDS, refusedRows, stackOf } from "../lib/stacks";
 import { TextField } from "./Field";
+import { MakeStack } from "./MakeStack";
 import { JoinBox, joining } from "./MemberPicker";
 import { Problem } from "./Problem";
 import { type Offer, SearchPicker } from "./SearchPicker";
@@ -59,9 +60,29 @@ export function StackFacts({ item, mayChange, onChanged }: StackFactsProps) {
     <>
       <dt>Stack</dt>
       <dd data-testid="stack-member">
-        <JoinStack item={item} onJoined={onChanged} />
+        <NoStack item={item} onJoined={onChanged} />
       </dd>
     </>
+  );
+}
+
+/**
+ * An item in no stack: Join a stack, and 0.9.8 beside it Make it a stack (P-243). One of
+ * the two forms is open at a time.
+ */
+function NoStack({ item, onJoined }: { item: Item; onJoined: (text: string) => void }) {
+  const [making, setMaking] = useState(false);
+  if (making) return <MakeStack item={item} onCancel={() => setMaking(false)} />;
+  return (
+    <JoinStack
+      item={item}
+      onJoined={onJoined}
+      beside={
+        <button type="button" onClick={() => setMaking(true)}>
+          Make it a stack
+        </button>
+      }
+    />
   );
 }
 
@@ -164,7 +185,16 @@ async function findStacks(typed: string, limit: number, signal: AbortSignal) {
  * the start, as Add members on the stack's page has it (P-217). The server checks the
  * member as it checks any.
  */
-function JoinStack({ item, onJoined }: { item: Item; onJoined: (text: string) => void }) {
+function JoinStack({
+  item,
+  onJoined,
+  beside,
+}: {
+  item: Item;
+  onJoined: (text: string) => void;
+  /** What stands beside Join a stack while its form is closed. */
+  beside?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [stack, setStack] = useState<Offer | null>(null);
   // The position as typed: null until it is, when the stack's next one is offered.
@@ -237,6 +267,7 @@ function JoinStack({ item, onJoined }: { item: Item; onJoined: (text: string) =>
         <button type="button" onClick={() => setOpen(true)}>
           Join a stack
         </button>
+        {beside && <> {beside}</>}
       </>
     );
   }

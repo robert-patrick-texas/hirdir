@@ -421,3 +421,50 @@ export function replacedText(replaced: Replaced): SaidPart[] {
 export function saidWords(parts: readonly SaidPart[]): string {
   return parts.map((part) => (typeof part === "string" ? part : part.text)).join("");
 }
+
+/** What of a switch that stands alone goes to the stack made of it (P-243): its own alone. */
+export interface StandsAlone {
+  hostname?: string | null;
+  fqdn?: string | null;
+  addresses?: ReadonlyArray<unknown>;
+  location?: { path: string } | null;
+  planned_location?: { path: string } | null;
+  owner?: { label: string } | null;
+  operator?: { label: string } | null;
+}
+
+/**
+ * What goes from the switch to the stack made of it, each only where the switch has it:
+ * the host name, the FQDN, how many addresses, the place, the planned place, the owner
+ * and the operator (P-243).
+ */
+export function makeStackGoes(item: StandsAlone): string[] {
+  const count = item.addresses?.length ?? 0;
+  return [
+    ...(item.hostname ? [`the host name ${item.hostname}`] : []),
+    ...(item.fqdn ? [`the FQDN ${item.fqdn}`] : []),
+    ...(count > 0 ? [count === 1 ? "its address" : `its ${count} addresses`] : []),
+    ...(item.location ? [`the location ${item.location.path}`] : []),
+    ...(item.planned_location ? [`the planned location ${item.planned_location.path}`] : []),
+    ...(item.owner ? [`the owner ${item.owner.label}`] : []),
+    ...(item.operator ? [`the operator ${item.operator.label}`] : []),
+  ];
+}
+
+/** The sentence of the form of Make it a stack: what goes to the stack, and what stays. */
+export function makeStackText(name: string, item: StandsAlone): string {
+  const goes = makeStackGoes(item);
+  const stays =
+    "Its serial number, model, asset tag, state, tags, coverage, registrations and circuits stay its own.";
+  if (goes.length === 0) {
+    return `${name} has no host name, FQDN, address, place, owner or operator of its own: the stack starts with none. ${stays}`;
+  }
+  return `To the stack from ${name}: ${listed(goes)}. ${name} gives them up and has them from the stack from then on. ${stays}`;
+}
+
+/** What the stack's page says once the stack is made (P-243). */
+export function madeStackText(stack: string, name: string, more: number): string {
+  const others =
+    more === 0 ? "" : more === 1 ? ", with 1 more member" : `, with ${more} more members`;
+  return `The stack ${stack} was made of ${name}, member 1${others}.`;
+}

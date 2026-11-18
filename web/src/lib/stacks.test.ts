@@ -11,6 +11,9 @@ import {
   leavingPreset,
   leavingText,
   listed,
+  madeStackText,
+  makeStackGoes,
+  makeStackText,
   memberText,
   namedBy,
   offeredPosition,
@@ -321,9 +324,48 @@ describe("what the answer to a replacement says (P-242)", () => {
     );
   });
 
+  it("is read as the words of its parts", () => {
+    expect(saidWords(["a ", { to: "/x", text: "b" }, "."])).toBe("a b.");
+  });
+
   it("says no more than was sent, outside a stack", () => {
     expect(saidWords(replacedText({ old, came, sent: {} }))).toBe(
       "FCW0000X002 was replaced by FCW0000X091.",
+    );
+  });
+});
+
+describe("a switch that stands alone made a stack (P-243)", () => {
+  it("says what goes to the stack, each only where the switch has it", () => {
+    const item = {
+      hostname: "cw05-lab-sw1",
+      fqdn: "cw05-lab-sw1.example.net",
+      addresses: [{}, {}],
+      location: { path: "Campus > C05 > Lab" },
+      planned_location: null,
+      owner: { label: "Network Engineering" },
+      operator: null,
+    };
+    expect(makeStackGoes(item)).toEqual([
+      "the host name cw05-lab-sw1",
+      "the FQDN cw05-lab-sw1.example.net",
+      "its 2 addresses",
+      "the location Campus > C05 > Lab",
+      "the owner Network Engineering",
+    ]);
+    expect(makeStackGoes({ addresses: [{}] })).toEqual(["its address"]);
+    expect(makeStackText("cw05-lab-sw1", item)).toMatch(
+      /^To the stack from cw05-lab-sw1: the host name cw05-lab-sw1, .* and the owner Network Engineering\. cw05-lab-sw1 gives them up/,
+    );
+    expect(makeStackText("FCW1", {})).toMatch(
+      /^FCW1 has no host name, FQDN, address, place, owner or operator of its own/,
+    );
+  });
+
+  it("says what was made, with how many more members", () => {
+    expect(madeStackText("s1", "sw1", 0)).toBe("The stack s1 was made of sw1, member 1.");
+    expect(madeStackText("s1", "sw1", 1)).toBe(
+      "The stack s1 was made of sw1, member 1, with 1 more member.",
     );
   });
 });

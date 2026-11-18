@@ -1,5 +1,5 @@
 import { type FormEvent, Fragment, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
@@ -109,6 +109,13 @@ import { oneLink, page, systemLinks } from "../lib/valueLinks";
 const MEMBERS_PAGE = 100;
 
 /** What the page says of a change, with the record it names as a link (P-218). */
+/** What a page that made this group said, as it was reached (P-243). */
+function madeNote(state: unknown): string {
+  if (typeof state !== "object" || state === null || !("made" in state)) return "";
+  const { made } = state as { made: unknown };
+  return typeof made === "string" ? made : "";
+}
+
 interface Said {
   text: string;
   link?: { to: string; text: string };
@@ -822,7 +829,9 @@ export function DeviceGroupDetail() {
   const group = useLoad(`device-group ${hid}`, (signal) =>
     api.request("get", "/api/v1/device-groups/{hid}", { path: { hid }, signal }),
   );
-  const [done, setDone] = useState<Said>({ text: "" });
+  // 0.9.8: reached from Make it a stack, the page says what was made (P-243).
+  const { state: reached } = useLocation();
+  const [done, setDone] = useState<Said>(() => ({ text: madeNote(reached) }));
   const record = group.data;
   useTitle(record ? record.name : "Group");
 

@@ -2386,7 +2386,18 @@ What 0.9.6 changes:
   under the line a question that says the removal is for a replacement that never
   happened and that what it handed over stays, with a Reason that must be typed before
   Remove replacement may be pressed; it calls `POST /item-replacements/{hid}/remove`, and
-  the page says the replacement was removed and reads the item again. No other page
+  the page says the replacement was removed and reads the item again. Beside Join a
+  stack, an item that may join one has Make it a stack (P-243), for the same people:
+  its form, in the same place, has Name of the stack, the item's own name, or its host
+  name, from the start, which the person may change; one sentence of what goes to the
+  stack, each only where the item has it of its own, its host name, its FQDN, its
+  address or how many addresses, its location, planned location, owner and operator,
+  and of what stays its own; and More members, the picker of members with the item as
+  member 1 and the next offered 2, each chosen with the box of P-217 and Production for
+  a spare. Make the stack sends `POST /items/{hid}/make-stack`, the name left out when
+  blank; a refusal of the name, of the item or of a member is said beside it, by its row
+  for a member. Afterwards the stack's page is shown, which says at the top that the
+  stack was made of the item, member 1, and how many more members it has. No other page
   reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
   each replacement.
 

@@ -60,6 +60,10 @@ const spares = ["01", "02", "03", "04", "05"].map((n) => host(`spare-sw-${n}`));
 const spareSerials = spares.map((one) => serial(`SP${one.slice(-2)}`));
 const spareAddress = (index: number) => `${net}::${index + 10}`;
 
+const standalone = host("lab-sw1");
+const standaloneSerial = serial("LAB");
+const standaloneAddress = `${net}::5`;
+
 const made: { site?: string; room?: string; depot?: string; entry?: string } = {};
 
 async function records(request: APIRequestContext, account: Account): Promise<void> {
@@ -106,6 +110,25 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
       is_primary: true,
     });
   }
+  // A switch that stands alone in the room, with its names and an address of its own.
+  const alone = (
+    await make(request, headers, "/items", {
+      catalog_entry_hid: entry,
+      hostname: standalone,
+      fqdn: `${standalone}.example.net`,
+      serial_number: standaloneSerial,
+      location_hid: made.room,
+      lifecycle_state: "Prod",
+      disposition: "Production",
+      expected_online: true,
+    })
+  ).hid;
+  await make(request, headers, "/addresses", {
+    address: standaloneAddress,
+    item_hid: alone,
+    role: "management",
+    is_primary: true,
+  });
   made.entry = entry;
 }
 
@@ -349,7 +372,7 @@ test("a spare that took a place goes back to the pool by Replace and takes a pla
   await form.getByRole("button", { name: "Replace", exact: true }).click();
   const said = page.locator(".alert-ok");
   await expect(said).toContainText(`${pooled} was replaced by ${between} as member 2`);
-  await expect(said).toContainText("named " + pooled);
+  await expect(said).toContainText(`named ${pooled}`);
 
   // It takes the place again, and is in the stack once more.
   form = await replaceOnRow(page, between, pooled);
@@ -409,6 +432,9 @@ test("a viewer sees no Replace; Inventory sees Replace on the row and on the ite
   await expect(page.getByRole("button", { name: /^Remove the replacement/ })).toHaveCount(0);
   // Who made a change is text for every role but Admin (P-240).
   await expect(page.getByRole("region", { name: "History" }).getByRole("link")).toHaveCount(0);
+  // Nor Make it a stack on a switch in no stack (P-243).
+  await openItem(page, standalone);
+  await expect(page.getByRole("button", { name: "Make it a stack" })).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out" }).click();
 
   await signIn(page, inventory);
@@ -434,5 +460,58 @@ test("a viewer sees no Replace; Inventory sees Replace on the row and on the ite
   await openItem(page, twice);
   await expect(page.getByRole("button", { name: "Replace this item" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Remove the replacement/ })).toHaveCount(0);
+  await expectClean(page, seen);
+});
+
+test("a switch that stands alone is made a stack from its page with a spare: the stack takes its names, its address and its place, and the spare joins with the box (P-243)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItem(page, standalone);
+  const fact = page.getByTestId("stack-member");
+  await expect(fact).toContainText("In no stack");
+  await fact.getByRole("button", { name: "Make it a stack" }).click();
+  const form = page.getByRole("region", { name: "Make it a stack" });
+  // The switch's own name from the start, which the person may change.
+  await expect(form.getByLabel("Name of the stack")).toHaveValue(standalone);
+  await expect(form.getByTestId("make-stack-goes")).toContainText(
+    `To the stack from ${standalone}: the host name ${standalone}, the FQDN ${standalone}.example.net, its address and the location ${label("Campus Works")} > ${site} > ${room}.`,
+  );
+  const stackName = host("lab-stk1");
+  await form.getByLabel("Name of the stack").fill(stackName);
+  const spare = spares[4] ?? "";
+  await pick(form, spare);
+  await expect(form.getByLabel(`Position of ${spare}`)).toHaveValue("2");
+  const box = form.getByRole("group", { name: spare });
+  await expect(box.getByLabel("It takes the stack's name and place")).toBeChecked();
+  await expect(box.getByLabel("Disposition")).toHaveValue("Production");
+  await form.getByRole("button", { name: "Make the stack" }).click();
+
+  // The stack's page, saying what was made.
+  await expect(page.getByRole("heading", { level: 1, name: stackName })).toBeVisible();
+  await expect(page.locator(".alert-ok")).toHaveText(
+    `The stack ${stackName} was made of ${standalone}, member 1, with 1 more member.`,
+  );
+  await expect(memberRow(page, standaloneSerial).locator("td").first()).toHaveText("1");
+  await expect(
+    memberRow(page, spareSerials[4] ?? "")
+      .locator("td")
+      .first(),
+  ).toHaveText("2");
+
+  // The switch has the stack's names, address and place, none of its own.
+  await openItem(page, standaloneSerial);
+  await expect(page.getByTestId("stack-member")).toHaveText(`Member 1 of ${stackName}`);
+  await expect(page.getByTestId("stack-hostname")).toContainText(`${standalone} · the stack's`);
+  await expect(page.getByTestId("stack-addresses")).toContainText(standaloneAddress);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
+  await expect(page.getByRole("region", { name: "Addresses" })).toContainText(
+    `There is no address on ${standaloneSerial}.`,
+  );
   await expectClean(page, seen);
 });
