@@ -118,6 +118,9 @@ const STALE_TITLE = "Stale version";
 /** The record that already has the value a change was refused for (P-207). */
 export type ExistingRecord = Schemas["ProblemRecord"];
 
+/** 0.9.7: the deletion of a record a 404 is for, when, by whom and why (P-227). */
+export type DeletedRecord = Schemas["ProblemDeleted"];
+
 /** A request the server refused, or that never reached it (status 0). */
 export class ApiError extends Error {
   readonly status: number;
@@ -129,6 +132,8 @@ export class ApiError extends Error {
   readonly retryAfter: number | null;
   /** The record that has the value already, where the server named one. */
   readonly existing: ExistingRecord | null;
+  /** On a 404 for a record an Admin deleted: when, by whom and why. */
+  readonly deleted: DeletedRecord | null;
 
   constructor(init: {
     status: number;
@@ -137,6 +142,7 @@ export class ApiError extends Error {
     fields?: Record<string, string>;
     retryAfter?: number | null;
     existing?: ExistingRecord | null;
+    deleted?: DeletedRecord | null;
   }) {
     const detail = init.detail ?? "";
     let text = detail || init.title;
@@ -152,6 +158,7 @@ export class ApiError extends Error {
     this.fields = init.fields ?? {};
     this.retryAfter = retryAfter;
     this.existing = init.existing ?? null;
+    this.deleted = init.deleted ?? null;
   }
 
   /** The record changed since it was read: read it again before changing it. */
@@ -200,7 +207,21 @@ export async function problemOf(response: Response): Promise<ApiError> {
     fields,
     retryAfter: retryAfterOf(response),
     existing: existingOf(problem.existing),
+    deleted: deletedOf(problem.deleted),
   });
+}
+
+/** The deletion a 404 tells of, where it tells of one whole. */
+function deletedOf(given: unknown): DeletedRecord | null {
+  if (typeof given !== "object" || given === null) return null;
+  const { at, actor_hid, actor_name, reason } = given as Partial<DeletedRecord>;
+  if (typeof at !== "string") return null;
+  return {
+    at,
+    actor_hid: typeof actor_hid === "string" ? actor_hid : null,
+    actor_name: typeof actor_name === "string" ? actor_name : null,
+    reason: typeof reason === "string" ? reason : null,
+  };
 }
 
 /** The record a problem names as having the value already, where it names one whole. */

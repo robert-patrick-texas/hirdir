@@ -20,6 +20,7 @@ import { ItemPurchaseLine } from "../components/PurchaseLine";
 import { EditForm } from "../components/RecordForm";
 import { References } from "../components/References";
 import { Registrations } from "../components/Registrations";
+import { DeleteRecord } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
@@ -282,6 +283,10 @@ export function ItemDetail() {
               onChanged={changed}
               onReload={item.reload}
             />
+          )}
+          {/* 0.9.7: an Admin deletes an item that was a mistake (P-227). */}
+          {allows(user.role, "admin") && (
+            <DeleteRecord kind="item" hid={record.hid} name={itemName(record)} />
           )}
           <History item={record} />
         </>

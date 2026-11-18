@@ -14,6 +14,9 @@
 //
 // Rows are selected whole: one, a range, several, or all that the filter keeps. "All"
 // is never a list of rows: it is shown as a count and sent to the server as the filter.
+// 0.9.7: rows are ticked (P-233). A box to each row at the left, and one in the heading
+// for every row on show; pressing a row selects it as before, and each button that acts
+// on the rows chosen says how many.
 // Copy and Export are one export of the rows chosen, with the grid's sort and columns:
 // to the clipboard as tab-separated text, or to a file.
 //
@@ -30,6 +33,7 @@ import {
   CustomFilterModule,
   createGrid,
   DateFilterModule,
+  EventApiModule,
   type GridApi,
   GridStateModule,
   InfiniteRowModelModule,
@@ -64,6 +68,7 @@ import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/g
 import { type GridLayout, GridStore, mergeLayout, withoutFilters } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
 import { useSite } from "../../lib/product";
+import { withCount } from "../../lib/selection";
 import { browserStorage } from "../../lib/session";
 import {
   type Chosen,
@@ -74,6 +79,7 @@ import {
   exportRequest,
   type FileFormat,
   type GridView,
+  namesPlaces,
 } from "../../lib/transfer";
 import { CheckField, TextField } from "../Field";
 import { Notice, Problem } from "../Problem";
@@ -86,6 +92,7 @@ import {
   queryColumns,
 } from "./columns";
 import { saveFile } from "./save";
+import { TickHeader } from "./tickHeader";
 
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
@@ -100,6 +107,8 @@ ModuleRegistry.registerModules([
   GridStateModule,
   // To read the row of the cell that has the focus.
   RowApiModule,
+  // For the box in the heading to hear of the rows read and ticked (P-233).
+  EventApiModule,
 ]);
 
 // How many rows the grid asks the server for at a time.
@@ -181,6 +190,12 @@ export interface DataGridProps<T> {
   minor?: { label: string; without: FilterNode; start?: boolean };
   /** Change it to read the list again, as after a record was created. */
   reloadKey?: number;
+  /**
+   * 0.9.7: rows to tick again once the list is read again, by their ids, as those that a
+   * Retire or a Delete of the rows ticked refused (P-228): once, when the list is read
+   * for the `reloadKey` given with them, and not again for another filter.
+   */
+  tickAfter?: { reload: number; ids: readonly string[] };
   /** The kind of record the rows are, as an export names it. With it, Copy and Export are offered. */
   entity?: Entity;
   /** Open the form that changes many rows at once. With it, Bulk edit is offered. */
@@ -315,6 +330,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const [done, setDone] = useState("");
   const [failure, setFailure] = useState<ApiError | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
+  // 0.9.7: Copy and Export write each place by its codes, while this is ticked (P-235).
+  const [placeCodes, setPlaceCodes] = useState(false);
+  const byCode = placeCodes && entity !== undefined && namesPlaces(entity);
   const refusedBox = useRef<HTMLTextAreaElement>(null);
 
   // Text the clipboard refused is shown selected, ready to be copied by hand.
@@ -334,6 +352,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const read = useEffectEvent(props.load);
   const idOf = useEffectEvent(props.rowId);
   const isDimmed = useEffectEvent((row: T) => props.dimmed?.(row) === true);
+  // The reload whose rows to tick were ticked already.
+  const tickedFor = useRef<number | null>(null);
+  const tickAfter = useEffectEvent((reload: number): readonly string[] => {
+    const asked = props.tickAfter;
+    if (!asked || asked.reload !== reload || tickedFor.current === reload) return [];
+    tickedFor.current = reload;
+    return asked.ids;
+  });
   const linkOf = useEffectEvent((row: T) => props.rowLink?.(row) ?? null);
   const open = useEffectEvent((row: T) => {
     const path = linkOf(row);
@@ -433,9 +459,23 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       getRowId: (params) => idOf(params.data),
       rowSelection: {
         mode: "multiRow",
-        checkboxes: false,
+        checkboxes: true,
+        // The grid's own box in the heading is for rows it holds whole: this one is drawn
+        // by TickHeader, for the rows on show (P-233).
         headerCheckbox: false,
         enableClickSelection: true,
+      },
+      selectionColumnDef: {
+        headerComponent: TickHeader,
+        headerName: "Ticked",
+        lockPosition: "left",
+        suppressMovable: true,
+        suppressHeaderMenuButton: true,
+        sortable: false,
+        resizable: false,
+        width: 44,
+        minWidth: 44,
+        maxWidth: 44,
       },
       rowClassRules: {
         "row-dim": (params) => params.data !== undefined && isDimmed(params.data),
@@ -545,6 +585,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     const pending = new Set<() => void>();
     grid.deselectAll();
     setAllMatching(false);
+    // The rows to tick again as they come, as those a Retire refused (P-228).
+    const toTick = new Set(tickAfter(wanted.reloadKey));
     // Another filter or switch: the list begins at its top (P-203).
     const fromTop = viewChanged(grid);
     grid.setGridOption("datasource", {
@@ -579,6 +621,16 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             setError(null);
             setTotal(page.total);
             params.successCallback(page.items, page.total);
+            if (toTick.size > 0) {
+              const nodes = [];
+              for (const row of page.items) {
+                const rowId = idOf(row);
+                const node = toTick.has(rowId) ? grid.getRowNode(rowId) : undefined;
+                if (node) nodes.push(node);
+                toTick.delete(rowId);
+              }
+              if (nodes.length > 0) grid.setNodesSelected({ nodes, newValue: true });
+            }
             if (params.startRow === 0) arrived(grid, fromTop);
             else if (marking.current !== null) requestAnimationFrame(() => markOpened(grid));
           },
@@ -792,6 +844,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       viewOf(grid),
       exportColumns(columns, grid.getColumnState()),
       chosen,
+      byCode,
     );
     began("copy");
     let count = 0;
@@ -825,6 +878,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       viewOf(grid),
       exportColumns(columns, grid.getColumnState()),
       chosen,
+      byCode,
     );
     began(format);
     try {
@@ -850,6 +904,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         : plural(total, noun[0], noun[1]);
   const some = allMatching || selected > 0;
   const busy = working !== "";
+  // How many rows each button acts on, as it says (P-233).
+  const chosenCount = { ticked: selected, allMatching, total };
 
   return (
     <div className="grid-page">
@@ -989,14 +1045,23 @@ export function DataGrid<T>(props: DataGridProps<T>) {
           {entity && (
             <>
               <button type="button" onClick={copy} disabled={!some || busy}>
-                Copy
+                {withCount("Copy", chosenCount)}
               </button>
               <button type="button" onClick={() => exportAs("csv")} disabled={!total || busy}>
-                Export CSV
+                {withCount("Export CSV", chosenCount)}
               </button>
               <button type="button" onClick={() => exportAs("json")} disabled={!total || busy}>
-                Export JSON
+                {withCount("Export JSON", chosenCount)}
               </button>
+              {namesPlaces(entity) && (
+                <CheckField
+                  label="Places by code"
+                  name="place_codes"
+                  checked={placeCodes}
+                  onChange={setPlaceCodes}
+                  disabled={busy}
+                />
+              )}
             </>
           )}
           {onBulkEdit && (
@@ -1008,7 +1073,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
                 if (grid && chosen) onBulkEdit(chosen, viewOf(grid));
               }}
             >
-              Bulk edit
+              {withCount("Bulk edit", chosenCount)}
             </button>
           )}
           {actions.map((action) => (
@@ -1026,7 +1091,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
                 if (grid && chosen) action.run(chosen, viewOf(grid), rowsOf(grid));
               }}
             >
-              {action.label}
+              {withCount(action.label, chosenCount, action.rowsOnly === true)}
             </button>
           ))}
           {busy && (
@@ -1046,11 +1111,15 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       </p>
       <p className="hint">
         Click a heading to sort, and hold Shift to sort by a further column. Click a row to select
-        it, with Shift for a range and Ctrl for several. A double click opens the row. With the
-        keyboard: Enter on a heading sorts, Ctrl+Enter opens its filter, Space selects a row and
-        Enter opens it.
+        it, with Shift for a range and Ctrl for several, or tick the box at its left to add it to
+        those ticked; the box in the heading ticks every row on show, and clears them. A double
+        click opens the row. With the keyboard: Enter on a heading sorts, Ctrl+Enter opens its
+        filter, Space selects a row and Enter opens it.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
+        {entity &&
+          namesPlaces(entity) &&
+          " With Places by code they write each place the short way, by the codes of its site and its own, as S2 > R102, which loads back to the same place."}
         {minor &&
           ` Until ${minor.label} is on, minor items are left out of the grid, and so of what is copied, exported and edited in bulk.`}
       </p>

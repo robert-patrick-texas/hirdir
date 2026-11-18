@@ -34,6 +34,23 @@ export interface GridView {
  */
 export type Chosen = { kind: "rows"; hids: string[] } | { kind: "all"; count: number };
 
+/** 0.9.7: the kinds of record whose export has a column that names a place (P-235). */
+const PLACE_ENTITIES: ReadonlySet<Entity> = new Set<Entity>([
+  "items",
+  "device_groups",
+  "regions",
+  "sites",
+  "locations",
+  "contact_assignments",
+  "capacity_lines",
+  "circuits",
+]);
+
+/** Whether an export of the kind writes places, and so offers to write them by code. */
+export function namesPlaces(entity: Entity): boolean {
+  return PLACE_ENTITIES.has(entity);
+}
+
 export function chosenCount(chosen: Chosen): number {
   return chosen.kind === "rows" ? chosen.hids.length : chosen.count;
 }
@@ -87,12 +104,15 @@ export function exportRequest(
   view: GridView,
   columns: readonly string[],
   chosen: Chosen,
+  placeCodes = false,
 ): ExportRequest {
   return {
     entity,
     format,
     columns: [...columns],
     sort: [...view.sort],
+    // 0.9.7: each place the short way, by codes, only where it is asked for (P-235).
+    ...(placeCodes ? { place_codes: true } : {}),
     ...(chosen.kind === "rows"
       ? { hids: [...chosen.hids] }
       : {

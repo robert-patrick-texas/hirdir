@@ -122,6 +122,11 @@ const KIND_WORDS: Readonly<Record<string, string>> = {
   reference_file: "reference",
 };
 
+/** A kind of record as a person calls it: "catalog entry"; one with no word, as it is named. */
+export function kindWord(recordType: string): string {
+  return KIND_WORDS[recordType] ?? recordType.replaceAll("_", " ");
+}
+
 /**
  * What is said before the record a duplicate is refused for: "The item that has it:".
  * A kind the page has no word for is a record.

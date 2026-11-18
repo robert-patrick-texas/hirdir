@@ -27,6 +27,7 @@ from hirdir.domain import (
     catalog,
     choices,
     contracts,
+    deleted,
     geography,
     health,
     lifecycle,
@@ -36,7 +37,7 @@ from hirdir.domain import (
     tags,
 )
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid
 from hirdir.domain.lifecycle import UNSET
 
 RECORD_TYPE = "item"
@@ -88,7 +89,8 @@ def get_item(db: Session, hid: str) -> Item:
     """Return the item with hid."""
     item = db.get(Item, hid)
     if item is None:
-        raise NotFound(f"there is no item {hid}")
+        # One that an Admin deleted says so, when and by whom (P-236).
+        raise deleted.missing(db, RECORD_TYPE, hid, "item")
     return item
 
 

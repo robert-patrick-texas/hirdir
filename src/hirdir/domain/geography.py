@@ -9,7 +9,9 @@ shipping instructions, is resolved here as well: from the place itself, the loca
 above it, its site, then each region outward. Nothing is copied down.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Generator, Iterable, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
@@ -33,7 +35,7 @@ from hirdir.db.models import (
     Region,
     Site,
 )
-from hirdir.domain import choices, records, tags
+from hirdir.domain import choices, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -153,6 +155,20 @@ def get_place(db: Session, level: str, hid: str) -> Place:
     raise NotFound(f"there is no {level} {hid}")
 
 
+_BY_CODES: ContextVar[bool] = ContextVar("place_codes", default=False)
+
+
+@contextmanager
+def by_codes(on: bool = True) -> Generator[None]:
+    """Write each place the short way, by codes, in every path an atlas made meanwhile
+    writes, as an export with `place_codes` does (P-235)."""
+    token = _BY_CODES.set(on)
+    try:
+        yield
+    finally:
+        _BY_CODES.reset(token)
+
+
 class Atlas:
     """The places one answer needs, each read once, and the paths that follow from them.
 
@@ -166,6 +182,9 @@ class Atlas:
         self._regions: dict[str, Region] | None = None
         self._sites: dict[str, Site] = {}
         self._locations: dict[str, Location] = {}
+        # Paths are written by codes while `by_codes` holds (P-235).
+        self.codes = _BY_CODES.get()
+        self._by_code: dict[str, str] = {}
 
     @property
     def regions(self) -> dict[str, Region]:
@@ -244,23 +263,66 @@ class Atlas:
             hid = location.parent_location_hid
         return line[::-1]
 
-    def region_path(self, hid: str | None) -> str:
-        """Return the path of a region."""
+    def _region_names(self, hid: str | None) -> str:
         return JOINED.join(region.name for region in self.region_line(hid))
 
-    def site_path(self, hid: str | None) -> str:
-        """Return the path of a site."""
+    def _site_names(self, hid: str | None) -> str:
         site = self.site(hid) if hid else None
         if site is None:
             return ""
-        return JOINED.join(part for part in (self.region_path(site.region_hid), site.name) if part)
+        return JOINED.join(
+            part for part in (self._region_names(site.region_hid), site.name) if part
+        )
 
-    def location_path(self, hid: str | None) -> str:
-        """Return the path of a location."""
+    def _location_names(self, hid: str | None) -> str:
         line = self.location_line(hid)
         if not line:
             return ""
-        return JOINED.join([self.site_path(line[0].site_hid), *(one.name for one in line)])
+        return JOINED.join([self._site_names(line[0].site_hid), *(one.name for one in line)])
+
+    def region_path(self, hid: str | None) -> str:
+        """Return the path of a region."""
+        return self._short(REGION, hid, self._region_names(hid))
+
+    def site_path(self, hid: str | None) -> str:
+        """Return the path of a site."""
+        return self._short(SITE, hid, self._site_names(hid))
+
+    def location_path(self, hid: str | None) -> str:
+        """Return the path of a location."""
+        return self._short(LOCATION, hid, self._location_names(hid))
+
+    def _short(self, level: str, hid: str | None, names: str) -> str:
+        """Return a path as it is written: by its names, or while `by_codes` holds, the
+        short way, where that finds the same place again (P-235)."""
+        if not self.codes or not hid or not names:
+            return names
+        if hid not in self._by_code:
+            short = self._coded_path(level, hid) or names
+            if short != names:
+                again = find_place(self.db, short)
+                if again is None or again.hid != hid:
+                    # A name wins over the code somewhere on the way: the names stand.
+                    short = names
+            self._by_code[hid] = short
+        return self._by_code[hid]
+
+    def _coded_path(self, level: str, hid: str) -> str | None:
+        """Return the short way of a place: a region or a site by its code, a location by
+        the code of its site and its own, with names where either has none."""
+        if level == REGION:
+            region = self.regions.get(hid)
+            return region.code if region is not None and region.code else None
+        if level == SITE:
+            site = self.site(hid)
+            return site.code if site is not None and site.code else None
+        line = self.location_line(hid)
+        if not line:
+            return None
+        site = self.site(line[0].site_hid)
+        start = site.code if site is not None and site.code else self._site_names(line[0].site_hid)
+        own = line[-1].code or JOINED.join(one.name for one in line)
+        return JOINED.join([start, own])
 
     def path(self, place: Place) -> str:
         """Return the path of a place."""
@@ -298,7 +360,8 @@ def _parts(text: str) -> list[str]:
 
 
 def find_place(db: Session, text: str, within: Place | None = None) -> Place | None:
-    """Return the region, site or location that text names: by its HID, or by its path.
+    """Return the region, site or location that text names: by its HID, or by its path,
+    each step of which is a name or else a code (P-235).
 
     With `within`, a path that is not found from the top is tried from that place down,
     as a location is named from its site.
@@ -318,17 +381,23 @@ def find_place(db: Session, text: str, within: Place | None = None) -> Place | N
     return found
 
 
-def find_within(db: Session, within: Place | None, text: str) -> Place | None:
+def find_within(
+    db: Session, within: Place | None, text: str, *, codes: bool = False
+) -> Place | None:
     """Return what a name, or a path of names, leads to from a place down: a region or
     a site of a region, a location of a site or of a location. With no place, from the
-    top. Nothing that stands elsewhere under the same name answers."""
+    top. Nothing that stands elsewhere under the same name answers.
+
+    A record that a row names as its own is found by its name alone. With `codes`, a
+    path that refers to a place, a step of it is a code where no name matches.
+    """
     parts = _parts(text)
-    return _walk(db, parts, within) if text.strip() and all(parts) else None
+    return _walk(db, parts, within, codes=codes) if text.strip() and all(parts) else None
 
 
 def names_to_site(db: Session, text: str) -> int:
-    """Return how many names of a path lead from the top to a site, the site among
-    them, or 0 when the path does not begin with the path of a site."""
+    """Return how many steps of a path lead from the top to a site, the site among
+    them, or 0 when the path does not begin with the path of a site, or its code."""
     at: Place | None = None
     for count, name in enumerate(_parts(text), start=1):
         at = _walk(db, [name], at)
@@ -339,47 +408,81 @@ def names_to_site(db: Session, text: str) -> int:
     return 0
 
 
-def _walk(db: Session, parts: list[str], start: Place | None) -> Place | None:
-    """Follow the names of a path down from the top, or from a place."""
+def _named(db: Session, at: Place | None, wanted: str) -> Place | None:
+    """Return what a name leads to, one step down from a place, or from the top."""
+    if at is None:
+        region = db.scalar(
+            select(Region).where(Region.parent_region_hid.is_(None), Region.name_key == wanted)
+        )
+        return Place("region", region) if region is not None else None
+    if at.level == REGION:
+        region = db.scalar(
+            select(Region).where(Region.parent_region_hid == at.hid, Region.name_key == wanted)
+        )
+        if region is not None:
+            return Place("region", region)
+        site = db.scalar(select(Site).where(Site.region_hid == at.hid, Site.name_key == wanted))
+        return Place("site", site) if site is not None else None
+    site_hid = at.hid if at.level == SITE else at.record.site_hid
+    parent = None if at.level == SITE else at.hid
+    location = db.scalar(
+        select(Location).where(
+            Location.site_hid == site_hid,
+            Location.parent_location_hid.is_(None)
+            if parent is None
+            else Location.parent_location_hid == parent,
+            Location.name_key == wanted,
+        )
+    )
+    return Place("location", location) if location is not None else None
+
+
+def _coded(db: Session, at: Place | None, wanted: str) -> Place | None:
+    """Return what a code leads to from a place, where no name does (P-235).
+
+    From the top, the region or the site of that code, wherever it is: no two regions
+    and no two sites share one, and a code that a region and a site share finds neither.
+    From a region, a region or a site directly in it. From a site or a location, a
+    location beneath it at whatever depth: no two locations of one site share one.
+    """
+    if at is None:
+        region = db.scalar(select(Region).where(Region.code_key == wanted))
+        site = db.scalar(select(Site).where(Site.code_key == wanted))
+        if region is not None and site is not None:
+            return None
+        if region is not None:
+            return Place("region", region)
+        return Place("site", site) if site is not None else None
+    if at.level == REGION:
+        region = db.scalar(
+            select(Region).where(Region.parent_region_hid == at.hid, Region.code_key == wanted)
+        )
+        if region is not None:
+            return Place("region", region)
+        site = db.scalar(select(Site).where(Site.region_hid == at.hid, Site.code_key == wanted))
+        return Place("site", site) if site is not None else None
+    site_hid = at.hid if at.level == SITE else at.record.site_hid
+    within = [Location.site_hid == site_hid, Location.code_key == wanted]
+    if at.level == LOCATION:
+        within += [Location.hid.in_(locations_beneath(at.hid)), Location.hid != at.hid]
+    location = db.scalar(select(Location).where(*within))
+    return Place("location", location) if location is not None else None
+
+
+def _walk(
+    db: Session, parts: list[str], start: Place | None, *, codes: bool = True
+) -> Place | None:
+    """Follow the steps of a path down from the top, or from a place: at each step a
+    name, or with `codes` a code where no name matches."""
     at = start
     for name in parts:
         wanted = records.key(name)
-        if at is None:
-            region = db.scalar(
-                select(Region).where(Region.parent_region_hid.is_(None), Region.name_key == wanted)
-            )
-            at = Place("region", region) if region is not None else None
-        elif at.level == REGION:
-            region = db.scalar(
-                select(Region).where(Region.parent_region_hid == at.hid, Region.name_key == wanted)
-            )
-            site = (
-                None
-                if region is not None
-                else db.scalar(
-                    select(Site).where(Site.region_hid == at.hid, Site.name_key == wanted)
-                )
-            )
-            at = (
-                Place("region", region)
-                if region is not None
-                else (Place("site", site) if site is not None else None)
-            )
-        else:
-            site_hid = at.hid if at.level == SITE else at.record.site_hid
-            parent = None if at.level == SITE else at.hid
-            location = db.scalar(
-                select(Location).where(
-                    Location.site_hid == site_hid,
-                    Location.parent_location_hid.is_(None)
-                    if parent is None
-                    else Location.parent_location_hid == parent,
-                    Location.name_key == wanted,
-                )
-            )
-            at = Place("location", location) if location is not None else None
-        if at is None:
+        found = _named(db, at, wanted)
+        if found is None and codes:
+            found = _coded(db, at, wanted)
+        if found is None:
             return None
+        at = found
     return at
 
 
@@ -390,6 +493,27 @@ def the_place(db: Session, text: str, field_: str, level: str | None = None) -> 
     if place is None or (level is not None and place.level != level):
         raise Invalid(f"there is no such {what}", {field_: f"there is no {what} {text}"})
     return place
+
+
+# --- the map of a place (P-229, P-236) -----------------------------------------------
+
+
+def map_link(db: Session) -> str | None:
+    """Return the address of the map that the coordinates of a place open, with where
+    they go in it, or None where the setting `map_link` is blank."""
+    return settings.value(db, settings.MAP_LINK) or None
+
+
+def map_url(link: str | None, place: Site | Location) -> str | None:
+    """Return the address of a map at a place's own coordinates, written as an answer
+    writes them, or None where the setting is blank or the place has none. Nothing else
+    of the place goes into it."""
+    latitude, longitude = place.latitude, place.longitude
+    if not link or latitude is None or longitude is None:
+        return None
+    return link.replace(settings.MAP_PLACES[0], f"{latitude:.{DEGREE_PLACES}f}").replace(
+        settings.MAP_PLACES[1], f"{longitude:.{DEGREE_PLACES}f}"
+    )
 
 
 def regions_beneath(hid: str) -> Select[Any]:

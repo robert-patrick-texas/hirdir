@@ -41,6 +41,15 @@ class ProblemRecord(Model):
     )
 
 
+class ProblemDeleted(Model):
+    """The deletion of a record that a request named, read from the audit trail (P-236)."""
+
+    at: datetime = Field(description="When it was deleted.")
+    actor_hid: str | None = Field(description="Who deleted it.")
+    actor_name: str | None = Field(description="The username of who deleted it.")
+    reason: str | None = Field(description="Why, as the Admin gave it.")
+
+
 class Problem(Model):
     """An error, as an RFC 9457 problem document."""
 
@@ -53,6 +62,11 @@ class Problem(Model):
         default=None,
         description="On a 409 for a value another record has, such as a serial number, an "
         "asset tag, a PID or a name: that record. Left out of every other problem.",
+    )
+    deleted: ProblemDeleted | None = Field(
+        default=None,
+        description="On a 404 for an item or a device group that an Admin deleted: when, "
+        "by whom and why. Left out of every other problem.",
     )
 
 

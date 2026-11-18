@@ -8,6 +8,7 @@ import {
   exportName,
   exportRequest,
   type GridView,
+  namesPlaces,
   parseCsv,
 } from "./transfer";
 
@@ -95,6 +96,15 @@ describe("exportRequest", () => {
     expect(request).not.toHaveProperty("filter");
     expect(request.sort).toEqual(VIEW.sort);
     expect(request.format).toBe("json");
+  });
+
+  it("writes places by code only when it is asked to (P-235)", () => {
+    const chosen: Chosen = { kind: "rows", hids: ["i-1"] };
+    expect(exportRequest("items", "csv", VIEW, ["hid"], chosen)).not.toHaveProperty("place_codes");
+    expect(exportRequest("items", "csv", VIEW, ["hid"], chosen, true).place_codes).toBe(true);
+    expect(namesPlaces("items")).toBe(true);
+    expect(namesPlaces("locations")).toBe(true);
+    expect(namesPlaces("vendors")).toBe(false);
   });
 
   it("sends no filter when the grid has none", () => {

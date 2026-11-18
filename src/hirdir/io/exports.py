@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hirdir import clock
 from hirdir.db import dialect
-from hirdir.domain import product, settings
+from hirdir.domain import geography, product, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import columns as cells
 from hirdir.io import files, filters
@@ -37,6 +37,8 @@ class Export:
     where: tuple[Any, ...]
     order: tuple[Any, ...]
     own_values: bool
+    # Each place written the short way, by codes (P-235).
+    place_codes: bool = False
 
     @property
     def names(self) -> list[str]:
@@ -82,6 +84,7 @@ def plan(
     own_values: bool = False,
     include_archived: bool = False,
     include_drafts: bool = False,
+    place_codes: bool = False,
 ) -> Export:
     """Check what an export asks for, and return it ready to be written."""
     if format_ not in files.FORMATS:
@@ -113,6 +116,7 @@ def plan(
         where=tuple(where),
         order=tuple(order),
         own_values=own_values,
+        place_codes=place_codes,
     )
 
 
@@ -156,7 +160,12 @@ def pieces(db: Session, export: Export) -> Iterator[list[dict[str, Any]]]:
         found = {
             record.hid: record for record in db.scalars(select(model).where(model.hid.in_(wanted)))
         }
-        rows = which.read(db, [found[hid] for hid in wanted if hid in found], own=export.own_values)
+        # Each place is written the short way where that was asked for (P-235). The
+        # rows are read here and now, a piece at a time, so the choice holds no longer.
+        with geography.by_codes(export.place_codes):
+            rows = which.read(
+                db, [found[hid] for hid in wanted if hid in found], own=export.own_values
+            )
         yield [
             {column.name: cells.plain(column, row[column.name]) for column in export.columns}
             for row in rows

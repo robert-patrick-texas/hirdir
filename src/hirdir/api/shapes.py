@@ -65,6 +65,7 @@ from hirdir.domain import (
     operators,
     purchases,
     records,
+    removal,
     replacements,
     resolution,
     settings,
@@ -500,13 +501,15 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
     locations = _live_counts(db, Location, Location.site_hid, hids)
     marks = _Labels(db, {site.operator_hid for site in found})
     figures = weights.in_force(db)
+    link = geography.map_link(db)
     return [
         shapes.SiteOut(
             **_own(
                 site,
                 shapes.SiteOut,
-                ("region", "path", "tags", "locations", "operator", "effective"),
+                ("region", "path", "tags", "locations", "operator", "effective", "map_url"),
             ),
+            map_url=geography.map_url(link, site),
             effective=shapes.SiteEffective(
                 support_weight=weight_out(weights.of_site(site, figures))
             ),
@@ -537,6 +540,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
     planned = _live_counts(db, Item, Item.planned_location_hid, hids)
     planned_groups = _live_counts(db, DeviceGroup, DeviceGroup.planned_location_hid, hids)
     marks = _Labels(db, {location.operator_hid for location in found})
+    link = geography.map_link(db)
     out = []
     for location in found:
         site = atlas.site(location.site_hid)
@@ -559,8 +563,10 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                         "planned_items",
                         "planned_groups",
                         "operator",
+                        "map_url",
                     ),
                 ),
+                map_url=geography.map_url(link, location),
                 planned_items=planned[location.hid],
                 planned_groups=planned_groups[location.hid],
                 operator=marks.ref(location.operator_hid),
@@ -1352,6 +1358,46 @@ def preview_out(db: Session, job: ImportJob) -> shapes.ImportPreview:
     """Return a preview: the job, and the first of its rows."""
     rows, _ = imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)
     return shapes.ImportPreview(job=job_out(db, job), rows=[row_out(row) for row in rows])
+
+
+# --- several retired at once, and deleting (P-227, P-228, P-236) ---------------------
+
+
+def _labelled(found: list[tuple[str, str]]) -> list[shapes.RecordLabel]:
+    return [shapes.RecordLabel(hid=hid, label=label) for hid, label in found]
+
+
+def retired_out(done: removal.Retired) -> shapes.RetiredMany:
+    """Return what a request that retires several did with each record it named."""
+    return shapes.RetiredMany(
+        retired=_labelled(done.retired),
+        already=_labelled(done.already),
+        refused=[
+            shapes.RetireRefused(hid=hid, label=label, detail=detail)
+            for hid, label, detail in done.refused
+        ],
+        missing=done.missing,
+    )
+
+
+def deleted_out(done: removal.Deletion) -> shapes.DeletedMany:
+    """Return what a request that deletes several did, or would do, with each record."""
+    return shapes.DeletedMany(
+        dry_run=done.dry_run,
+        deleted=_labelled(done.deleted),
+        refused=[
+            shapes.DeleteRefused(
+                hid=hid,
+                label=label,
+                depends_on=[
+                    shapes.Dependent(record_type=one.record_type, hid=one.hid, label=one.label)
+                    for one in depends_on
+                ],
+            )
+            for hid, label, depends_on in done.refused
+        ],
+        missing=done.missing,
+    )
 
 
 # --- contracts and coverage ----------------------------------------------------------

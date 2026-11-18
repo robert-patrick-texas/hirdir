@@ -13,6 +13,7 @@ import {
   levelLabel,
   locationSearch,
   locationsToMoveTo,
+  mapLink,
   NOT_IN_USE,
   nameOf,
   noContactText,
@@ -584,5 +585,15 @@ describe("siteSearch", () => {
         or: fields.map((field) => ({ field, op: "contains", value })),
       })),
     });
+  });
+});
+
+describe("the map of a place (P-229)", () => {
+  it("is the address the server made, where it is one on the web", () => {
+    const url = "https://www.google.com/maps/search/?api=1&query=41.878100,-87.629800";
+    expect(mapLink(url)).toBe(url);
+    expect(mapLink(null)).toBeNull();
+    expect(mapLink("")).toBeNull();
+    expect(mapLink("javascript:alert(1)")).toBeNull();
   });
 });

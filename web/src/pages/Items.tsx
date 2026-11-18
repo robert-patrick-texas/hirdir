@@ -9,6 +9,7 @@ import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "../components/grid/itemColumns";
 import { madeLink, NewItem } from "../components/NewItem";
 import { Notice, Problem } from "../components/Problem";
+import { useDeletedNote, useTickedRemoval } from "../components/Removal";
 import { ITEM_MAC_FIELD, ITEM_QUICK_FIELDS } from "../lib/filter";
 import { queryBody } from "../lib/gridQuery";
 import { useTitle } from "../lib/hooks";
@@ -59,7 +60,13 @@ export function Items() {
   const ready = !choices.loading && !rules.loading;
   const states = useMemo(() => stateNames(rules.data ?? []), [rules.data]);
   const columns = useMemo(() => itemColumns(choices.data, states), [choices.data, states]);
+  // 0.9.7: the rows ticked retired, and deleted by an Admin (P-227, P-228).
+  const removal = useTickedRemoval<Item>("item");
+  // What a deletion on an item's page said, as it came back to the list.
+  const deletedNote = useDeletedNote();
+  const reloadKey = reloads + removal.turn;
   const actions: GridAction<Item>[] = [
+    ...removal.actions,
     {
       label: "Cover with a contract",
       run: (rows, view) => {
@@ -80,6 +87,8 @@ export function Items() {
       </div>
       <Problem error={choices.error ?? rules.error} />
       <Notice text={done} {...(made && done === "Created" ? { link: madeLink(made) } : {})} />
+      <Notice text={deletedNote} />
+      {removal.shown}
       {adding && (
         <NewItem
           states={states}
@@ -125,7 +134,8 @@ export function Items() {
           id="items"
           noun={["item", "items"]}
           entity="items"
-          reloadKey={reloads}
+          reloadKey={reloadKey}
+          tickAfter={{ reload: reloadKey, ids: removal.keep }}
           {...(mayChange
             ? {
                 onBulkEdit: (rows: Chosen, view: GridView) => {

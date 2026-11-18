@@ -26,6 +26,7 @@ from hirdir.db.models import (
 from hirdir.domain import (
     addresses,
     audit,
+    deleted,
     geography,
     health,
     items,
@@ -85,7 +86,8 @@ def get_group(db: Session, hid: str) -> DeviceGroup:
     """Return the device group with hid."""
     group = db.get(DeviceGroup, hid)
     if group is None:
-        raise NotFound(f"there is no device group {hid}")
+        # One that an Admin deleted says so, when and by whom (P-236).
+        raise deleted.missing(db, RECORD_TYPE, hid, "device group")
     return group
 
 

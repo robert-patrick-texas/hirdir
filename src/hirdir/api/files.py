@@ -14,7 +14,7 @@ from hirdir.api.idempotent import IdempotentRoute, limited_body
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
-from hirdir.io import background, exports, imports, tables
+from hirdir.io import background, exports, imports, made, tables
 
 imports_ = APIRouter(prefix="/imports", tags=["Files"], route_class=IdempotentRoute)
 exports_ = APIRouter(prefix="/exports", tags=["Files"])
@@ -179,6 +179,45 @@ def list_import_rows(
     )
 
 
+@imports_.get("/{hid}/created")
+def list_import_created(
+    hid: str,
+    _: Viewer,
+    db: Db,
+    limit: Limit = DEFAULT_LIMIT,
+    offset: Offset = 0,
+) -> r.ImportCreated:
+    """List the records an import made, a row of the file each, by row, with what each
+    is now; and after them, whole, the vendors and catalog entries it made only because a
+    row named them (P-234). Nothing new is stored: each is read from the rows and the
+    audit trail."""
+    page, total, also = made.created(db, hid, limit, offset)
+    return r.ImportCreated(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[
+            r.CreatedRecord(
+                row=one.row,
+                record_type=one.record_type,
+                record_hid=one.record_hid,
+                label=one.label,
+                state=one.state,
+            )
+            for one in page
+        ],
+        also=[
+            r.MadeForARow(
+                record_type=one.record_type,
+                record_hid=one.record_hid,
+                label=one.label,
+                state=one.state,
+            )
+            for one in also
+        ],
+    )
+
+
 @exports_.post(
     "",
     response_class=StreamingResponse,
@@ -201,6 +240,7 @@ def export(body: r.ExportRequest, _: Viewer, request: Request, db: Db) -> Stream
         hids=body.hids,
         include_sources=body.include_sources,
         own_values=body.own_values,
+        place_codes=body.place_codes,
         include_archived=body.include_archived,
         include_drafts=body.include_drafts,
     )

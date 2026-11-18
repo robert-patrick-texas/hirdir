@@ -25,6 +25,7 @@ import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
+import { DeleteRecord, useDeletedNote, useTickedRemoval } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { WhyEachValue } from "../components/WhyEachValue";
@@ -459,10 +460,16 @@ export function DeviceGroups() {
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
+  // 0.9.7: the rows ticked retired, and deleted by an Admin (P-227, P-228).
+  const removal = useTickedRemoval<DeviceGroup>("device_group");
+  // What a deletion on a group's page said, as it came back to the list.
+  const deletedNote = useDeletedNote();
 
   return (
     <>
       <h1>Groups</h1>
+      <Notice text={deletedNote} />
+      {removal.shown}
       {adding && (
         <NewGroup
           onCancel={() => setAdding(false)}
@@ -474,6 +481,9 @@ export function DeviceGroups() {
         id="device-groups"
         noun={["group", "groups"]}
         entity="device_groups"
+        reloadKey={removal.turn}
+        tickAfter={{ reload: removal.turn, ids: removal.keep }}
+        actions={removal.actions}
         columns={COLUMNS}
         load={(request, signal) =>
           api.request("post", "/api/v1/device-groups/query", { body: queryBody(request), signal })
@@ -874,6 +884,10 @@ export function DeviceGroupDetail() {
               onChanged={changed}
               onReload={group.reload}
             />
+          )}
+          {/* 0.9.7: an Admin deletes a group that was a mistake (P-227). */}
+          {allows(user.role, "admin") && (
+            <DeleteRecord kind="device_group" hid={record.hid} name={record.name} />
           )}
         </>
       )}
