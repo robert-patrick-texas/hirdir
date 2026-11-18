@@ -143,7 +143,7 @@ test("P-213: the items a contract covers are found by plain words, and an end on
 
   // An end on the contract's own last day is said, before it is sent, to change nothing.
   await gridRow(page, grid, hosts[3] ?? "")
-    .locator('[col-id="item.pid"]')
+    .locator('[col-id="item.serial_number"]')
     .click();
   await section.getByRole("button", { name: "End coverage" }).click();
   const ending = page.getByTestId("end-coverage");
@@ -166,7 +166,7 @@ test("P-213: the items a contract covers are found by plain words, and an end on
   // An earlier day is kept, and is said to be.
   const earlier = `${year + 1}-06-30`;
   await gridRow(page, grid, hosts[3] ?? "")
-    .locator('[col-id="item.pid"]')
+    .locator('[col-id="item.serial_number"]')
     .click();
   await section.getByRole("button", { name: "End coverage" }).click();
   await ending.getByLabel("Last day (required)").fill(earlier);
@@ -365,7 +365,7 @@ test("P-224: items are left out of the renewal from the contract's grid, and one
   // Three rows selected: the mark is said to be the item's, for every contract, first.
   for (const [at, hostname] of hosts.slice(0, 3).entries()) {
     await gridRow(page, grid, hostname)
-      .locator('[col-id="item.pid"]')
+      .locator('[col-id="item.serial_number"]')
       .click(at === 0 ? {} : { modifiers: ["ControlOrMeta"] });
   }
   await section.getByRole("button", { name: "Leave out of the renewal" }).click();
@@ -386,7 +386,7 @@ test("P-224: items are left out of the renewal from the contract's grid, and one
 
   // One renewed after all: its own mark is taken off, and it has its model's again.
   await gridRow(page, grid, hosts[1] ?? "")
-    .locator('[col-id="item.pid"]')
+    .locator('[col-id="item.serial_number"]')
     .click();
   await section.getByRole("button", { name: "Renew after all" }).click();
   await marking.getByRole("button", { name: "Take the mark off 1 item" }).click();

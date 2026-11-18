@@ -54,7 +54,7 @@ const coverage = "grid-contract-coverage";
 async function selectCoverage(page: Page, ...names: string[]) {
   for (const [at, name] of names.entries()) {
     await gridRow(page, coverage, name)
-      .locator('[col-id="item.pid"]')
+      .locator('[col-id="item.serial_number"]')
       .click(at === 0 ? {} : { modifiers: ["ControlOrMeta"] });
   }
   await expect(page.getByTestId("grid-selected")).toContainText(`${names.length} selected`);

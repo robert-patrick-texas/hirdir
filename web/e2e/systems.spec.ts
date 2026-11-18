@@ -196,7 +196,8 @@ test("S33: a stack registered with two systems: on the stack, not on its members
   await expect(page.getByTestId("system-registrations")).toContainText("1 record");
   await expect(page.getByTestId("grid-total")).toHaveText("1 registration");
   const ofSystem = page.getByTestId("grid-system-registrations").locator("[row-id]");
-  await expect(ofSystem.getByRole("link", { name: stack, exact: true })).toBeVisible();
+  // The name of the row and the group it registers are one stack here, each a link.
+  await expect(ofSystem.getByRole("link", { name: stack, exact: true }).first()).toBeVisible();
   await expect(ofSystem.locator('[col-id="group.name"]')).toHaveText(stack);
   await expect(ofSystem.locator('[col-id="external_id"]')).toHaveText("node-17");
   await expect(ofSystem.locator('[col-id="status"]')).toHaveText("Registered");

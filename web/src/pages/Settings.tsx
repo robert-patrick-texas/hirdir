@@ -259,10 +259,10 @@ function SettingsTable(props: SettingsTableProps) {
                 <th scope="row" className="mono">
                   <Breakable name={setting.key} />
                 </th>
-                <td data-testid={`value-${setting.key}`}>
+                <td className="held" data-testid={`value-${setting.key}`}>
                   <Shown setting={setting} value={setting.value} />
                 </td>
-                <td data-testid={`default-${setting.key}`}>
+                <td className="held" data-testid={`default-${setting.key}`}>
                   <Shown setting={setting} value={setting.default} />
                 </td>
                 <td data-testid={`standing-${setting.key}`}>

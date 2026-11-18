@@ -410,7 +410,7 @@ test("D-137: rows of the item grid covered by one contract, the contract renewed
   await expect(
     gridRow(page, coverage, bare).locator('[col-id="effective.starts_on"]'),
   ).not.toHaveClass(/cell-inherited/);
-  await gridRow(page, coverage, bare).locator('[col-id="item.pid"]').click();
+  await gridRow(page, coverage, bare).locator('[col-id="item.serial_number"]').click();
   await page.getByRole("button", { name: "End coverage" }).click();
   const ending = page.getByTestId("end-coverage");
   await expect(ending).toContainText(`End the coverage of ${bare} under ${firstNumber}`);

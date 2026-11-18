@@ -824,6 +824,14 @@ table.wrap-heads thead th {
   overflow-wrap: anywhere;
 }
 
+/* 0.9.7: a value that is one long word, the address of a map (P-229), breaks where its
+   column needs it to: unbroken, it took half the table and left the two sentences
+   beside it a column each of a few words, and its row some 460 pixels tall. */
+.settings-table td.held {
+  min-width: 8rem;
+  overflow-wrap: anywhere;
+}
+
 .cell-form {
   display: flex;
   gap: 0.5rem;

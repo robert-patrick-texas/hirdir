@@ -197,10 +197,8 @@ def _map_link() -> Check:
     """Blank, or an address on the web, as a link is, of a host of its own, with where
     the latitude and the longitude go after the host."""
     expected = (
-        "blank, or an address that begins with https:// or http://, with no space, of a "
-        "host with no user or password before it, that holds both {latitude} and "
-        "{longitude} after the host, and none of the characters \" ' < > \\ nor a "
-        "control character"
+        "blank, or a web address, https:// or http://, with both {latitude} and "
+        "{longitude} after its host, and no user or password, space, quote, < > or \\"
     )
 
     def check(value: Any) -> str:
@@ -448,9 +446,8 @@ SPECS: dict[str, Spec] = {
     # 0.9.7: the map that the coordinates of a place open (P-229, P-236).
     MAP_LINK: Spec(
         DEFAULT_MAP,
-        "the address of a map, with {latitude} and {longitude} where the coordinates of a "
-        "site or a location go: the coordinates on its page open it in a new tab. Blank, "
-        "they are plain numbers, as where there is no access to the internet",
+        "the map that the coordinates of a site or a location open, with {latitude} and "
+        "{longitude} where they go. Blank, they are plain numbers",
         _map_link(),
     ),
 }
