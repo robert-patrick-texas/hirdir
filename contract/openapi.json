@@ -8464,7 +8464,7 @@
             "description": "The user this contact is, where it is one."
           },
           "uses": {
-            "description": "How many places and owners it is assigned to, and operators it stands behind.",
+            "description": "How many records name it: the places and owners it is assigned to, the operators it stands behind, and the agreements, contracts, vendors and circuits that name it. `GET /contacts/{hid}/uses` lists them.",
             "title": "Uses",
             "type": "integer"
           }
@@ -8683,6 +8683,59 @@
           "record_status"
         ],
         "title": "ContactRef",
+        "type": "object"
+      },
+      "ContactUses": {
+        "additionalProperties": false,
+        "description": "Every record that names a contact, by kind (P-205): what `uses` of the contact\ncounts, listed.",
+        "properties": {
+          "agreements": {
+            "$ref": "#/components/schemas/NamedRecords"
+          },
+          "circuits": {
+            "$ref": "#/components/schemas/NamedRecords"
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "contracts": {
+            "$ref": "#/components/schemas/NamedRecords"
+          },
+          "operators": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The operators it stands behind."
+          },
+          "owners": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The owners it is one of the people of."
+          },
+          "places": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The regions, sites and locations it is assigned to."
+          },
+          "total": {
+            "description": "How many records name it: `uses` of the contact.",
+            "title": "Total",
+            "type": "integer"
+          },
+          "vendors": {
+            "$ref": "#/components/schemas/NamedRecords",
+            "description": "The vendors, carriers among them, that name it."
+          }
+        },
+        "required": [
+          "contact_hid",
+          "total",
+          "places",
+          "owners",
+          "operators",
+          "agreements",
+          "contracts",
+          "vendors",
+          "circuits"
+        ],
+        "title": "ContactUses",
         "type": "object"
       },
       "ContractContactAdd": {
@@ -19384,6 +19437,134 @@
           "contact"
         ],
         "title": "NamedContact",
+        "type": "object"
+      },
+      "NamedRecord": {
+        "additionalProperties": false,
+        "description": "A record that names a contact, and the role the contact has there (P-205).",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an operator: the colour of its label.",
+            "title": "Colour"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: a place by its path, a contract by its number and its vendor, a circuit by its enterprise circuit ID or its name, any other by its name or label.",
+            "title": "Label",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the record orders the contacts it names.",
+            "title": "Priority"
+          },
+          "record_status": {
+            "description": "A retired record is listed as any other.",
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "record_type": {
+            "description": "Its kind, as the audit trail names it.",
+            "enum": [
+              "region",
+              "site",
+              "location",
+              "owner",
+              "operator",
+              "agreement",
+              "contract",
+              "vendor",
+              "circuit"
+            ],
+            "title": "Record Type",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The role the contact has there: a value of `contact_role` for a place and for a side of a circuit, `primary` or `alternate` for an owner, `account_manager` or `support_contact` for an agreement, a contract, a vendor and the carrier of a circuit. Null for an operator, which the contact stands behind.",
+            "title": "Role"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a circuit: the side the contact is named for; null for its carrier.",
+            "title": "Side"
+          }
+        },
+        "required": [
+          "hid",
+          "record_type",
+          "label",
+          "record_status",
+          "role",
+          "priority",
+          "side",
+          "colour"
+        ],
+        "title": "NamedRecord",
+        "type": "object"
+      },
+      "NamedRecords": {
+        "additionalProperties": false,
+        "description": "The records of one kind that name a contact: how many, and at most 100 of them,\nby what each is known by.",
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/NamedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "records"
+        ],
+        "title": "NamedRecords",
         "type": "object"
       },
       "NetworkCreate": {
@@ -34766,6 +34947,49 @@
           }
         },
         "summary": "Retire Contact",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/contacts/{hid}/uses": {
+      "get": {
+        "description": "List every record that names a contact, by kind, with the role it has there\n(P-205): at most 100 of each kind, by what each is known by, and how many in all.",
+        "operationId": "contact_uses_api_v1_contacts__hid__uses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactUses"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Contact Uses",
         "tags": [
           "People"
         ]

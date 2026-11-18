@@ -198,3 +198,80 @@ test("P-206: a count of the management report opens its items, and money leads n
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
   await expectClean(page, seen);
 });
+
+test("P-205: a contact's page lists every record that names it, each a link with the role", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const name = `Example Named ${id}`;
+  const person = await make(request, headers, "/contacts", {
+    name,
+    email: `named.${id}@example.net`,
+  });
+  const region = await make(request, headers, "/regions", { name: `Example North ${id}` });
+  await make(request, headers, "/contact-assignments", {
+    contact_hid: person.hid,
+    region_hid: region.hid,
+    role: "technical",
+  });
+  const vendor = await make(request, headers, "/vendors", { name: `Example Support ${id}` });
+  const agreement = await make(request, headers, "/agreements", {
+    name: `Example Cover ${id}`,
+    vendor_hid: vendor.hid,
+  });
+  await make(request, headers, `/agreements/${agreement.hid}/contacts`, {
+    contact_hid: person.hid,
+    role: "account_manager",
+  });
+  await make(request, headers, `/vendors/${vendor.hid}/contacts`, {
+    contact_hid: person.hid,
+    role: "support_contact",
+  });
+  await make(request, headers, "/operators", {
+    label: `ex-ops-${id}`.slice(0, 40),
+    contact_hid: person.hid,
+  });
+  const idle = await make(request, headers, "/contacts", { name: `Example Idle ${id}` });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // The list of where it is named is held back, as on a busy server.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/api/v1/contacts/${person.hid}/uses`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto(`./contacts/${person.hid}`);
+  const named = page.getByRole("region", { name: "Where it is named" });
+  await expect(named.getByText("Loading…")).toBeVisible();
+  release();
+  await expect(named.getByRole("heading", { level: 3 })).toHaveText([
+    "Places it is a contact of",
+    "Operators it stands behind",
+    "Agreements that name it",
+    "Vendors that name it",
+  ]);
+  await page.unroute(`**/api/v1/contacts/${person.hid}/uses`);
+  // No sentence of what the page does not list is left: it lists everything (P-197).
+  await expect(page.getByTestId("contact-elsewhere")).toHaveCount(0);
+  const places = page.getByTestId("contact-places");
+  await expect(places).toContainText("Region");
+  await expect(places).toContainText("Technical");
+  await expect(page.getByTestId("contact-operators")).toContainText("Behind 1 operator");
+  const agreements = page.getByTestId("contact-agreements");
+  await expect(agreements).toContainText("Account manager");
+  await expect(page.getByTestId("contact-vendors")).toContainText("Support contact");
+  await agreements.getByRole("link", { name: `Example Cover ${id}` }).click();
+  await expect(page.getByRole("heading", { level: 1, name: `Example Cover ${id}` })).toBeVisible();
+
+  await page.goto(`./contacts/${idle.hid}`);
+  await expect(named.getByText("This contact is assigned nowhere.")).toBeVisible();
+  await expect(named.getByRole("heading", { level: 3 })).toHaveCount(0);
+  await expectClean(page, seen);
+});

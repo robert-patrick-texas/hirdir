@@ -312,6 +312,18 @@ def get_contact(hid: str, _: Viewer, db: Db) -> r.ContactOut:
     return shapes.contacts_out(db, [contacts.get_contact(db, hid)])[0]
 
 
+@contact_routes.get("/{hid}/uses")
+def contact_uses(hid: str, _: Viewer, db: Db) -> r.ContactUses:
+    """List every record that names a contact, by kind, with the role it has there
+    (P-205): at most 100 of each kind, by what each is known by, and how many in all."""
+    found = contacts.named_by(db, hid, contacts.MAX_NAMED)
+    return r.ContactUses(
+        contact_hid=hid,
+        total=sum(one.total for one in found.values()),
+        **{kind: r.NamedRecords.model_validate(one) for kind, one in found.items()},
+    )
+
+
 @contact_routes.patch("/{hid}")
 def update_contact(
     hid: str, body: r.ContactPatch, _: Inventory, context: Audit, db: Db

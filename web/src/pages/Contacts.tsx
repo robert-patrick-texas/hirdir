@@ -10,19 +10,27 @@ import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import {
+  type NamedRecords,
+  namedLevel,
+  namedMark,
+  namedMore,
+  namedPath,
+  namedRole,
+  USES_KINDS,
+  type UsesKind,
+} from "../lib/contactUses";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { EVERY, useChoices, useTags } from "../lib/lists";
-import { markOf } from "../lib/operators";
-import { choiceLabel, optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
-import { memberRoleLabel } from "../lib/owners";
+import { useChoices, useTags } from "../lib/lists";
+import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
-import { CONTACT_ROLE_LIST, levelLabel, placePath } from "../lib/places";
 import { allows } from "../lib/roles";
 import { useSorting } from "../lib/useSorting";
 
 type Contact = Schemas["ContactOut"];
+type Choice = Schemas["ChoiceOut"];
 
 const COLUMNS: GridColumn<Contact>[] = [
   {
@@ -334,186 +342,129 @@ export function ContactDetail() {
 }
 
 /**
- * Where a contact is assigned: the regions, sites and locations it is a contact of, each
- * with its role there, and the owners it is one of the people of.
+ * Where a contact is named (P-205): every record that names it, by kind, each under a
+ * heading and each a link to its page with the role the contact has there, from the one
+ * route that lists them as the list of contacts counts them.
  */
 function Assigned({ contact }: { contact: Contact }) {
   const choices = useChoices();
-  const places = useLoad(`contact-places ${contact.hid} ${contact.row_version}`, (signal) =>
-    api.request("get", "/api/v1/contact-assignments", {
-      query: { filter: `contact_hid:eq:${contact.hid}`, limit: EVERY },
-      signal,
-    }),
+  const uses = useLoad(`contact-uses ${contact.hid} ${contact.row_version}`, (signal) =>
+    api.request("get", "/api/v1/contacts/{hid}/uses", { path: { hid: contact.hid }, signal }),
   );
-  const owners = useLoad(`contact-owners ${contact.hid} ${contact.row_version}`, (signal) =>
-    api.request("get", "/api/v1/owners", {
-      query: {
-        filter: `member.contact_hid:eq:${contact.hid}`,
-        limit: EVERY,
-        include_drafts: true,
-        include_archived: true,
-      },
-      signal,
-    }),
-  );
-  // The operators it stands behind: the labels that are assigned to this person.
-  const behind = useLoad(`contact-operators ${contact.hid} ${contact.row_version}`, (signal) =>
-    api.request("get", "/api/v1/operators", {
-      query: {
-        filter: `contact_hid:eq:${contact.hid}`,
-        limit: EVERY,
-        include_drafts: true,
-        include_archived: true,
-      },
-      signal,
-    }),
-  );
-  const labels = behind.data?.items ?? [];
-  const assignments = places.data?.items ?? [];
-  const among = owners.data?.items ?? [];
-  const loaded = places.data !== undefined && owners.data !== undefined;
-  // 0.9.5: the uses of the contact that this page does not list: where it is named for an
-  // agreement, a contract, a vendor or a circuit, which the server counts (P-197).
-  const listed = (places.data?.total ?? 0) + (owners.data?.total ?? 0) + (behind.data?.total ?? 0);
-  const elsewhere = Math.max(0, contact.uses - listed);
-  // Each list is read whole, and is sorted here only when it is.
-  const placeSorting = useSorting(
-    assignments,
-    {
-      place: (assignment) => assignment.place.path,
-      level: (assignment) => levelLabel(assignment.place.level),
-      role: (assignment) => choiceLabel(choices.data, CONTACT_ROLE_LIST, assignment.role),
-      priority: (assignment) => assignment.priority,
-    },
-    { enabled: (places.data?.total ?? 0) <= assignments.length },
-  );
-  const ownerSorting = useSorting(
-    among,
-    {
-      owner: (owner) => owner.label,
-      as: (owner) => {
-        const member = owner.members.find((one) => one.contact_hid === contact.hid);
-        return member ? memberRoleLabel(member.role) : null;
-      },
-    },
-    { enabled: (owners.data?.total ?? 0) <= among.length },
-  );
-
+  const data = uses.data;
   return (
     <section aria-labelledby="assigned">
-      <h2 id="assigned">Where it is assigned</h2>
-      <Problem error={places.error ?? owners.error ?? choices.error ?? behind.error} />
-      {!loaded && !(places.error ?? owners.error) && (
+      <h2 id="assigned">Where it is named</h2>
+      <Problem error={uses.error ?? choices.error} />
+      {!data && !uses.error && (
         <p role="status" className="muted loading-late">
           Loading…
         </p>
       )}
-      {loaded &&
-        behind.data &&
-        contact.uses === 0 &&
-        assignments.length === 0 &&
-        among.length === 0 &&
-        labels.length === 0 && <p className="muted">This contact is assigned nowhere.</p>}
-      {loaded && behind.data && elsewhere > 0 && (
-        <p data-testid="contact-elsewhere" data-count={elsewhere}>
-          This contact is named{" "}
-          {listed > 0 ? plural(elsewhere, "more time") : plural(elsewhere, "time")}, in agreements,
-          contracts, vendors or circuits, which this page does not list yet.
-        </p>
-      )}
-      {labels.length > 0 && (
-        <p data-testid="contact-operators">
-          Behind {plural(labels.length, "operator")}:{" "}
-          {labels.map((operator) => {
-            const mark = markOf(operator);
-            return mark && <OperatorMark key={operator.hid} mark={mark} />;
-          })}
-          <span className="muted">
-            {" "}
-            · what each label is on is this person&apos;s to look after. A label is handed over on
-            its own page.
-          </span>
-        </p>
-      )}
-      {assignments.length > 0 && (
-        <div className="scroll">
-          <table data-testid="contact-places">
-            <caption>
-              {plural(assignments.length, "place")} it is a contact of. Each is changed on the page
-              of the place, under Geography.
-            </caption>
-            <thead>
-              <tr>
-                <SortTh sort={placeSorting} column="place">
-                  Place
-                </SortTh>
-                <SortTh sort={placeSorting} column="level">
-                  Level
-                </SortTh>
-                <SortTh sort={placeSorting} column="role">
-                  Role
-                </SortTh>
-                <SortTh sort={placeSorting} column="priority" className="number">
-                  Priority
-                </SortTh>
-              </tr>
-            </thead>
-            <tbody>
-              {placeSorting.rows.map((assignment) => (
-                <tr key={assignment.hid} data-role={assignment.role}>
-                  <th scope="row">
-                    <Link to={placePath(assignment.place.level, assignment.place.hid)}>
-                      {assignment.place.path}
-                    </Link>
-                  </th>
-                  <td>{levelLabel(assignment.place.level)}</td>
-                  <td>{choiceLabel(choices.data, CONTACT_ROLE_LIST, assignment.role)}</td>
-                  <td className="number">{assignment.priority}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {among.length > 0 && (
-        <div className="scroll">
-          <table data-testid="contact-owners" className="narrow">
-            <caption>
-              {plural(among.length, "owner")} it is one of the people of. Each is changed on the
-              page of the owner.
-            </caption>
-            <thead>
-              <tr>
-                <SortTh sort={ownerSorting} column="owner">
-                  Owner
-                </SortTh>
-                <SortTh sort={ownerSorting} column="as">
-                  As
-                </SortTh>
-              </tr>
-            </thead>
-            <tbody>
-              {ownerSorting.rows.map((owner) => {
-                const member = owner.members.find((one) => one.contact_hid === contact.hid);
-                return (
-                  <tr key={owner.hid}>
-                    <th scope="row">
-                      <Link to={`/owners/${encodeURIComponent(owner.hid)}`}>{owner.label}</Link>
-                      {owner.record_status !== "active" && (
-                        <span className="badge">
-                          {optionLabel(RECORD_STATUSES, owner.record_status)}
-                        </span>
-                      )}
-                    </th>
-                    <td>{member ? memberRoleLabel(member.role) : <Dash />}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {data && data.total === 0 && <p className="muted">This contact is assigned nowhere.</p>}
+      {data &&
+        USES_KINDS.map(({ kind, heading }) =>
+          data[kind].total === 0 ? null : (
+            <div key={kind} data-testid={`contact-${kind}-named`}>
+              <h3 id={`named-${kind}`}>{heading}</h3>
+              {kind === "operators" ? (
+                <p data-testid="contact-operators">
+                  Behind {plural(data[kind].total, "operator")}:{" "}
+                  {data[kind].records.map((operator) => (
+                    <OperatorMark key={operator.hid} mark={namedMark(operator, contact)} />
+                  ))}
+                  <span className="muted">
+                    {" "}
+                    · what each label is on is this person&apos;s to look after. A label is handed
+                    over on its own page.
+                  </span>
+                </p>
+              ) : (
+                <NamedTable kind={kind} named={data[kind]} choices={choices.data} />
+              )}
+              {namedMore(data[kind]) && <p className="hint">{namedMore(data[kind])}</p>}
+            </div>
+          ),
+        )}
     </section>
+  );
+}
+
+// The test IDs the tables of places and of owners had before 0.9.6, which pages are
+// still found by.
+const TABLE_IDS: Readonly<Partial<Record<UsesKind, string>>> = {
+  places: "contact-places",
+  owners: "contact-owners",
+};
+
+/** The records of one kind that name a contact, sorted here: the server sent them whole. */
+function NamedTable({
+  kind,
+  named,
+  choices,
+}: {
+  kind: UsesKind;
+  named: NamedRecords;
+  choices: readonly Choice[] | undefined;
+}) {
+  const places = kind === "places";
+  const sorting = useSorting(
+    named.records,
+    {
+      name: (record) => record.label,
+      level: (record) => namedLevel(record),
+      role: (record) => namedRole(record, choices),
+      priority: (record) => record.priority,
+    },
+    { enabled: named.total <= named.records.length },
+  );
+  return (
+    <div className="scroll">
+      <table
+        data-testid={TABLE_IDS[kind] ?? `contact-${kind}`}
+        className={places ? undefined : "narrow"}
+        aria-labelledby={`named-${kind}`}
+      >
+        <thead>
+          <tr>
+            <SortTh sort={sorting} column="name">
+              {places ? "Place" : "Name"}
+            </SortTh>
+            {places && (
+              <SortTh sort={sorting} column="level">
+                Level
+              </SortTh>
+            )}
+            <SortTh sort={sorting} column="role">
+              {kind === "owners" ? "As" : "Role"}
+            </SortTh>
+            <SortTh sort={sorting} column="priority" className="number">
+              Priority
+            </SortTh>
+          </tr>
+        </thead>
+        <tbody>
+          {sorting.rows.map((record) => {
+            const to = namedPath(record);
+            return (
+              <tr key={`${record.hid} ${record.role ?? ""} ${record.side ?? ""}`}>
+                <th scope="row">
+                  {to ? <Link to={to}>{record.label}</Link> : record.label}
+                  {record.record_status !== "active" && (
+                    <span className="badge">
+                      {optionLabel(RECORD_STATUSES, record.record_status)}
+                    </span>
+                  )}
+                </th>
+                {places && <td>{namedLevel(record)}</td>}
+                <td>{namedRole(record, choices) || <Dash />}</td>
+                <td className="number">{record.priority ?? <Dash />}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -579,7 +530,7 @@ function ContactStatus({ contact, onChanged, onReload }: ContactStatusProps) {
             >
               <p>
                 {contact.uses > 0
-                  ? `It is assigned in ${plural(contact.uses, "place or owner", "places and owners")}, which keep it and show it as retired.`
+                  ? `It is named by ${plural(contact.uses, "record")}, listed under Where it is named, which keep it and show it as retired.`
                   : "It is assigned nowhere."}{" "}
                 The contact can be brought back.
               </p>
