@@ -12,6 +12,7 @@ import {
   stateLabel,
   stayTicked,
   tickable,
+  tooManyText,
 } from "./removal";
 
 const one = { hid: "0193a1f4-0001", label: "site7-sw-example-01" };
@@ -88,6 +89,13 @@ describe("what a Delete did, or would do (P-227)", () => {
     );
     expect(createdPath({ record_type: "item", record_hid: "I-1", state: "deleted" })).toBeNull();
     expect(stateLabel("deleted")).toBe("Deleted");
+  });
+
+  it("says before any request that one takes 1,000 at most", () => {
+    expect(tooManyText(1000)).toBeNull();
+    expect(tooManyText(1204)).toBe(
+      "Retire and Delete take at most 1,000 rows at a time, and 1,204 are ticked: untick some first.",
+    );
   });
 
   it("counts with the separator of thousands", () => {

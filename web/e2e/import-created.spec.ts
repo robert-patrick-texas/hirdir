@@ -136,3 +136,40 @@ test("Admin: the rows ticked are deleted after the dry run and a reason, and nam
   await expect(first.getByRole("checkbox")).toHaveCount(0);
   await expectClean(page, seen);
 });
+
+test("Admin: more than 1,000 ticked, Retire and Delete say they take 1,000 at a time and send nothing", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  // An import that made 1,001 items is a large file to load beside the other files: its
+  // list is answered here, as the server writes it, with invented records.
+  await page.route("**/api/v1/imports/*/created?*", async (route) => {
+    const items = Array.from({ length: 1001 }, (_, at) => ({
+      row: at + 1,
+      record_type: "item",
+      record_hid: `0193a1f4-0000-7000-8000-${String(at).padStart(12, "0")}`,
+      label: `${prefix}-many-${at + 1}`,
+      state: "active",
+    }));
+    await route.fulfill({ json: { total: 1001, limit: 100, offset: 0, items, also: [] } });
+  });
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (/\/(retire|delete)$/.test(request.url())) sent.push(request.url());
+  });
+  await page.goto(address);
+  await expect(made(page).getByTestId("import-created-rows")).toBeVisible();
+  await made(page).getByRole("checkbox", { name: "Every row of this page" }).check();
+  await expect(made(page).getByTestId("import-created-too-many")).toHaveText(
+    "Retire and Delete take at most 1,000 rows at a time, and 1,001 are ticked: untick some first.",
+  );
+  await expect(made(page).getByRole("button", { name: "Retire (1,001)" })).toBeDisabled();
+  await expect(made(page).getByRole("button", { name: "Delete (1,001)" })).toBeDisabled();
+  await made(page).getByRole("checkbox", { name: "Tick row 1", exact: true }).uncheck();
+  await expect(made(page).getByTestId("import-created-too-many")).toHaveCount(0);
+  await expect(made(page).getByRole("button", { name: "Retire (1,000)" })).toBeEnabled();
+  expect(sent).toEqual([]);
+  await expectClean(page, seen);
+});

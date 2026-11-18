@@ -107,6 +107,18 @@ export function retireQuestion(kind: RemovalKind, count: number): string {
   return `Retire ${countOf(kind, count)}?`;
 }
 
+/** How many records one request retires or deletes, at most, as the server takes them. */
+export const MOST_AT_ONCE = 1000;
+
+/**
+ * What is said before any request where more rows are ticked than one request takes: the
+ * web does not split a request, so Retire and Delete wait until some are unticked.
+ */
+export function tooManyText(ticked: number): string | null {
+  if (ticked <= MOST_AT_ONCE) return null;
+  return `Retire and Delete take at most ${MOST_AT_ONCE.toLocaleString("en-US")} rows at a time, and ${ticked.toLocaleString("en-US")} are ticked: untick some first.`;
+}
+
 /** A reason is typed for a deletion: blank, or spaces alone, is none. */
 export function reasonGiven(reason: string): boolean {
   return reason.trim() !== "";

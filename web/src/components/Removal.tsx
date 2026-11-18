@@ -23,6 +23,7 @@ import {
   retiredText,
   retireQuestion,
   stayTicked,
+  tooManyText,
 } from "../lib/removal";
 import { allows } from "../lib/roles";
 import type { Chosen } from "../lib/transfer";
@@ -320,6 +321,8 @@ export function useTickedRemoval<T>(kind: RemovalKind): TickedRemoval<T> {
   const button = (what: Asked["what"]): GridAction<T> => ({
     label: what === "retire" ? "Retire" : "Delete",
     rowsOnly: true,
+    // One request takes 1,000 at most, and the web does not split it.
+    tooMany: tooManyText,
     run: (chosen: Chosen) => {
       if (chosen.kind === "rows") ask(what, chosen.hids);
     },

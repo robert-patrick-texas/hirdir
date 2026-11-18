@@ -17,6 +17,7 @@ import {
   removalKindOf,
   stateLabel,
   tickable,
+  tooManyText,
 } from "../lib/removal";
 import { allows } from "../lib/roles";
 import { withCount } from "../lib/selection";
@@ -71,6 +72,8 @@ export function ImportCreated({ hid, entity, turn }: ImportCreatedProps) {
   const every = onShow.length > 0 && tickedOnShow.length === onShow.length;
   const mayTick = mayRetire || mayDelete;
   const chosen = { ticked: ticked.size, allMatching: false, total: null };
+  // Ticks are kept across pages: more than one request takes are said so first.
+  const tooMany = tooManyText(ticked.size);
 
   function tick(recordHid: string, on: boolean) {
     setTicked((was) => {
@@ -109,7 +112,7 @@ export function ImportCreated({ hid, entity, turn }: ImportCreatedProps) {
               {mayRetire && (
                 <button
                   type="button"
-                  disabled={ticked.size === 0}
+                  disabled={ticked.size === 0 || tooMany !== null}
                   onClick={() => removal.ask("retire", [...ticked])}
                 >
                   {withCount("Retire", chosen)}
@@ -118,7 +121,7 @@ export function ImportCreated({ hid, entity, turn }: ImportCreatedProps) {
               {mayDelete && (
                 <button
                   type="button"
-                  disabled={ticked.size === 0}
+                  disabled={ticked.size === 0 || tooMany !== null}
                   onClick={() => removal.ask("delete", [...ticked])}
                 >
                   {withCount("Delete", chosen)}
@@ -129,6 +132,11 @@ export function ImportCreated({ hid, entity, turn }: ImportCreatedProps) {
                   Clear selection
                 </button>
               )}
+            </p>
+          )}
+          {mayTick && tooMany !== null && (
+            <p className="hint" data-testid="import-created-too-many">
+              {tooMany}
             </p>
           )}
           <div className="scroll">

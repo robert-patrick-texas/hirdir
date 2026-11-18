@@ -149,6 +149,11 @@ export interface GridAction<T> {
    * "all that match", of which the grid has read only a part.
    */
   rowsOnly?: boolean;
+  /**
+   * 0.9.7: what is said, with the button not to be pressed, where more rows are ticked
+   * than it takes, as Retire and Delete take 1,000 at most; null where it takes them.
+   */
+  tooMany?: (ticked: number) => string | null;
   /** `rows` holds what the grid read of the rows chosen: none of them for "all that match". */
   run: (chosen: Chosen, view: GridView, rows: T[]) => void;
 }
@@ -915,6 +920,16 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const busy = working !== "";
   // How many rows each button acts on, as it says (P-233).
   const chosenCount = { ticked: selected, allMatching, total };
+  // What the buttons that take fewer rows than are ticked say of it, each once.
+  const tooMany = allMatching
+    ? []
+    : [
+        ...new Set(
+          actions
+            .map((action) => action.tooMany?.(selected) ?? null)
+            .filter((text): text is string => text !== null),
+        ),
+      ];
 
   return (
     <div className="grid-page">
@@ -1089,7 +1104,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             <button
               type="button"
               key={action.label}
-              disabled={!some || busy || (action.rowsOnly === true && allMatching)}
+              disabled={
+                !some ||
+                busy ||
+                (action.rowsOnly === true && allMatching) ||
+                (!allMatching && (action.tooMany?.(selected) ?? null) !== null)
+              }
               title={
                 action.rowsOnly && allMatching
                   ? "Select the rows themselves: this takes particular rows."
@@ -1108,6 +1128,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               Working…
             </span>
           )}
+          {tooMany.map((text) => (
+            <p key={text} className="hint grid-too-many" data-testid="grid-too-many">
+              {text}
+            </p>
+          ))}
         </fieldset>
       </div>
       <div
