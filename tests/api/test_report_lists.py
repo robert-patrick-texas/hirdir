@@ -43,7 +43,7 @@ def joined(*texts: str | None) -> str:
 
 def listed(make: Maker, text: str, view: dict[str, Any]) -> int:
     """How many items the item list holds for a filter of a report, minor items and all."""
-    query = {key: "true" for key, on in view.items() if on}
+    query: dict[str, Any] = {key: "true" for key, on in view.items() if on}
     return make.get("/items", filter=text, limit=1, fields="hid", **query)["total"]
 
 
@@ -71,7 +71,7 @@ VIEWS = [
 def test_each_count_of_the_summary_is_what_its_filter_lists(
     stocked: Maker, by: str, view: dict[str, Any]
 ) -> None:
-    query = {key: "true" for key, on in view.items() if on}
+    query: dict[str, Any] = {key: "true" for key, on in view.items() if on}
     answer = stocked.get("/reports/summary", by=by, **query)
     when = answer["conditions"]
     assert set(when["by_health"]) == set(HEALTHS)
@@ -84,7 +84,7 @@ def test_each_count_of_the_summary_is_what_its_filter_lists(
 def test_each_total_of_the_summary_is_what_its_filter_lists(
     stocked: Maker, view: dict[str, Any]
 ) -> None:
-    query = {key: "true" for key, on in view.items() if on}
+    query: dict[str, Any] = {key: "true" for key, on in view.items() if on}
     answer = stocked.get("/reports/summary", **query)
     when = answer["conditions"]
     totals = answer["totals"]
