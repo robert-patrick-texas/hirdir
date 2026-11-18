@@ -1473,6 +1473,53 @@ sudo apt install --allow-downgrades ./hirdir_0.9.4_amd64.deb
 
 A minor item then has its values from the item it is in first, as 0.9.3 had it.
 
+### From 0.9.5 to 0.9.6
+
+The schema stays at revision `0012`: 0.9.6 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+What is new, for the work of each day:
+
+- **Stacks.** A switch joins a stack in one step, taking the stack's name and place; a
+  member that leaves is given what becomes of it; a stack is found by its name in Find
+  an item; and a member's page says which stack it is in.
+- **Forms and lists.** A catalog entry is chosen by searching, and a model that is not
+  in the catalog is added from New item; a list keeps its place when a person opens a
+  row and comes back; what is typed after a save is kept.
+- **Contacts, reports and refusals.** A contact's page lists every record that names
+  it; a count of the summary and of the management report opens the items it counts; a
+  duplicate that is refused names the record that has the value.
+- **Purchases, vendors and contracts.** Receiving opens ready to type at the line's
+  destination site; a vendor's page is a third as long, with its items filtered there;
+  the renewal form starts from the term that follows, and the items a contract covers
+  are left out of its renewal from the contract's page.
+
+A position in a stack is now held by one member: adding a member at a position that
+another current member holds is refused, by the API and by a file. A stack that holds
+two members at one position already is left as it is, and nothing else of it is
+stopped, until one of the two is changed.
+
+A layout of the list of items that a person kept before the upgrade stays as it was.
+Reset layout and filters, under the list, brings the columns of 0.9.6, with Stack
+beside Name.
+
+For a script that reads the API: nothing is taken away. `GET /contacts/{hid}/uses` is
+new; the summary and the management report answer a `filter` with each count; a
+duplicate that is refused has `existing` in its problem document; a member added to a
+device group may carry `drop_identity`, `disposition` and `expected_online`, and a
+membership ended may carry `item`; and a device group answers `next_position`. A
+script that added a member of a stack with no `position` now finds it given the lowest
+free one.
+
+Going back to 0.9.5 needs no backup, because the schema is the same and 0.9.5 reads the
+database as 0.9.6 leaves it:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.5_amd64.deb
+```
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -1523,7 +1570,7 @@ installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
 goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
-0.9.4 and 0.9.5 are such releases. The section of each release above says what its upgrade changed.
+0.9.4, 0.9.5 and 0.9.6 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 
