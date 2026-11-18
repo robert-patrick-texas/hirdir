@@ -464,6 +464,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         // by TickHeader, for the rows on show (P-233).
         headerCheckbox: false,
         enableClickSelection: true,
+        // A press on a row ticks it or unticks it, and unticks nothing else; Shift still
+        // takes the rows between. A press on a link follows it and ticks nothing (0.9.7).
+        enableSelectionWithoutKeys: true,
       },
       selectionColumnDef: {
         headerComponent: TickHeader,
@@ -1110,11 +1113,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         {note}
       </p>
       <p className="hint">
-        Click a heading to sort, and hold Shift to sort by a further column. Click a row to select
-        it, with Shift for a range and Ctrl for several, or tick the box at its left to add it to
-        those ticked; the box in the heading ticks every row on show, and clears them. A double
-        click opens the row. With the keyboard: Enter on a heading sorts, Ctrl+Enter opens its
-        filter, Space selects a row and Enter opens it.
+        Click a heading to sort, and hold Shift to sort by a further column. Click a row, or the box
+        at its left, to tick it or untick it: the other rows stay as they are. Shift with a click
+        ticks the rows between. A click on a link follows it and ticks nothing. The box in the
+        heading ticks the rows read so far, and clears them. A double click opens the row. With the
+        keyboard: Enter on a heading sorts, Ctrl+Enter opens its filter, Space selects a row and
+        Enter opens it.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
         {entity &&

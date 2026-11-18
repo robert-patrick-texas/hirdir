@@ -2217,9 +2217,12 @@ One grid component is used on every list page.
   owner, the contacts of a place, is sorted by its headers in the browser, since it
   holds all of its rows: text without regard to case, numbers as numbers, dates as
   dates, and blanks last.
-- Select whole rows: one, a range with Shift, several with Ctrl, or "all that match the
+- Select whole rows: one, a range with Shift, several one by one, or "all that match the
   filter", which is shown as a count and sent to the server as the filter, not as a list
-  of rows.
+  of rows. Pressing a row ticks it or unticks it, and unticks nothing else, so that a
+  stray press costs one tick and not forty; Shift with a press takes the rows between.
+  A press on a link in a row follows the link and changes no tick; Ctrl or the middle
+  button on a link opens it in a new tab, as a browser does.
 - Rows are ticked (P-233). Every list whose rows are selected has a column of boxes at
   its left, one to a row: ticking one adds its row to those selected, and clearing it
   takes the row out, whatever else is ticked. The box in the heading ticks every row in
@@ -2227,7 +2230,7 @@ One grid component is used on every list page.
   one of those is ticked; it shows a mark of its own while some are, and waits, not to
   be pressed, until the first rows have come. All that match the filter stays the
   button Select all that match, since it is a count and not a list of rows. Pressing a
-  row selects it as before, and ticks its box. Each button that acts on the rows
+  row ticks its box or clears it, as the box itself does. Each button that acts on the rows
   chosen says how many, as `Copy (3)`, or `Bulk edit (all 1,204)` for all that match:
   Copy, Export CSV, Export JSON, Bulk edit, and each action a page adds, as Cover with
   a contract. A button that takes particular rows only, offered while all that match

@@ -1,6 +1,6 @@
 // 0.9.7, rows are ticked (P-233): a box to each row of a list at its left, one in the
-// heading that ticks every row on show and clears them, pressing a row selecting it as
-// before, and the buttons that act on the rows chosen saying how many.
+// heading that ticks the rows read so far and clears them, a press on a row ticking or
+// unticking it alone, and the buttons that act on the rows chosen saying how many.
 //
 // It keeps to the rules of support.ts: an account and names of its own, and the list
 // filtered down to this file's vendors before anything is counted.
@@ -76,12 +76,38 @@ test("rows are ticked by their boxes and by the one in the heading, and the butt
   await expect(copy).toHaveText("Copy");
   await expect(page.getByTestId("grid-selected")).toHaveCount(0);
 
-  // Pressing a row selects it alone, as before, and ticks its box.
+  // Pressing a row ticks it, and unticks nothing else; pressed again, it is unticked.
   await rowBox(page, vendors[0]).check();
   await gridRow(page, vendors[1]).locator('[col-id="review_status"]').click();
-  await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
+  await expect(page.getByTestId("grid-selected")).toContainText("2 selected");
   await expect(rowBox(page, vendors[1])).toBeChecked();
-  await expect(rowBox(page, vendors[0])).not.toBeChecked();
+  await expect(rowBox(page, vendors[0])).toBeChecked();
+  await expect(copy).toHaveText("Copy (2)");
+  await gridRow(page, vendors[1]).locator('[col-id="review_status"]').click();
+  await expect(rowBox(page, vendors[1])).not.toBeChecked();
+  await expect(rowBox(page, vendors[0])).toBeChecked();
+  await expect(copy).toHaveText("Copy (1)");
+
+  // Shift with a press takes the rows between the row pressed last and this one.
+  await gridRow(page, vendors[0]).locator('[col-id="review_status"]').click();
+  await gridRow(page, vendors[0]).locator('[col-id="review_status"]').click();
+  await expect(copy).toHaveText("Copy (1)");
+  await gridRow(page, vendors[2])
+    .locator('[col-id="review_status"]')
+    .click({ modifiers: ["Shift"] });
+  await expect(copy).toHaveText("Copy (3)");
+
+  // A press on a link with Ctrl opens it in a new tab, and changes no tick.
+  const opened = page.context().waitForEvent("page");
+  await gridRow(page, vendors[1])
+    .getByRole("link", { name: vendors[1] })
+    .click({
+      modifiers: ["ControlOrMeta"],
+    });
+  await (await opened).close();
+  await expect(copy).toHaveText("Copy (3)");
+  await all.uncheck();
+  await rowBox(page, vendors[0]).check();
   await expect(copy).toHaveText("Copy (1)");
 
   // All that match is a count, not the rows.
