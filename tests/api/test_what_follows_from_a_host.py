@@ -219,3 +219,76 @@ def test_a_virtual_machine_named_before_its_host_is_retired_once(
         [made["web"]["hid"], made["dns"]["hid"]]
     )
     assert _cause(make, made["app"], "retire", "retired_with") == []
+
+
+# --- a stack or a cluster that something runs on (P-247) -----------------------------
+
+
+def test_a_cluster_that_something_runs_on_is_not_retired_and_names_what(
+    client: TestClient, make: Maker, inventory: dict[str, str], db: Session
+) -> None:
+    made = _virtual(make)
+    cluster = make.group("site2-esx-cluster", "cluster", [(made["esx"], "member")])
+    _host(db, made["app"], group=cluster)
+    _host(db, made["web"], group=cluster)
+    # One retired already does not stand in the way.
+    _host(db, made["dns"], group=cluster)
+    dns = _get(make, made["dns"])
+    make.post(f"/items/{dns['hid']}/retire", {"row_version": dns["row_version"]}, 200)
+    cluster = make.get(f"/device-groups/{cluster['hid']}")
+
+    refused = client.post(
+        f"{API}/device-groups/{cluster['hid']}/retire",
+        json={"row_version": cluster["row_version"]},
+        headers=inventory,
+    )
+
+    assert refused.status_code == 409, refused.text
+    problem = refused.json()
+    running = [
+        {"hid": made["app"]["hid"], "record_type": "item", "label": "site2-vm-app01"},
+        {"hid": made["web"]["hid"], "record_type": "item", "label": "site2-vm-web01"},
+    ]
+    assert problem["depends_on"] == running
+    assert "2 items run on site2-esx-cluster" in problem["detail"]
+    assert make.get(f"/device-groups/{cluster['hid']}")["record_status"] == "active"
+    # Several at once: refused among the rest, with the same.
+    many = client.post(
+        f"{API}/device-groups/retire", json={"hids": [cluster["hid"]]}, headers=inventory
+    ).json()
+    assert [one["hid"] for one in many["refused"]] == [cluster["hid"]]
+    assert many["refused"][0]["depends_on"] == running
+    assert many["refused"][0]["detail"].startswith("2 items run on site2-esx-cluster")
+    # Its member is retired as any item: what runs on the cluster stays as it is.
+    esx = _get(make, made["esx"])
+    make.post(f"/items/{esx['hid']}/retire", {"row_version": esx["row_version"]}, 200)
+    assert _status(make, made["app"], made["web"]) == ["active", "active"]
+    # Each given another host, or retired, first; then the cluster goes.
+    _host(db, made["app"], made["other"])
+    web = _get(make, made["web"])
+    make.post(f"/items/{web['hid']}/retire", {"row_version": web["row_version"]}, 200)
+    cluster = make.get(f"/device-groups/{cluster['hid']}")
+    make.post(
+        f"/device-groups/{cluster['hid']}/retire", {"row_version": cluster["row_version"]}, 200
+    )
+
+
+def test_a_stack_that_a_virtual_context_runs_on_is_not_retired(
+    client: TestClient, make: Maker, inventory: dict[str, str], db: Session
+) -> None:
+    switches = make.switches(make.entry(make.vendor("Example Networks"), "N7K"), "site2-n7k", 2)
+    stack = make.stack("site2-n7k-pair", switches)
+    context = make.item(name="site2-n7k-01-vdc2")
+    _host(db, context, group=stack)
+
+    tried = client.post(
+        f"{API}/device-groups/retire",
+        json={"hids": [stack["hid"]], "dry_run": True},
+        headers=inventory,
+    ).json()
+
+    assert tried["dry_run"] is True
+    assert tried["hosted"] == []
+    assert [one["depends_on"] for one in tried["refused"]] == [
+        [{"hid": context["hid"], "record_type": "item", "label": "site2-n7k-01-vdc2"}]
+    ]
