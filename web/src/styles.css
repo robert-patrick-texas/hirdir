@@ -2659,3 +2659,27 @@ fieldset.extension-list {
   height: 1rem;
   cursor: pointer;
 }
+
+/* The column of boxes of a table that is no grid, as the records an import made (P-234). */
+th.tick,
+td.tick {
+  width: 2rem;
+  text-align: center;
+}
+
+th.tick input,
+td.tick input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+/* What stands in the way of a deletion, in its question and its answer (P-227). */
+.removal-refused {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+dialog.removal-dialog {
+  max-width: 40rem;
+}

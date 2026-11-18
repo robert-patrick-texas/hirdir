@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { type ApiError, api } from "../api";
 import { useAuth } from "../auth";
 import { SelectField } from "../components/Field";
+import { ImportCreated } from "../components/ImportCreated";
 import { Pager } from "../components/Pager";
 import {
   ApplyCounts,
@@ -315,6 +316,10 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
             }
           />
           <LeftOutOf job={job} turn={turn} />
+          {/* 0.9.7: what an import of a file made, and what is done with it (P-234). */}
+          {!bulk && (job.status === "applied" || job.status === "stopped") && (
+            <ImportCreated hid={job.hid} entity={job.entity} turn={turn} />
+          )}
           <PreviewRows job={job} preview={sent?.preview} turn={turn} />
         </>
       )}

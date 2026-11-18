@@ -111,3 +111,42 @@ export function retireQuestion(kind: RemovalKind, count: number): string {
 export function reasonGiven(reason: string): boolean {
   return reason.trim() !== "";
 }
+
+// --- the records an import made (P-234) ------------------------------------------------
+
+export type CreatedRecord = Schemas["CreatedRecord"];
+export type MadeForARow = Schemas["MadeForARow"];
+
+/** The kind of record an import of an entity makes that is retired and deleted at once. */
+export function removalKindOf(entity: string): RemovalKind | null {
+  if (entity === "items") return "item";
+  if (entity === "device_groups") return "device_group";
+  return null;
+}
+
+const STATE_LABELS: Readonly<Record<CreatedRecord["state"], string>> = {
+  active: "Active",
+  draft: "Draft",
+  retired: "Retired",
+  deleted: "Deleted",
+};
+
+/** What a record an import made is now, as people read it. */
+export function stateLabel(state: CreatedRecord["state"]): string {
+  return STATE_LABELS[state] ?? state;
+}
+
+/** Whether a row of what an import made is ticked: one of the kind, and still there. */
+export function tickable(
+  record: Pick<CreatedRecord, "record_type" | "state">,
+  kind: RemovalKind | null,
+): boolean {
+  return kind !== null && record.record_type === kind && record.state !== "deleted";
+}
+
+/** The page of a record an import made, or null where it is deleted or has none. */
+export function createdPath(
+  record: Pick<CreatedRecord, "record_type" | "record_hid" | "state">,
+): string | null {
+  return record.state === "deleted" ? null : kindPath(record.record_type, record.record_hid);
+}

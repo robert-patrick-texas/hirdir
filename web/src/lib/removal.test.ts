@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   countOf,
+  createdPath,
   deletedText,
   dependentKind,
   dependentPath,
   reasonGiven,
+  removalKindOf,
   removalPath,
   retiredText,
+  stateLabel,
   stayTicked,
+  tickable,
 } from "./removal";
 
 const one = { hid: "0193a1f4-0001", label: "site7-sw-example-01" };
@@ -69,6 +73,21 @@ describe("what a Delete did, or would do (P-227)", () => {
   it("needs a reason that is more than spaces", () => {
     expect(reasonGiven("   ")).toBe(false);
     expect(reasonGiven("a wrong file")).toBe(true);
+  });
+
+  it("ticks among what an import made only the records of its kind that are still there", () => {
+    expect(removalKindOf("items")).toBe("item");
+    expect(removalKindOf("device_groups")).toBe("device_group");
+    expect(removalKindOf("vendors")).toBeNull();
+    expect(tickable({ record_type: "item", state: "retired" }, "item")).toBe(true);
+    expect(tickable({ record_type: "item", state: "deleted" }, "item")).toBe(false);
+    expect(tickable({ record_type: "address", state: "active" }, "item")).toBe(false);
+    expect(tickable({ record_type: "vendor", state: "active" }, null)).toBe(false);
+    expect(createdPath({ record_type: "item", record_hid: "I-1", state: "active" })).toBe(
+      "/items/I-1",
+    );
+    expect(createdPath({ record_type: "item", record_hid: "I-1", state: "deleted" })).toBeNull();
+    expect(stateLabel("deleted")).toBe("Deleted");
   });
 
   it("counts with the separator of thousands", () => {
