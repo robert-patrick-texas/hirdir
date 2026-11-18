@@ -746,7 +746,9 @@ def test_the_list_of_groups_asks_the_database_no_more_for_more_members(make: Mak
     assert 0 < many == few
 
 
-def test_a_replacement_never_comes_round_to_where_it_began(make: Maker) -> None:
+def test_a_replacement_may_come_round_to_where_it_began(make: Maker) -> None:
+    # A switch swapped for another model is swapped back, and one that came back from
+    # the manufacturer takes the place of the one that took its own (P-241).
     first, second, third = (make.item(name=f"unit-{number}") for number in (1, 2, 3))
 
     def replace(old: dict, new: dict, expect: int = 201) -> dict:
@@ -755,11 +757,14 @@ def test_a_replacement_never_comes_round_to_where_it_began(make: Maker) -> None:
         return make.post(f"/items/{old['hid']}/replace", body, expect)
 
     replace(first, second)
-    problem = replace(second, first, 422)
-    assert "took its own" in problem["detail"]
-    replace(second, third)
-    problem = replace(third, first, 422)
-    assert "took its own" in problem["detail"]
+    replace(second, first)
+    replace(first, third)
+    replace(third, second)
+    assert [one["part"] for one in make.get(f"/items/{second['hid']}")["replacements"]] == [
+        "came",
+        "left",
+        "came",
+    ]
 
 
 # --- found by the review before release 0.4.1 ------------------------------------------
