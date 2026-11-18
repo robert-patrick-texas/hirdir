@@ -77,7 +77,8 @@ test("a file of three switches of a model and a vendor it names is imported, and
   await expect(first.getByRole("link", { name: host(0) })).toBeVisible();
   await expect(first.locator("td").nth(4)).toHaveText("Active");
   const also = made(page).getByTestId("import-created-also");
-  await expect(also.getByRole("link", { name: vendor })).toBeVisible();
+  // The catalog entry is known by its vendor and its PID.
+  await expect(also.getByRole("link", { name: vendor, exact: true })).toBeVisible();
   await expect(also.getByRole("link", { name: new RegExp(pid) })).toBeVisible();
   others.inventory = await createAccount(request, `e2e-${suffix}-ivy`, "inventory");
   others.viewer = await createAccount(request, `e2e-${suffix}-viewer`, "viewer");
