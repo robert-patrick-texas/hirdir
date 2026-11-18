@@ -692,9 +692,18 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
   const [pending, setPending] = useState<PendingMember[]>([]);
   const [found, setFound] = useState<Record<string, string>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  // 0.9.8: the first members of a stack have the box of a member that joins (P-244); the
+  // members last sent, to put what the server refused of each beside its row.
+  const rules = useRules();
+  const [sent, setSent] = useState<readonly MemberAdd[]>([]);
   const action = useAction();
   const names = specs.map((spec) => spec.name);
+  const rowFields = sent.flatMap((_, index) =>
+    MEMBER_FIELDS.map((field) => `members.${index}.${field}`),
+  );
+  const refusedAll = fieldErrors(action.error, [...names, ...rowFields]).shown;
   const refused = fieldErrors(action.error, names).shown;
+  const answered = refusedRows(sent, refusedAll, action.error?.existing ?? null);
   const problem = stackProblem(
     type,
     pending.map((row) => row.role),
@@ -730,6 +739,7 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
       action.clear();
       return;
     }
+    setSent(members.members);
     const body: Schemas["DeviceGroupCreate"] = {
       ...built.body,
       ...(members.members.length > 0 ? { members: members.members } : {}),
@@ -743,7 +753,7 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
       <h2 id="new-group">New group</h2>
       <Problem error={error} />
       <form onSubmit={submit} className="stack" noValidate>
-        <Problem error={action.error} shown={names} />
+        <Problem error={action.error} shown={[...names, ...rowFields]} />
         {type === "cluster" && <ManagedAsHelp />}
         <FormFields
           specs={specs}
@@ -764,7 +774,12 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
             type={type}
             pending={pending}
             onChange={setPending}
-            errors={rowErrors}
+            errors={{ ...answered.errors, ...rowErrors }}
+            holders={answered.holders}
+            // Each item chosen keeps what the box needs, so that a type changed to a stack
+            // afterwards offers it too; the box is shown for a stack alone.
+            joins
+            rules={rules.data ?? []}
             disabled={action.busy}
           />
           {problem && (

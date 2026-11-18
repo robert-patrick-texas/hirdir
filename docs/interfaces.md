@@ -2156,7 +2156,10 @@ What 0.9.6 changes:
   location; unticked, the line says that nothing of it is changed, and nothing of the
   item is sent. A switch whose disposition is Spare is offered Production and expected
   online, as Disposition and Expected online, each with As it is, among what the rule of
-  its state allows. New group has no box: its first members keep their names. Join a
+  its state allows. New group has the same box under each member chosen for a stack,
+  ticked from the start, with Production for a spare, sent on each of its `members`
+  (P-244); a member chosen while the type was another keeps what the box needs, so the
+  box is there when the type is made a stack, and the other types have none. Join a
   stack on a switch's page has the same box, and the position the stack offers. After the
   add, the answer at the top of the page says for each member its position, what was
   removed and what it is now.
