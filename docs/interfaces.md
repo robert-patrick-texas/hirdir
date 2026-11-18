@@ -1860,6 +1860,20 @@ What 0.9.6 changes:
   the item it is in, that item as a link, and the site it has in force; and a link,
   Spares of this model here, to the item list filtered to its catalog entry, that site
   and the disposition Spare in force, minor items included (P-216).
+- **Stacks.** Add members on a stack's page has a box, ticked from the start: the
+  switch takes the stack's name and place, which sends `drop_identity` with the member,
+  and Production for a spare (P-217). Ending a membership of a stack asks What becomes
+  of it: to the spare pool with a new name and place, to be returned to the
+  manufacturer, excess, or nothing now, saved with the end (P-218). The position offered
+  is the lowest that is free, and one that a current member holds is refused (P-219).
+  Find an item and the item list find the members of a stack by the stack's name, and
+  say above the rows that the words name a device group, with a link to it; the list of
+  groups finds a stack by a member's serial number; a member's row names its stack and
+  position (P-220). The picker of members shows each switch's state, disposition and
+  place and the stack it is in, offers the spares first, and does not let one that is in
+  a stack be chosen for another (P-221). A member's page says among its first facts that
+  it is a member, with its position and its stack as a link, and shows the stack's host
+  name, FQDN and addresses as the stack's; an item in no stack has Join a stack (P-222).
 
 ### The grid
 

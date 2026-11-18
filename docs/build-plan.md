@@ -96,12 +96,14 @@ an item and a place by plain words, adding another item like the last, changing 
 from its first facts with the buttons in reach, a place's contacts first, and counts
 that come sooner and open what they count. It changes the web UI alone.
 0.9.6 follows 0.9.5 with a third review, of what the first two had measured and left
-and of the pages they had not walked (P-198 to P-216, and what follows them): the walks
+and of the pages they had not walked (P-198 to P-222): the walks
 of why a record has each value folded until asked for, a record chosen by searching
 wherever a form offered a whole list, a model added to the catalog from New item, a
 list that keeps its place, a contact's page that lists where the contact is named,
-counts of the reports that open their rows by the server's own filter, and a host run
-of the browser scenarios that reports every failure at once.
+counts of the reports that open their rows by the server's own filter, an improvement
+to each page of purchases, contracts and vendors, a switch that joins and leaves a
+stack in one step, and a host run of the browser scenarios that reports every failure
+at once.
 
 ## From 0.6.1 to 0.9.0
 
