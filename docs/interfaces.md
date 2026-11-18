@@ -1754,6 +1754,27 @@ What 0.9.6 changes:
 - **A refusal.** Where a record is refused because another has its serial number, asset
   tag, PID or name, the page names that record as a link; a filter refused for a field
   its list does not have names the nearest one it has (P-207).
+- **Purchases.** Add a line has a second button, Add and add another like it, which
+  keeps the destination site and the expected date; a line's destination site offers
+  the draft sites, marked; the table of a request's lines fits the window, and one
+  link, Every item it brought, opens the items that arrived on its lines (P-208).
+  Receive opens its form in the window with the keyboard in its first box, and its
+  location is searched within the line's destination site from the start (P-209). The
+  plain words of the list of lines look in the destination site, and Destination site
+  and Expected are in view (P-210).
+- **A vendor.** The table of models shows twenty and a button, Show all; the vendor's
+  items stand above its agreements and contracts, with the filter box of the item
+  list (P-211).
+- **Contracts.** The grid of every contract comes first, with the tables by agreement
+  after it, folded closed; on Renewals the rows of a count that is opened come into the
+  window; the list of agreements shows the account manager (P-212). The items a
+  contract covers have the filter box, and ending a coverage on the contract's last
+  day is said to change nothing before it is sent (P-213). Renew begins with the dates
+  that follow the present term and a blank purchase reference, and says how many items
+  follow, stay behind and begin with the new term (P-214). An agreement's page has the
+  annual cost of each of its contracts and their total (P-215).
+- **A minor item.** Under its heading, what it is, its position in the item it is in
+  and the site, and a link to the spares of its model there (P-216).
 
 ### The grid
 
