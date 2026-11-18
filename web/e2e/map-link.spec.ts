@@ -1,7 +1,8 @@
 // 0.9.7, the coordinates of a place open a map (P-229): where the place's answer has
 // `map_url`, the coordinates on its page are a link to it, in a new tab with nothing of
 // the app's; where the place has no coordinates, there is no link. The setting
-// `map_link` is not changed here, since every file reads it: Google Maps, its default.
+// `map_link` is not changed here, since every file reads it: Google Maps, its default;
+// where it is blank, the place is answered with `map_url` null, and the numbers are plain.
 //
 // The file keeps the rules of support.ts: an Admin of its own, and its mark in the name
 // of every place, which are made through the API. The coordinates are invented.
@@ -64,5 +65,17 @@ test("a site and a location with coordinates link to their map, and one with non
   await openPlace(page, "location", hall.hid, `${regionName} > ${siteName} > Hall 2`);
   await expect(page.getByTestId("place-facts")).toBeVisible();
   await expect(page.getByTestId("place-map")).toHaveCount(0);
+
+  // Where the setting `map_link` is blank, the server answers `map_url` null, as its own
+  // tests hold. The setting is of the whole inventory, which other files read beside
+  // this one: the place's answer is given here as the server gives it then.
+  await page.route(`**/api/v1/sites/${site.hid}`, async (route) => {
+    const response = await route.fetch();
+    const answer = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...answer, map_url: null } });
+  });
+  await openPlace(page, "site", site.hid, `${regionName} > ${siteName}`);
+  await expect(page.getByTestId("place-map")).toHaveCount(0);
+  await expect(page.getByTestId("place-facts")).toContainText("41.878100, -87.629800");
   await expectClean(page, seen);
 });
