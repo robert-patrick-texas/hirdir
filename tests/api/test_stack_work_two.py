@@ -152,8 +152,12 @@ def test_what_a_replacement_carries_is_refused_and_nothing_is_done(make: Maker) 
         ({"old_item": {"condition": "shiny"}}, "old_item.condition"),
         ({"old_item": {"state_reason": "rma"}}, "old_item.state_reason"),
         ({"old_item": {"location_hid": retired["hid"]}}, "old_item.location_hid"),
-        # And on a day to come.
+        # And on a day to come, for either item: what a replacement changes of either is
+        # done with the request, and a spare dated ahead is not stripped today.
         ({"old_item": {"hostname": "x"}, "replaced_on": LATER}, "replaced_on"),
+        ({"drop_identity": True, "replaced_on": LATER}, "replaced_on"),
+        ({"disposition": "Production", "replaced_on": LATER}, "replaced_on"),
+        ({"expected_online": True, "replaced_on": LATER}, "replaced_on"),
     ]
     for given, field in refusals:
         problem = _replace(make, failed, 422, new_item_hid=spare["hid"], **given)

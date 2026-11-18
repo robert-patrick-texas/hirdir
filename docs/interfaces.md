@@ -311,7 +311,10 @@ with its `row_version`, and records that another took its place (P-241, P-242):
 - `disposition` and `expected_online`, given, are the new item's from that change,
   checked by the rule of its lifecycle state as `PATCH /items/{hid}` checks them; left
   out or `null`, each stays as it is. The new item created by the same request may be
-  given the three as well.
+  given the three as well. Each of the three is done with the request, so it is given
+  with a `replaced_on` that has come, today or before: with a day to come it is
+  refused, a `422` on `replaced_on`, since a spare dated ahead would otherwise lose its
+  name and place today, months before it joins.
 - `old_item` is what the item that left is to have from the replacement, as `item` of
   the end of a membership is (P-218): any of `hostname`, `fqdn`, `location_hid`,
   `lifecycle_state`, `state_reason`, `disposition`, `expected_online` and `condition`,

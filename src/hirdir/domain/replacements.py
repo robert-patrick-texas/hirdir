@@ -189,11 +189,22 @@ def replace(
         )
     day = groups.today(db) if replaced_on is None else replaced_on
     drop, coming = _coming(db, old, drop_identity, disposition, expected_online)
-    if old_item and day > groups.today(db):
-        # What becomes of the old item is done as the request is, and not on a day to come.
+    if (old_item or coming) and day > groups.today(db):
+        # What a replacement changes of either item is done as the request is, and not on
+        # a day to come: a spare dated ahead would lose its name and place today.
+        named = [
+            name
+            for name, given in (
+                ("old_item", old_item),
+                ("drop_identity", drop),
+                ("disposition", disposition is not None),
+                ("expected_online", expected_online is not None),
+            )
+            if given
+        ]
         raise Invalid(
-            "the item that leaves is given what becomes of it on the day it is replaced",
-            {"replaced_on": "with old_item, a day that has come: today or before"},
+            "what a replacement changes of either item is done with the request",
+            {"replaced_on": f"with {', '.join(named)}, a day that has come: today or before"},
         )
     if new_item is not None:
         new = items.create_item(db, context, dict(new_item))

@@ -384,8 +384,9 @@ that leaves is (P-218): a host name and an FQDN, a location, a lifecycle state w
 reason, a disposition, an intent and a condition (P-245). Each is checked by that
 item's own rules once the places are handed over, and audited as its change, which
 names the replacement it came from in `replacing`; where one is refused the
-replacement is not made. What becomes of the old item is done with the request, so it
-is given with a day that has come.
+replacement is not made. What a replacement changes of either item, what becomes of
+the old one and what the new one gives up and is given, is done with the request, so
+it is given with a day that has come.
 
 **A replacement that was a mistake is removed by an Admin** (P-238), with a reason:
 `POST /item-replacements/{hid}/remove`. The audit event, `delete`, holds the
