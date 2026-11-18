@@ -110,6 +110,8 @@ def test_one_that_is_refused_leaves_the_others_as_they_went(
     inventory: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # No rule refuses to retire an item today, so the refusal is planted here: it is
+    # what `refused` would hold, and that one refused undoes only its own part.
     one, two = _switches(make, 2)
     retire = item_rules.retire_item
 
