@@ -42,6 +42,7 @@ import {
 
 type CoverageReportSection = Schemas["CoverageReportSection"];
 
+import { ValueLink } from "../components/ValueLink";
 import { useChoices, useSettings } from "../lib/lists";
 import { choiceFilterOptions } from "../lib/options";
 import { fieldErrors } from "../lib/problems";
@@ -478,7 +479,15 @@ function NotRenewedByModel({ section }: { section: CoverageReportSection | undef
                 data-pid={row.pid ?? ""}
                 data-count={row.count}
               >
-                <td>{row.vendor ?? <span className="muted">—</span>}</td>
+                <td>
+                  {row.vendor ? (
+                    <ValueLink kind="vendor" hid={row.vendor_hid}>
+                      {row.vendor}
+                    </ValueLink>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
                 <th scope="row">
                   {row.catalog_entry_hid ? (
                     <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>

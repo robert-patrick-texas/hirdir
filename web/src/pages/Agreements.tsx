@@ -69,6 +69,7 @@ const CONTRACT_STATUS_VALUES = CONTRACT_STATUSES.map((one) => one.value as Contr
 import { allows } from "../lib/roles";
 import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
+import { oneLink, page } from "../lib/valueLinks";
 
 type AgreementRenewed = Schemas["AgreementRenewed"];
 type ContractRef = Schemas["ContractRef"];
@@ -94,6 +95,7 @@ const COLUMNS: GridColumn<Agreement>[] = [
     header: "Vendor",
     kind: "text",
     value: (agreement) => agreement.vendor.name,
+    links: (agreement) => oneLink(agreement.vendor.name, page("vendor", agreement.vendor.hid)),
     width: 140,
   },
   {
@@ -173,6 +175,8 @@ const COLUMNS: GridColumn<Agreement>[] = [
     header: "Reseller",
     kind: "text",
     value: (agreement) => agreement.reseller?.name,
+    links: (agreement) =>
+      oneLink(agreement.reseller?.name, page("vendor", agreement.reseller?.hid)),
     width: 160,
   },
   {

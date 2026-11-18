@@ -45,6 +45,7 @@ import {
 import { allows } from "../lib/roles";
 import type { SortFields } from "../lib/sort";
 import { useServerSort } from "../lib/useServerSort";
+import { oneLink, page } from "../lib/valueLinks";
 import { broughtPaths, siteOption } from "../lib/within";
 
 const LINES_PAGE = 50;
@@ -264,6 +265,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "vendor",
     value: (line) => line.catalog?.vendor ?? null,
+    links: (line) => oneLink(line.catalog?.vendor, page("vendor", line.catalog?.vendor_hid)),
     width: 100,
   },
   {
@@ -272,6 +274,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "pid",
     value: (line) => line.catalog?.pid ?? null,
+    links: (line) => oneLink(line.catalog?.pid, page("catalog_entry", line.catalog?.hid)),
     width: 140,
   },
   {
@@ -280,6 +283,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: null,
     value: (line) => line.catalog?.model_name ?? null,
+    links: (line) => oneLink(line.catalog?.model_name, page("catalog_entry", line.catalog?.hid)),
     hide: true,
   },
   {
@@ -360,6 +364,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "destination_site",
     value: (line) => line.destination_site?.name,
+    links: (line) => oneLink(line.destination_site?.name, page("site", line.destination_site?.hid)),
     hint: (line) => line.destination_site?.path,
     width: 200,
   },
@@ -742,7 +747,10 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                         Not tracked
                       </span>
                     ) : (
-                      <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>
+                      <Link
+                        className="value-link"
+                        to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}
+                      >
                         {lineModel(row)}
                       </Link>
                     )}

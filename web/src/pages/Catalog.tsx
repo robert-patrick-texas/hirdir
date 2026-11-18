@@ -29,6 +29,7 @@ import {
 } from "../lib/options";
 import type { FieldSpec, Option } from "../lib/patch";
 import { allows } from "../lib/roles";
+import { oneLink, page } from "../lib/valueLinks";
 
 type Entry = Schemas["CatalogEntryOut"];
 type Choice = Schemas["ChoiceOut"];
@@ -57,6 +58,7 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
       header: "Vendor",
       kind: "text",
       value: (entry) => entry.vendor.name,
+      links: (entry) => oneLink(entry.vendor.name, page("vendor", entry.vendor.hid)),
       width: 150,
     },
     { id: "pid", header: "PID", kind: "text", value: (entry) => entry.pid, link: true, width: 170 },

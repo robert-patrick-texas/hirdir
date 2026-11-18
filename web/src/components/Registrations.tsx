@@ -560,7 +560,9 @@ export function ThroughGroups({ registrations, whose, kindOf }: ThroughGroupsPro
                   <Link to={`/groups/${encodeURIComponent(row.group.hid)}`}>{row.group.name}</Link>
                 </th>
                 <td>
-                  <Link to={systemPath(row.system_hid)}>{row.system.name}</Link>
+                  <Link className="value-link" to={systemPath(row.system_hid)}>
+                    {row.system.name}
+                  </Link>
                 </td>
                 <td>{kindOf(row.system.kind)}</td>
                 <td className="mono">{row.external_id || <span className="muted">—</span>}</td>

@@ -48,6 +48,7 @@ import {
 } from "../lib/options";
 import type { FieldSpec, Option } from "../lib/patch";
 import { allows } from "../lib/roles";
+import { oneLink, page } from "../lib/valueLinks";
 
 type Choice = Schemas["ChoiceOut"];
 
@@ -141,6 +142,11 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       header: "Applies to",
       kind: "text",
       value: (line) => line.applies_to.map((target) => target.name).join(", "),
+      links: (line) =>
+        line.applies_to.map((target) => ({
+          text: target.name,
+          path: page("capacity_line", target.hid),
+        })),
       width: 240,
     },
     {
@@ -165,6 +171,7 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       header: "Vendor",
       kind: "text",
       value: (line) => line.vendor?.name,
+      links: (line) => oneLink(line.vendor?.name, page("vendor", line.vendor?.hid)),
       width: 150,
     },
     {
@@ -172,6 +179,7 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       header: "Region",
       kind: "text",
       value: (line) => line.region?.name,
+      links: (line) => oneLink(line.region?.name, page("region", line.region?.hid)),
       hint: (line) => line.region?.path,
       hide: true,
       width: 150,
@@ -181,6 +189,7 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       header: "Site",
       kind: "text",
       value: (line) => line.site?.name,
+      links: (line) => oneLink(line.site?.name, page("site", line.site?.hid)),
       hint: (line) => line.site?.path,
       hide: true,
       width: 150,

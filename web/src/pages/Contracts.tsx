@@ -56,6 +56,7 @@ import { fieldErrors } from "../lib/problems";
 import { leftBehindText } from "../lib/renewals";
 import { allows } from "../lib/roles";
 import { amountText } from "../lib/summary";
+import { oneLink, page } from "../lib/valueLinks";
 
 type ContractRenewed = Schemas["ContractRenewed"];
 
@@ -77,6 +78,7 @@ const COLUMNS: GridColumn<Contract>[] = [
     header: "Vendor",
     kind: "text",
     value: (contract) => contract.vendor.name,
+    links: (contract) => oneLink(contract.vendor.name, page("vendor", contract.vendor.hid)),
     width: 140,
   },
   {
@@ -241,6 +243,7 @@ const COLUMNS: GridColumn<Contract>[] = [
     header: "Reseller of its own",
     kind: "text",
     value: (contract) => contract.reseller?.name,
+    links: (contract) => oneLink(contract.reseller?.name, page("vendor", contract.reseller?.hid)),
     hide: true,
     width: 170,
   },

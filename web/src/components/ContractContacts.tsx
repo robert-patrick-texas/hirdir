@@ -188,7 +188,9 @@ export function ContractContacts(props: ContractContactsProps) {
                         <>
                           Inherited from{" "}
                           {agreement ? (
-                            <Link to={agreementPath(agreement.hid)}>{agreement.name}</Link>
+                            <Link className="value-link" to={agreementPath(agreement.hid)}>
+                              {agreement.name}
+                            </Link>
                           ) : (
                             "its agreement"
                           )}

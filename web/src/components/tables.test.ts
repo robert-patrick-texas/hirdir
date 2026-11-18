@@ -221,7 +221,10 @@ describe("the contracts that stand by themselves", () => {
     expect(markup).toContain('data-agreement=""');
     expect(markup).toContain('data-sort="vendor"');
     expect(markup).not.toContain('data-sort="overrides"');
-    expect(row).toContain("<td>Cisco</td>");
+    // 0.9.7: the vendor is a link to its page, in the style of the text (P-232).
+    expect(row).toMatch(
+      /<td><a class="value-link" href="\/vendors\/[0-9a-f-]+"[^>]*>Cisco<\/a><\/td>/,
+    );
     expect(row).not.toContain('data-testid="overrides"');
   });
 

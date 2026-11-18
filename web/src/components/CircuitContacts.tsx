@@ -206,7 +206,9 @@ function CarrierInForce({ circuit }: { circuit: Circuit }) {
                         <>
                           From the carrier{" "}
                           {carrier ? (
-                            <Link to={vendorPath(carrier.hid)}>{carrier.name}</Link>
+                            <Link className="value-link" to={vendorPath(carrier.hid)}>
+                              {carrier.name}
+                            </Link>
                           ) : null}
                         </>
                       ) : (
@@ -313,7 +315,9 @@ function SiteContacts(props: {
                     <td className="number">{naming.priority}</td>
                     <td data-testid="contact-source">
                       {inherited ? (
-                        <Link to={contactSourcePath(entry)}>{siteSourceText(entry, at)}</Link>
+                        <Link className="value-link" to={contactSourcePath(entry)}>
+                          {siteSourceText(entry, at)}
+                        </Link>
                       ) : (
                         "Named here"
                       )}

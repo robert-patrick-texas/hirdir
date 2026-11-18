@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { CheckField, SelectField, TextField } from "../components/Field";
@@ -9,6 +9,7 @@ import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { ValueLink } from "../components/ValueLink";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   NEW_PERSON_FIELDS,
@@ -195,7 +196,16 @@ export function Users() {
                     <td>
                       {user.role ? roleLabel(user.role) : <span className="muted">none</span>}
                     </td>
-                    <td>{user.groups.map((group) => group.name).join(", ")}</td>
+                    <td>
+                      {user.groups.map((group, index) => (
+                        <Fragment key={group.hid}>
+                          {index > 0 && ", "}
+                          <ValueLink kind="user_group" hid={group.hid} admin>
+                            {group.name}
+                          </ValueLink>
+                        </Fragment>
+                      ))}
+                    </td>
                     <td>{user.is_service_account ? "Service" : "Person"}</td>
                     <td>{user.disabled ? "Disabled" : "Active"}</td>
                     <td>

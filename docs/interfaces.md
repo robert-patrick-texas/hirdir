@@ -2057,7 +2057,12 @@ One grid component is used on every list page.
   new tab, and selects nothing either. Enter on such a cell opens the page of the first
   record it names, as Enter on any other cell opens the row's own. A value that names a
   record with no page, a tag or a network, stays text. What is copied and exported is
-  unchanged: the same text as the cell's.
+  unchanged: the same text as the cell's. The tables of pages follow the same rule: the
+  name in the heading of a row, which opens the row's own record, is the link it is, and a
+  value in another cell that names a record is a link in the style of its text, as the
+  vendor of a contract, the agreement of a term or a contract, the system of a
+  registration, the model of a minor item, the carrier or the place a contact is
+  inherited from, the contact of a place and the user groups of a user, for an Admin.
 
 Cell-range selection and editing in the grid are LATER.
 

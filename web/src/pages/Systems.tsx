@@ -34,6 +34,7 @@ import {
   startingKind,
   systemPath,
 } from "../lib/systems";
+import { oneLink, page } from "../lib/valueLinks";
 
 type Choice = Schemas["ChoiceOut"];
 
@@ -227,6 +228,8 @@ const REGISTRATION_COLUMNS: GridColumn<Registration>[] = [
     kind: "text",
     column: "group",
     value: (registration) => registration.group?.name,
+    links: (registration) =>
+      oneLink(registration.group?.name, page("device_group", registration.group?.hid)),
     width: 200,
   },
   {

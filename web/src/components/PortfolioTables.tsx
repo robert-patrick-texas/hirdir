@@ -420,7 +420,9 @@ function Contracts({ contracts, vendorHid, money }: ContractsProps) {
                   <td>{role(row)}</td>
                   <td>
                     {row.agreement ? (
-                      <Link to={agreementPath(row.agreement.hid)}>{row.agreement.name}</Link>
+                      <Link className="value-link" to={agreementPath(row.agreement.hid)}>
+                        {row.agreement.name}
+                      </Link>
                     ) : (
                       <span className="muted">Stands by itself</span>
                     )}

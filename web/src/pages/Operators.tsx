@@ -45,6 +45,7 @@ import {
   scopeLabel,
 } from "../lib/people";
 import { allows } from "../lib/roles";
+import { oneLink, page } from "../lib/valueLinks";
 
 const COLUMNS: GridColumn<Operator>[] = [
   {
@@ -65,6 +66,7 @@ const COLUMNS: GridColumn<Operator>[] = [
     kind: "text",
     column: "contact",
     value: (operator) => operator.contact?.name,
+    links: (operator) => oneLink(operator.contact?.name, page("contact", operator.contact?.hid)),
     width: 240,
   },
   // 0.9.3: internal where the person behind it is a user, external where not, and the

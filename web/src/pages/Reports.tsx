@@ -782,7 +782,13 @@ export function Duplicates() {
                           const name = holder.name || "(no name)";
                           return (
                             <li key={holder.address_hid}>
-                              {path ? <Link to={path}>{name}</Link> : name}
+                              {path ? (
+                                <Link className="value-link" to={path}>
+                                  {name}
+                                </Link>
+                              ) : (
+                                name
+                              )}
                               <span className="muted">
                                 {" "}
                                 · {holderKind(holder)} · {addressRoleLabel(holder.role)}
