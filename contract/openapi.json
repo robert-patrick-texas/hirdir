@@ -9950,11 +9950,17 @@
             "description": "The name of its vendor.",
             "title": "Vendor",
             "type": "string"
+          },
+          "vendor_hid": {
+            "description": "Its vendor, which `vendor` names (P-232).",
+            "title": "Vendor Hid",
+            "type": "string"
           }
         },
         "required": [
           "hid",
           "number",
+          "vendor_hid",
           "vendor",
           "status",
           "record_status"
@@ -10647,6 +10653,18 @@
             ],
             "title": "Asset Tag"
           },
+          "catalog_entry_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its model, which `pid` names (P-232).",
+            "title": "Catalog Entry Hid"
+          },
           "cluster": {
             "anyOf": [
               {
@@ -10714,6 +10732,7 @@
           "name",
           "serial_number",
           "asset_tag",
+          "catalog_entry_hid",
           "pid",
           "cluster_hid",
           "cluster"
@@ -16932,6 +16951,18 @@
             ],
             "title": "Asset Tag"
           },
+          "catalog_entry_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its model, which `pid` names (P-232).",
+            "title": "Catalog Entry Hid"
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -16976,6 +17007,7 @@
           "name",
           "serial_number",
           "asset_tag",
+          "catalog_entry_hid",
           "pid"
         ],
         "title": "ItemRef",

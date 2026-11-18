@@ -141,6 +141,7 @@ def item_refs(db: Session, items: list[Item]) -> dict[str, shapes.ItemRef]:
             name=item.name or item.hostname,
             serial_number=item.serial_number,
             asset_tag=item.asset_tag,
+            catalog_entry_hid=item.catalog_entry_hid,
             pid=entries[item.catalog_entry_hid].pid if item.catalog_entry_hid else None,
         )
         for item in items
@@ -770,6 +771,7 @@ def _contract_refs(
             {
                 "hid": contract.hid,
                 "number": contracts.term(contract, today)["number"],
+                "vendor_hid": contract.vendor_hid,
                 "vendor": vendors[contract.vendor_hid].name,
                 "status": contracts.status_of(contract, today),
                 "record_status": contract.record_status,

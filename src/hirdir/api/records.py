@@ -1188,6 +1188,7 @@ class ItemRef(Model):
     name: str | None = Field(description="Its name, or its hostname when it has no name.")
     serial_number: str | None
     asset_tag: str | None
+    catalog_entry_hid: str | None = Field(description="Its model, which `pid` names (P-232).")
     pid: str | None
 
 
@@ -1200,6 +1201,7 @@ class ContractRef(Model):
 
     hid: str
     number: str
+    vendor_hid: str = Field(description="Its vendor, which `vendor` names (P-232).")
     vendor: str = Field(description="The name of its vendor.")
     status: ContractStatus
     record_status: RecordStatus

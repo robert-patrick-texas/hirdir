@@ -76,7 +76,14 @@ describe("the record a registration is of", () => {
       registeredRecord({
         group: null,
         group_hid: null,
-        item: { hid: "i-1", name: null, serial_number: "FCW0000X001", asset_tag: null, pid: null },
+        item: {
+          hid: "i-1",
+          name: null,
+          serial_number: "FCW0000X001",
+          asset_tag: null,
+          catalog_entry_hid: null,
+          pid: null,
+        },
         item_hid: "i-1",
       }),
     ).toEqual({ name: "FCW0000X001", path: "/items/i-1", kind: "Item" });

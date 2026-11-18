@@ -459,6 +459,7 @@ function ReplacementFact({
     name: other.name,
     serial_number: other.serial_number,
     asset_tag: null,
+    catalog_entry_hid: null,
     pid: null,
   };
   return (
