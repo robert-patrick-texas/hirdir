@@ -1721,7 +1721,7 @@ Accounts and settings are not touched.
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, and of those under a label with nobody behind it, each as a link to its list. The items in service that no contract covers, those whose cover runs out within ninety days, and those past and approaching their last day of support, each as a link to its list |
 | Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location and Site are shown from the start, and Region, Operator and Expected online are in the column chooser (P-193): Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, and under Values in force the walk of each, a row of boxes joined by arrows, the one that decides marked and those passed over struck through, with the same as a table (P-176), parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history, and the circuits it is connected to, each with its side. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model, and Files and links: its own references, its model's and those of where it is |
 | Catalog | Entries by vendor, each with how many items are of it, sorted by it as by any column, a link to them (P-180); the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew; and Files and links, the documents of the model |
-| Vendors | The list of vendors. A vendor has a page of its own, the portfolio: the totals, the four kinds, the models with their dates and their cover, the contracts and the capacity lines of the vendor, and its items as a grid that is exported like any other. A carrier's page also lists its account team and its support desk, named and removed there, and its circuits |
+| Vendors | The list of vendors. A vendor has a page of its own, the portfolio: the totals, the four kinds, the models with their dates and their cover, its items as a grid that is exported like any other, with the filter box of the item list, and the agreements, the contracts and the capacity lines of the vendor (0.9.6, P-211). A carrier's page also lists its account team and its support desk, named and removed there, and its circuits |
 | Groups | Stacks, clusters and controller domains, with members and roles, and the circuits a group is connected to. A group's page shows, under Values in force, the walk of its location, planned location, operator and owner as a row of boxes (P-176) |
 | Circuits | The grid of circuits, with Name, Enterprise ID, Type, Speed, Carrier, Carrier's number, A side, Z side, Monthly cost, Annual cost, Owner and Tags shown at first and the rest in the column chooser, filtered, sorted and exported by the server. A circuit has a page of its own: its fields, each side with its location's path, or its note where it has none, and its site contacts with the level each came from; its carriers with their numbers; the carrier's account team and support desk with where they came from, and those it names of its own; the devices on each side; its cost lines, with the monthly and annual totals; its groups; Files and links, its own references; and the forms to change it, to switch the side it counts at, and to retire it. A speed is entered as the port, and the rates down and up left blank for the full rate, and shown short, `1G / 200M / 20M`. Circuit groups have a list, with how many circuits each has and what they cost, and a page each, with its circuits to add and take out |
 | Addresses | Every address, with the item or group that has it; the networks |
@@ -1815,15 +1815,25 @@ What 0.9.6 changes:
   its list does not have names the nearest one it has (P-207).
 - **Purchases.** Add a line has a second button, Add and add another like it, which
   keeps the destination site and the expected date; a line's destination site offers
-  the draft sites, marked; the table of a request's lines fits the window, and one
-  link, Every item it brought, opens the items that arrived on its lines (P-208).
-  Receive opens its form in the window with the keyboard in its first box, and its
-  location is searched within the line's destination site from the start (P-209). The
-  plain words of the list of lines look in the destination site, and Destination site
-  and Expected are in view (P-210).
-- **A vendor.** The table of models shows twenty and a button, Show all; the vendor's
-  items stand above its agreements and contracts, with the filter box of the item
-  list (P-211).
+  the draft sites, marked; the table of a request's lines fits the window, with the
+  part number and description as procurement gave them beneath the model where a line
+  has them, and one link, Every item it brought, beside what was received, opens the
+  items that arrived on its lines, by `purchase_line_hid:in:` the lines received on; a
+  request received on in more than 100 lines is given in links of 100 lines each, so
+  that no address is too long to send (P-208).
+  Receive opens its form in the window with the keyboard in the box of what arrived,
+  and its location is searched within the line's destination site from the start, the
+  site's first locations offered before anything is typed and its one location chosen
+  where it has only one; Only at the site, cleared, searches every site (P-209). The
+  plain words of the list of lines look in the name of the destination site (`site`;
+  the list of lines has no field of the site's code), and Destination site and Expected
+  are in view, with Part number and Tracked in the column chooser; a layout a person
+  kept stays until Reset layout and filters. Still to come is whole in the list of
+  requests (P-210).
+- **A vendor.** The table of models shows twenty, as it is sorted, and a button, Show
+  all, with the number; sorted by a date, the models with none come last, whichever
+  way. The vendor's items stand above its agreements and contracts, with the filter box
+  of the item list and its plain words, which narrow within the vendor's items (P-211).
 - **Contracts.** The grid of every contract comes first, with the tables by agreement
   after it, folded closed; on Renewals the rows of a count that is opened come into the
   window; the list of agreements shows the account manager (P-212). The items a

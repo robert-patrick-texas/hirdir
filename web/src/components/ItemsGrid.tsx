@@ -5,6 +5,7 @@
 
 import { type ReactNode, useMemo } from "react";
 import { api, type Schemas } from "../api";
+import { ITEM_MAC_FIELD, ITEM_QUICK_FIELDS } from "../lib/filter";
 import { type ListRequest, queryBody } from "../lib/gridQuery";
 import { stateNames } from "../lib/lifecycle";
 import { useChoices, useRules } from "../lib/lists";
@@ -14,6 +15,9 @@ import { itemColumns, itemIsDimmed } from "./grid/itemColumns";
 import { Problem } from "./Problem";
 
 type Item = Schemas["ItemOut"];
+
+// The example of the short form under the filter box, as the item list has it.
+const ITEMS_SHORT_FILTER = "lifecycle_state:in:Test,Prod hostname:prefix:site2-";
 
 interface ItemsGridProps {
   /** The name the reader's layout of this grid is remembered under. */
@@ -35,6 +39,11 @@ interface ItemsGridProps {
    * is neither copied nor exported: no filter says which rows those would be.
    */
   read?: (request: ListRequest, signal: AbortSignal) => Promise<Page<Item>>;
+  /**
+   * 0.9.6: the filter box of the item list, with its plain words, which narrows within
+   * the part the grid is of (P-211). Not with `read`, whose rows no filter names.
+   */
+  filterBox?: boolean;
   children?: ReactNode;
 }
 
@@ -46,6 +55,7 @@ export function ItemsGrid({
   reloadKey,
   actions,
   read,
+  filterBox = false,
   children,
 }: ItemsGridProps) {
   const choices = useChoices();
@@ -93,6 +103,13 @@ export function ItemsGrid({
           rowId={(item) => item.hid}
           rowLink={(item) => `/items/${encodeURIComponent(item.hid)}`}
           dimmed={itemIsDimmed}
+          {...(filterBox && !read
+            ? {
+                shortFilter: ITEMS_SHORT_FILTER,
+                quickFields: ITEM_QUICK_FIELDS,
+                quickMac: ITEM_MAC_FIELD,
+              }
+            : {})}
         >
           {children}
         </DataGrid>

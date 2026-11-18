@@ -3,6 +3,7 @@
 // the capacity lines. Nothing is counted here. Each table holds all of its rows, and is
 // sorted by its headers in the browser.
 
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { Schemas } from "../api/client";
 import { capacityLinePath, measureText, SIDES } from "../lib/capacity";
@@ -12,6 +13,7 @@ import { choiceLabel, optionLabel, RECORD_STATUSES } from "../lib/options";
 import { dateValue, decimalValue } from "../lib/sort";
 import { amountText, countText, kindLabel } from "../lib/summary";
 import { type SortControl, useSorting } from "../lib/useSorting";
+import { useFirstRows } from "./FirstRows";
 import { SortTh } from "./SortTh";
 
 type Portfolio = Schemas["PortfolioOut"];
@@ -95,14 +97,16 @@ interface PortfolioCountsProps {
   money: string;
   /** The editable lists, to call a type by its label. */
   choices: readonly Choice[] | undefined;
+  /** What stands after the models and before the agreements: the vendor's items (P-211). */
+  children?: ReactNode;
 }
 
 /**
  * What a portfolio counts: the totals, the four kinds, the models, the agreements, the
  * contracts and the capacity lines, each table sorted by its headers in the browser,
- * since it holds all of its rows.
+ * since it holds all of its rows. The models show the first twenty until Show all.
  */
-export function PortfolioCounts({ portfolio, money, choices }: PortfolioCountsProps) {
+export function PortfolioCounts({ portfolio, money, choices, children }: PortfolioCountsProps) {
   const { totals } = portfolio;
   return (
     <>
@@ -138,6 +142,8 @@ export function PortfolioCounts({ portfolio, money, choices }: PortfolioCountsPr
       </dl>
       <Kinds kinds={portfolio.kinds} money={money} />
       <Models models={portfolio.models} money={money} choices={choices} />
+      {/* 0.9.6: what stands between the models and the agreements: the vendor's items (P-211). */}
+      {children}
       <Agreements agreements={portfolio.agreements} />
       <Contracts contracts={portfolio.contracts} vendorHid={portfolio.vendor.hid} money={money} />
       <CapacityLines lines={portfolio.capacity_lines} money={money} />
@@ -195,6 +201,9 @@ function Models({ models, money, choices }: ModelsProps) {
     covered_until: (row) => dateValue(row.covered_until),
     ...MEASURE_SORTS,
   });
+  // The first twenty, as the table is sorted, and Show all (P-211, as P-196): a model
+  // with no date sorts after those with one, whichever way.
+  const first = useFirstRows(sorting.rows, "models");
   return (
     <>
       <h3 id="portfolio-models">Models</h3>
@@ -240,7 +249,7 @@ function Models({ models, money, choices }: ModelsProps) {
               </tr>
             </thead>
             <tbody>
-              {sorting.rows.map((row) => (
+              {first.shown.map((row) => (
                 <tr key={row.catalog_entry_hid} data-pid={row.pid}>
                   <th scope="row">
                     <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>
@@ -266,6 +275,7 @@ function Models({ models, money, choices }: ModelsProps) {
           </table>
         </div>
       )}
+      {first.more}
     </>
   );
 }

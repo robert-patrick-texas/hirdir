@@ -1725,6 +1725,18 @@ td.rank {
   margin: 0 0 0.35rem;
 }
 
+/* --- 0.9.6, lane C1: purchases and a vendor's page (P-208 to P-211) -------------------- */
+
+/* The lines of a request fit a window 1280 pixels wide with their buttons whole (P-208):
+   the model is given the width to be read, and the rest give way to it. */
+.request-lines td.line-model {
+  min-width: 15rem;
+}
+
+.request-lines td.line-model > div {
+  overflow-wrap: anywhere;
+}
+
 /* --- 0.7.0: the renewal alert and the renewal worklist (D-178, D-179) ----------------- */
 
 /* The renewal alert, under the header of every page until it is dismissed. */

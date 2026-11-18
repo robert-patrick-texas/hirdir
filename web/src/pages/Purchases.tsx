@@ -1,21 +1,21 @@
-import { type FormEvent, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
-import { SelectField, TextAreaField, TextField } from "../components/Field";
+import { CheckField, SelectField, TextAreaField, TextField } from "../components/Field";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { LocationField } from "../components/LocationField";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
-import { CreateForm, EditForm } from "../components/RecordForm";
+import { CreateForm, EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { effectiveLabel, effectiveText } from "../lib/effective";
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { useEntryOptions, useSiteOptions } from "../lib/lists";
+import { EVERY, useEntryOptions } from "../lib/lists";
 import { optionLabel } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
@@ -45,6 +45,7 @@ import {
 import { allows } from "../lib/roles";
 import type { SortFields } from "../lib/sort";
 import { useServerSort } from "../lib/useServerSort";
+import { broughtPaths, siteOption } from "../lib/within";
 
 const LINES_PAGE = 50;
 // The most items of one line the page lists itself: the grid of items holds them all.
@@ -52,6 +53,20 @@ const ARRIVED_SHOWN = 100;
 
 function Dash() {
   return <span className="muted">—</span>;
+}
+
+/**
+ * The sites a line may be going to, by path: the drafts too, marked, since a line may
+ * name a site still being built (P-208).
+ */
+function useLineSites() {
+  return useLoad("purchase line sites", async (signal) => {
+    const page = await api.request("get", "/api/v1/sites", {
+      query: { limit: EVERY, sort: ["name"], include_drafts: true },
+      signal,
+    });
+    return page.items.map(siteOption).sort((one, other) => one.label.localeCompare(other.label));
+  });
 }
 
 /** The second row of navigation on the pages of purchases. */
@@ -120,7 +135,8 @@ const REQUEST_COLUMNS: GridColumn<PurchaseRequest>[] = [
     hint: (request) =>
       `${request.received_quantity} of ${request.quantity} ${request.quantity === 1 ? "item has" : "items have"} arrived`,
     numeric: true,
-    width: 140,
+    // The heading whole (P-210).
+    width: 172,
   },
   { id: "notes", header: "Notes", kind: "text", value: (request) => request.notes, width: 320 },
   {
@@ -231,7 +247,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     column: "request",
     value: (line) => line.reference,
     link: true,
-    width: 190,
+    width: 160,
   },
   {
     id: "line",
@@ -248,7 +264,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "vendor",
     value: (line) => line.catalog?.vendor ?? null,
-    width: 130,
+    width: 100,
   },
   {
     id: "catalog.pid",
@@ -256,7 +272,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "text",
     column: "pid",
     value: (line) => line.catalog?.pid ?? null,
-    width: 170,
+    width: 140,
   },
   {
     id: "catalog.model_name",
@@ -267,12 +283,14 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     hide: true,
   },
   {
-    // As the procurement system gave them, beside the model the line is matched to.
+    // As the procurement system gave them, beside the model the line is matched to. In
+    // the column chooser, so that Destination site and Expected are in view (P-210).
     id: "part_number",
     header: "Part number",
     kind: "text",
     value: (line) => line.part_number,
     mono: true,
+    hide: true,
     width: 170,
   },
   {
@@ -294,6 +312,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
       { value: "true", label: "Tracked: the line has a model" },
       { value: "false", label: "Not tracked: no model, and no item" },
     ],
+    hide: true,
     width: 120,
   },
   {
@@ -302,7 +321,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "integer",
     value: (line) => String(line.quantity),
     numeric: true,
-    width: 110,
+    width: 125,
   },
   {
     id: "received_quantity",
@@ -310,7 +329,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "integer",
     value: (line) => String(line.received_quantity),
     numeric: true,
-    width: 110,
+    width: 125,
   },
   {
     id: "pending_quantity",
@@ -318,7 +337,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     kind: "integer",
     value: (line) => String(line.pending_quantity),
     numeric: true,
-    width: 130,
+    width: 172,
   },
   {
     // The items on the line that are of another model than the line's, which 0.6.0 let
@@ -342,14 +361,14 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     column: "destination_site",
     value: (line) => line.destination_site?.name,
     hint: (line) => line.destination_site?.path,
-    width: 170,
+    width: 200,
   },
   {
     id: "expected_on",
     header: "Expected",
     kind: "date",
     value: (line) => line.expected_on,
-    width: 130,
+    width: 125,
   },
   {
     id: "request.status",
@@ -390,8 +409,9 @@ export function PurchaseLines() {
       <p>
         The lines of every request: what was asked for, what has arrived and what is still to come.
         Filter <span className="mono">Still to come</span> to more than 0, or type{" "}
-        <span className="mono">pending_quantity:gt:0</span>, for the list to plan by. A line is
-        received on the page of its request. A line with no model is not tracked, and{" "}
+        <span className="mono">pending_quantity:gt:0</span>, for the list to plan by; the name of a
+        site, typed in the filter, finds the lines going to it. A line is received on the page of
+        its request. A line with no model is not tracked, and{" "}
         <span className="mono">tracked:eq:false</span> lists those: nothing is to come on them.
       </p>
       <DataGrid<PurchaseLine>
@@ -407,7 +427,7 @@ export function PurchaseLines() {
         rowLink={(line) => requestPath(line.request_hid)}
         dimmed={(line) => line.request_status === "cancelled" || line.request_status === "draft"}
         shortFilter="pending_quantity:gt:0 tracked:eq:true catalog.vendor:eq:Cisco"
-        quickFields={["request.reference", "catalog.pid", "catalog.model_name"]}
+        quickFields={["request.reference", "catalog.pid", "catalog.model_name", "site"]}
         startFilter={startFilter}
       />
     </>
@@ -482,7 +502,10 @@ export function PurchaseDetail() {
               <Untracked request={record} />
             </dd>
             <dt>Received</dt>
-            <dd data-testid="request-received">{plural(record.received_quantity, "item")}</dd>
+            <dd>
+              <span data-testid="request-received">{plural(record.received_quantity, "item")}</span>
+              <Brought request={record} />
+            </dd>
             <dt>Still to come</dt>
             <dd data-testid="request-pending">{plural(record.pending_quantity, "item")}</dd>
             <dt>Notes</dt>
@@ -533,6 +556,44 @@ function Untracked({ request }: { request: PurchaseRequest }) {
       · on the lines that are tracked; {plural(untracked, "line is", "lines are")} not tracked, and
       counted in none of this
     </span>
+  );
+}
+
+/**
+ * Every item the request brought, in the item list (P-208): the items that arrived on
+ * its lines, by the lines received on. A request of more such lines than one address
+ * names is given in parts, by its lines.
+ */
+function Brought({ request }: { request: PurchaseRequest }) {
+  const paths = broughtPaths(request.lines);
+  const [only] = paths;
+  if (!only) return null;
+  if (paths.length === 1) {
+    return (
+      <>
+        {" · "}
+        <Link to={only.path} data-testid="request-brought">
+          Every item it brought
+        </Link>
+      </>
+    );
+  }
+  return (
+    <>
+      {" · Every item it brought, "}
+      <span data-testid="request-brought">
+        {paths.map((part, place) => (
+          <span key={part.from}>
+            {place > 0 && ", "}
+            <Link to={part.path}>
+              {part.from === part.to
+                ? `on line ${part.from}`
+                : `on lines ${part.from} to ${part.to}`}
+            </Link>
+          </span>
+        ))}
+      </span>
+    </>
   );
 }
 
@@ -621,7 +682,7 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
       )}
       {rows.length > 0 && (
         <div className="scroll">
-          <table data-testid="purchase-lines">
+          <table data-testid="purchase-lines" className="request-lines wrap-heads">
             <caption className="visually-hidden">
               The lines of {request.reference}, by their numbers until a header is clicked
             </caption>
@@ -632,9 +693,6 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                 </SortTh>
                 <SortTh sort={sort.header("model", holdsAll)} column="model">
                   Model
-                </SortTh>
-                <SortTh sort={sort.header("part", holdsAll)} column="part">
-                  As procurement gave it
                 </SortTh>
                 <SortTh
                   sort={sort.header("quantity", holdsAll)}
@@ -674,7 +732,7 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                   data-received={row.received_quantity}
                 >
                   <th scope="row">{row.name}</th>
-                  <td>
+                  <td className="line-model">
                     {row.catalog_entry_hid === null ? (
                       <span
                         className="badge badge-plain"
@@ -691,6 +749,15 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                     {row.catalog?.model_name && (
                       <span className="muted"> · {row.catalog.model_name}</span>
                     )}
+                    {/* As procurement gave it, beneath the model, only where the line has it (P-208). */}
+                    {(row.part_number || row.description) && (
+                      <div data-testid="line-part-number">
+                        <span className="muted">As procurement gave it: </span>
+                        {row.part_number && <span className="mono">{row.part_number}</span>}
+                        {row.part_number && row.description && " · "}
+                        {row.description && <span className="muted">{row.description}</span>}
+                      </div>
+                    )}
                     {row.notes && <div className="muted">{row.notes}</div>}
                     {row.mismatched_items > 0 && (
                       <div>
@@ -704,10 +771,6 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                         </Link>
                       </div>
                     )}
-                  </td>
-                  <td data-testid="line-part-number">
-                    {row.part_number ? <span className="mono">{row.part_number}</span> : <Dash />}
-                    {row.description && <div className="muted">{row.description}</div>}
                   </td>
                   <td className="number">{row.quantity}</td>
                   <td className="number" data-testid="line-received">
@@ -818,6 +881,11 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
           onAdded={(made) =>
             changed(`${made.name} was added: ${made.quantity} × ${lineWhat(made)}.`)
           }
+          onAddedAnother={(made) => {
+            // The form stays open for the next line; the lines are read again.
+            setOpen(null);
+            onChanged(`${made.name} was added: ${made.quantity} × ${lineWhat(made)}.`);
+          }}
         />
       )}
     </section>
@@ -925,11 +993,13 @@ interface AddLineProps {
   request: PurchaseRequest;
   onCancel: () => void;
   onAdded: (line: PurchaseLine) => void;
+  /** A line was added by Add and add another like it, and the form stays open (P-208). */
+  onAddedAnother: (line: PurchaseLine) => void;
 }
 
-function AddLine({ request, onCancel, onAdded }: AddLineProps) {
+function AddLine({ request, onCancel, onAdded, onAddedAnother }: AddLineProps) {
   const entries = useEntryOptions();
-  const sites = useSiteOptions();
+  const sites = useLineSites();
   const specs = useMemo(
     () => lineSpecs(entries.data, sites.data, null),
     [entries.data, sites.data],
@@ -950,6 +1020,12 @@ function AddLine({ request, onCancel, onAdded }: AddLineProps) {
         onCreated={onAdded}
         onCancel={onCancel}
         submitLabel="Add line"
+        another={{
+          label: "Add and add another like it",
+          keep: ["destination_site_hid", "expected_on"],
+          focus: "catalog_entry_hid",
+          onCreated: onAddedAnother,
+        }}
       >
         <p className="hint">
           A model and how many, or the part number with no model for what this inventory does not
@@ -976,7 +1052,7 @@ function ChangeLine({
   // What the change did, said once it is taken: the form knows only that it was.
   const said = useRef("");
   const entries = useEntryOptions();
-  const sites = useSiteOptions();
+  const sites = useLineSites();
   const specs = useMemo(
     () =>
       lineSpecs(
@@ -1029,9 +1105,29 @@ function Receive({
   const [count, setCount] = useState("");
   const [day, setDay] = useState(() => today());
   const [location, setLocation] = useState("");
+  // 0.9.6: the location is looked for where the line is going, unless the person says
+  // otherwise, and is the site's one location where it has only one (P-209).
+  const site = line.destination_site;
+  const [onlyThere, setOnlyThere] = useState(site !== null);
+  const [touched, setTouched] = useState(false);
+  const only = useLoad(`receive one location ${site?.hid ?? ""}`, (signal) =>
+    site === null ? Promise.resolve(null) : oneLocationOf(site.hid, signal),
+  );
+  const theOne = only.data ?? null;
+  const chosen = location === "" && !touched && theOne ? theOne.value : location;
   const [found, setFound] = useState({ error: "", countError: "" });
   const action = useAction();
   const known = ["delivered_on", "location_hid", "quantity"];
+  // Opened by Receive, the form comes into the window with the keyboard in the box of
+  // what arrived (P-209, as P-190 for a new form).
+  const section = useRef<HTMLElement>(null);
+  useOpenedIntoView(section);
+  useEffect(() => {
+    const form = section.current;
+    if (form?.contains(document.activeElement)) {
+      form.querySelector<HTMLElement>('[name="arrived"]')?.focus({ preventScroll: true });
+    }
+  }, []);
   const refused = fieldErrors(action.error, known).shown;
   const stopped = notReceivable(line);
   const read = arrivedOf(typed, by, count, line.pending_quantity);
@@ -1059,7 +1155,7 @@ function Receive({
           row_version: line.row_version,
           ...receiptOf(read),
           ...(day === "" ? {} : { delivered_on: day }),
-          ...(location === "" ? {} : { location_hid: location }),
+          ...(chosen === "" ? {} : { location_hid: chosen }),
         },
       }),
     );
@@ -1085,7 +1181,12 @@ function Receive({
   }
 
   return (
-    <section className="panel" aria-labelledby="receive-line" data-testid="receive-line">
+    <section
+      ref={section}
+      className="panel"
+      aria-labelledby="receive-line"
+      data-testid="receive-line"
+    >
       <h3 id="receive-line">
         Receive on {line.name}: {lineModel(line)}
       </h3>
@@ -1165,14 +1266,38 @@ function Receive({
               hint="Left blank, today."
             />
             <LocationField
+              // A new search when where it looks changes: what was found elsewhere is not kept.
+              key={onlyThere ? "there" : "anywhere"}
               label="Location they were put in"
               name="location_hid"
-              value={location}
-              onChange={setLocation}
+              value={chosen}
+              onChange={(hid) => {
+                setTouched(true);
+                setLocation(hid);
+              }}
+              known={theOne ? [theOne] : []}
               blank="Not said"
               disabled={action.busy}
               error={refused.location_hid}
+              site={onlyThere && site ? site.hid : undefined}
+              {...(site
+                ? {
+                    hint: onlyThere
+                      ? `Looked for at ${site.name}, where the line is going.`
+                      : "Looked for at every site.",
+                  }
+                : {})}
             />
+            {site && (
+              <CheckField
+                label={`Only at ${site.name}`}
+                name="only_at_site"
+                checked={onlyThere}
+                onChange={setOnlyThere}
+                disabled={action.busy}
+                hint="Clear it to choose a location at any other site."
+              />
+            )}
           </div>
           <p className="actions">
             <button
@@ -1193,6 +1318,26 @@ function Receive({
 }
 
 type Item = Schemas["ItemOut"];
+
+/** The one location of a site, by its path, or null where it has none or more than one. */
+async function oneLocationOf(
+  site: string,
+  signal: AbortSignal,
+): Promise<{ value: string; label: string } | null> {
+  const page = await api.request("post", "/api/v1/locations/query", {
+    body: queryBody({
+      filter: { field: "site_hid", op: "eq", value: site },
+      sort: ["name"],
+      limit: 2,
+      offset: 0,
+      include_archived: false,
+      include_drafts: true,
+    }),
+    signal,
+  });
+  const [one] = page.items;
+  return page.total === 1 && one ? { value: one.hid, label: one.path } : null;
+}
 
 /** The items that arrived on a line: those that name it, read from the item list. */
 function Arrived({ line, onClose }: { line: PurchaseLine; onClose: () => void }) {
