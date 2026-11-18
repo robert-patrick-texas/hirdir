@@ -92,7 +92,7 @@ import {
   queryColumns,
 } from "./columns";
 import { saveFile } from "./save";
-import { TickHeader } from "./tickHeader";
+import { TickHeader, type TickHeaderParams } from "./tickHeader";
 
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
@@ -320,6 +320,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     () => new Set(start.columns.filter((column) => column.hide).map((column) => column.id)),
   );
   const [total, setTotal] = useState<number | null>(null);
+  // The same, as the box in the heading reads it while the grid takes a block of rows.
+  const listTotal = useRef<number | null>(null);
   const [selected, setSelected] = useState(0);
   // Every row the filter keeps is chosen, whether the grid has read it or not.
   const [allMatching, setAllMatching] = useState(false);
@@ -470,6 +472,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       },
       selectionColumnDef: {
         headerComponent: TickHeader,
+        // How many rows the list holds, for the box to know when every one is read.
+        headerComponentParams: { total: () => listTotal.current } satisfies TickHeaderParams,
         headerName: "Ticked",
         lockPosition: "left",
         suppressMovable: true,
@@ -597,6 +601,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         if (!wanted.readable) {
           setError(null);
           setTotal(0);
+          listTotal.current = 0;
           params.successCallback([], 0);
           return;
         }
@@ -623,6 +628,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             pending.delete(letGo);
             setError(null);
             setTotal(page.total);
+            listTotal.current = page.total;
             params.successCallback(page.items, page.total);
             if (toTick.size > 0) {
               const nodes = [];

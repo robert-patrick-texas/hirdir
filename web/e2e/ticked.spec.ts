@@ -141,3 +141,57 @@ test("the box in the heading waits for the rows of a list that is slow to come",
   await all.check();
   await expect(page.getByRole("button", { name: /^Copy( \(|$)/ })).toHaveText("Copy (3)");
 });
+
+test("the box in the heading ticks the rows read so far, and shows all ticked only when the whole list is", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  // More rows than the grid reads in its first block of a hundred.
+  const many = mark("ticked");
+  const names = Array.from(
+    { length: 130 },
+    (_, at) => `Example Many ${many} ${String(at + 1).padStart(3, "0")}`,
+  );
+  await signIn(page, account);
+  await importFile(
+    page,
+    "vendors",
+    `vendors-${many}.csv`,
+    ["name"],
+    names.map((name) => [name]),
+  );
+  const seen = await watch(page.context());
+  await page.goto(`./vendors?filter=${encodeURIComponent(`name:contains:${many}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("130 vendors");
+  const all = page.getByTestId("grid-tick-all");
+  const copy = page.getByRole("button", { name: /^Copy( \(|$)/ });
+  const half = () => all.evaluate((box) => (box as HTMLInputElement).indeterminate);
+
+  await expect(all).toHaveAccessibleName("Tick the 100 rows read so far");
+  await all.click();
+  await expect(copy).toHaveText("Copy (100)");
+  // A hundred of 130 are ticked: the box shows the half mark, not all ticked.
+  await expect(all).not.toBeChecked();
+  await expect.poll(half).toBe(true);
+  await expect(all).toHaveAccessibleName("Clear the 100 rows read so far");
+
+  // The second block is read as the list is scrolled to its end: its rows come unticked.
+  await page
+    .getByTestId(grid)
+    .locator(".ag-grid-viewport, .ag-body-viewport")
+    .first()
+    .evaluate((rows) => {
+      rows.scrollTop = rows.scrollHeight;
+    });
+  await expect(all).toHaveAccessibleName("Tick the 130 rows read so far");
+  await expect.poll(half).toBe(true);
+  await expect(copy).toHaveText("Copy (100)");
+  await all.click();
+  await expect(copy).toHaveText("Copy (130)");
+  await expect(all).toBeChecked();
+  await expect.poll(half).toBe(false);
+  await all.click();
+  await expect(copy).toHaveText("Copy");
+  await expectClean(page, seen);
+});
