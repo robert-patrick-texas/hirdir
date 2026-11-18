@@ -1115,6 +1115,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
             if group.parent_group_hid is not None:
                 nested[group.parent_group_hid].append(_group_ref(group))
     counts = groups.member_counts(db, hids)
+    numbered = groups.next_positions(db, found)
     registered = _registration_refs(db, "group_hid", hids)
     # The circuits each is connected to (P-147).
     connected = circuit_shapes.connections_out(db, "group_hid", hids)
@@ -1188,6 +1189,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 if observed is None or master is None
                 else observed.hid == master.hid,
                 member_count=counts[group.hid],
+                next_position=numbered[group.hid],
                 addresses=its_addresses[group.hid],
                 registrations=registered[group.hid],
                 circuits=connected[group.hid],
@@ -1215,6 +1217,7 @@ _GROUP_SHAPED = (
     "serial_number",
     "master",
     "member_count",
+    "next_position",
     "addresses",
     "registrations",
     "circuits",

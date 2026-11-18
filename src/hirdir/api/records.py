@@ -1750,8 +1750,39 @@ class MemberAdd(Model):
             "member, or endpoint in a controller domain."
         ),
     )
-    position: int | None = Field(default=None, ge=0, le=10_000)
+    position: int | None = Field(
+        default=None,
+        ge=0,
+        le=10_000,
+        description=(
+            "In a stack, one that no other current member holds. Left out, a member of a "
+            "stack takes the lowest free one from 1, the stack's `next_position` (P-219)."
+        ),
+    )
     joined_on: date | None = Field(default=None, description="Left out, today.")
+    drop_identity: bool = Field(
+        default=False,
+        description=(
+            "A member of a stack only: in the same change the item's own hostname and FQDN "
+            "are cleared, its addresses removed and its own location cleared, so that the "
+            "stack's is in force (P-217)."
+        ),
+    )
+    disposition: str | None = Field(
+        default=None,
+        max_length=12,
+        description=(
+            "Given, the item's disposition from this change, as the rule of its lifecycle "
+            "state allows. Left out, it stays as it is."
+        ),
+    )
+    expected_online: bool | None = Field(
+        default=None,
+        description=(
+            "Given, whether the item is expected online from this change, as the rule of "
+            "its lifecycle state allows. Left out, it stays as it is."
+        ),
+    )
 
 
 class MembersAdd(Model):
@@ -1764,14 +1795,57 @@ class MembersAdd(Model):
     )
 
 
+class LeavingItem(Model):
+    """What an item that leaves a group is to have from the end (P-218).
+
+    Each is checked by the item's own rules once the membership has ended. A field left
+    out stays as it is, and null clears hostname, fqdn and location_hid.
+    """
+
+    hostname: HostName | None = None
+    fqdn: HostName | None = None
+    location_hid: Hid | None = None
+    lifecycle_state: str | None = Field(
+        default=None,
+        max_length=20,
+        description="The state to move to, by a move the rules list, as a transition makes it.",
+    )
+    state_reason: str | None = Field(
+        default=None,
+        max_length=40,
+        description="A value of the state_reason list: why it moves. With lifecycle_state only.",
+    )
+    disposition: str | None = Field(
+        default=None,
+        max_length=12,
+        description="With lifecycle_state, as a transition takes it; without, as an edit does.",
+    )
+    expected_online: bool | None = Field(
+        default=None,
+        description="With lifecycle_state, as a transition takes it; without, as an edit does.",
+    )
+
+
 class MemberPatch(Model):
     """Fields of a membership to change, and the version they were read at."""
 
     row_version: int
     role: str | None = Field(default=None, max_length=20)
-    position: int | None = Field(default=None, ge=0, le=10_000)
+    position: int | None = Field(
+        default=None,
+        ge=0,
+        le=10_000,
+        description="In a stack, one that no other current member holds (P-219).",
+    )
     joined_on: date | None = None
     left_on: date | None = Field(default=None, description="Given, the membership ends.")
+    item: LeavingItem | None = Field(
+        default=None,
+        description=(
+            "Given with left_on on a current membership: what the item is to have from the "
+            "end, changed with it (P-218)."
+        ),
+    )
 
 
 class MemberOut(Model):
@@ -1855,6 +1929,12 @@ class DeviceGroupOut(Model):
         description="False when the master that is seen is not the one intended. Not a fault."
     )
     member_count: int = Field(description="How many current members it has.")
+    next_position: int | None = Field(
+        description=(
+            "A stack: the lowest position from 1 that no current member holds, which a "
+            "member added with none takes (P-219). Null for a group of another type."
+        )
+    )
     addresses: list[AddressRef]
     registrations: list[RegistrationRef] = Field(
         description="The external systems the group is registered with, as one device."

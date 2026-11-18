@@ -3898,6 +3898,13 @@ class DeviceGroups(Entity):
         return rows
 
 
+JOINING = (
+    Column("drop_identity", "boolean", listed=False),
+    Column("disposition", limit=12, listed=False),
+    Column("expected_online", "boolean", listed=False),
+)
+
+
 class DeviceGroupMembers(Entity):
     """The memberships of device groups, the ones that have ended among them."""
 
@@ -3917,6 +3924,9 @@ class DeviceGroupMembers(Entity):
         # kept on the stack, and travels on the row of the member.
         Column("observed_master", "boolean"),
         Column("master_observed_at", "timestamp"),
+        # What a member that joins is given with the membership (P-217). They are not
+        # kept on it, so an export writes them only when asked for by name, and blank.
+        *JOINING,
         *BOOKKEEPING,
     )
     by_the_clock = frozenset({"master_observed_at"})
@@ -4072,6 +4082,7 @@ class DeviceGroupMembers(Entity):
                     **{name: getattr(member, name) for name in self._direct},
                     "observed_master": seen,
                     "master_observed_at": group.master_observed_at if seen else None,
+                    **dict.fromkeys(column.name for column in JOINING),
                 }
             )
         return rows

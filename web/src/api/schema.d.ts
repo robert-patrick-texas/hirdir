@@ -3427,10 +3427,13 @@ export interface paths {
       };
     };
     /**
-     * Make items members of a group, all together.
+     * Make items members of a group, all together, or none of them.
      *
      * One that is added to a stack as `master`, the master that is intended, takes the
-     * mark from the member that had it.
+     * mark from the member that had it. A member of a stack holds its position alone, and
+     * one given none takes the lowest free one (P-219). With `drop_identity` a member of a
+     * stack gives up its own hostname, FQDN, addresses and location in the same change, and
+     * `disposition` and `expected_online` are the item's from it (P-217).
      */
     post: {
       parameters: {
@@ -3469,7 +3472,9 @@ export interface paths {
      * Change a membership. `left_on` ends it; it is never removed.
      *
      * Marking a member as the intended master of a stack takes the mark from the member
-     * that had it. The master that is seen is recorded on the stack itself.
+     * that had it. The master that is seen is recorded on the stack itself. With `left_on`,
+     * `item` says what the item is to have from the end, changed after the end in the
+     * same change (P-218).
      */
     patch: {
       parameters: {
@@ -10027,6 +10032,8 @@ export interface components {
       /** The fields of the group that a current member contradicts. */
       members_disagree: string[];
       name: string;
+      /** A stack: the lowest position from 1 that no current member holds, which a member added with none takes (P-219). Null for a group of another type. */
+      next_position: number | null;
       observed_at: string | null;
       /** The member that is seen to be master. */
       observed_master: components["schemas"]["ItemRef"] | null;
@@ -10799,6 +10806,25 @@ export interface components {
         [key: string]: unknown;
       } | null;
     };
+    /**
+     * What an item that leaves a group is to have from the end (P-218).
+     *
+     * Each is checked by the item's own rules once the membership has ended. A field left
+     * out stays as it is, and null clears hostname, fqdn and location_hid.
+     */
+    LeavingItem: {
+      /** With lifecycle_state, as a transition takes it; without, as an edit does. */
+      disposition?: string | null;
+      /** With lifecycle_state, as a transition takes it; without, as an edit does. */
+      expected_online?: boolean | null;
+      fqdn?: string | null;
+      hostname?: string | null;
+      /** The state to move to, by a move the rules list, as a transition makes it. */
+      lifecycle_state?: string | null;
+      location_hid?: string | null;
+      /** A value of the state_reason list: why it moves. With lifecycle_state only. */
+      state_reason?: string | null;
+    };
     /** What one lifecycle state allows, and where an item may move from it. */
     LifecycleRuleOut: {
       /** The dispositions an item in this state may have. */
@@ -11105,9 +11131,16 @@ export interface components {
     };
     /** An item to make a member of a group. */
     MemberAdd: {
+      /** Given, the item's disposition from this change, as the rule of its lifecycle state allows. Left out, it stays as it is. */
+      disposition?: string | null;
+      /** A member of a stack only: in the same change the item's own hostname and FQDN are cleared, its addresses removed and its own location cleared, so that the stack's is in force (P-217). */
+      drop_identity?: boolean;
+      /** Given, whether the item is expected online from this change, as the rule of its lifecycle state allows. Left out, it stays as it is. */
+      expected_online?: boolean | null;
       item_hid: string;
       /** Left out, today. */
       joined_on?: string | null;
+      /** In a stack, one that no other current member holds. Left out, a member of a stack takes the lowest free one from 1, the stack's `next_position` (P-219). */
       position?: number | null;
       /** stack: member, or master for the one that is meant to be master. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain. */
       role?: string | null;
@@ -11129,9 +11162,12 @@ export interface components {
     };
     /** Fields of a membership to change, and the version they were read at. */
     MemberPatch: {
+      /** Given with left_on on a current membership: what the item is to have from the end, changed with it (P-218). */
+      item?: components["schemas"]["LeavingItem"] | null;
       joined_on?: string | null;
       /** Given, the membership ends. */
       left_on?: string | null;
+      /** In a stack, one that no other current member holds (P-219). */
       position?: number | null;
       role?: string | null;
       row_version: number;

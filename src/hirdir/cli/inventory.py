@@ -531,6 +531,8 @@ def show_group(
         ("tags", ", ".join(found["tags"]) or None),
         ("record_status", found["record_status"]),
         ("members", found["member_count"]),
+        # A stack: the position a member added with none takes (P-219).
+        ("next_position", found["next_position"]),
         ("row_version", found["row_version"]),
     ]
     for name, value in lines:

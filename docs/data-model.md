@@ -363,7 +363,8 @@ master that was seen is not, because nobody has seen the new item as master. The
 item takes over the old one's
 current memberships of groups, with the same role and position: each of the old ones
 ends on `replaced_on` and each of the new ones begins then, so a stack keeps its HID
-and its master through an RMA. The replacement moves neither item in the lifecycle;
+and its master through an RMA. The old membership ends before the new one begins, so
+the position it held is free for the new item (P-219). The replacement moves neither item in the lifecycle;
 that is done by a transition, with its own reason.
 
 The record arrives in release 0.4.0. From 0.6.0 replacements travel in files, as
@@ -393,7 +394,7 @@ a row that names another new item for it is rejected.
 | `group_hid` | reference | |
 | `item_hid` | reference | |
 | `role` | choice | stack: `master`, `member`. cluster: `active`, `standby`, `member`. controller domain: `controller`, `endpoint`. custom: `member` |
-| `position` | integer | stack member number |
+| `position` | integer | stack member number. The members of a stack are numbered: one added with none takes the lowest free number from 1, and a number is held by one current member (P-219) |
 | `joined_on`, `left_on` | date | `joined_on` left out is today. `left_on` blank means current |
 
 Rules, checked on every write:
@@ -411,6 +412,28 @@ Rules, checked on every write:
   monitoring tool. No rule depends on either, and neither stops a member leaving. The
   record says when the two differ, which is not a fault.
 - Members may be added several at a time, by one request.
+- **A position in a stack is held by one current member** (P-219). A member is not
+  added at, nor moved to, a position that another current member holds, and two
+  members added together are not given one position. A membership that has ended
+  keeps its number and holds nothing, so that the switch that takes the place of one
+  that left takes its number. A member added with no position takes the lowest from 1
+  that is free. Two members that hold one position from before this rule stay as they
+  are until one of them is moved, and do not stop any other change of the stack. A
+  replacement hands its position to the new item as it is.
+- **A switch that joins a stack may take the stack's name and place** (P-217). Added
+  with `drop_identity`, in the same change, the item's own host name and FQDN are
+  cleared, its addresses are removed, and its own location is cleared, so that the
+  stack's is in force. Nothing of the stack is copied to it: the stack's host name,
+  FQDN, addresses and location stay the stack's, and are read from it. A member of a
+  cluster or of a controller domain keeps its name. The disposition and the intent of
+  the item may be given with it, and are checked by the rule of its state. Nothing
+  else of the item changes, and nothing changes by a rule on its own: only what the
+  request names.
+- **A member that leaves is given what becomes of it in the same step** (P-218). The
+  end of a membership may carry a host name and an FQDN, a location, a lifecycle state
+  with its reason, a disposition and an intent for the item, each checked by the item's
+  own rules once the membership has ended, and refused with the end where one of them
+  is refused.
 - An item is a current member of one group at most once, and of at most one stack and
   at most one cluster among the groups that are not retired. The members of a stack
   and of a cluster are major items.
@@ -1496,7 +1519,12 @@ Append-only. `at`, `actor_hid`, `via` (`web`, `api`, `cli`, `import`, `system`),
 `sign_in_failed`, `preview`, `apply`, and so on), `record_type`, `record_hid`, and
 `changes`, a list of `{field, old, new}`. One import or bulk edit shares one
 `request_id`. A record changed by an import has `via` of `import`; one changed by a
-bulk edit has the door the edit came through.
+bulk edit has the door the edit came through. A change of an item, or the removal of
+one of its addresses, made by its joining a device group holds among its `changes` the
+entry `joining_group` with the group's HID as `new`, and one made by its leaving a
+group `leaving_group` with the group's HID as `old` (P-217, P-218): what a joining
+stack member gave up, its host name, FQDN, location and each address, is read from
+these events (O-02).
 
 ### `import_jobs` and `import_rows`
 

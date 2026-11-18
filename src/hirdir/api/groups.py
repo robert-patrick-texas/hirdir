@@ -110,10 +110,13 @@ def list_members(
 def add_members(
     hid: str, body: r.MembersAdd, _: Inventory, context: Audit, db: Db
 ) -> list[r.MemberOut]:
-    """Make items members of a group, all together.
+    """Make items members of a group, all together, or none of them.
 
     One that is added to a stack as `master`, the master that is intended, takes the
-    mark from the member that had it.
+    mark from the member that had it. A member of a stack holds its position alone, and
+    one given none takes the lowest free one (P-219). With `drop_identity` a member of a
+    stack gives up its own hostname, FQDN, addresses and location in the same change, and
+    `disposition` and `expected_online` are the item's from it (P-217).
     """
     made = groups.add_members(db, context, hid, [member.model_dump() for member in body.members])
     return shapes.members_out(db, made)
@@ -126,7 +129,9 @@ def update_member(
     """Change a membership. `left_on` ends it; it is never removed.
 
     Marking a member as the intended master of a stack takes the mark from the member
-    that had it. The master that is seen is recorded on the stack itself.
+    that had it. The master that is seen is recorded on the stack itself. With `left_on`,
+    `item` says what the item is to have from the end, changed after the end in the
+    same change (P-218).
     """
     changes = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     member = groups.update_member(db, context, hid, member_hid, body.row_version, changes)
