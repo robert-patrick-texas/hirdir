@@ -27,8 +27,10 @@ def problem(
     fields: dict[str, str] | None = None,
     headers: Mapping[str, str] | None = None,
     existing: errors.Existing | None = None,
+    deleted: errors.Deleted | None = None,
 ) -> JSONResponse:
-    """Build a problem response. `existing` is the record that has the value already."""
+    """Build a problem response. `existing` is the record that has the value already,
+    and `deleted` the deletion of a record that is asked for and is not there."""
     body: dict[str, object] = {
         "type": "about:blank",
         "title": title,
@@ -41,6 +43,13 @@ def problem(
             "hid": existing.hid,
             "record_type": existing.record_type,
             "label": existing.label,
+        }
+    if deleted is not None:
+        body["deleted"] = {
+            "at": deleted.at.isoformat().replace("+00:00", "Z"),
+            "actor_hid": deleted.actor_hid,
+            "actor_name": deleted.actor_name,
+            "reason": deleted.reason,
         }
     return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE, headers=headers)
 
@@ -67,7 +76,8 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(errors.NotFound)
     async def _not_found(_: Request, error: errors.NotFound) -> JSONResponse:
-        return problem(404, "Not found", str(error))
+        gone = error if isinstance(error, errors.Deleted) else None
+        return problem(404, "Not found", str(error), deleted=gone)
 
     @app.exception_handler(errors.Conflict)
     async def _conflict(_: Request, error: errors.Conflict) -> JSONResponse:

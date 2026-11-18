@@ -1,6 +1,7 @@
 """What can go wrong in a rule, in terms the interfaces turn into answers."""
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 class DomainError(Exception):
@@ -9,6 +10,25 @@ class DomainError(Exception):
 
 class NotFound(DomainError):
     """There is no such record."""
+
+
+class Deleted(NotFound):
+    """The record was there, and an Admin deleted it (P-236): when, by whom and why, as
+    the audit trail has it."""
+
+    def __init__(
+        self,
+        message: str,
+        at: datetime,
+        actor_hid: str | None,
+        actor_name: str | None,
+        reason: str | None,
+    ) -> None:
+        super().__init__(message)
+        self.at = at
+        self.actor_hid = actor_hid
+        self.actor_name = actor_name
+        self.reason = reason
 
 
 @dataclass(frozen=True)

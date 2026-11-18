@@ -1378,6 +1378,26 @@ def retired_out(done: removal.Retired) -> shapes.RetiredMany:
     )
 
 
+def deleted_out(done: removal.Deletion) -> shapes.DeletedMany:
+    """Return what a request that deletes several did, or would do, with each record."""
+    return shapes.DeletedMany(
+        dry_run=done.dry_run,
+        deleted=_labelled(done.deleted),
+        refused=[
+            shapes.DeleteRefused(
+                hid=hid,
+                label=label,
+                depends_on=[
+                    shapes.Dependent(record_type=one.record_type, hid=one.hid, label=one.label)
+                    for one in depends_on
+                ],
+            )
+            for hid, label, depends_on in done.refused
+        ],
+        missing=done.missing,
+    )
+
+
 # --- contracts and coverage ----------------------------------------------------------
 
 
