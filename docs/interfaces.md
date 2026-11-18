@@ -347,9 +347,10 @@ in one change. Each deletion is the audit event `delete` of its record, with who
 the reason, every field of the record as it was, and what went with it, as `audit_events`
 on the [data model](data-model.md#audit_events) page says. Nothing is removed from the
 audit trail: the events the record had before stay, and `GET /audit-events?record_hid=`
-finds them by its HID. A HID that was deleted is never given again. `GET`, `PATCH` and
-every other route of a record that was deleted answer `404`, whose `detail` says that it
-was deleted, when and by whom, and whose `deleted` holds `at`, `actor_hid`,
+finds them by its HID. A HID that was deleted is never given again. `GET` and `PATCH`
+of a record that was deleted, and its other routes that read the record first, its
+retire, history, members and children among them, answer `404`, whose `detail` says that
+it was deleted, when and by whom, and whose `deleted` holds `at`, `actor_hid`,
 `actor_name` and `reason`; a request that names it among `hids` counts it in `missing`.
 A change of the item that was under way at the same moment, its joining a group or a
 contract covering it, either is stored first, and the deletion then sees it and is
@@ -812,6 +813,61 @@ follows. An item that has been changed since the preview is left as it is, and i
 is `stale`. A second person who bulk-edits rows that the first has just changed is told
 which, and nothing of their change overwrites the first; the items nobody changed are
 changed.
+
+### Fixing a wrong import
+
+A file that was wrong is put right in the way that fits what was wrong (P-234). Each
+way is the Inventory role's, but deleting, which is an Admin's.
+
+**Before it is applied.** A preview changes nothing, and is applied only when asked.
+Its counts say what the file would do: a file meant to change records that are there,
+whose rows come out `create`, names them otherwise than the inventory knows them, by
+another serial number, another PID, or no HID; a file meant to add records, whose rows
+come out `update` or `unchanged`, names records that are there. Each row says how it
+names its record, in `key`, what it would change, and in `notes` what else it brings
+about, such as a catalog entry made for a model nobody has entered. A preview that is
+wrong is left unapplied, and the file corrected and previewed again.
+
+**Wrong values on the right records.** Export the records with their HIDs and
+`own_values`, for an import the HIDs that `GET /imports/{hid}/created` lists, or the rows
+ticked in a list; correct the values in the file and import it back. Each row finds its
+record by its HID and changes what was corrected, and nothing else. Or change them by a
+bulk edit, `POST /items/bulk-update` or `hirdir items set`, which sets one value on many
+items at once after a preview: a place, an owner, a state, and a model too, by `vendor`
+and `pid`, which gives every item of the rows another model, made `unreviewed` where
+the catalog has none. What tells one item from another, a serial number, an asset tag,
+a name or a host name, is not set on several at once, and is corrected by the file
+with HIDs.
+
+**The kind of a model.** Whether a model is a switch or a router is its catalog
+entry's, in `type`, beside `kind` and the rest of what is true of every item of it, and
+each item reads it from there. One change of the catalog entry, on its page, by `PATCH
+/catalog-entries/{hid}` or by a file of `catalog_entries`, changes it for every item of
+the model at once, and no item is written to.
+
+**Records that should never have been.** `GET /imports/{hid}/created`, and `hirdir
+imports created`, list what an import made, each with what it is now. The Inventory
+role retires those that should never have been, by `POST /items/retire` and `POST
+/device-groups/retire` or `hirdir items retire`: they leave the lists and the counts,
+stay found by their HIDs, and are brought back with `PATCH`. An Admin deletes them, by
+`POST /items/delete` and `POST /device-groups/delete` with a reason or `hirdir items
+delete --reason`, after a dry run that says which would go and what stands in the way
+of the others. The vendors and catalog entries that it lists in `also` are `unreviewed`
+and stay: a catalog entry that nobody needs is retired on its page, and nothing deletes
+a vendor.
+
+**A second, corrected file.** While the first file's records are only retired, a
+corrected file meets them by the rules of "Identity and matching" on the
+[data model](data-model.md#identity-and-matching) page. A row with the vendor, the PID
+and the serial number of a retired item, or with its asset tag alone, is that item, and
+changes it, which stays retired unless the row gives `record_status` `active`. A row with
+another PID and the same serial number is a new item, and so is a row with a name or a
+host name alone, since neither finds a retired item. A row that would make a new item
+with the asset tag of a retired one is rejected, as the tag is that item's. So either
+the second file names the first set by their HIDs, corrects them and brings them back,
+or an Admin deletes the first set before the second file is applied, which then makes
+every record anew: a record that was deleted is found by no file, and its serial number
+and asset tag are free.
 
 ## Reports
 
