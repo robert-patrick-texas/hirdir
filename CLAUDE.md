@@ -47,6 +47,7 @@ The next release is the first row of the table in
 | Format, lint, type-check, test | `make check` |
 | Python tests that a change can reach, while working | `make test-changed` |
 | Acceptance scenarios | `make acceptance` |
+| Browser scenarios on the host, one list of every failure | `make browser` (`ARGS="--since <commit>"`, `ARGS="--last-failed --built"`, or spec files) |
 | Build the web UI | `make web` |
 | Build the package | `make deb` |
 | Install and exercise the package in a container | `make package-test` |
