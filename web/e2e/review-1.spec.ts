@@ -129,6 +129,10 @@ test("after Save at the foot of an item's page, what the page answers is in the 
   );
   await expect(saved).toBeInViewport();
 
+  // The page reads the item again after a save and the form takes what was read: until
+  // then a box filled in is filled over. Save is off once the form holds what was saved.
+  await expect(form.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+
   // The next change sent takes the message away, and once it is done the same words are
   // shown again. The answer is held back a moment, to see the page while it is sent.
   let release = () => {};
