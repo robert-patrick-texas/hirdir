@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from hirdir.api import lists, shapes
 from hirdir.api import records as r
@@ -73,7 +73,10 @@ def delete_groups(body: r.DeleteMany, _: Admin, context: Audit, db: Db) -> r.Del
     group nested only in groups of the same request is deleted with them. With
     `dry_run` nothing is changed, and the answer is the same.
     """
-    raise HTTPException(501, "not built yet")
+    done = removal.delete_many(
+        db, context, removal.DEVICE_GROUP, body.hids, body.reason, dry_run=body.dry_run
+    )
+    return shapes.deleted_out(done)
 
 
 @router.get("/{hid}")

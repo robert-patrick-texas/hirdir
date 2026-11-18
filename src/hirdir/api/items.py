@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
@@ -115,7 +115,10 @@ def delete_items(body: r.DeleteMany, _: Admin, context: Audit, db: Db) -> r.Dele
     request depend on, as a switch with its power supplies, is deleted with them. With
     `dry_run` nothing is changed, and the answer is the same.
     """
-    raise HTTPException(501, "not built yet")
+    done = removal.delete_many(
+        db, context, removal.ITEM, body.hids, body.reason, dry_run=body.dry_run
+    )
+    return shapes.deleted_out(done)
 
 
 @router.get("/{hid}")
