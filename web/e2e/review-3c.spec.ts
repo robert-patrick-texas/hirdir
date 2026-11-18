@@ -206,3 +206,69 @@ test("P-209: a site of one location is chosen at once, and a choice made while i
   await page.unrouteAll({ behavior: "wait" });
   await expectClean(page, seen);
 });
+
+test("P-208: the next line like the last, a draft site, the lines in the window and every item it brought", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const { request: purchase } = await setUp(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openRequest(page, purchase);
+
+  // Something arrives on the second line too, at the draft site's one location.
+  await page.getByRole("button", { name: `Receive on ${reference}/2` }).click();
+  const receive = page.getByTestId("receive-line");
+  await expect(receive.getByTestId("chosen-location_hid")).toContainText(label("Annex Room"));
+  await receive.getByLabel("Serial numbers", { exact: true }).fill(`TW${upper}03`);
+  await receive.getByRole("button", { name: "Receive 1 item" }).click();
+  await expect(
+    page.getByTestId("arrived").locator("tr", { hasText: `TW${upper}03` }),
+  ).toBeVisible();
+
+  // Two lines more, the second like the first: to the draft site, on the same day.
+  const modelLabel = `TW-2400-${upper} (Tidewater 2400)`;
+  const draftSite = `${label("Saltmarsh")} > ${label("Ridge Annex")} (draft)`;
+  await page.getByRole("button", { name: "Add a line" }).click();
+  const form = page.getByRole("region", { name: `New line of ${reference}` });
+  await form.getByLabel("Model", { exact: true }).selectOption({ label: modelLabel });
+  await form.getByLabel("Quantity (required)").fill("5");
+  await form.getByLabel("Destination site").selectOption({ label: draftSite });
+  await form.getByLabel("Expected on").fill("2031-04-02");
+  await form.getByRole("button", { name: "Add and add another like it" }).click();
+  await expect(lineRow(page, `${reference}/3`)).toBeVisible();
+  // The form stays, with the site and the day kept and the keyboard on the model.
+  await expect(form.getByLabel("Model", { exact: true })).toBeFocused();
+  await expect(form.getByLabel("Destination site")).toHaveValue(made?.annex ?? "");
+  await expect(form.getByLabel("Expected on")).toHaveValue("2031-04-02");
+  await form.getByLabel("Model", { exact: true }).selectOption({ label: modelLabel });
+  await form.getByLabel("Quantity (required)").fill("6");
+  await form.getByRole("button", { name: "Add line" }).click();
+  const fourth = lineRow(page, `${reference}/4`);
+  await expect(fourth).toContainText(label("Ridge Annex"));
+  await expect(fourth).toContainText("2031-04-02");
+
+  // The table of lines is within the window, its buttons whole.
+  const lines = page.getByTestId("purchase-lines");
+  const fits = await lines.evaluate((table) => {
+    const box = table.parentElement as HTMLElement;
+    const right = box.getBoundingClientRect().right;
+    const buttons = [...table.querySelectorAll("tbody button")];
+    return {
+      over: box.scrollWidth - box.clientWidth,
+      cut: buttons.filter((button) => button.getBoundingClientRect().right > right + 0.5).length,
+      buttons: buttons.length,
+    };
+  });
+  expect(fits.buttons, "the rows have their buttons").toBeGreaterThan(0);
+  expect(fits.over, "the lines scroll sideways by").toBeLessThanOrEqual(0);
+  expect(fits.cut, "buttons cut off at the right").toBe(0);
+
+  // One link opens every item the request brought, of both lines.
+  await page.getByRole("link", { name: "Every item it brought" }).click();
+  await expect(page).toHaveURL(/\/items\?filter=purchase_line_hid/);
+  await expect(page.getByTestId("grid-total")).toHaveText("3 items", { timeout: 20_000 });
+  await expectClean(page, seen);
+});

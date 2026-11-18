@@ -15,7 +15,7 @@ import { effectiveLabel, effectiveText } from "../lib/effective";
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { useEntryOptions, useSiteOptions } from "../lib/lists";
+import { EVERY, useEntryOptions } from "../lib/lists";
 import { optionLabel } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
@@ -45,6 +45,7 @@ import {
 import { allows } from "../lib/roles";
 import type { SortFields } from "../lib/sort";
 import { useServerSort } from "../lib/useServerSort";
+import { broughtPaths, siteOption } from "../lib/within";
 
 const LINES_PAGE = 50;
 // The most items of one line the page lists itself: the grid of items holds them all.
@@ -52,6 +53,20 @@ const ARRIVED_SHOWN = 100;
 
 function Dash() {
   return <span className="muted">—</span>;
+}
+
+/**
+ * The sites a line may be going to, by path: the drafts too, marked, since a line may
+ * name a site still being built (P-208).
+ */
+function useLineSites() {
+  return useLoad("purchase line sites", async (signal) => {
+    const page = await api.request("get", "/api/v1/sites", {
+      query: { limit: EVERY, sort: ["name"], include_drafts: true },
+      signal,
+    });
+    return page.items.map(siteOption).sort((one, other) => one.label.localeCompare(other.label));
+  });
 }
 
 /** The second row of navigation on the pages of purchases. */
@@ -482,7 +497,10 @@ export function PurchaseDetail() {
               <Untracked request={record} />
             </dd>
             <dt>Received</dt>
-            <dd data-testid="request-received">{plural(record.received_quantity, "item")}</dd>
+            <dd>
+              <span data-testid="request-received">{plural(record.received_quantity, "item")}</span>
+              <Brought request={record} />
+            </dd>
             <dt>Still to come</dt>
             <dd data-testid="request-pending">{plural(record.pending_quantity, "item")}</dd>
             <dt>Notes</dt>
@@ -533,6 +551,44 @@ function Untracked({ request }: { request: PurchaseRequest }) {
       · on the lines that are tracked; {plural(untracked, "line is", "lines are")} not tracked, and
       counted in none of this
     </span>
+  );
+}
+
+/**
+ * Every item the request brought, in the item list (P-208): the items that arrived on
+ * its lines, by the lines received on. A request of more such lines than one address
+ * names is given in parts, by its lines.
+ */
+function Brought({ request }: { request: PurchaseRequest }) {
+  const paths = broughtPaths(request.lines);
+  const [only] = paths;
+  if (!only) return null;
+  if (paths.length === 1) {
+    return (
+      <>
+        {" · "}
+        <Link to={only.path} data-testid="request-brought">
+          Every item it brought
+        </Link>
+      </>
+    );
+  }
+  return (
+    <>
+      {" · Every item it brought, "}
+      <span data-testid="request-brought">
+        {paths.map((part, place) => (
+          <span key={part.from}>
+            {place > 0 && ", "}
+            <Link to={part.path}>
+              {part.from === part.to
+                ? `on line ${part.from}`
+                : `on lines ${part.from} to ${part.to}`}
+            </Link>
+          </span>
+        ))}
+      </span>
+    </>
   );
 }
 
@@ -621,7 +677,7 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
       )}
       {rows.length > 0 && (
         <div className="scroll">
-          <table data-testid="purchase-lines">
+          <table data-testid="purchase-lines" className="request-lines wrap-heads">
             <caption className="visually-hidden">
               The lines of {request.reference}, by their numbers until a header is clicked
             </caption>
@@ -632,9 +688,6 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                 </SortTh>
                 <SortTh sort={sort.header("model", holdsAll)} column="model">
                   Model
-                </SortTh>
-                <SortTh sort={sort.header("part", holdsAll)} column="part">
-                  As procurement gave it
                 </SortTh>
                 <SortTh
                   sort={sort.header("quantity", holdsAll)}
@@ -674,7 +727,7 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                   data-received={row.received_quantity}
                 >
                   <th scope="row">{row.name}</th>
-                  <td>
+                  <td className="line-model">
                     {row.catalog_entry_hid === null ? (
                       <span
                         className="badge badge-plain"
@@ -691,6 +744,15 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                     {row.catalog?.model_name && (
                       <span className="muted"> · {row.catalog.model_name}</span>
                     )}
+                    {/* As procurement gave it, beneath the model, only where the line has it (P-208). */}
+                    {(row.part_number || row.description) && (
+                      <div data-testid="line-part-number">
+                        <span className="muted">As procurement gave it: </span>
+                        {row.part_number && <span className="mono">{row.part_number}</span>}
+                        {row.part_number && row.description && " · "}
+                        {row.description && <span className="muted">{row.description}</span>}
+                      </div>
+                    )}
                     {row.notes && <div className="muted">{row.notes}</div>}
                     {row.mismatched_items > 0 && (
                       <div>
@@ -704,10 +766,6 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                         </Link>
                       </div>
                     )}
-                  </td>
-                  <td data-testid="line-part-number">
-                    {row.part_number ? <span className="mono">{row.part_number}</span> : <Dash />}
-                    {row.description && <div className="muted">{row.description}</div>}
                   </td>
                   <td className="number">{row.quantity}</td>
                   <td className="number" data-testid="line-received">
@@ -818,6 +876,11 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
           onAdded={(made) =>
             changed(`${made.name} was added: ${made.quantity} × ${lineWhat(made)}.`)
           }
+          onAddedAnother={(made) => {
+            // The form stays open for the next line; the lines are read again.
+            setOpen(null);
+            onChanged(`${made.name} was added: ${made.quantity} × ${lineWhat(made)}.`);
+          }}
         />
       )}
     </section>
@@ -925,11 +988,13 @@ interface AddLineProps {
   request: PurchaseRequest;
   onCancel: () => void;
   onAdded: (line: PurchaseLine) => void;
+  /** A line was added by Add and add another like it, and the form stays open (P-208). */
+  onAddedAnother: (line: PurchaseLine) => void;
 }
 
-function AddLine({ request, onCancel, onAdded }: AddLineProps) {
+function AddLine({ request, onCancel, onAdded, onAddedAnother }: AddLineProps) {
   const entries = useEntryOptions();
-  const sites = useSiteOptions();
+  const sites = useLineSites();
   const specs = useMemo(
     () => lineSpecs(entries.data, sites.data, null),
     [entries.data, sites.data],
@@ -950,6 +1015,12 @@ function AddLine({ request, onCancel, onAdded }: AddLineProps) {
         onCreated={onAdded}
         onCancel={onCancel}
         submitLabel="Add line"
+        another={{
+          label: "Add and add another like it",
+          keep: ["destination_site_hid", "expected_on"],
+          focus: "catalog_entry_hid",
+          onCreated: onAddedAnother,
+        }}
       >
         <p className="hint">
           A model and how many, or the part number with no model for what this inventory does not
@@ -976,7 +1047,7 @@ function ChangeLine({
   // What the change did, said once it is taken: the form knows only that it was.
   const said = useRef("");
   const entries = useEntryOptions();
-  const sites = useSiteOptions();
+  const sites = useLineSites();
   const specs = useMemo(
     () =>
       lineSpecs(

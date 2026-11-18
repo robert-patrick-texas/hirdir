@@ -1756,8 +1756,12 @@ What 0.9.6 changes:
   its list does not have names the nearest one it has (P-207).
 - **Purchases.** Add a line has a second button, Add and add another like it, which
   keeps the destination site and the expected date; a line's destination site offers
-  the draft sites, marked; the table of a request's lines fits the window, and one
-  link, Every item it brought, opens the items that arrived on its lines (P-208).
+  the draft sites, marked; the table of a request's lines fits the window, with the
+  part number and description as procurement gave them beneath the model where a line
+  has them, and one link, Every item it brought, beside what was received, opens the
+  items that arrived on its lines, by `purchase_line_hid:in:` the lines received on; a
+  request received on in more than 100 lines is given in links of 100 lines each, so
+  that no address is too long to send (P-208).
   Receive opens its form in the window with the keyboard in the box of what arrived,
   and its location is searched within the line's destination site from the start, the
   site's first locations offered before anything is typed and its one location chosen
