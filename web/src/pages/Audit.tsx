@@ -7,6 +7,8 @@ import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { ValueLink } from "../components/ValueLink";
+import { deletedRecords, isDeleted } from "../lib/audit";
 import { formatChanges } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
 import { kindPath } from "../lib/preview";
@@ -115,6 +117,9 @@ export function Audit() {
   );
   const items = events.data?.items ?? [];
   const holdsAll = events.data ? events.data.total === items.length : false;
+  // 0.9.8: a record that an event on show deleted is named as text, by each of its events
+  // (P-240). One deleted in an event not on show is a link, to a page that says so.
+  const gone = deletedRecords(items);
 
   function show(next: { action: string; recordType: string; offset: number }) {
     const wanted = new URLSearchParams();
@@ -215,13 +220,25 @@ export function Audit() {
               <tbody>
                 {sort.arrange(items, holdsAll).map((event) => {
                   const changes = formatChanges(event.changes);
-                  const page = kindPath(event.record_type, event.record_hid, admin);
+                  const deleted = isDeleted(gone, event);
+                  const page = deleted
+                    ? null
+                    : kindPath(event.record_type, event.record_hid, admin);
                   return (
                     <tr key={event.hid}>
                       <td className="nowrap">
                         <Time at={event.at} />
                       </td>
-                      <td>{event.actor_name ?? <span className="muted">—</span>}</td>
+                      <td>
+                        {/* The user who did it: an Admin opens the user's page (P-240). */}
+                        {event.actor_name ? (
+                          <ValueLink kind="user" hid={event.actor_hid} admin={admin}>
+                            {event.actor_name}
+                          </ValueLink>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                       <td>{event.via}</td>
                       <td>{event.action}</td>
                       <td>
@@ -231,6 +248,7 @@ export function Audit() {
                             {page ? <Link to={page}>{event.record_hid}</Link> : event.record_hid}
                           </span>
                         )}
+                        {deleted && <span className="muted"> · deleted</span>}
                       </td>
                       <td>
                         {changes.length > 0 && (

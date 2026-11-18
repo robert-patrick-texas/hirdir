@@ -19,6 +19,7 @@ import {
   sizeText,
   sourceKind,
   titleOf,
+  withFirstKinds,
 } from "./references";
 
 const AT = "2026-11-16T15:04:05Z";
@@ -177,6 +178,21 @@ describe("a file chosen to upload", () => {
     expect(firstKind("item", "labels.HEIC", kinds)).toBe("photograph");
     // A kind the list no longer offers is not chosen.
     expect(firstKind("location", "rack.jpg", ["floor_plan"])).toBe("");
+  });
+
+  // 0.9.8: chosen in the moment before the kinds of file were read.
+  it("is given its first kind when the kinds are read, unless the person chose one", () => {
+    const kinds = ["photograph", "floor_plan", "administration_guide", "other"];
+    const photo = { file: { name: "rack.jpg" }, kind: "", kindChosen: false };
+    const plan = { file: { name: "plan.pdf" }, kind: "", kindChosen: false };
+    const theirs = { file: { name: "front.png" }, kind: "", kindChosen: true };
+    const other = { file: { name: "side.png" }, kind: "floor_plan", kindChosen: true };
+    const given = withFirstKinds([photo, plan, theirs, other], "location", kinds);
+    expect(given.map((one) => one.kind)).toEqual(["photograph", "", "", "floor_plan"]);
+    // Nothing to give: the list itself, so that nothing is drawn again.
+    const none = [plan, theirs, other];
+    expect(withFirstKinds(none, "location", kinds)).toBe(none);
+    expect(withFirstKinds([photo], "location", [])).toEqual([photo]);
   });
 
   it("is refused in the page when the setting does not take its extension", () => {

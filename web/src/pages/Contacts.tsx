@@ -27,6 +27,7 @@ import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useChoices, useTags } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
+import { kindPath } from "../lib/preview";
 import { allows } from "../lib/roles";
 import { useSorting } from "../lib/useSorting";
 
@@ -118,6 +119,20 @@ const COLUMNS: GridColumn<Contact>[] = [
   },
 ];
 
+/**
+ * The columns of the list of contacts for one reader. 0.9.8: an Admin sees the username
+ * of a user as a link to the user's page, which is an Admin's alone; everyone else reads
+ * it as text, as before (P-239).
+ */
+function contactColumns(admin: boolean): GridColumn<Contact>[] {
+  if (!admin) return COLUMNS;
+  return COLUMNS.map((column) =>
+    column.id === "is_user"
+      ? { ...column, linkTo: (contact: Contact) => kindPath("user", contact.user?.hid, true) }
+      : column,
+  );
+}
+
 /** The fields of a contact that a form sets. */
 function contactSpecs(tags: readonly string[], current: Contact | null = null): FieldSpec[] {
   return [
@@ -167,6 +182,8 @@ export function Contacts() {
   const [adding, setAdding] = useState(false);
   const tags = useTags();
   const specs = useMemo(() => contactSpecs((tags.data ?? []).map((tag) => tag.label)), [tags.data]);
+  const admin = allows(user.role, "admin");
+  const columns = useMemo(() => contactColumns(admin), [admin]);
 
   return (
     <>
@@ -201,7 +218,7 @@ export function Contacts() {
         id="contacts"
         noun={["contact", "contacts"]}
         entity="contacts"
-        columns={COLUMNS}
+        columns={columns}
         load={(request, signal) =>
           api.request("get", "/api/v1/contacts", { query: queryParams(request), signal })
         }
