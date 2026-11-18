@@ -49,7 +49,8 @@ export function broughtPaths(
         ? `purchase_line_hid:eq:${first.hid}`
         : `purchase_line_hid:in:${part.map((line) => line.hid).join(",")}`;
     paths.push({
-      path: `/items?filter=${encodeURIComponent(filter)}&minor=1`,
+      // Every item it brought, a retired or draft one among them, as Received counts it.
+      path: `/items?filter=${encodeURIComponent(filter)}&minor=1&archived=1&drafts=1`,
       from: first.line,
       to: last.line,
     });

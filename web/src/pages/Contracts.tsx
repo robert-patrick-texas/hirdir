@@ -373,7 +373,7 @@ export function Contracts() {
         <h2 id="all-contracts">{startFilter === null ? "Every contract" : "Contracts"}</h2>
         {startFilter !== null && (
           <p>
-            <Link to="/contracts">Every contract, by agreement</Link>
+            <Link to="/contracts">Every contract</Link>
           </p>
         )}
         {startFilter === null && <Lapsed />}

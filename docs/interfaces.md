@@ -1821,7 +1821,8 @@ What 0.9.6 changes:
   the draft sites, marked; the table of a request's lines fits the window, with the
   part number and description as procurement gave them beneath the model where a line
   has them, and one link, Every item it brought, beside what was received, opens the
-  items that arrived on its lines, by `purchase_line_hid:in:` the lines received on; a
+  items that arrived on its lines, retired and draft ones among them, by
+  `purchase_line_hid:in:` the lines received on; a
   request received on in more than 100 lines is given in links of 100 lines each, so
   that no address is too long to send (P-208).
   Receive opens its form in the window with the keyboard in the box of what arrived,

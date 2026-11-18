@@ -17,7 +17,7 @@ describe("broughtPaths", () => {
     expect(paths[0]?.from).toBe(1);
     expect(paths[0]?.to).toBe(2);
     expect(filterOf(paths[0]?.path ?? "")).toBe(`purchase_line_hid:in:${hid(1)},${hid(2)}`);
-    expect(paths[0]?.path).toMatch(/&minor=1$/);
+    expect(paths[0]?.path).toMatch(/&minor=1&archived=1&drafts=1$/);
   });
 
   it("names one line by eq, and no line received on by no address", () => {
