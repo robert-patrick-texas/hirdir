@@ -350,16 +350,17 @@ recorded, with `POST /item-replacements/{hid}/remove` (P-238):
 
 `reason` is required, and is refused blank, a `422`. The answer is `204`, as the
 removal of a coverage that was a mistake answers. The audit event of the removal,
-`delete` of the replacement, holds its reason and every field of the replacement as it
-was, and each of the two items has an event `replacement_removed` in its history, whose
-`changes` hold `replaced_by` or `replaces`, the other item, as `old`, and the reason as
-`new` of `reason`. What the replacement handed over stays as it is, the
+`delete` of the replacement, holds every field of the replacement as it was, each as
+`old`, and the Admin's reason as `new` of `removal_reason`; each of the two items has
+an event `replacement_removed` in its history, whose `changes` hold `replaced_by` or
+`replaces`, the other item, as `old`, `replacement`, the HID of the replacement, as
+`old`, and `removal_reason`. Both items' versions move with it. What the replacement handed over stays as it is, the
 memberships of groups and the connections of circuits, each a fact of its own that is
 put right on the page of its group or its circuit; and neither item is changed but in
 its version. The two items are then as any other: each is deleted by `POST
 /items/delete`, or refused, by the rule of P-227, as if the replacement had never been.
-Nothing else removes a replacement. A replacement that was deleted answers `404`, as a
-deleted record does.
+Nothing else removes a replacement. A replacement that is not there, or was removed,
+answers `404`.
 
 ### Making a stack of a switch that stands alone
 

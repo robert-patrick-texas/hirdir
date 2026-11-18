@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
@@ -240,7 +240,7 @@ def remove_replacement(
     The audit event of the removal holds what it was, and each of the two items has an
     event of it. What it handed over, memberships and connections of circuits, stays.
     """
-    raise HTTPException(status_code=501, detail="not built yet")
+    replacements.remove_replacement(db, context, hid, body.reason)
 
 
 @router.get("/{hid}/resolution")

@@ -201,6 +201,9 @@ circuits = _lists("circuits", "circuits")
 circuit_groups = _lists("circuit_groups", "circuit groups")
 geography = typer.Typer(no_args_is_help=True, help="The regions, sites and locations as one tree.")
 report = typer.Typer(no_args_is_help=True, help="Reports.")
+replacements = typer.Typer(
+    no_args_is_help=True, help="Replacements: one that was a mistake is removed by an Admin."
+)
 GROUPS = {
     "items": items,
     "vendors": vendors,
@@ -225,6 +228,7 @@ GROUPS = {
     "circuit-groups": circuit_groups,
     "geography": geography,
     "report": report,
+    "replacements": replacements,
 }
 
 
@@ -1341,6 +1345,41 @@ items.command("retire")(_retire_many("/items", find_item, "items", "ITEM..."))
 items.command("delete")(_delete_many("/items", find_item, "items", "ITEM..."))
 groups.command("retire")(_retire_many("/device-groups", find_group, "device groups", "GROUP..."))
 groups.command("delete")(_delete_many("/device-groups", find_group, "device groups", "GROUP..."))
+
+
+@replacements.command("remove")
+def remove_replacement(
+    hid: Annotated[str, typer.Argument(help="The HID of the replacement.")],
+    reason: Annotated[
+        str | None, typer.Option(help="Why it was a mistake: kept in the audit trail.")
+    ] = None,
+    yes: Yes = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Remove a replacement that was a mistake, for an Admin: says which, and asks.
+
+    What it handed over, memberships and connections of circuits, stays as it is
+    (P-238).
+    """
+    if not (reason or "").strip():
+        raise client.fail("--reason says why the replacement was a mistake", 2)
+    target = client.load_target(url, token)
+    found = client.call(target, "GET", "/reports/replacements", params={"filter": f"hid:eq:{hid}"})[
+        "items"
+    ]
+    if not found:
+        raise client.fail(f"there is no replacement {hid}", client.EXIT_INVALID)
+    one = found[0]
+    said = (
+        f"{_named(one['old_item'])} replaced by {_named(one['new_item'])} "
+        f"on {one['replaced_on']} ({one['reason_label']})"
+    )
+    typer.echo(said)
+    if not yes:
+        typer.confirm("Remove this replacement? The audit trail keeps it as it was.", abort=True)
+    client.call(target, "POST", f"/item-replacements/{hid}/remove", {"reason": reason})
+    typer.echo(f"removed: {said}")
 
 
 @items.command("make-stack")

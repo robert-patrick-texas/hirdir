@@ -443,3 +443,111 @@ def test_the_command_makes_a_stack_of_a_switch(run: Any, make: Maker) -> None:
     assert _item(make, spare)["hostname"] is None
     assert _item(make, switch)["hostname"] is None
     run("items", "make-stack", "cw07-idf04-acc1", expect=5)
+
+
+# --- a replacement that was a mistake, removed by an Admin (P-238) -------------------
+
+
+def _remove(
+    client: TestClient, headers: dict[str, str], hid: str, expect: int = 204, **body: Any
+) -> Any:
+    response = client.post(f"{API}/item-replacements/{hid}/remove", json=body, headers=headers)
+    assert response.status_code == expect, response.text
+    return response.json() if response.content else None
+
+
+def test_an_admin_removes_a_replacement_and_what_it_handed_over_stays(
+    client: TestClient, make: Maker, admin: dict[str, str]
+) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    wrong = switches[1]
+    spare = _spare(make, 41, places["depot"])
+    made = _replace(make, wrong, new_item_hid=spare["hid"], reference="RMA-0000-041")
+    before = (_item(make, wrong), _item(make, spare))
+
+    assert _remove(client, admin, made["hid"], reason="recorded on the wrong switch") is None
+
+    # The audit event of the removal holds the replacement as it was, and the reason.
+    (event,) = make.audit(record_type="item_replacement", action="delete")
+    assert (event["record_hid"], _changed(event)["removal_reason"]) == (
+        made["hid"],
+        (None, "recorded on the wrong switch"),
+    )
+    assert _changed(event)["old_item_hid"] == (wrong["hid"], None)
+    assert _changed(event)["reference"] == ("RMA-0000-041", None)
+    # Each item has an event of it, its version moved, and lists no replacement.
+    for item, field, other in (
+        (before[0], "replaced_by", spare),
+        (before[1], "replaces", wrong),
+    ):
+        now = _item(make, item)
+        assert (now["replacements"], now[field]) == ([], None)
+        assert now["row_version"] == item["row_version"] + 1
+        latest = make.get(f"/items/{item['hid']}/history")["items"][0]
+        assert latest["action"] == "replacement_removed"
+        assert _changed(latest)[field] == (other["hid"], None)
+        assert _changed(latest)["replacement"] == (made["hid"], None)
+    # What it handed over stays: the spare is still the stack's member at position 2.
+    assert [(one["position"], one["item_hid"]) for one in make.members(stack)][1] == (
+        2,
+        spare["hid"],
+    )
+    _remove(client, admin, made["hid"], 404, reason="again")
+
+
+def test_an_item_whose_only_tie_was_the_replacement_is_then_deleted(
+    client: TestClient, make: Maker, admin: dict[str, str]
+) -> None:
+    old = make.item(name="ex-wrong-old")
+    new = make.item(name="ex-wrong-new")
+    made = _replace(make, old, new_item_hid=new["hid"])
+
+    def delete(hids: list[str]) -> dict[str, Any]:
+        body = {"hids": hids, "reason": "a wrong press"}
+        response = client.post(f"{API}/items/delete", json=body, headers=admin)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    refused = delete([old["hid"]])["refused"]
+    assert [tie["hid"] for tie in refused[0]["depends_on"]] == [made["hid"]]
+    _remove(client, admin, made["hid"], reason="a wrong press")
+    assert [one["hid"] for one in delete([old["hid"], new["hid"]])["deleted"]] == [
+        old["hid"],
+        new["hid"],
+    ]
+
+
+def test_removing_a_replacement_is_for_an_admin_with_a_reason(
+    client: TestClient, make: Maker, admin: dict[str, str], inventory: dict[str, str]
+) -> None:
+    old, new = make.item(name="ex-kept-old"), make.item(name="ex-kept-new")
+    made = _replace(make, old, new_item_hid=new["hid"])
+    _remove(client, inventory, made["hid"], 403, reason="no")
+    for blank in ("", "   "):
+        problem = _remove(client, admin, made["hid"], 422, reason=blank)
+        assert set(errors(problem)) == {"reason"}
+    _remove(client, admin, made["hid"], 422)
+    _remove(client, admin, NOBODY, 404, reason="none such")
+    assert len(_item(make, old)["replacements"]) == 1
+    assert make.audit(record_type="item_replacement", action="delete") == []
+
+
+def test_the_command_removes_a_replacement_and_asks_first(
+    run: Any, make: Maker, admin: dict[str, str], monkeypatch: Any
+) -> None:
+    old, new = make.item(name="ex-cli-old"), make.item(name="ex-cli-new")
+    made = _replace(make, old, new_item_hid=new["hid"])
+    hid = made["hid"]
+    refused = run("replacements", "remove", hid, "--reason", "wrong", "--yes", expect=3)
+    assert "admin role" in refused.output
+    monkeypatch.setenv("HIRDIR_TOKEN", admin["Authorization"].removeprefix("Bearer "))
+    assert "--reason" in run("replacements", "remove", hid, expect=2).output
+    declined = run("replacements", "remove", hid, "--reason", "wrong", expect=1)
+    assert "Remove this replacement?" in declined.output
+    assert declined.stdout.startswith("ex-cli-old replaced by ex-cli-new on ")
+    assert len(_item(make, old)["replacements"]) == 1
+    done = run("replacements", "remove", hid, "--reason", "wrong", "--yes")
+    assert done.stdout.splitlines()[-1].startswith("removed: ex-cli-old replaced by ex-cli-new")
+    assert _item(make, old)["replacements"] == []
+    run("replacements", "remove", hid, "--reason", "wrong", "--yes", expect=4)

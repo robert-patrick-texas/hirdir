@@ -263,6 +263,60 @@ def get_replacement(db: Session, hid: str) -> ItemReplacement:
     return replacement
 
 
+def remove_replacement(db: Session, context: AuditContext, hid: str, reason: Any) -> None:
+    """Remove a replacement that was a mistake, for an Admin, with a reason (P-238).
+
+    The audit event of the removal holds the replacement as it was and the reason, and
+    each of the two items has an event of it in its own history. What the replacement
+    handed over, memberships and connections of circuits, stays as it is: each is a
+    fact of its own, put right where it is kept. The two items are then as any other.
+    """
+    dialect.hold_other_writers(db)
+    replacement = get_replacement(db, hid)
+    why = records.clean(reason)
+    if not why:
+        raise Invalid(
+            "a replacement is removed with a reason",
+            {"reason": "say why the replacement was a mistake"},
+        )
+    audit.record(
+        db,
+        context,
+        "delete",
+        RECORD_TYPE,
+        replacement.hid,
+        [
+            *(
+                change(name, records.jsonable(getattr(replacement, name)), None)
+                for name in FIELDS
+                if getattr(replacement, name) is not None
+            ),
+            change("removal_reason", None, why),
+        ],
+    )
+    pair = (
+        (replacement.old_item_hid, "replaced_by", replacement.new_item_hid),
+        (replacement.new_item_hid, "replaces", replacement.old_item_hid),
+    )
+    for item_hid, field, other in pair:
+        # Each item says so in its own history, and a copy read before is stale.
+        records.touch(db.get_one(Item, item_hid), context, None)
+        audit.record(
+            db,
+            context,
+            "replacement_removed",
+            items.RECORD_TYPE,
+            item_hid,
+            [
+                change(field, other, None),
+                change("replacement", replacement.hid, None),
+                change("removal_reason", None, why),
+            ],
+        )
+    db.delete(replacement)
+    db.flush()
+
+
 def update_replacement(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> ItemReplacement:
