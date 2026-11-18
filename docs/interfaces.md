@@ -2235,7 +2235,8 @@ One grid component is used on every list page.
   A press on a link in a row follows the link and changes no tick; Ctrl or the middle
   button on a link opens it in a new tab, as a browser does.
 - Rows are ticked (P-233). Every list whose rows are selected has a column of boxes at
-  its left, one to a row: ticking one adds its row to those selected, and clearing it
+  its left, one to a row, as narrow as a box, 24 px, so that the columns the owner asked
+  to see at 1280 px stay in view: ticking one adds its row to those selected, and clearing it
   takes the row out, whatever else is ticked. The box in the heading ticks the rows the
   grid has read from the server so far, a hundred at a time as the list is scrolled,
   and clears every row ticked when every one of those is ticked; its name says which,

@@ -489,9 +489,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         suppressHeaderMenuButton: true,
         sortable: false,
         resizable: false,
-        width: 44,
-        minWidth: 44,
-        maxWidth: 44,
+        // As narrow as its box: 16 px and 4 px either side (styles.css), so that a list's
+        // columns stay in view at 1280 px as they were before the boxes (0.9.5, P-193).
+        width: 24,
+        minWidth: 24,
+        maxWidth: 24,
       },
       rowClassRules: {
         "row-dim": (params) => params.data !== undefined && isDimmed(params.data),
