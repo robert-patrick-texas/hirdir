@@ -410,7 +410,7 @@ export function itemColumns(
       column: "operator",
       value: (item) => effectiveLabel(item.effective.operator_hid),
       effective: (item) => item.effective.operator_hid,
-      hint: (item) => operatorHint(item.effective.operator_hid, item.host),
+      hint: (item) => operatorHint(item.effective.operator_hid),
       chip: (item) => {
         const mark = markOf(item.effective.operator_hid);
         return (
@@ -455,7 +455,7 @@ export function itemColumns(
           page("location", item.effective.location_hid.value),
         ),
       effective: (item) => item.effective.location_hid,
-      hint: (item) => locationHint(item.effective.location_hid, item.host),
+      hint: (item) => locationHint(item.effective.location_hid),
       // Shown from the start, with the site: a list of items says where each is (P-193).
       width: 170,
     },
@@ -478,7 +478,7 @@ export function itemColumns(
           page("location", item.effective.planned_location_hid.value),
         ),
       effective: (item) => item.effective.planned_location_hid,
-      hint: (item) => locationHint(item.effective.planned_location_hid, item.host),
+      hint: (item) => locationHint(item.effective.planned_location_hid),
       hide: true,
       width: 200,
     },

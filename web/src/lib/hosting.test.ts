@@ -9,7 +9,6 @@ import {
   hostHint,
   hostIsGone,
   hostPath,
-  hostSourcePath,
   hostSpecs,
   hostValue,
   hostWhat,
@@ -64,6 +63,8 @@ describe("the kinds", () => {
     expect(mayHost("virtual_machine")).toBe(true);
     expect(mayHost(null)).toBe(true);
     expect(mayHost("container")).toBe(false);
+    expect(mayHost("virtual_context")).toBe(false);
+    expect(mayHost("software")).toBe(false);
   });
 });
 
@@ -89,24 +90,34 @@ describe("a host as a link", () => {
     );
   });
 
-  it("names the record a value came from through the host, a group's page for a cluster", () => {
-    expect(hostSourcePath("cl-1", cluster)).toBe("/groups/cl-1");
-    expect(hostSourcePath("srv-1", server)).toBe("/items/srv-1");
-    // An item above the host is an item.
-    expect(hostSourcePath("chassis-1", server)).toBe("/items/chassis-1");
+  it("says a value from an item it runs on is from the host, a link to the item", () => {
+    expect(
+      operatorSource({ source: "host", source_hid: "srv-1", source_label: "site2-esx-01" }),
+    ).toEqual({ text: "the host site2-esx-01", path: "/items/srv-1" });
+    // An item above the host, as a chassis of a blade, is an item too.
+    expect(
+      operatorSource({ source: "host", source_hid: "chassis-1", source_label: "site2-ch-01" }),
+    ).toEqual({ text: "the host site2-ch-01", path: "/items/chassis-1" });
+    const known = knownAbove({ parent: null, groups: [], host: server });
+    expect(ownerSource({ value: "own-1", source: "host", source_hid: "srv-1" }, known)).toEqual({
+      text: "the host site2-esx-01",
+      path: "/items/srv-1",
+    });
   });
 
-  it("says an operator and an owner come from the host by its name", () => {
-    const from = operatorSource(
-      { source: "host", source_hid: "cl-1", source_label: "site2-esx-cluster" },
-      cluster,
-    );
-    expect(from).toEqual({ text: "the host site2-esx-cluster", path: "/groups/cl-1" });
+  it("says a value from a cluster it runs on is from the group, a link to the group", () => {
+    // A container in a virtual machine on a cluster: the cluster holds it, a group.
+    expect(
+      operatorSource({
+        source: "device_group",
+        source_hid: "cl-1",
+        source_label: "site2-esx-cluster",
+      }),
+    ).toEqual({ text: "the group site2-esx-cluster", path: "/groups/cl-1" });
     const known = knownAbove({ parent: null, groups: [], host: cluster });
-    expect(ownerSource({ value: "own-1", source: "host", source_hid: "cl-1" }, known)).toEqual({
-      text: "the host site2-esx-cluster",
-      path: "/groups/cl-1",
-    });
+    expect(
+      ownerSource({ value: "own-1", source: "device_group", source_hid: "cl-1" }, known),
+    ).toEqual({ text: "the group site2-esx-cluster", path: "/groups/cl-1" });
   });
 });
 
@@ -232,7 +243,7 @@ describe("what is to be looked at", () => {
           about: { hid: "sys", record_type: "external_system", label: "Example vCenter" },
         },
       ]),
-    ).toBe("Names no host; Reported no more: Example vCenter");
+    ).toBe("Names no host; Not reported: Example vCenter");
   });
 });
 

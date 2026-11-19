@@ -4,7 +4,6 @@ import {
   handedOverText,
   handOverLabel,
   hostsNothingHint,
-  mayHostKind,
   notReportedText,
   TO_REVIEW,
   toReviewPath,
@@ -18,11 +17,6 @@ describe("the box of Replace for what runs on the item that leaves (P-247)", () 
   });
 
   it("is ticked for an item that may host, and unticked for one of a kind that hosts nothing", () => {
-    expect(mayHostKind("hardware")).toBe(true);
-    expect(mayHostKind("virtual_machine")).toBe(true);
-    expect(mayHostKind(null)).toBe(true);
-    expect(mayHostKind("software")).toBe(false);
-    expect(mayHostKind("virtual_context")).toBe(false);
     expect(hostsNothingHint("site2-lic-01", "software")).toMatch(
       /^Unticked: site2-lic-01 is of the kind software, which hosts nothing\./,
     );

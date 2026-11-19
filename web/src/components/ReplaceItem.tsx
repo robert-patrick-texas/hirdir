@@ -14,13 +14,8 @@ import { itemName, today } from "../lib/format";
 import type { PendingMember } from "../lib/groups";
 import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad } from "../lib/hooks";
-import {
-  fewNames,
-  handedOverText,
-  handOverLabel,
-  hostsNothingHint,
-  mayHostKind,
-} from "../lib/hostFollows";
+import { fewNames, handedOverText, handOverLabel, hostsNothingHint } from "../lib/hostFollows";
+import { mayHost } from "../lib/hosting";
 import { useChoices, useRules } from "../lib/lists";
 import { choiceLabel, choiceOptions } from "../lib/options";
 import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
@@ -150,7 +145,7 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
     setChange(null);
     if (runsOnIt > 0 && next) {
       const kind = next.catalog?.kind ?? null;
-      const hosts = mayHostKind(kind);
+      const hosts = mayHost(kind);
       setHandOver(hosts);
       setHandHint(hosts || kind === null ? "" : hostsNothingHint(itemName(next), kind));
     }
