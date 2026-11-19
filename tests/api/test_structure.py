@@ -36,6 +36,8 @@ def test_a_minor_item_has_the_owner_and_the_standing_of_the_item_it_is_in(make: 
         "label": "Network Engineering",
         "source": "parent_item",
         "source_hid": switch["hid"],
+        # What it came from is named, as for the location (0.9.8 review).
+        "source_label": "site2-sw-access-01",
     }
     for name, value in (
         ("lifecycle_state", "Prod"),
