@@ -159,6 +159,68 @@ test("an answer of another shape on coming back leaves words and a way on, on ev
   expect(faulted.length).toBeGreaterThan(0);
 });
 
+// 0.9.9 (P-264): what an operator's browser showed in 0.9.8, "Cannot read properties of
+// undefined (reading 'filter')", on coming back to the tab of a list whose columns hold
+// the lists of choices. Every answer here is the server's own.
+const LISTS_OF_CHOICES = ["items", "circuits", "catalog", "systems", "capacity"];
+const isChoices = (url: string) => new URL(url).pathname.endsWith("/api/v1/choices");
+const table = (page: Page) => page.locator("main .ag-root-wrapper");
+
+test("coming back to a list leaves it as it was, where the lists of choices are the same", async ({
+  page,
+  account,
+}) => {
+  await signIn(page, account);
+  for (const path of LISTS_OF_CHOICES) {
+    await page.goto(`./${path}`);
+    await expect(table(page).first(), path).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await table(page)
+      .first()
+      .evaluate((element) => element.setAttribute("data-kept", "yes"));
+    const read = page.waitForResponse((response) => isChoices(response.url()));
+    await back(page);
+    await read;
+    await page.waitForTimeout(300);
+    await expect(fault(page), path).toHaveCount(0);
+    // The table is the one that was there: it is not made again for lists that are the same.
+    await expect(page.locator("main .ag-root-wrapper[data-kept]"), path).toHaveCount(1);
+  }
+});
+
+test("lists of choices that changed meanwhile give a list its columns again, and no fault", async ({
+  page,
+  account,
+}) => {
+  await signIn(page, account);
+  for (const path of LISTS_OF_CHOICES) {
+    await page.unroute("**/api/v1/choices");
+    await page.goto(`./${path}`);
+    await expect(table(page).first(), path).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await table(page)
+      .first()
+      .evaluate((element) => element.setAttribute("data-kept", "yes"));
+    // The lists as the server has them, the first value under other words: as if it was
+    // edited in another tab.
+    await page.route("**/api/v1/choices", async (route: Route) => {
+      const answer = await route.fetch();
+      const [first, ...rest] = (await answer.json()) as Array<Record<string, unknown>>;
+      const edited = { ...first, label: `${String(first?.label)} (edited)` };
+      await route.fulfill({ response: answer, json: [edited, ...rest] });
+    });
+    const read = page.waitForResponse((response) => isChoices(response.url()));
+    await back(page);
+    await read;
+    await page.waitForTimeout(300);
+    await expect(fault(page), path).toHaveCount(0);
+    // The table is made again with the columns of the lists as they are now.
+    await expect(table(page).first(), path).toBeVisible();
+    await expect(page.locator("main .ag-root-wrapper[data-kept]"), path).toHaveCount(0);
+  }
+  await page.unroute("**/api/v1/choices");
+});
+
 test("a page that cannot be drawn says so; another page clears it; Load again loads it again", async ({
   page,
   account,

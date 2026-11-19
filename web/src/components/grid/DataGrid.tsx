@@ -420,6 +420,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
    * no row is marked, and the place kept is let go.
    */
   const viewChanged = useEffectEvent((api: GridApi<T>): boolean => {
+    if (api.isDestroyed()) return false;
     const now = viewNow(api);
     if (shownView.current === now) return false;
     shownView.current = now;
@@ -650,7 +651,10 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     [readable, shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn, within],
   );
   useEffect(() => {
-    if (!grid) return;
+    // A grid being made again for other columns is destroyed before this runs, in the
+    // same pass, with the new one not yet in hand: it is asked nothing, and this runs
+    // again for the new one (P-264).
+    if (!grid || grid.isDestroyed()) return;
     const controller = new AbortController();
     // The reads under way, each with what tells the grid it ended. The grid reads two
     // blocks at a time at most, and waits for one to end before it reads another: a read

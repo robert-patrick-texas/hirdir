@@ -39,6 +39,28 @@ interface LoadState<T> {
   loading: boolean;
 }
 
+/** Whether two answers of the server hold the same values, whatever objects hold them. */
+export function sameAnswer(one: unknown, other: unknown): boolean {
+  if (Object.is(one, other)) return true;
+  if (typeof one !== "object" || typeof other !== "object" || one === null || other === null) {
+    return false;
+  }
+  if (Array.isArray(one) || Array.isArray(other)) {
+    if (!Array.isArray(one) || !Array.isArray(other) || one.length !== other.length) return false;
+    return one.every((value, index) => sameAnswer(value, other[index]));
+  }
+  const left = one as Record<string, unknown>;
+  const right = other as Record<string, unknown>;
+  const names = Object.keys(left);
+  if (names.length !== Object.keys(right).length) return false;
+  return names.every((name) => Object.hasOwn(right, name) && sameAnswer(left[name], right[name]));
+}
+
+/** Whether what is on show is whole and is what was read again. */
+function keptAsIs<T>(was: LoadState<T>, key: string, data: T): boolean {
+  return was.key === key && !was.loading && was.error === null && sameAnswer(was.data, data);
+}
+
 /**
  * Read something from the server, and again whenever `key` changes or `reload` is called.
  * What was read stays on show while the same key is being read again.
@@ -74,7 +96,12 @@ export function useLoad<T>(key: string, load: (signal: AbortSignal) => Promise<T
     }
     run(controller.signal).then(
       (data) => {
-        if (!controller.signal.aborted) setState({ key, data, error: null, loading: false });
+        if (controller.signal.aborted) return;
+        // Read again in the background and the same: what the page has is kept as it is,
+        // so nothing that is made from it is made again (P-264).
+        setState((was) =>
+          quiet && keptAsIs(was, key, data) ? was : { key, data, error: null, loading: false },
+        );
       },
       (error: unknown) => {
         if (controller.signal.aborted || quiet) return;
