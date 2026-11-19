@@ -328,6 +328,18 @@ def _check_host_item(db: Session, hid: str, item: Item | None) -> None:
         )
 
 
+def why_no_host(db: Session, host: Item, running: Sequence[Item]) -> str | None:
+    """Say why an item may not be the host of items that run on another now, or None
+    where it may: the one question a replacement asks, of each item it would hand over,
+    by the rules that naming a host is checked by (P-247)."""
+    for one in running:
+        try:
+            _check_host_item(db, host.hid, one)
+        except Invalid as refused:
+            return next(iter(refused.fields.values()), str(refused))
+    return None
+
+
 def _check_host_group(db: Session, hid: str, item: Item | None) -> None:
     """Refuse a group as a host that may not be one: a stack or a cluster, not retired."""
     field = "host_group_hid"

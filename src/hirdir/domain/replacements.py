@@ -14,16 +14,14 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
-from hirdir.db.models import CatalogEntry, Item, ItemReplacement
-from hirdir.domain import audit, choices, circuit_records, groups, items, records
+from hirdir.db.models import Item, ItemReplacement
+from hirdir.domain import audit, choices, circuit_records, groups, hosting, items, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
 
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
 MAX_REFERENCE = 200
-# The kinds of model an item that hosts others may be of; one of no model may too (P-246).
-HOST_KINDS = ("hardware", "virtual_machine")
 
 
 def latest_first() -> list[Any]:
@@ -144,37 +142,6 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
             )
 
 
-def why_not_a_host(db: Session, item: Item, running: list[Item]) -> str | None:
-    """Say why an item may not be the host of what runs on another, or None where it may.
-
-    A host is an item of the kind `hardware` or `virtual_machine`, or of no model, that is
-    not retired and has not left the team's hands, and is not one of what is to run on
-    it (P-246). The rules of naming a host are kept with the host fields; this is the one
-    question a replacement asks of them, kept here until the two are joined.
-    """
-    name = items.shown_name(item)
-    if item.record_status == "retired":
-        return f"{name} is retired"
-    state = next(
-        (
-            one.lifecycle_state
-            for one in (item, *items.lines_above(db, [item])[item.hid])
-            if one.lifecycle_state
-        ),
-        None,
-    )
-    if state in items.OUT_OF_HANDS:
-        return f"{name} is {state}, and hosts nothing"
-    entry = db.get(CatalogEntry, item.catalog_entry_hid) if item.catalog_entry_hid else None
-    if entry is not None and entry.kind not in HOST_KINDS:
-        return f"{name} is of the kind {entry.kind}; a host is hardware or a virtual machine"
-    if item.hid in {one.hid for one in running} or item.host_item_hid in {
-        one.hid for one in running
-    }:
-        return f"{name} runs on the item it would replace, and would run on itself"
-    return None
-
-
 def _hand_over_hosted(
     db: Session, context: AuditContext, old: Item, new: Item, replacement_hid: str
 ) -> None:
@@ -190,7 +157,7 @@ def _hand_over_hosted(
     )
     if not running:
         return
-    why = why_not_a_host(db, new, running)
+    why = hosting.why_no_host(db, new, running)
     if why is not None:
         count = len(running)
         what = "1 item runs" if count == 1 else f"{count} items run"

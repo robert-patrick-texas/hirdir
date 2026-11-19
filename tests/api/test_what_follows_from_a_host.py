@@ -467,3 +467,18 @@ def test_a_replacement_that_may_not_host_what_is_handed_over_is_refused_whole(
     _replace(make, made["esx"], new_item_hid=licence["hid"], hand_over_hosted=False)
     # And where nothing runs on the item that leaves, the box asks nothing.
     _replace(make, made["web"], new_item_hid=licence["hid"])
+
+
+def test_what_is_handed_over_is_held_to_the_line_of_hosts(make: Maker, db: Session) -> None:
+    """The item that comes is asked what naming a host asks: a machine with a container
+    in it is not handed to a virtual machine that runs on a server, three hosts deep."""
+    made = _virtual(make)
+    _hosted(db, made)
+    # `web` runs on `other`: as the host of `app`, the container would be three hosts up.
+    _host(db, made["web"], made["other"])
+
+    refused = _replace(make, made["esx"], 422, new_item_hid=made["web"]["hid"])
+
+    assert "hand_over_hosted" in {entry["field"] for entry in refused["errors"]}
+    assert "a line of hosts is at most 3 long" in refused["detail"]
+    assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
