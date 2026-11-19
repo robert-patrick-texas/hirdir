@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.7, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.8, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -45,6 +45,12 @@ installed; every value of a list that names a record opens it; rows are ticked, 
 rows ticked are retired at once; a past import lists the records it made, to be retired,
 or deleted by an Admin where they were a mistake; a place is named by its codes; and the
 coordinates of a place open a map.
+0.9.8 is a stack worked from its rows and the things that run on another: a member of
+a stack is replaced in one press, a switch that stands alone is made a stack from its
+page, and a spare goes round its pool as often as it is needed; a virtual machine, a
+virtual context and a container are items that name their host, an item or a stack or a
+cluster, and are where their host is; and what a tool reports is found by the tool's own
+identifier, and marked when the tool reports it no more.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are

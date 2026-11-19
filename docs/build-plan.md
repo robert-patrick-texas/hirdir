@@ -113,13 +113,20 @@ older than the server says that a new version is installed; every value of a lis
 names a record is a link; rows are ticked; the records an import made are listed, to be
 retired by the rows ticked (P-228) or deleted by an Admin where they were a mistake
 (P-227); a place is matched by its code in a file; and the coordinates of a place open
-a map (P-229). 0.9.8 is to follow it with a stack's member replaced, and a stack made of
-a switch that stands alone, in one press each (O-02), and with the things that run on
-another, a virtual device context, a virtual machine and a container, as items with a
-host (P-226); and with what the owner answered when 0.9.7 was built: a code of a region
-refused for a site and the reverse (P-237), a replacement that was a mistake removed by
-an Admin (P-238), the username of a contact a link for an Admin (P-239), and the tables
-not yet looked at one by one for values that should be links (P-240).
+a map (P-229). 0.9.8 follows it with a stack's member replaced, and a stack made of
+a switch that stands alone, in one press each, an item being replaced and taking a place
+more than once (P-241 to P-245, O-02); with the things that run on another, a virtual
+context, a virtual machine and a container, as items with a host, what follows from a
+host, and what a tool reports found by the tool's own identifier (P-226, P-246 to
+P-250); with what the owner decided while it was reviewed: the serial number of a
+virtual context names its host (P-251), what runs on a stack runs on the stack and not
+on a member of it (P-252), like columns in one sequence on every list (P-253) and a
+field that must be filled marked at a glance (P-260); and with what the owner answered
+when 0.9.7 was built: a code of a region refused for a site and the reverse (P-237), a
+replacement that was a mistake removed by an Admin (P-238), the username of a contact a
+link for an Admin (P-239), and the tables not yet looked at one by one for values that
+should be links (P-240). Its two migrations, `0013` and `0014`, change no record that
+is held.
 
 ## From 0.6.1 to 0.9.0
 
