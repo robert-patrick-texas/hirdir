@@ -320,8 +320,9 @@ _THROUGH: dict[tuple[str, bool], Any] = {}
 
 def _through_hosts(field: str, live: Any = None) -> Any:
     """Return, as a table, each item that runs on a host with what it has from it in a
-    field: `value`, `holder_hid`, the record that holds it, and `source`, `host` where
-    that is an item of the line of hosts, and `device_group` where it is a group: one of
+    field: `value`, and for the operator `holder_hid`, the record that holds it, and
+    `source`, `host` where that is an item of the line of hosts, and `device_group`
+    where it is a group: one of
     those items is a member of, the stack or the cluster it runs on, or one that is
     nested in, as `hirdir.domain.descent.of_items` says."""
     cached = (field, live is not None)
@@ -352,14 +353,14 @@ def _through_hosts(field: str, live: Any = None) -> Any:
     def chosen(at: int) -> ColumnElement[Any]:
         return case(*((step[0].is_not(None), step[at]) for step in steps), else_=None)
 
-    rows = _hosts_joined(
-        select(
-            _HOSTED.hid.label("item_hid"),
-            value.label("value"),
-            chosen(1).label("holder_hid"),
-            chosen(2).label("source"),
-        ).select_from(_HOSTED)
-    ).where(or_(_HOSTED.host_item_hid.is_not(None), _HOSTED.host_group_hid.is_not(None)))
+    columns = [_HOSTED.hid.label("item_hid"), value.label("value")]
+    if live is not None:
+        # Where it is had from is asked of the operator alone (P-177): the other fields
+        # are spared working each step out twice more for every item that runs on a host.
+        columns += [chosen(1).label("holder_hid"), chosen(2).label("source")]
+    rows = _hosts_joined(select(*columns).select_from(_HOSTED)).where(
+        or_(_HOSTED.host_item_hid.is_not(None), _HOSTED.host_group_hid.is_not(None))
+    )
     through = dialect.materialized(rows, f"through_hosts_{field}")
     _THROUGH[cached] = through
     return through
