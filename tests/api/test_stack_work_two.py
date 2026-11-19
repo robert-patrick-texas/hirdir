@@ -152,8 +152,12 @@ def test_what_a_replacement_carries_is_refused_and_nothing_is_done(make: Maker) 
         ({"old_item": {"condition": "shiny"}}, "old_item.condition"),
         ({"old_item": {"state_reason": "rma"}}, "old_item.state_reason"),
         ({"old_item": {"location_hid": retired["hid"]}}, "old_item.location_hid"),
-        # And on a day to come.
+        # And on a day to come, for either item: what a replacement changes of either is
+        # done with the request, and a spare dated ahead is not stripped today.
         ({"old_item": {"hostname": "x"}, "replaced_on": LATER}, "replaced_on"),
+        ({"drop_identity": True, "replaced_on": LATER}, "replaced_on"),
+        ({"disposition": "Production", "replaced_on": LATER}, "replaced_on"),
+        ({"expected_online": True, "replaced_on": LATER}, "replaced_on"),
     ]
     for given, field in refusals:
         problem = _replace(make, failed, 422, new_item_hid=spare["hid"], **given)
@@ -161,6 +165,25 @@ def test_what_a_replacement_carries_is_refused_and_nothing_is_done(make: Maker) 
     # The name and place of a stack, where the item that leaves is in none.
     problem = _replace(make, loose, 422, new_item_hid=spare["hid"], drop_identity=True)
     assert set(errors(problem)) == {"drop_identity"}
+    # A spare with an address gives it up, and the old item is then refused a disposition
+    # its state does not allow: the address the spare gave up is there again.
+    address = make.address(spare, "192.0.2.22", is_primary=True)
+    spare = _item(make, spare)
+    problem = _replace(
+        make,
+        failed,
+        422,
+        new_item_hid=spare["hid"],
+        drop_identity=True,
+        disposition="Production",
+        expected_online=True,
+        old_item={"disposition": "Excess"},
+    )
+    assert set(errors(problem)) == {"old_item.disposition"}
+    kept = _item(make, spare)
+    assert [one["hid"] for one in kept["addresses"]] == [address["hid"]]
+    assert (kept["location_hid"], kept["disposition"]) == (places["depot"]["hid"], "Spare")
+    assert make.audit(record_type="address", action="delete") == []
 
     # Nothing was done: no replacement, no membership ended, neither item changed.
     assert make.audit(record_type="item_replacement") == []
@@ -301,6 +324,8 @@ def test_a_switch_that_stands_alone_is_made_a_stack_in_one_request(make: Maker) 
         "cw07-idf04-acc1",
         "cw07-idf04-acc1.example.net",
     )
+    # An active item makes an active stack.
+    assert stack["record_status"] == "active"
     for field in ("location_hid", "planned_location_hid", "owner_hid", "operator_hid"):
         assert stack[field] == before[field], field
     # Each address moved as it is: its HID, network, role and primary mark.
@@ -342,6 +367,15 @@ def test_a_switch_that_stands_alone_is_made_a_stack_in_one_request(make: Maker) 
     assert _changed(address_event)["item_hid"] == (switch["hid"], None)
     assert _changed(address_event)["group_hid"] == (None, stack["hid"])
     assert make.audit(record_hid=primary["hid"])[0]["hid"] == address_event["hid"]
+
+
+def test_a_stack_made_of_a_draft_is_a_draft(make: Maker) -> None:
+    places = _places(make)
+    draft = _spare(make, 37, places["depot"], record_status="draft")
+    stack = _make_stack(make, draft)
+    assert (stack["name"], stack["record_status"]) == ("spare-sw-037", "draft")
+    assert [one["item_hid"] for one in make.members(stack)] == [draft["hid"]]
+    assert _item(make, draft)["record_status"] == "draft"
 
 
 def test_a_stack_made_with_a_name_and_a_second_switch(make: Maker) -> None:

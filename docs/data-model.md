@@ -474,7 +474,9 @@ the same other twice on one day, which is the uniqueness of the table: the two i
 with the day. An item's record lists its `replacements`, each with the other item,
 whether this one `left` or `came`, the reason, the reference and the day, the latest
 first, by the day and then by when it was entered; `replaces` and `replaced_by` are
-the latest of each, or null, and are what a list, a filter and an export show.
+the latest of each, or null, on the record of an item and in `hirdir items show`; the
+item list has no field of them and an export of items no column, since the
+replacements travel as their own file.
 
 **A replacement moves neither item by a rule, and changes of each what its request
 names** (P-242). With `drop_identity`, where the item that leaves is a current member
@@ -485,8 +487,9 @@ that leaves is (P-218): a host name and an FQDN, a location, a lifecycle state w
 reason, a disposition, an intent and a condition (P-245). Each is checked by that
 item's own rules once the places are handed over, and audited as its change, which
 names the replacement it came from in `replacing`; where one is refused the
-replacement is not made. What becomes of the old item is done with the request, so it
-is given with a day that has come.
+replacement is not made. What a replacement changes of either item, what becomes of
+the old one and what the new one gives up and is given, is done with the request, so
+it is given with a day that has come.
 
 **A replacement that was a mistake is removed by an Admin** (P-238), with a reason:
 `POST /item-replacements/{hid}/remove`. The audit event, `delete`, holds the
@@ -575,7 +578,9 @@ Rules, checked on every write:
   each up in the same change, and has those four from the stack from then on, resolved
   when read as for any member: nothing is held twice. Everything else of the item
   stays its own: its serial number, model and asset tag, its state, its tags, its
-  coverage, its registrations and the circuits connected to it. The request may name
+  coverage, its registrations and the circuits connected to it. The stack has the
+  item's record status: a draft is made a draft stack, an active item an active one.
+  The request may name
   more members, each added as any member of a stack is (P-217). Each part is audited,
   and each change of the item and each address moved says the stack it was made for,
   in `joining_group`. It is refused for a minor item, for an item that is retired or

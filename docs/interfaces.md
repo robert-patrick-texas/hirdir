@@ -301,7 +301,9 @@ with its `row_version`, and records that another took its place (P-241, P-242):
   that leaves moves with the replacement, so the same request sent twice is refused the
   second time as stale, a `409`, and makes one replacement.
 - The new item takes over the old one's current memberships of groups, with the same
-  role and position, and its connections of circuits, on the same sides (P-147).
+  role and position, and its connections of circuits, on the same sides (P-147). A
+  refusal of its joining, where it is a minor item or a current member of another stack
+  or cluster or of the same group already, names `new_item_hid`.
 - `drop_identity`, true, is for the replacement of a current member of a stack: in the
   same change the item that comes gives up its own `hostname` and `fqdn`, its
   addresses, each removed as `DELETE /addresses/{hid}` removes it, and its own
@@ -311,7 +313,10 @@ with its `row_version`, and records that another took its place (P-241, P-242):
 - `disposition` and `expected_online`, given, are the new item's from that change,
   checked by the rule of its lifecycle state as `PATCH /items/{hid}` checks them; left
   out or `null`, each stays as it is. The new item created by the same request may be
-  given the three as well.
+  given the three as well. Each of the three is done with the request, so it is given
+  with a `replaced_on` that has come, today or before: with a day to come it is
+  refused, a `422` on `replaced_on`, since a spare dated ahead would otherwise lose its
+  name and place today, months before it joins.
 - `old_item` is what the item that left is to have from the replacement, as `item` of
   the end of a membership is (P-218): any of `hostname`, `fqdn`, `location_hid`,
   `lifecycle_state`, `state_reason`, `disposition`, `expected_online` and `condition`,
@@ -337,9 +342,11 @@ replacement the item is part of, the latest first, by `replaced_on` and then by 
 was entered. Each holds its `hid`, `part`, which is `left` where this item left and
 `item` took its place, and `came` where this item took the place of `item`; `item`, the
 other item as another record names it; `reason`, `reference`, `replaced_on` and
-`row_version`. `replaces` and `replaced_by` are the latest of each part, or `null`, and
-are what the list, its filter and an export read, so that an item replaced twice is one
-row of the list and of a report.
+`row_version`. `replaces` and `replaced_by` are the latest of each part, or `null`, on
+the record of an item and in `hirdir items show`, beside the whole list. The item list
+has no field of them to filter by, and an export of items no column: the replacements
+travel as the file of `item_replacements`, a row each, and the report of replacements
+lists them a row each, so that an item replaced twice is one row of the list of items.
 
 An Admin removes a replacement that was a mistake, that a wrong file or a wrong press
 recorded, with `POST /item-replacements/{hid}/remove` (P-238):
@@ -383,7 +390,8 @@ is in none, and puts the item into it as its first member, at position 1 (P-243)
   The item gives each of them up in the same change, and has the four from the stack
   from then on, read when it is read, as any member has them: nothing is held twice.
   Its serial number, model, asset tag, state, tags, coverage, registrations and
-  circuits stay its own. The stack is active, and has no parent group.
+  circuits stay its own. The stack has the item's `record_status`: the stack made of a
+  draft is a draft, and of an active item active. It has no parent group.
 - `members` are more members, each as `POST /device-groups/{hid}/members` takes one,
   `drop_identity`, `disposition` and `expected_online` among them (P-217), added after
   the first by the rules of that route: a member given no position takes the lowest

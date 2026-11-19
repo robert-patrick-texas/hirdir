@@ -622,8 +622,10 @@ def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> 
 
 
 # What a stack made of a switch that stands alone takes from it, and the switch gives up
-# in the same change (P-243): the four it has from the stack from then on, beside its
-# name, which a stack holds for its members, and its addresses.
+# in the same change (P-243): its host name and FQDN, which a stack holds for its
+# members, and the four it has from the stack from then on; its addresses go with them.
+# The stack is given a name, the item's own unless the request gives another, and the
+# item keeps its own name, as a member that joins a stack keeps it (P-217).
 STACK_HOLDS = (
     "hostname",
     "fqdn",
@@ -684,10 +686,16 @@ def make_stack(
         raise Invalid(
             "the stack has no name", {"name": "give the stack a name: the item has none of its own"}
         )
+    # The stack is as far along as the item: a draft of a draft, active of an active one.
     group = create_group(
         db,
         context,
-        {"type": "stack", "name": called, **{field: getattr(item, field) for field in STACK_HOLDS}},
+        {
+            "type": "stack",
+            "name": called,
+            "record_status": item.record_status,
+            **{field: getattr(item, field) for field in STACK_HOLDS},
+        },
     )
     joining = audit.because(context, "joining_group", None, group.hid)
     add_members(db, joining, group.hid, [{"item_hid": item.hid, "position": 1}])
@@ -842,7 +850,7 @@ def _joining(
 
 
 @contextmanager
-def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[None]:
+def named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[None]:
     """Name each field of a refusal as the member it is about: `members.0.disposition`.
 
     `renamed` gives the name the request has for a field the rule names otherwise.
@@ -850,7 +858,7 @@ def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator
     try:
         yield
     except (Invalid, Conflict) as error:
-        if where:
+        if where or renamed:
             error.fields = {
                 f"{where}{(renamed or {}).get(name, name)}": message
                 for name, message in error.fields.items()
@@ -872,7 +880,7 @@ def take_on(
     the cause of `caused` what it was made by: joining the group (P-217), or the
     replacement whose item takes a member's place (P-242).
     """
-    with _named_at(where):
+    with named_at(where):
         items.update_item(db, caused, item.hid, item.row_version, dict(fields))
         if drop:
             for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
@@ -1163,7 +1171,7 @@ def give_back(
     """
     item = items.get_item(db, item_hid)
     leaving = caused
-    with _named_at(where, {"to": "lifecycle_state", "reason": "state_reason"}):
+    with named_at(where, {"to": "lifecycle_state", "reason": "state_reason"}):
         state = given.get("lifecycle_state")
         if "lifecycle_state" in given and state is None:
             raise Invalid(

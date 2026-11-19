@@ -100,11 +100,15 @@ def test_a_replacement_that_would_break_a_group_changes_nothing(make: Maker) -> 
 
     # The item that is to take the place is in another stack already.
     problem = _replace(make, switches[0], new_item_hid=switches[2]["hid"], expect=409)
-    assert "one stack at a time" in errors(problem)["item_hid"]
+    assert "one stack at a time" in errors(problem)["new_item_hid"]
     # A minor item is not a member of a stack.
     part = make.item(name="PS-A", parent_item_hid=switches[2]["hid"])
     problem = _replace(make, switches[0], new_item_hid=part["hid"], expect=422)
-    assert "major items" in errors(problem)["item_hid"]
+    assert "major items" in errors(problem)["new_item_hid"]
+    # The item that is to take the place is a member of the same stack already; each of
+    # these names the field the request has, and not the item_hid it has not.
+    problem = _replace(make, switches[0], new_item_hid=switches[1]["hid"], expect=409)
+    assert set(errors(problem)) == {"new_item_hid"}
     # The day is before the day the item joined.
     problem = _replace(
         make,
