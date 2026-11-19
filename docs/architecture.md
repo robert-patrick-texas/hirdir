@@ -564,9 +564,15 @@ what it is there to show.
 **The browser scenarios** of `make e2e` are the spec files in `web/e2e/`, which
 Playwright runs against the fresh install. The files run side by side, each in a worker
 of its own, and the tests of one file run in order, because the later ones use what the
-earlier ones made. `scripts/test_load.py` says how many files run at once, for the host
-as it is when they start, so beside the two upgrade passes fewer are started;
-`E2E_WORKERS` sets the number outright. All the files use one server and one inventory,
+earlier ones made. One fewer file runs at once than `scripts/test_load.py` says the host
+has free when they start, so beside the two upgrade passes fewer are started;
+`E2E_WORKERS` sets the number outright. The one is the server's: it is one process and
+works on one processor, and a browser to every processor leaves it none. Measured on
+the build host of four processors with 0.9.8: with four files at once the server had
+0.93 of a processor for the whole run, requests that take 5 to 9 ms alone took 125 to
+215 ms, and one to three scenarios that wait five seconds for a count failed in every
+run; with three at once every scenario passed, in the same quarter of an hour, since
+what the run waits for is the server. All the files use one server and one inventory,
 so each has of its own what another could disturb:
 
 - **An account.** The Admin the run is given, in `E2E_USERNAME` and `E2E_ACCESS_CODE`,
@@ -631,8 +637,8 @@ on the build host in one pass that reports every failure:
    `hirdir admin serve --dev` on a free port, never 8715. When it ends, or is
    interrupted, it stops that server by its port; the inventory is kept until the next
    run.
-2. It waits for a quiet host and takes the number of files at once as every other run
-   of tests does: `E2E_WORKERS`, or `scripts/test_load.py`.
+2. It waits for a quiet host and takes the number of files at once from `E2E_WORKERS`,
+   or one fewer than `scripts/test_load.py` says, the server needing a processor too.
 3. It runs the ordinary project, and then each project that runs alone, in the order of
    `playwright.config.ts`, each with `--no-deps`, whatever failed before. Playwright's
    own dependencies would leave a project that runs alone unrun after one failure of

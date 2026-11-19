@@ -9,9 +9,9 @@ const baseURL = given.endsWith("/") ? given : `${given}/`;
 
 /**
  * How many spec files run at once. E2E_WORKERS sets the number outright. Left unset, it
- * is what scripts/test_load.py says of the host as it is at this moment, as for every
- * other run of tests: the cores that are not busy, and no more than the free memory
- * allows. So a run beside other work, as in the package test with its three passes at
+ * is one fewer than scripts/test_load.py says of the host as it is at this moment: the
+ * cores that are not busy, and no more than the free memory allows, less the one that
+ * the server under test needs for itself. So a run beside other work, as in the package test with its three passes at
  * once, starts fewer. One at a time where the script cannot be asked.
  */
 function workers(): number {
@@ -26,7 +26,9 @@ function workers(): number {
       // What the script says of the host, on its standard error, is shown.
       stdio: ["ignore", "pipe", "inherit"],
     }).trim();
-    return /^[1-9]\d*$/.test(said) ? Number(said) : 1;
+    // One fewer than the host has free: the server that the browsers drive is one
+    // process and needs a processor of its own (see docs/architecture.md).
+    return /^[1-9]\d*$/.test(said) ? Math.max(1, Number(said) - 1) : 1;
   } catch {
     return 1;
   }

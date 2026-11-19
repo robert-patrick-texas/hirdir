@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock
@@ -524,10 +524,39 @@ def list_settings(db: Session) -> list[SettingValue]:
     ]
 
 
+# The settings that are set, read once for a transaction: a request asks for a dozen of
+# them, one at a time, and each was a statement of its own. What is kept is the rows as
+# the session holds them, so a setting changed in the transaction reads as changed; a
+# row that is added or removed, and the end of the transaction, leave nothing kept.
+_READ = "hirdir.settings"
+
+
+def _rows(db: Session) -> dict[str, Setting]:
+    rows: dict[str, Setting] | None = db.info.get(_READ)
+    if rows is None:
+        rows = {row.key: row for row in db.scalars(select(Setting))}
+        db.info[_READ] = rows
+    return rows
+
+
+@event.listens_for(Session, "after_flush")
+def _after_a_flush(session: Session, _: Any) -> None:
+    if _READ in session.info and any(
+        isinstance(one, Setting) for one in (*session.new, *session.deleted)
+    ):
+        session.info.pop(_READ, None)
+
+
+@event.listens_for(Session, "after_commit")
+@event.listens_for(Session, "after_rollback")
+def _after_a_transaction(session: Session) -> None:
+    session.info.pop(_READ, None)
+
+
 def get_setting(db: Session, key: str) -> SettingValue:
     """Return one setting with the value in force."""
     _spec(key)
-    return _view(key, db.scalar(select(Setting).where(Setting.key == key)))
+    return _view(key, _rows(db).get(key))
 
 
 def value(db: Session, key: str) -> Any:
@@ -539,7 +568,7 @@ def values(db: Session, keys: tuple[str, ...]) -> dict[str, Any]:
     """Return the values in force of several settings, read in one query."""
     for key in keys:
         _spec(key)
-    rows = {row.key: row for row in db.scalars(select(Setting).where(Setting.key.in_(keys)))}
+    rows = _rows(db)
     return {key: _view(key, rows.get(key)).value for key in keys}
 
 

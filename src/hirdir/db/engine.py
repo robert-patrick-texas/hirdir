@@ -6,7 +6,7 @@ from collections.abc import Generator
 from contextlib import closing, contextmanager
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from hirdir.db import dialect
@@ -22,12 +22,28 @@ SQLITE_PRAGMAS = {
 }
 
 
+# As many connections are kept as the server has threads that answer requests, 40, with
+# a few more to open beside them for what works in the background. With the five that
+# SQLAlchemy keeps of itself, a page that asks for a dozen things at once had connections
+# opened and thrown away for it, each set up anew, and with it what SQLite had prepared
+# for each statement.
+POOL = {"pool_size": 40, "max_overflow": 10}
+
+
+def _pool(url: str) -> dict[str, int]:
+    """Return how the connections of a database in a file, or on a server, are kept; a
+    database in memory has the one connection it is."""
+    made = make_url(url)
+    in_memory = made.get_backend_name() == "sqlite" and made.database in (None, "", ":memory:")
+    return {} if in_memory else dict(POOL)
+
+
 def make_engine(url: str) -> Engine:
     """Create the engine for url.
 
     A SQLite connection gets hirdir's pragmas and SQL functions every time.
     """
-    engine = create_engine(url)
+    engine = create_engine(url, **_pool(url))
     if engine.dialect.name == "sqlite":
 
         @event.listens_for(engine, "connect")

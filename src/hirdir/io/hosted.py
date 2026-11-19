@@ -13,7 +13,7 @@ that is not read through the ORM, has the step.
 from contextvars import ContextVar
 from typing import Any
 
-from sqlalchemy import ColumnElement, event, select
+from sqlalchemy import ColumnElement, event, literal, or_, select
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import ORMExecuteState, Session
 from sqlalchemy.sql.visitors import InternalTraversal
@@ -63,14 +63,16 @@ def anything_hosted(session: Session) -> bool:
     """Return whether any item names a host, asked once for the session."""
     known = session.info.get(KEY)
     if known is None:
-        connection = session.connection()
-        known = any(
-            connection.execute(
-                select(Item.hid).prefix_with(MARK).where(column.is_not(None)).limit(1)
-            ).first()
-            is not None
-            for column in (Item.host_item_hid, Item.host_group_hid)
+        # A HID is never empty, so "greater than nothing" finds what is not null, and
+        # unlike IS NOT NULL it is answered from the index of each column: where nothing
+        # runs on anything, two looks into two empty indexes, and no walk of the items.
+        found = session.connection().execute(
+            select(literal(1))
+            .prefix_with(MARK)
+            .where(or_(Item.host_item_hid > "", Item.host_group_hid > ""))
+            .limit(1)
         )
+        known = found.first() is not None
         session.info[KEY] = known
     return known
 

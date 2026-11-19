@@ -30,8 +30,9 @@
 #   --plan           say which projects and spec files would be run, and run nothing
 #   --port N         serve on this port, which must be free
 #
-# How many files run at once is E2E_WORKERS if it is set, or what scripts/test_load.py
-# says of the host, as for every other run of tests; and a busy host is waited for first,
+# How many files run at once is E2E_WORKERS if it is set, or one fewer than what
+# scripts/test_load.py says of the host, the server needing a processor too; and a busy
+# host is waited for first,
 # ten minutes at the most, as `make acceptance` does (HIRDIR_TEST_WAIT=0 does not wait).
 # Temporary files go to TMPDIR, by default dev-data/pytmp of this tree.
 set -euo pipefail
@@ -302,7 +303,11 @@ if [ "$only_plan" = 1 ]; then
     exit 0
 fi
 
+# One fewer at once than the host has free: the server that the browsers drive is one
+# process, and needs a processor of its own (docs/architecture.md, "How long the tests
+# take").
 workers=$(cd "$root" && uv run python scripts/test_load.py --wait)
+if [ "$workers" -gt 1 ]; then workers=$((workers - 1)); fi
 if [[ ${E2E_WORKERS:-} =~ ^[1-9][0-9]*$ ]]; then workers=$E2E_WORKERS; fi
 
 if [ "$build" = 1 ]; then
