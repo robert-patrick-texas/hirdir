@@ -136,6 +136,24 @@ export interface Joining {
   location?: { path: string } | null;
   lifecycle_state?: string | null;
   disposition?: string | null;
+  /** 0.9.8: how many things run on it, which go to the stack it joins (P-252). */
+  hosted_count?: number;
+}
+
+/** "1 thing", "2 things": what runs on an item, counted. */
+function things(count: number): string {
+  return count === 1 ? "1 thing" : `${count} things`;
+}
+
+/**
+ * 0.9.8: what a switch that becomes a member of a stack hands to it (P-252): what runs on
+ * a stack runs on the stack, and not on a member. Blank where nothing runs on it.
+ */
+export function hostedText(count: number | null | undefined): string {
+  if (!count || count <= 0) return "";
+  return count === 1
+    ? "The 1 thing that runs on it will run on the stack."
+    : `The ${count} things that run on it will run on the stack.`;
 }
 
 /**
@@ -464,6 +482,8 @@ export interface StandsAlone {
   planned_location?: { path: string } | null;
   owner?: { label: string } | null;
   operator?: { label: string } | null;
+  /** 0.9.8: how many things run on it (P-252). */
+  hosted_count?: number;
 }
 
 /**
@@ -481,6 +501,9 @@ export function makeStackGoes(item: StandsAlone): string[] {
     ...(item.planned_location ? [`the planned location ${item.planned_location.path}`] : []),
     ...(item.owner ? [`the owner ${item.owner.label}`] : []),
     ...(item.operator ? [`the operator ${item.operator.label}`] : []),
+    ...(item.hosted_count && item.hosted_count > 0
+      ? [`the ${things(item.hosted_count)} that ${item.hosted_count === 1 ? "runs" : "run"} on it`]
+      : []),
   ];
 }
 

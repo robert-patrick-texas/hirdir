@@ -66,6 +66,9 @@ const standaloneAddress = `${net}::5`;
 /** A switch that has nothing to be known by but its host name. */
 const hostAlone = host("solo-sw2");
 const virtual = label("vm-app-06");
+/** A switch with a container on it, and the container. */
+const withContainer = host("ctr-sw3");
+const container = host("ctr-app1");
 
 const made: { site?: string; room?: string; depot?: string; entry?: string } = {};
 
@@ -149,6 +152,29 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
     })
   ).hid;
   await make(request, headers, "/items", { catalog_entry_hid: vmEntry, name: virtual });
+  // A switch with a container running on it (P-252).
+  const hostSwitch = (
+    await make(request, headers, "/items", {
+      catalog_entry_hid: entry,
+      hostname: withContainer,
+      serial_number: serial("CTRSW"),
+      lifecycle_state: "Prod",
+      disposition: "Production",
+      expected_online: true,
+    })
+  ).hid;
+  const ctrEntry = (
+    await make(request, headers, "/catalog-entries", {
+      vendor_hid: vendor,
+      pid: `CTR-${id}`,
+      kind: "container",
+    })
+  ).hid;
+  await make(request, headers, "/items", {
+    catalog_entry_hid: ctrEntry,
+    hostname: container,
+    host_item_hid: hostSwitch,
+  });
   made.entry = entry;
 }
 
@@ -594,5 +620,33 @@ test("a switch known by its host name alone is not offered Make it a stack, nor 
   await expect(page.getByRole("button", { name: "Join a stack" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Make it a stack" })).toHaveCount(0);
   await expect(page.getByTestId("stack-member")).toHaveCount(0);
+  await expectClean(page, seen);
+});
+
+test("a switch with a container on it is made a stack: the form says the 1 thing goes, and the container runs on the stack and not on the switch (P-252)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItem(page, withContainer);
+  await page.getByTestId("stack-member").getByRole("button", { name: "Make it a stack" }).click();
+  const form = page.getByRole("region", { name: "Make it a stack" });
+  await expect(form.getByTestId("make-stack-goes")).toContainText(
+    `To the stack from ${withContainer}: the host name ${withContainer} and the 1 thing that runs on it.`,
+  );
+  await form.getByRole("button", { name: "Make the stack" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: withContainer })).toBeVisible();
+  const hosted = page.getByTestId("hosted");
+  await expect(hosted.getByRole("heading", { name: "What runs on it (1)" })).toBeVisible();
+  await expect(hosted.getByTestId("hosted-list")).toContainText(container);
+
+  // The switch, now member 1, has nothing running on it.
+  await openItem(page, serial("CTRSW"));
+  await expect(page.getByTestId("stack-member")).toHaveText(`Member 1 of ${withContainer}`);
+  await expect(page.getByTestId("hosted")).toHaveCount(0);
   await expectClean(page, seen);
 });

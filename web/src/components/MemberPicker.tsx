@@ -15,6 +15,7 @@ import { nextSort, type SortColumns, type SortState, sortRows } from "../lib/sor
 import {
   dropsText,
   hostAloneText,
+  hostedText,
   type Joining,
   joinStanding,
   knownByHostAlone,
@@ -275,6 +276,7 @@ export function joining(item: Item, rules: readonly Rule[]): Partial<PendingMemb
     location: item.location,
     lifecycle_state: item.lifecycle_state,
     disposition: item.disposition,
+    hosted_count: item.hosted_count,
   };
   const state = item.lifecycle_state;
   const standing = joinStanding(
@@ -327,6 +329,12 @@ export function JoinBox({ row, rules, onChange, disabled, fix }: JoinBoxProps) {
           ? dropsText(row.name, has)
           : `${row.name} keeps its own name, addresses and place: nothing of it is changed.`}
       </p>
+      {/* 0.9.8: what runs on it goes to the stack, ticked or not (P-252). */}
+      {hostedText(has.hosted_count) && (
+        <p className="note" data-testid="hosted-to-stack">
+          {hostedText(has.hosted_count)}
+        </p>
+      )}
       {drop && knownByHostAlone(has) && (
         <p className="warning" role="status" data-testid="known-by-host">
           {hostAloneText(row.name)}{" "}
