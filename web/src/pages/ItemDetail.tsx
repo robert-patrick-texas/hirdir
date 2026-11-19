@@ -22,7 +22,7 @@ import { ItemPurchaseLine } from "../components/PurchaseLine";
 import { EditForm } from "../components/RecordForm";
 import { References } from "../components/References";
 import { Registrations } from "../components/Registrations";
-import { DeleteRecord, useHostedQuestion } from "../components/Removal";
+import { DeleteRecord, retireItem, useHostedQuestion } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
@@ -1569,13 +1569,9 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
   const hosted = useHostedQuestion("item", item.hid, item.hosted_count);
 
   async function retire() {
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/items/{hid}/retire", {
-        path: { hid: item.hid },
-        body: { row_version: item.row_version },
-      }),
-    );
-    if (result.ok) onChanged(itemRetiredText(hosted.count));
+    // What went with it is what the server says retired with it, not what was listed.
+    const result = await action.run(() => retireItem(item, item.hosted_count));
+    if (result.ok) onChanged(itemRetiredText(result.value));
   }
 
   /** Bring the item back: as it was, or with another location, or none, in the same change. */
