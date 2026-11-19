@@ -328,10 +328,23 @@ textarea[aria-invalid="true"] {
   margin: 0.3rem 0 0;
 }
 
+/* A field that must be filled says so at a glance (P-260): the word in the page's amber,
+   on its ground, and a mark down the left edge of the field while it is still empty. */
 .field .required {
-  color: var(--muted);
-  font-weight: 400;
-  font-size: 0.85rem;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem 0 0.1rem;
+  border-radius: 0.25rem;
+  background: var(--warn-surface);
+  color: var(--warn);
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.field input:required:invalid,
+.field select:required:invalid,
+.field textarea:required:invalid {
+  box-shadow: inset 3px 0 0 var(--warn);
 }
 
 .hint {

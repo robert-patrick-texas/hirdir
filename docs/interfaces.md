@@ -2899,7 +2899,10 @@ renewals report and of circuit costs take the short form only, as before.
 A form that changes a record keeps its buttons, Save and Undo, at the foot of the window
 while the form is in the window and its own foot is below it, and a form opened by a
 button New comes into the window with the keyboard in its first field (P-190). What a
-field that searches finds is brought into the window as it comes, above those buttons.
+field that searches finds is brought into the window as it comes, above those buttons. A field
+that must be filled says `(required)` beside its label, in the page's amber on its
+ground, and has a mark down its left edge while it is still empty, which goes when it
+is filled (P-260).
 
 A count written in a sentence has the separator of thousands, as "34,778 items" (P-195).
 
