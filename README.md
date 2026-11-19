@@ -53,6 +53,10 @@ cluster, and are where their host is; and what a tool reports is found by the to
 identifier, and marked when the tool reports it no more.
 0.9.9 mends one fault of the web page: a list whose columns hold the lists of choices
 stays as it was when its person comes back to the tab.
+0.9.10 is the server saying how it is doing: a mark of its health in the menu bar of
+every page, its last ten minutes on About with the slowest requests and who met them,
+and past a ceiling an answer at once to wait in place of a request that times out; and
+the imports and bulk edits applied by a second process, a service of its own.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are
