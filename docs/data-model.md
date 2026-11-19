@@ -364,7 +364,12 @@ its host.
   The host that was seen is not handed over.
 - Nothing else follows by a rule. A host that leaves the team's hands, by a move to
   Released or to Archived, changes nothing of what runs on it, which is then marked
-  for review, `host_gone`; so is an item brought back while its host is retired.
+  for review, `host_gone`; so is an item brought back while its host is retired. An
+  item brought back is otherwise held to the rules of what it runs on as if it were
+  named now, in the same change: a host that is now a current member of a stack is
+  the stack, with the member as what it was seen on (P-252), and an item whose kind
+  now runs on no host is refused on `record_status`, unless the same request clears
+  its host.
 
 **What is to be looked at** (P-249). `review` on an item's record lists the reasons a
 person should look at it, each with what it is about, and is empty where there is
@@ -2001,7 +2006,10 @@ first rule that applies decides, and no later rule is tried:
    none, the rules that follow are tried, as for any row with no model. A row of a
    model of the kind `virtual_context` is never matched by this rule: its serial
    number names its host (P-251), and the row is matched by the rules that follow as
-   a row that gives no serial number is.
+   a row that gives no serial number is. So is a row that gives a serial number and no
+   model where the one item, not retired, of its name or host name, as rule 4 compares
+   them, is a virtual context: the row is that context; two such items are an error on
+   the row, and an item of that name that is no context is matched as before.
 3. `asset_tag` is given: the item with that tag.
 4. Neither serial number nor asset tag is given: the one item, not retired, that has
    that name or that host name, whether or not it has a serial number of its own. A

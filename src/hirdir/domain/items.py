@@ -499,13 +499,25 @@ def _checked(
     def final(name: str) -> Any:
         return values.get(name, getattr(item, name) if item is not None else None)
 
-    if any(
+    brought_back = (
+        item is not None and item.record_status == "retired" and "record_status" in fields
+    )
+    if brought_back or any(
         name in fields
         for name in (*hosting.FIELDS, "catalog_entry_hid", "parent_item_hid", "serial_number")
     ):
         # What it runs on, held against its model and its parent as they will be (P-246).
         values.update(
             hosting.checked(db, fields, values, item, settings.time_zone(db), looked_again)
+        )
+    if "serial_number" in values or "catalog_entry_hid" in values:
+        # The number a virtual context holds is its switch's and not its own: it is kept
+        # as given, and neither makes it unique nor finds it (P-251).
+        serial = final("serial_number")
+        model = final("catalog_entry_hid")
+        kind = hosting.kinds_of(db, {model}).get(model or "")
+        values["serial_key"] = (
+            records.key(serial) if serial and kind != hosting.VIRTUAL_CONTEXT else None
         )
 
     if item is not None and item.record_status == "retired" and "record_status" in values:

@@ -444,6 +444,20 @@ def checked(
     for name in ("host_item_hid", "host_group_hid", "observed_host_hid"):
         if name in fields:
             out[name] = fields[name] or None
+    # An item brought back is held to the rules of what it runs on as if it were named
+    # now: a member of a stack stands for the stack, and a kind that runs on nothing is
+    # refused; a host that is retired or out of the team's hands stays, marked host_gone.
+    brought_back = (
+        item is not None
+        and item.record_status == "retired"
+        and values.get("record_status") not in (None, "retired")
+        and not any(name in fields for name in ("host_item_hid", "host_group_hid"))
+    )
+    if brought_back and item is not None:
+        if item.host_item_hid:
+            out["host_item_hid"] = item.host_item_hid
+        elif item.host_group_hid:
+            out["host_group_hid"] = item.host_group_hid
     if out.get("host_item_hid") and out.get("host_group_hid"):
         raise Invalid(
             "an item runs on one host",
@@ -507,6 +521,14 @@ def checked(
         kind = kinds_of(db, {final("catalog_entry_hid")}).get(final("catalog_entry_hid") or "")
         if not runs_on_a_host(kind):
             said = f"an item of the kind {kind}" if kind else "an item of no model"
+            if brought_back:
+                raise Invalid(
+                    "the item runs on nothing",
+                    {
+                        "record_status": f"{said} runs on nothing, and this one names a host: "
+                        f"send {host_field} as null with the change that brings it back"
+                    },
+                )
             field = host_field if host_field in fields else "catalog_entry_hid"
             raise Invalid(
                 "the item runs on nothing",
@@ -574,7 +596,9 @@ def checked(
         # what it was seen on; a file that says it again changes nothing. A new item's
         # request holds every field, blank where nothing is said.
         restated = item is not None and item.observed_host_hid == member_seen
-        if not restated or looked_again:
+        # Where it runs on that stack already, the member seen again is no news.
+        on_it = item is not None and item.host_group_hid == out.get("host_group_hid")
+        if not restated or (looked_again and not on_it):
             out["observed_host_hid"], out["host_observed_at"] = member_seen, clock.now()
     return out
 
