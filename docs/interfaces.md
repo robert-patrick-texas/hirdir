@@ -622,8 +622,11 @@ them.
   left out, it is true. Where something is to be handed over and the item that comes may
   not be a host, being of a kind that hosts nothing, retired, or out of the team's hands,
   the replacement is refused, a `422` on `hand_over_hosted` that says why and how many
-  run on the item that leaves, and nothing of it is done. `observed_host_hid` of what
-  runs on it is left as it is: it is what was seen.
+  run on the item that leaves, and nothing of it is done. The hand-over is done with the
+  request, as all that a replacement changes of either item is: with a `replaced_on` to
+  come, where something runs on the item that leaves and `hand_over_hosted` is not false,
+  the replacement is refused, a `422` on `replaced_on` that names `hand_over_hosted`.
+  `observed_host_hid` of what runs on it is left as it is: it is what was seen.
 - **Two requests at once.** Retiring an item and naming it as a host each take the one
   writer's place before they look, so the second sees what the first stored: a host
   retired first is refused as the host of a change that comes after, and an item given
@@ -1161,12 +1164,18 @@ page says the rules, and this says how a file carries them.
   identifier, whatever its status, its name or its host is now. Where none is, the row is
   matched as any row, and the item it finds or makes is registered with the system under
   the identifier in the same change, or its registration given the identifier where it
-  had none. Two errors reject the row, each on `external_id`: two items registered with
-  the system under the identifier, and an item the row finds by another rule that is
-  registered with the system under another identifier. A row matched or registered so
-  makes its registration `registered`, with `confirmed_at` the moment it is applied, and
-  says so in its `changes` only where the identifier is new to the item: a file loaded a
-  second time is `unchanged` in each such row, and still confirms each registration. A
+  had none. Two errors reject the row, each on `external_id`, however the row found its
+  item, by its `hid`, by the identifier or by any other rule: an identifier that another
+  item is registered with the system under, and an item that the system knows under
+  another identifier. A row matched or registered so
+  makes its registration `registered`, with `confirmed_at` the moment it is applied. A
+  row that makes the registration, or brings it back from `not_reported`, `removed` or
+  `pending`, is an `update` (or a `create` with its item), and its `changes` say so as
+  `registration`, the status it had, or `null` where it had none, to `registered`; one
+  that gives the item an identifier it had not has `external_id` among them too. A row
+  whose registration is `registered` already, under the same identifier, changes nothing
+  but `confirmed_at`: a file loaded a second time is `unchanged` in each such row, and
+  still confirms each registration. A
   row with no `external_id` is matched as any row and registers nothing. A file that
   gives `external_id` in a row and names no `system` is refused before the preview, a
   `422` on `external_id`. An export writes the column only where it is asked for by name,
@@ -1175,14 +1184,25 @@ page says the rules, and this says how a file carries them.
   without `system`, a `422` on `complete`. Once the apply has worked the last batch, with
   no row rejected, left out or stale, each item that is registered with the system with
   the status `registered`, is not retired, and that no row of the file named, is given
-  the status `not_reported`, each by an `update` of its registration with the request ID
-  of the apply; the job's `not_reported` is then how many were marked, and the `apply`
+  the status `not_reported`, each by an `update` of its registration that is the
+  import's, `via` `import` as the events of its rows are, with the request ID of the
+  apply, or of its resumption, and an entry `import` whose `new` is the job's HID; the job's `not_reported` is then how many were marked, and the `apply`
   event of the job holds it. A file with a row that was not applied marks nothing, and its
-  `not_reported` is 0. An apply that stops and is resumed marks once, at its end. The
+  `not_reported` is 0, and the job says why in `not_reported_held`: `rejected`, a row the
+  preview rejected or the apply refused; `skipped`, rejected rows left out by
+  `skip_rejected`; `stale`, a row left out because its record changed since the preview;
+  `null` where nothing holds it. The command line says the same after a preview and after
+  an apply, one with stale rows among them. An apply that stops and is resumed marks once, at its end. The
   preview counts in `not_reported` how many the apply would mark, none where a row is
   rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, the
   item's; once applied, `not_reported_first` is empty. `pending` and `removed`
   registrations, and those of device groups, are left as they are.
+  A `complete` file of no rows is refused before the preview, a `422` on `complete`:
+  a file that is everything a system reports names at least one thing. What stays
+  possible is a file cut short, that names some and not the rest: it marks what it does
+  not name, and the next whole file of the system makes each `registered` again, each
+  change by an event of its own. The preview's `not_reported` and
+  `not_reported_first` are there to be read before the file is applied.
 - **The status `not_reported`** is a status of a registration as any other: a person
   sets it back to `registered`, or to `removed`, by `PATCH /registrations/{hid}`, and the
   next file of the system that names the item makes it `registered` again.
@@ -2234,7 +2254,7 @@ refused leaves the others as they went.
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model, and each of its replacements, the latest first, with the other item, which of the two it was, the reason, the reference and the day (P-241) |
 | A stack of one switch | `hirdir items make-stack ITEM [--name NAME] [--member ITEM]...` makes a stack of an item that is in none, by `POST /items/{hid}/make-stack`, and prints the stack; each `--member` is one more member, added as a member that joins with its name and place given up, `drop_identity` (P-243) |
 | A replacement that was a mistake | `hirdir replacements remove HID --reason TEXT`, for an Admin, prints the replacement, its two items and its day, asks `Remove this replacement?`, and goes on only when it is answered yes, or `--yes` is given by a script; it then removes it by `POST /item-replacements/{hid}/remove` (P-238) |
-| Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
+| Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |

@@ -6,7 +6,7 @@ The host fields are set through the database here, as the rules of naming a host
 another part's (P-246): what is tested is what follows from them.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -14,7 +14,11 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import Item
-from tests.api.inventory import API, Maker
+from tests.api import test_cli
+from tests.api.inventory import API, Maker, errors
+
+# The fixture that runs `hirdir` against the test client.
+run = test_cli.run
 
 NOBODY = "01900000-0000-7000-8000-000000000000"
 
@@ -482,3 +486,54 @@ def test_what_is_handed_over_is_held_to_the_line_of_hosts(make: Maker, db: Sessi
     assert "hand_over_hosted" in {entry["field"] for entry in refused["errors"]}
     assert "a line of hosts is at most 3 long" in refused["detail"]
     assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
+
+
+def test_a_replacement_on_a_day_to_come_hands_nothing_over(make: Maker, db: Session) -> None:
+    """What a replacement changes of either item is done with the request: a day to come
+    is refused where something would be handed over, as it is for `old_item`."""
+    made = _virtual(make)
+    _host(db, made["app"], made["esx"])
+    ahead = (datetime.now(UTC).date() + timedelta(days=30)).isoformat()
+
+    refused = _replace(make, made["esx"], 422, new_item_hid=made["other"]["hid"], replaced_on=ahead)
+
+    assert set(errors(refused)) == {"replaced_on"}
+    assert "hand_over_hosted" in errors(refused)["replaced_on"]
+    assert _get(make, made["esx"])["replacements"] == []
+    assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
+    # Left where it is, the replacement is recorded for its day.
+    _replace(
+        make,
+        made["esx"],
+        new_item_hid=made["other"]["hid"],
+        replaced_on=ahead,
+        hand_over_hosted=False,
+    )
+    assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
+    # And where nothing runs on the item that leaves, a day to come asks nothing of it.
+    _replace(make, made["web"], new_item_hid=made["other"]["hid"], replaced_on=ahead)
+
+
+# --- the command line (P-247) --------------------------------------------------------
+
+
+def test_the_command_says_first_what_retiring_a_host_takes_with_it(
+    run: Any, make: Maker, db: Session
+) -> None:
+    made = _virtual(make)
+    _hosted(db, made)
+
+    tried = run("items", "retire", "site2-esx-01", "--dry-run")
+
+    assert "would be retired: site2-esx-01" in tried.stdout
+    assert "would be retired with its host: site2-vm-app01" in tried.stdout
+    assert "would be retired with its host: site2-ctr-dns1" in tried.stdout
+    assert "nothing was changed" in tried.stderr
+    assert _status(make, made["esx"], made["app"], made["dns"]) == ["active"] * 3
+
+    done = run("items", "retire", "site2-esx-01")
+
+    assert "retired with its host: site2-vm-web01" in done.stdout
+    assert "1 retired, 3 with their hosts" in done.stderr
+    assert _status(make, made["esx"], made["app"], made["web"], made["dns"]) == ["retired"] * 4
+    assert "What runs on an item is retired with it" in run("items", "retire", "--help").stdout

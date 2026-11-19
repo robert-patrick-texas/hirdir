@@ -318,17 +318,17 @@ def registered_as(db: Session, system_hid: str, external_id: str) -> list[Regist
     )
 
 
-def external_ids(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, str | None]:
-    """Return the identifier a system knows each of the items by, where it knows it."""
+def of_system(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, Registration]:
+    """Return the registration of each of the items with a system, where it has one."""
     if not item_hids:
         return {}
-    found = db.execute(
-        select(Registration.item_hid, Registration.external_id).where(
+    found = db.scalars(
+        select(Registration).where(
             Registration.system_hid == system_hid,
             Registration.item_hid.in_(list(item_hids)),
         )
     )
-    return {item_hid: external_id for item_hid, external_id in found if item_hid}
+    return {one.item_hid: one for one in found if one.item_hid}
 
 
 def reported(
@@ -336,9 +336,33 @@ def reported(
 ) -> Registration:
     """Record that a system reports an item now, under an identifier (P-248): its
     registration is made where it has none, and is `registered`, with the identifier
-    and confirmed at this moment."""
+    and confirmed at this moment.
+
+    However the item was found, by its HID, by the identifier or by any other rule, an
+    identifier that another item is registered under, and an item the system knows under
+    another identifier, are refused on `external_id`: never a guess.
+    """
     now = clock.now()
+    given = external_id.strip()
+    others = [one for one in registered_as(db, system_hid, given) if one.item_hid != item_hid]
+    if others:
+        other = db.get_one(Item, others[0].item_hid)
+        raise Invalid(
+            f"{_item_name(other)} is registered as {given}",
+            {
+                "external_id": f"another item, {_item_name(other)}, is registered with the "
+                "system under this"
+            },
+        )
     known = find_registration(db, system_hid, "item_hid", item_hid)
+    if known is not None and known.external_id and known.external_id != given:
+        raise Invalid(
+            f"the system knows this item as {known.external_id}",
+            {
+                "external_id": "the item this row finds is registered with the system as "
+                f"{known.external_id}"
+            },
+        )
     if known is None:
         return create_registration(
             db,
@@ -375,7 +399,7 @@ def not_named(db: Session, system_hid: str, named: set[str]) -> list[tuple[Regis
             Registration.status == REGISTERED,
             Item.record_status != "retired",
         )
-    ).tuples()
+    )
     left = [(one, item) for one, item in found if item.hid not in named]
     return sorted(left, key=lambda pair: (records.key(_item_name(pair[1])), pair[1].hid))
 

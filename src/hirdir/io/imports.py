@@ -17,7 +17,7 @@ import logging
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import case, func, insert, select, update
 from sqlalchemy.exc import OperationalError
@@ -108,7 +108,8 @@ def _typed(which: Entity, values: dict[str, Any]) -> dict[str, Any]:
 def _differences(
     which: Entity, before: dict[str, Any] | None, after: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Return what a row changed, in the columns of the file."""
+    """Return what a row changed, in the columns of the file, and then what the entity
+    tells beside them: the status of a registration a row brings back or makes."""
     changes = []
     for column in which.settable:
         old = None if before is None else cells.plain(column, before[column.name])
@@ -117,6 +118,12 @@ def _differences(
             continue
         if old != new:
             changes.append(change(column.name, old, new))
+    for name in which.told:
+        if name not in after:
+            continue
+        old = None if before is None else before.get(name)
+        if old != after[name]:
+            changes.append(change(name, old, after[name]))
     return changes
 
 
@@ -393,10 +400,40 @@ def _read_from(db: Session, parsed: files.Parsed, system: str | None, complete: 
             "only a file of items is read from an external system",
             {"system": "a file of items only"},
         )
+    if complete and not parsed.rows:
+        # A report that came out empty is no report: it would mark everything (P-248).
+        raise Invalid(
+            "a file that is everything a system reports names at least one thing",
+            {"complete": "a file that is everything a system reports names at least one thing"},
+        )
     found = systems.the_one(db, system, "system")
     if found.record_status == "retired":
         raise Invalid("the system is retired", {"system": f"{found.name} is retired"})
     return found.hid
+
+
+# Why a file that is everything its system reports marks nothing (P-248): a row the
+# preview or the apply rejected, a rejected row left out by `skip_rejected`, or a row
+# left out as stale. Each is named as the outcome of such a row is.
+Held = Literal["rejected", "skipped", "stale"]
+
+
+def not_reported_held(job: ImportJob) -> Held | None:
+    """Say why a `complete` import marks, or will mark, nothing: one of `Held`, or None
+    where nothing holds it. A preview is held by a rejected row; an apply by a row
+    refused when it was applied, a row left out as stale, or rejected rows left out."""
+    if not job.complete or job.system_hid is None:
+        return None
+    if job.status == "previewed":
+        return "rejected" if job.rejected else None
+    left_out = job.rejected if job.skip_rejected else 0
+    if job.rows_done - job.applied - job.stale - left_out > 0:
+        return "rejected"
+    if job.stale:
+        return "stale"
+    if left_out:
+        return "skipped"
+    return None
 
 
 # The most items a preview names that a file would mark `not_reported`.
@@ -957,7 +994,11 @@ def _mark_not_reported(
             )
         )
     )
-    return systems.mark_not_reported(db, context, job.system_hid, {hid for hid in named if hid})
+    # Each change is the import's, as the changes of its rows are, and names the job.
+    by_the_import = audit.because(replace(context, via="import"), "import", None, job.hid)
+    return systems.mark_not_reported(
+        db, by_the_import, job.system_hid, {hid for hid in named if hid}
+    )
 
 
 def _complete(db: Session, hid: str, context: AuditContext) -> None:
