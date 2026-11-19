@@ -360,7 +360,7 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
           </dl>
           <JobCounts job={job} />
           <ApplyCounts job={job} />
-          <NotReported job={job} first={sent?.preview.not_reported_first ?? []} />
+          <NotReported job={job} />
           <ApplyPreview
             job={job}
             noun={bulk ? ["item", "items"] : ["row", "rows"]}
@@ -392,17 +392,13 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
  * 0.9.8: what a file that is everything a system reports marks, or marked, as not
  * reported (P-248): how many, and the first of them as links where the preview named them.
  */
-function NotReported({
-  job,
-  first,
-}: {
-  job: Job;
-  first: readonly { hid: string; label: string }[];
-}) {
-  // The first of them are named where the page has them: from the answer of the preview
-  // made on this page. A preview come back to says how many, with no names.
+function NotReported({ job }: { job: Job }) {
+  // The first of them as the job names them while it is previewed, so that a preview come
+  // back to names them again (review).
   const named =
-    job.status === "previewed" && job.rejected === 0 && !job.not_reported_held ? first : [];
+    job.status === "previewed" && job.rejected === 0 && !job.not_reported_held
+      ? job.not_reported_first
+      : [];
   const text = notReportedText(job, named.length > 0);
   if (!text) return null;
   return (
