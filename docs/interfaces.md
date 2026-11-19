@@ -1185,7 +1185,11 @@ page says the rules, and this says how a file carries them.
   import's, `via` `import` as the events of its rows are, with the request ID of the
   apply, or of its resumption, and an entry `import` whose `new` is the job's HID; the job's `not_reported` is then how many were marked, and the `apply`
   event of the job holds it. A file with a row that was not applied marks nothing, and its
-  `not_reported` is 0. An apply that stops and is resumed marks once, at its end. The
+  `not_reported` is 0, and the job says why in `not_reported_held`: `rejected`, a row the
+  preview rejected or the apply refused; `skipped`, rejected rows left out by
+  `skip_rejected`; `stale`, a row left out because its record changed since the preview;
+  `null` where nothing holds it. The command line says the same after a preview and after
+  an apply, one with stale rows among them. An apply that stops and is resumed marks once, at its end. The
   preview counts in `not_reported` how many the apply would mark, none where a row is
   rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, the
   item's; once applied, `not_reported_first` is empty. `pending` and `removed`

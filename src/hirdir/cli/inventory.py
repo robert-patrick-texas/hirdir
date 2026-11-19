@@ -904,6 +904,25 @@ def _finish(
     _apply_job(target, apply_path.format(hid=job["hid"]), skip_rejected, as_json=as_json, wait=wait)
 
 
+# Why a file that is everything its system reports marks nothing, as the job says.
+HELD_WORDS = {
+    "rejected": "a row is rejected, and a file with a row not applied marks nothing",
+    "skipped": "rejected rows were left out, and a file with a row not applied marks nothing",
+    "stale": "a row changed since the preview and was left out, and a file with a row not "
+    "applied marks nothing",
+}
+
+
+def _marked(job: dict[str, Any]) -> str:
+    """Say what an apply of a file that is everything its system reports marked."""
+    if not job.get("complete"):
+        return ""
+    why = HELD_WORDS.get(job.get("not_reported_held") or "")
+    if why:
+        return f", nothing marked not reported: {why}"
+    return f", {job['not_reported']} marked not reported"
+
+
 def _say_not_reported(preview: dict[str, Any]) -> None:
     """Say how many items a file that is everything its system reports would mark as
     reported no more, with the first of them (P-248)."""
@@ -913,7 +932,11 @@ def _say_not_reported(preview: dict[str, Any]) -> None:
     system = (job.get("system") or {}).get("name", "the system")
     count = job["not_reported"]
     if not count:
-        typer.echo(f"it marks nothing as not reported by {system}", err=True)
+        why = HELD_WORDS.get(job.get("not_reported_held") or "")
+        typer.echo(
+            f"it marks nothing as not reported by {system}" + (f": {why}" if why else ""),
+            err=True,
+        )
         return
     first = ", ".join(one["label"] for one in preview["not_reported_first"])
     more = f" and {count - len(preview['not_reported_first'])} more" if count > 10 else ""
@@ -999,10 +1022,9 @@ def _ended(target: Target, job: dict[str, Any], *, as_json: bool) -> None:
     refused = job["rows_done"] - job["applied"] - job["stale"] - left_out
     if not job["stale"] and not refused:
         left = f", {job['rejected']} rejected and left out" if left_out else ""
-        marked = f", {job['not_reported']} marked not reported" if job.get("complete") else ""
         typer.echo(
             f"applied: {job['created']} created, {job['updated']} updated, "
-            f"{job['unchanged']} unchanged{left}{marked}",
+            f"{job['unchanged']} unchanged{left}{_marked(job)}",
             err=True,
         )
         return
@@ -1027,6 +1049,8 @@ def _ended(target: Target, job: dict[str, Any], *, as_json: bool) -> None:
         said.append(f"{job['stale']} changed since the preview and were left out")
     if refused:
         said.append(f"{refused} were refused when they were applied")
+    if job.get("complete"):
+        said.append(_marked(job).removeprefix(", "))
     raise client.fail(
         "; ".join(said) + ": preview them again",
         client.EXIT_CONFLICT if job["stale"] else client.EXIT_INVALID,

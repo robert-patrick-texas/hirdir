@@ -412,6 +412,30 @@ def _read_from(db: Session, parsed: files.Parsed, system: str | None, complete: 
     return found.hid
 
 
+# Why a file that is everything its system reports marks nothing (P-248): a row the
+# preview or the apply rejected, a rejected row left out by `skip_rejected`, or a row
+# left out as stale. Each is named as the outcome of such a row is.
+HELD = ("rejected", "skipped", "stale")
+
+
+def not_reported_held(job: ImportJob) -> str | None:
+    """Say why a `complete` import marks, or will mark, nothing: one of `HELD`, or None
+    where nothing holds it. A preview is held by a rejected row; an apply by a row
+    refused when it was applied, a row left out as stale, or rejected rows left out."""
+    if not job.complete or job.system_hid is None:
+        return None
+    if job.status == "previewed":
+        return "rejected" if job.rejected else None
+    left_out = job.rejected if job.skip_rejected else 0
+    if job.rows_done - job.applied - job.stale - left_out > 0:
+        return "rejected"
+    if job.stale:
+        return "stale"
+    if left_out:
+        return "skipped"
+    return None
+
+
 # The most items a preview names that a file would mark `not_reported`.
 FIRST_NOT_REPORTED = 10
 

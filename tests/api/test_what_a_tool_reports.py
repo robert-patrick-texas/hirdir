@@ -293,9 +293,34 @@ def test_a_file_with_a_row_not_applied_marks_nothing(make: Maker, files: Files) 
     preview = files.preview("items", text, system=SYSTEM, complete="true")
 
     assert (preview["job"]["rejected"], preview["job"]["not_reported"]) == (1, 0)
+    # It says why it marks nothing, and not only that it does.
+    assert preview["job"]["not_reported_held"] == "rejected"
     assert preview["not_reported_first"] == []
     job = files.apply(preview, skip_rejected="true")
-    assert (job["status"], job["not_reported"]) == ("applied", 0)
+    assert (job["status"], job["not_reported"], job["not_reported_held"]) == (
+        "applied",
+        0,
+        "skipped",
+    )
+    assert _registration(make, system, made["db"])["status"] == "registered"
+
+
+def test_a_file_with_a_row_left_out_as_stale_marks_nothing_and_says_so(
+    run: Any, make: Maker, files: Files
+) -> None:
+    system, made = _reported(make)
+    preview = files.preview(
+        "items", _csv("vm-1,site2-vm-app,", "vm-2,site2-vm-web,"), system=SYSTEM, complete="true"
+    )
+    assert (preview["job"]["not_reported"], preview["job"]["not_reported_held"]) == (1, None)
+    app = make.get(f"/items/{made['app']['hid']}")
+    make.patch(f"/items/{app['hid']}", {"row_version": app["row_version"], "comments": "moved"})
+
+    applied = run("imports", "apply", preview["job"]["hid"], expect=5)
+
+    assert "nothing marked not reported: a row changed since the preview" in applied.output
+    job = make.get(f"/imports/{preview['job']['hid']}")
+    assert (job["stale"], job["not_reported"], job["not_reported_held"]) == (1, 0, "stale")
     assert _registration(make, system, made["db"])["status"] == "registered"
 
 
@@ -370,3 +395,10 @@ def test_the_command_sends_the_system_and_says_what_the_file_marks(
     assert _registration(make, system, made["db"])["status"] == "not_reported"
     refused = run("import", str(report), "--entity", "items", "--complete", expect=4)
     assert "complete" in refused.output
+    # A file with a row rejected says why it marks nothing.
+    held = tmp_path / "held.csv"
+    held.write_text(_csv("vm-1,site2-vm-app,", "vm-1,site2-vm-web,"))
+    preview = run(
+        "import", str(held), "--entity", "items", "--system", SYSTEM, "--complete", expect=4
+    )
+    assert f"it marks nothing as not reported by {SYSTEM}: a row is rejected" in preview.stderr
