@@ -3,12 +3,14 @@ import { buildBulk, HOST } from "./bulk";
 import { knownAbove, ownerSource } from "./descent";
 import {
   bulkHost,
+  contextSerial,
   type HostRef,
   hostClearedHint,
   hostedRows,
   hostFields,
   hostHint,
   hostIsGone,
+  hostItemOption,
   hostPath,
   hostSpecs,
   hostValue,
@@ -21,7 +23,15 @@ import {
 } from "./hosting";
 import { operatorSource } from "./operators";
 import { CATALOG_KINDS, optionLabel } from "./options";
-import { atFields, buildCreate, buildPatch, changedValues, formOf, localMoment } from "./patch";
+import {
+  asked,
+  atFields,
+  buildCreate,
+  buildPatch,
+  changedValues,
+  formOf,
+  localMoment,
+} from "./patch";
 
 const server: HostRef = {
   item_hid: "srv-1",
@@ -280,6 +290,61 @@ describe("a machine entered as installed in its server", () => {
     expect(
       parentAsHostBody({ row_version: 2, parent_item_hid: "srv-1", position: "Bay 3" }),
     ).toHaveProperty("position", null);
+  });
+});
+
+describe("a member of a stack offered as a host (P-252)", () => {
+  it("says it is in the stack, at its position, and that it names the stack", () => {
+    const member = hostItemOption({
+      hid: "sw-2",
+      hostname: "site2-sw-02",
+      groups: [{ type: "stack", name: "site2-stk-1", position: 2 }],
+    });
+    expect(member.value).toBe("item:sw-2");
+    expect(member.label).toBe(
+      "site2-sw-02 · in the stack site2-stk-1, position 2: names the stack site2-stk-1 as the host",
+    );
+    // A member of a cluster is a host itself.
+    expect(
+      hostItemOption({
+        hid: "esx-1",
+        hostname: "site2-esx-01",
+        groups: [{ type: "cluster", name: "site2-esx-cluster", position: null }],
+      }).label,
+    ).toBe("site2-esx-01 · an item");
+  });
+});
+
+describe("the serial number of a virtual context in its form (P-251)", () => {
+  const kinds: Record<string, string> = { vdc: "virtual_context", vm: "virtual_machine" };
+  const serial = {
+    name: "serial_number",
+    label: "Serial number",
+    kind: "text" as const,
+    ...contextSerial({
+      kindOf: (hid) => kinds[hid],
+      hostThen: "item:n7k",
+      hostSerial: "EXN7K0001",
+    }),
+  };
+
+  it("is its host's, shown and not sent, where it has a host", () => {
+    const values = { catalog_entry_hid: "vdc", host_hid: "item:n7k", serial_number: "" };
+    expect(serial.shownAs?.(values)).toMatch(/^EXN7K0001, the serial number of its host/);
+    expect(asked(serial, values)).toBe(false);
+    // Another host chosen: its serial number is known once saved.
+    expect(serial.shownAs?.({ ...values, host_hid: "item:other" })).toMatch(
+      /shown once it is saved/,
+    );
+  });
+
+  it("may be typed where it has none, and says it names its host", () => {
+    const values = { catalog_entry_hid: "vdc", host_hid: "", serial_number: "EXN7K0001" };
+    expect(serial.shownAs?.(values)).toBeUndefined();
+    expect(asked(serial, values)).toBe(true);
+    expect(serial.hintFrom?.(values)).toMatch(/names its host/);
+    // A virtual machine keeps a serial number of its own.
+    expect(serial.hintFrom?.({ ...values, catalog_entry_hid: "vm" })).toBeUndefined();
   });
 });
 
