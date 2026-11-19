@@ -107,6 +107,23 @@ describe("a host as a link", () => {
     });
   });
 
+  it("names the record an owner came from by the label the server sends", () => {
+    // A container two levels down: the server above holds it, which the item does not name.
+    const known = knownAbove({ parent: null, groups: [], host: server });
+    expect(
+      ownerSource(
+        { value: "own-1", source: "host", source_hid: "srv-0", source_label: "site2-esx-00" },
+        known,
+      ),
+    ).toEqual({ text: "the host site2-esx-00", path: "/items/srv-0" });
+    expect(
+      ownerSource(
+        { value: "own-1", source: "device_group", source_hid: "cl-9", source_label: "site2-c9" },
+        [],
+      ),
+    ).toEqual({ text: "the group site2-c9", path: "/groups/cl-9" });
+  });
+
   it("says a value from a cluster it runs on is from the group, a link to the group", () => {
     // A container in a virtual machine on a cluster: the cluster holds it, a group.
     expect(
