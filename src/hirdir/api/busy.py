@@ -1,12 +1,12 @@
-"""What each route of the API is to the server's own measures and to a server that is
-busy (P-265).
+"""What each route of the API is to the server's own measures and to a server that
+refuses (P-265).
 
 A route is one of four. What is **long** by nature, a report, an export, a preview of an
 import or of a bulk edit, the check of the kept answers, takes seconds on a server in
-good health: its time is in no measure, and a server past its ceiling turns it away
-first, since it costs most and can wait. Every other **read** of the API, the pages of
-lists among them, is in the measure of time, and is turned away only by a server that
-is very busy. A sign-in and every change that is stored are **kept**: never turned
+good health: its time is in no measure, and a server whose health is very slow turns
+it away first, since it can wait. Every other **read** of the API, the pages of lists
+among them, is in the measure of time, and is turned away only by a server whose
+health is busy. A sign-in and every change that is stored are **kept**: never turned
 away, and in the measure, since a save that takes four seconds is a slow server. And
 the health routes, About, the server's own measures, the settings and the contract
 stand **apart**: never turned away, and in no measure, being asked for by the clock and

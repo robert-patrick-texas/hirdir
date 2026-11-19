@@ -1,4 +1,4 @@
-"""The server's own measures of its load, and the ceiling past which it is busy (P-262, P-265).
+"""The server's own measures of its load, its health, and what it refuses (P-262, P-265).
 
 A meter holds the last ten minutes of one server in memory, in steps of five seconds:
 what it answered and how, how long an answer took, and the processor time the process
@@ -66,11 +66,12 @@ SETTINGS = (RESPONSE_SETTING, PROCESSOR_SETTING, OVER_SETTING)
 DEFAULT_RESPONSE_MS = 3000
 DEFAULT_CPU_PERCENT = 95
 DEFAULT_OVER_SECONDS = 30
-# What the settings take: a measure at 0 is not looked at; a load counts as sustained
-# over no less than a step and no more than half of what the meter keeps, so that the
-# second step is always within it. The share of the processor is of one processor, and
-# a process whose threads work at once uses more than one: the setting takes 100 for
-# each processor of the host, which `hirdir.domain.settings` counts.
+# What the settings take: a measure at 0 is not looked at; the measures are read over
+# no less than a step and no more than half of what the meter keeps, so that the while
+# after a server refused its reads is within it too. The share of the processor is of
+# one processor, and a process whose threads work at once uses more than one: the
+# setting takes 100 for each processor of the host, which `hirdir.domain.settings`
+# counts.
 MOST_RESPONSE_MS = WINDOW_SECONDS * 1000
 CPU_PERCENT_OF_A_PROCESSOR = 100
 FEWEST_OVER_SECONDS = STEP_SECONDS
@@ -502,7 +503,7 @@ class _Flight:
 
 @dataclass
 class Meter:
-    """The last ten minutes of one server, and whether it is busy.
+    """The last ten minutes of one server, its health and what it refuses.
 
     `now` is the time in seconds, from a clock that only goes forward, and `cpu` the
     processor time the process has used so far, in seconds. The lock is held for
