@@ -248,3 +248,25 @@ def test_a_view_only_user_is_refused_a_host(lab: Lab, client, viewer) -> None:
         headers=viewer,
     )
     assert response.status_code == 403
+
+
+def test_a_virtual_context_shows_its_hosts_serial_number_and_is_never_found_by_it(
+    lab: Lab,
+) -> None:
+    vdc = lab.vdc(host_item_hid=lab.n7k["hid"])
+    assert vdc["serial_number"] is None
+    assert vdc["effective"]["serial_number"] == {
+        "value": "JAF0000X001",
+        "source": "host",
+        "source_hid": lab.n7k["hid"],
+    }
+    # A machine shows none but its own, and the switch its own.
+    vm = lab.vm(host_item_hid=lab.esx["hid"])
+    assert vm["effective"]["serial_number"] == {"value": None, "source": "none", "source_hid": None}
+    assert lab.get(lab.n7k)["effective"]["serial_number"]["source"] == "own"
+    # It is not stored, nor what a filter finds the context by.
+    found = lab.make.get("/items", filter="serial_number:eq:JAF0000X001")["items"]
+    assert [row["hid"] for row in found] == [lab.n7k["hid"]]
+    # One given a serial number of its own shows that.
+    own = lab.patch(vdc, serial_number="VDC0000X002")
+    assert own["effective"]["serial_number"]["source"] == "own"
