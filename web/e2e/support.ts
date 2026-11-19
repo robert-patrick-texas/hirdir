@@ -90,6 +90,18 @@
 // other file finds the product named hirdir, its default. menu-bar.spec.ts (P-167)
 // changes nothing and runs beside the others.
 
+// 0.9.10, the ceiling (P-265): the scenarios drive the server as hard as the host
+// allows, which is what the ceiling is there to refuse, so a run has none. Each worker
+// sets `busy_response_ms` and `busy_cpu_percent` to 0 where they are not, as the Admin
+// of the environment, before it makes the account of its first file: `withoutCeiling`,
+// below. No file but one changes the three settings of the ceiling. busy.spec.ts sets
+// them to the smallest values they take and keeps the server past them, which every
+// request of every other file would feel. It runs in the project "the ceiling alone" of
+// playwright.config.ts, by itself, after "the name alone"; it notes the three settings
+// as it found them and puts them back however it ends. about-load.spec.ts reads the
+// server's measures on About, changes nothing, and runs beside the others: it compares
+// no number of the whole server with another.
+
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import {
@@ -201,6 +213,39 @@ async function disableAccount(api: APIRequestContext, account: Account): Promise
   });
 }
 
+/** The settings of the ceiling that a run turns off: at 0 a measure is not looked at (P-265). */
+const CEILING = ["busy_response_ms", "busy_cpu_percent"];
+
+/**
+ * Turn the ceiling off for the run, as the Admin of the environment: the scenarios
+ * drive the server hard, and a list answered "busy" is no fault of what they test. A
+ * setting that is 0 already is left alone, so a second worker changes nothing; where
+ * two workers set one at the same moment, the one refused reads again and finds it done.
+ */
+async function withoutCeiling(api: APIRequestContext): Promise<void> {
+  await asAdmin(api, async (headers) => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const settings = (await answered(
+        await api.get("./api/v1/settings", { headers }),
+        200,
+        "the settings were not read",
+      )) as Array<{ key: string; value: unknown; row_version: number }>;
+      const inForce = settings.filter((one) => CEILING.includes(one.key) && one.value !== 0);
+      if (inForce.length === 0) return;
+      for (const one of inForce) {
+        const response = await api.put(`./api/v1/settings/${one.key}`, {
+          headers,
+          data: { row_version: one.row_version, value: 0 },
+        });
+        if (response.status() !== 200 && response.status() !== 409) {
+          throw new Error(`${one.key} was not set to 0: ${response.status()}`);
+        }
+      }
+    }
+    throw new Error("the ceiling was not turned off: its settings kept changing");
+  });
+}
+
 interface Fixtures {
   /** The Admin that the spec file of the test has of its own. */
   account: Account;
@@ -220,6 +265,8 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
         baseURL: workerInfo.project.use.baseURL,
         ignoreHTTPSErrors: true,
       });
+      // 0.9.10: no ceiling while the scenarios run (P-265).
+      await withoutCeiling(api);
       const made = new Map<string, Promise<Account>>();
       await use({
         of(file) {

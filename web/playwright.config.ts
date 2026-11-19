@@ -65,6 +65,13 @@ const THE_WEIGHTS_ALONE = /weights\.spec\.ts$/;
  * e2e/support.ts.
  */
 const THE_NAME_ALONE = /product\.spec\.ts$/;
+/**
+ * 0.9.10: busy.spec.ts sets the ceiling past which the server answers that it is busy to
+ * the smallest values it takes and keeps the server past them (P-265), which every
+ * request of every other file would feel. It runs by itself, after the name. See the note
+ * under the rules at the top of e2e/support.ts.
+ */
+const THE_CEILING_ALONE = /busy\.spec\.ts$/;
 
 const browsers = [
   { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -97,6 +104,7 @@ export default defineConfig({
         THE_ALERT_ALONE,
         THE_WEIGHTS_ALONE,
         THE_NAME_ALONE,
+        THE_CEILING_ALONE,
       ],
     })),
     {
@@ -133,6 +141,14 @@ export default defineConfig({
       name: "the name alone",
       testMatch: THE_NAME_ALONE,
       dependencies: ["the weights alone"],
+      workers: 1,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // 0.9.10: the ceiling and the words of a busy server, one file by itself, after the name.
+    {
+      name: "the ceiling alone",
+      testMatch: THE_CEILING_ALONE,
+      dependencies: ["the name alone"],
       workers: 1,
       use: { ...devices["Desktop Chrome"] },
     },
