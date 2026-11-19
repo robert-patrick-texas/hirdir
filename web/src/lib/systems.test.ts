@@ -5,6 +5,7 @@ import { CHOICE_LISTS, choiceLabel, choiceOptions } from "./options";
 import {
   holderFilter,
   leftOutHint,
+  notReportedBy,
   REGISTRATION_STATUSES,
   type RegistrationRef,
   registeredPath,
@@ -200,5 +201,26 @@ describe("the kinds of external system, an editable list (P-170)", () => {
     // Other of another list is not the kind of a system.
     expect(startingKind(kinds.filter((one) => one.list !== SYSTEM_KIND_LIST))).toBe("");
     expect(startingKind(undefined)).toBe("");
+  });
+});
+
+describe("a registration whose system reports the item no more (P-248, P-249)", () => {
+  it("reads Not reported", () => {
+    expect(REGISTRATION_STATUSES.find((one) => one.value === "not_reported")?.label).toBe(
+      "Not reported",
+    );
+  });
+
+  it("is to be looked at where the item's review says so, by the system it is about", () => {
+    const review = [
+      {
+        reason: "not_reported",
+        about: { hid: "sys-1", label: "Example vCenter", record_type: "external_system" },
+      },
+      { reason: "host_gone", about: { hid: "item-1", label: "site2-esx-01", record_type: "item" } },
+      { reason: "no_host", about: null },
+    ];
+    expect([...notReportedBy(review)]).toEqual(["sys-1"]);
+    expect(notReportedBy([]).size).toBe(0);
   });
 });

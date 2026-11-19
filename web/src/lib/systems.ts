@@ -56,6 +56,22 @@ export const REGISTRATION_STATUSES: readonly Option[] = [
 
 export const REMOVED = "removed";
 
+export const NOT_REPORTED = "not_reported";
+
+/**
+ * 0.9.8: the systems that report an item no more, by their HIDs, as the reasons it is to
+ * be looked at say (P-249): its registration with each is marked so on its page.
+ */
+export function notReportedBy(
+  review: readonly { reason: string; about: { hid: string; record_type: string } | null }[],
+): Set<string> {
+  return new Set(
+    review
+      .filter((one) => one.reason === NOT_REPORTED && one.about?.record_type === "external_system")
+      .map((one) => one.about?.hid ?? ""),
+  );
+}
+
 export function systemPath(hid: string): string {
   return `/systems/${encodeURIComponent(hid)}`;
 }

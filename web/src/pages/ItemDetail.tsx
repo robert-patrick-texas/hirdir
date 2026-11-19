@@ -243,6 +243,8 @@ export function ItemDetail() {
             whose={itemName(record)}
             note="The registrations of the item itself. A stack or a cluster that a system knows as one device is registered as the group: what the group this item is a member of is registered with is listed beneath, to be read."
             throughGroups={record.group_registrations}
+            review={record.review}
+            retireAt="retire"
             mayEdit={mayEdit && record.record_status !== "retired"}
             onChanged={changed}
           />
