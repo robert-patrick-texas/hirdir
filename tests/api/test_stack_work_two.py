@@ -165,6 +165,25 @@ def test_what_a_replacement_carries_is_refused_and_nothing_is_done(make: Maker) 
     # The name and place of a stack, where the item that leaves is in none.
     problem = _replace(make, loose, 422, new_item_hid=spare["hid"], drop_identity=True)
     assert set(errors(problem)) == {"drop_identity"}
+    # A spare with an address gives it up, and the old item is then refused a disposition
+    # its state does not allow: the address the spare gave up is there again.
+    address = make.address(spare, "192.0.2.22", is_primary=True)
+    spare = _item(make, spare)
+    problem = _replace(
+        make,
+        failed,
+        422,
+        new_item_hid=spare["hid"],
+        drop_identity=True,
+        disposition="Production",
+        expected_online=True,
+        old_item={"disposition": "Excess"},
+    )
+    assert set(errors(problem)) == {"old_item.disposition"}
+    kept = _item(make, spare)
+    assert [one["hid"] for one in kept["addresses"]] == [address["hid"]]
+    assert (kept["location_hid"], kept["disposition"]) == (places["depot"]["hid"], "Spare")
+    assert make.audit(record_type="address", action="delete") == []
 
     # Nothing was done: no replacement, no membership ended, neither item changed.
     assert make.audit(record_type="item_replacement") == []
