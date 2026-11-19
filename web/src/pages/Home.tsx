@@ -7,7 +7,13 @@ import { HeadlineTotals } from "../components/Totals";
 import { type ItemsView, itemsViewPath } from "../lib/filter";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { TO_REVIEW, toReviewPath, toReviewText } from "../lib/hostFollows";
+import {
+  REVIEW_ORDER,
+  reviewReasonParts,
+  TO_REVIEW,
+  toReviewPath,
+  toReviewText,
+} from "../lib/hostFollows";
 import { useSettings } from "../lib/lists";
 import { assignmentPath, OPEN, UNASSIGNED, unassignedComponents } from "../lib/operators";
 import { useSite } from "../lib/product";
@@ -91,7 +97,41 @@ function ToLookAt() {
     <p data-testid="home-review" data-count={count}>
       <Link to={toReviewPath()}>{link}</Link>
       {after}
+      <ReviewReasons />
     </p>
+  );
+}
+
+/**
+ * Why they are to be looked at, a link for each reason to the item list filtered by it,
+ * whose filter then says the reason: the list needs no column for it (review). Each count
+ * is the list's own total, asked once the line is there.
+ */
+function ReviewReasons() {
+  const counted = useLoad("home-review-reasons", async (signal) => {
+    const totals = await Promise.all(
+      REVIEW_ORDER.map((reason) =>
+        api.request("get", "/api/v1/items", {
+          query: { filter: `review:eq:${reason}`, limit: 1, fields: ["hid"] },
+          signal,
+        }),
+      ),
+    );
+    return Object.fromEntries(REVIEW_ORDER.map((reason, at) => [reason, totals[at]?.total ?? 0]));
+  });
+  const parts = counted.data ? reviewReasonParts(counted.data) : [];
+  if (parts.length === 0) return <>.</>;
+  return (
+    <span data-testid="home-review-reasons">
+      :{" "}
+      {parts.map((part, at) => (
+        <span key={part.reason} data-reason={part.reason} data-count={part.count}>
+          {at > 0 && (at === parts.length - 1 ? " and " : ", ")}
+          <Link to={part.path}>{part.text}</Link>
+        </span>
+      ))}
+      .
+    </span>
   );
 }
 

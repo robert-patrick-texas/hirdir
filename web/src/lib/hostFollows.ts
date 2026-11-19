@@ -111,6 +111,37 @@ export function toReviewPath(): string {
 export function toReviewText(count: number): { link: string; after: string } {
   return {
     link: plural(count, "item is", "items are"),
-    after: ` to be looked at: no host named, a host gone, or a tool that reports ${count === 1 ? "it" : "them"} no more. ${count === 1 ? "Its" : "Each"} page says why, and the way to put it right.`,
+    after: " to be looked at",
   };
+}
+
+/** The reasons an item is to be looked at, in the order the first page says them. */
+export const REVIEW_ORDER = ["no_host", "host_gone", "not_reported"] as const;
+export type ReviewReasonName = (typeof REVIEW_ORDER)[number];
+
+const REASON_WORDS: Readonly<Record<ReviewReasonName, [one: string, many: string]>> = {
+  no_host: ["names no host", "name no host"],
+  host_gone: ["has a host that is gone", "have a host that is gone"],
+  not_reported: ["is reported no more by a tool", "are reported no more by a tool"],
+};
+
+/**
+ * 0.9.8, review: the first page says why each is to be looked at by a link of its own for
+ * each reason, to the item list filtered by it, so that the list it opens says the reason
+ * in its filter without a column of its own. A reason that counts none is left out.
+ */
+export function reviewReasonParts(
+  counts: Readonly<Partial<Record<ReviewReasonName, number>>>,
+): { reason: ReviewReasonName; count: number; text: string; path: string }[] {
+  return REVIEW_ORDER.flatMap((reason) => {
+    const count = counts[reason] ?? 0;
+    if (count === 0) return [];
+    const [one, many] = REASON_WORDS[reason];
+    return [{ reason, count, text: plural(count, one, many), path: reviewPath(reason) }];
+  });
+}
+
+/** The item list of the items to be looked at for one reason. */
+export function reviewPath(reason: ReviewReasonName): string {
+  return `/items?${new URLSearchParams({ filter: `review:eq:${reason}`, minor: "1" }).toString()}`;
 }

@@ -5,6 +5,7 @@ import {
   handOverLabel,
   hostsNothingHint,
   notReportedText,
+  reviewReasonParts,
   TO_REVIEW,
   toReviewPath,
   toReviewText,
@@ -97,6 +98,17 @@ describe("the first page's count of what is to be looked at (P-249)", () => {
     expect(path.pathname).toBe("/items");
     expect(path.searchParams.get("filter")).toBe(TO_REVIEW);
     expect(TO_REVIEW).toBe("review:empty:false");
+  });
+
+  it("says why, a link for each reason to the list filtered by it, and none for a reason with none", () => {
+    const parts = reviewReasonParts({ no_host: 2, host_gone: 0, not_reported: 1 });
+    expect(parts.map((part) => part.text)).toEqual([
+      "2 name no host",
+      "1 is reported no more by a tool",
+    ]);
+    const path = new URL(parts[1]?.path ?? "", "http://localhost");
+    expect(path.searchParams.get("filter")).toBe("review:eq:not_reported");
+    expect(reviewReasonParts({})).toEqual([]);
   });
 
   it("says how many", () => {
