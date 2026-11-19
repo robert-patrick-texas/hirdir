@@ -98,8 +98,10 @@ export const FIRST_IN_VIEW: readonly string[] = [
   "serial_number",
   "lifecycle_state",
   "health",
-  "site",
+  // 0.9.8: like columns in one sequence on every list, the place from the smallest
+  // outward and then the people, Operator and Owner (P-253).
   "location.name",
+  "site",
   "operator.label",
   "owner.label",
   "catalog.vendor",
@@ -109,12 +111,13 @@ export const FIRST_IN_VIEW: readonly string[] = [
 // Where an item is, with the two columns beside it, stands before who has it; the
 // operator before the owner; the vendor and the disposition after them.
 // 0.9.8: what it runs on and what is to be looked at, turned on, stand after the location,
-// so that the columns the owner asked to see at 1280 pixels stay in view (P-193, P-250).
+// so that the columns the owner asked to see at 1280 pixels stay in view (P-193, P-250); the
+// places stand from the smallest outward, Location, Site, Region, Planned location (P-253).
 const PLACE: readonly string[] = [
-  "site",
   "location.name",
-  "planned_location",
+  "site",
   "region",
+  "planned_location",
   "host.name",
   "review",
 ];

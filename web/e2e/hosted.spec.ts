@@ -337,8 +337,8 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
     "serial_number",
     "lifecycle_state",
     "health",
-    "site",
     "location.name",
+    "site",
   ]) {
     await expect(
       grid.locator(`[role="columnheader"][col-id="${column}"]`),

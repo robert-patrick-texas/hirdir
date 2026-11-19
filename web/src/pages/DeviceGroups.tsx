@@ -276,58 +276,6 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 220,
   },
   {
-    // The owner in force: the group's own, or that of the group it is nested in, which
-    // shows lighter. It is what the list filters and sorts by.
-    id: "owner.label",
-    header: "Owner",
-    kind: "text",
-    value: (group) => effectiveLabel(group.effective.owner_hid),
-    links: (group) =>
-      oneLink(
-        effectiveLabel(group.effective.owner_hid),
-        page("owner", group.effective.owner_hid.value),
-      ),
-    effective: (group) => group.effective.owner_hid,
-    hint: (group) => inheritedHint(ownerSource(group.effective.owner_hid, groupAbove(group))),
-    width: 170,
-  },
-  {
-    // The operator in force of the group, by its label: its own, or the one it has from
-    // the group it is nested in, which shows lighter. It is what the list of groups
-    // filters and sorts by, so that the cell, the filter and the sort agree. The cell is
-    // the mark of that operator; the person and where it came from are the hint.
-    id: "operator.label",
-    header: "Operator",
-    kind: "text",
-    column: "operator",
-    value: (group) => effectiveLabel(group.effective.operator_hid),
-    effective: (group) => group.effective.operator_hid,
-    hint: (group) => operatorHint(group.effective.operator_hid),
-    chip: (group) => {
-      const mark = markOf(group.effective.operator_hid);
-      return (
-        mark && {
-          colour: mark.colour,
-          path: operatorPath(mark.hid),
-          ...(mark.open ? { note: "open" } : {}),
-        }
-      );
-    },
-    hide: true,
-    width: 180,
-  },
-  {
-    // True for a group whose owner is outside the operations team. A file of groups
-    // has no such column.
-    id: "owner_exception",
-    header: "Outside the team",
-    kind: "boolean",
-    column: null,
-    value: (group) => (group.owner_exception ? "Yes" : "No"),
-    hide: true,
-    width: 160,
-  },
-  {
     id: "parent.name",
     header: "In group",
     kind: "text",
@@ -352,27 +300,6 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
       ),
     effective: (group) => group.effective.location_hid,
     hint: (group) => locationHint(group.effective.location_hid),
-    hide: true,
-    width: 200,
-  },
-  {
-    // Where the group is going: a place that is not in use yet, by its own plan or by
-    // that of the group it is nested in. The list filters and sorts by the name of the
-    // place, `planned_location.name`; what is planned for a place and all within it is
-    // found with `planned_location:within:<place>` in the filter box.
-    id: "planned_location",
-    header: "Planned location",
-    kind: "text",
-    field: "planned_location.name",
-    sortField: "planned_location.name",
-    value: (group) => nameOf(group.effective.planned_location_hid.label),
-    links: (group) =>
-      oneLink(
-        nameOf(group.effective.planned_location_hid.label),
-        page("location", group.effective.planned_location_hid.value),
-      ),
-    effective: (group) => group.effective.planned_location_hid,
-    hint: (group) => locationHint(group.effective.planned_location_hid),
     hide: true,
     width: 200,
   },
@@ -406,6 +333,79 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     effective: (group) => group.effective.location_hid,
     hide: true,
     width: 150,
+  },
+  {
+    // Where the group is going: a place that is not in use yet, by its own plan or by
+    // that of the group it is nested in. The list filters and sorts by the name of the
+    // place, `planned_location.name`; what is planned for a place and all within it is
+    // found with `planned_location:within:<place>` in the filter box.
+    id: "planned_location",
+    header: "Planned location",
+    kind: "text",
+    field: "planned_location.name",
+    sortField: "planned_location.name",
+    value: (group) => nameOf(group.effective.planned_location_hid.label),
+    links: (group) =>
+      oneLink(
+        nameOf(group.effective.planned_location_hid.label),
+        page("location", group.effective.planned_location_hid.value),
+      ),
+    effective: (group) => group.effective.planned_location_hid,
+    hint: (group) => locationHint(group.effective.planned_location_hid),
+    hide: true,
+    width: 200,
+  },
+  {
+    // The operator in force of the group, by its label: its own, or the one it has from
+    // the group it is nested in, which shows lighter. It is what the list of groups
+    // filters and sorts by, so that the cell, the filter and the sort agree. The cell is
+    // the mark of that operator; the person and where it came from are the hint.
+    id: "operator.label",
+    header: "Operator",
+    kind: "text",
+    column: "operator",
+    value: (group) => effectiveLabel(group.effective.operator_hid),
+    effective: (group) => group.effective.operator_hid,
+    hint: (group) => operatorHint(group.effective.operator_hid),
+    chip: (group) => {
+      const mark = markOf(group.effective.operator_hid);
+      return (
+        mark && {
+          colour: mark.colour,
+          path: operatorPath(mark.hid),
+          ...(mark.open ? { note: "open" } : {}),
+        }
+      );
+    },
+    hide: true,
+    width: 180,
+  },
+  {
+    // The owner in force: the group's own, or that of the group it is nested in, which
+    // shows lighter. It is what the list filters and sorts by.
+    id: "owner.label",
+    header: "Owner",
+    kind: "text",
+    value: (group) => effectiveLabel(group.effective.owner_hid),
+    links: (group) =>
+      oneLink(
+        effectiveLabel(group.effective.owner_hid),
+        page("owner", group.effective.owner_hid.value),
+      ),
+    effective: (group) => group.effective.owner_hid,
+    hint: (group) => inheritedHint(ownerSource(group.effective.owner_hid, groupAbove(group))),
+    width: 170,
+  },
+  {
+    // True for a group whose owner is outside the operations team. A file of groups
+    // has no such column.
+    id: "owner_exception",
+    header: "Outside the team",
+    kind: "boolean",
+    column: null,
+    value: (group) => (group.owner_exception ? "Yes" : "No"),
+    hide: true,
+    width: 160,
   },
   { id: "tags", header: "Tags", kind: "tags", value: (group) => group.tags.join(", "), width: 160 },
   {
