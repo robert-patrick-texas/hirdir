@@ -6,6 +6,12 @@
 # runs the migrations, enables and starts the service and the backup timer, and prints
 # what to do next.
 #
+# The service is two units (P-267): hirdir.service, the server, and
+# hirdir-worker.service, the process of the background work, which is part of it. Both
+# are enabled here. The server is what is started and restarted: the worker is wanted
+# by it, once enabled, and so comes with it, also at an upgrade from a release that had
+# no such unit. Both are named where the service is stopped.
+#
 # On an upgrade, and when the same version is installed again: makes the store of
 # reference files where it is missing, stops the service, backs the database up, runs
 # the migrations and starts the service again. If the migration fails, the upgrade
@@ -25,7 +31,10 @@ set -e
 STATE=/var/lib/hirdir
 PYTHON=/opt/hirdir/venv/bin/python
 HIRDIR=/opt/hirdir/venv/bin/hirdir
-UNITS="hirdir.service hirdir-backup.timer"
+# The units that the package enables, and of them those that it starts: the worker is
+# started by the server, which wants it.
+UNITS="hirdir.service hirdir-worker.service hirdir-backup.timer"
+STARTED="hirdir.service hirdir-backup.timer"
 SNIPPET=/etc/nginx/snippets/hirdir.conf
 
 # The nginx snippet that holds the URL prefix is not a conffile, because hirdir-setup
@@ -97,12 +106,13 @@ case "$1" in
 
         backup=""
         if [ -n "$2" ]; then
-            # Nothing may write to the database while its schema changes. systemd reads
-            # the unit files this version brought first: asked to stop a service whose
-            # unit file changed on disk, it prints a warning into every upgrade.
+            # Nothing may write to the database while its schema changes: neither the
+            # server nor the process of the background work. systemd reads the unit
+            # files this version brought first: asked to stop a service whose unit file
+            # changed on disk, it prints a warning into every upgrade.
             if [ -d /run/systemd/system ]; then
                 systemctl --system daemon-reload >/dev/null || true
-                deb-systemd-invoke stop hirdir.service >/dev/null || true
+                deb-systemd-invoke stop hirdir-worker.service hirdir.service >/dev/null || true
             fi
             # The SQLite file named by the configuration, when there is one already.
             database=$("$PYTHON" -c 'from hirdir import config
@@ -154,9 +164,12 @@ tokens.load_or_create_key(config.load().secret_key_path)'
         ;;
 esac
 
-# Enable the service and the backup timer, and start or restart them, in the way
-# dh_installsystemd does: an administrator's "systemctl disable" is remembered, a
-# policy-rc.d is obeyed, and nothing is started where systemd is not running.
+# Enable the two units of the service and the backup timer, and start or restart the
+# server and the timer, in the way dh_installsystemd does: an administrator's
+# "systemctl disable" is remembered, a policy-rc.d is obeyed, and nothing is started
+# where systemd is not running. The worker starts with the server, which wants it once
+# it is enabled, and is restarted with it, being part of it: a server that a site has
+# disabled, and that is therefore not started here, leaves the worker unstarted too.
 for unit in $UNITS; do
     deb-systemd-helper unmask "$unit" >/dev/null || true
     if deb-systemd-helper --quiet was-enabled "$unit"; then
@@ -168,8 +181,8 @@ done
 if [ -d /run/systemd/system ]; then
     systemctl --system daemon-reload >/dev/null || true
     if [ -n "$2" ]; then action=restart; else action=start; fi
-    # shellcheck disable=SC2086  # UNITS is a list of unit names.
-    deb-systemd-invoke "$action" $UNITS >/dev/null || true
+    # shellcheck disable=SC2086  # STARTED is a list of unit names.
+    deb-systemd-invoke "$action" $STARTED >/dev/null || true
 fi
 
 if [ "$1" = "configure" ] && [ -z "$2" ]; then

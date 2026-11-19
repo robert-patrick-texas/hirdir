@@ -4,10 +4,14 @@
 # "apt remove" keeps the configuration in /etc/hirdir and the data in /var/lib/hirdir,
 # and masks the units as dh_installsystemd does, which remembers whether they were
 # enabled. "apt purge" removes the data, the configuration, what hirdir-setup added to
-# nginx, and the hirdir user.
+# nginx, and the hirdir user. Going back to a release that has no unit for the
+# background work, it takes away what enabled that unit.
 set -e
 
-UNITS="hirdir.service hirdir-backup.timer"
+UNITS="hirdir.service hirdir-worker.service hirdir-backup.timer"
+WORKER=hirdir-worker.service
+# Where enabling the worker puts its link: it is wanted by the server.
+WANTS=/etc/systemd/system/hirdir.service.wants
 INCLUDE='^[[:space:]]*include[[:space:]]+snippets/hirdir\.conf;[[:space:]]*# added by hirdir-setup'
 
 remove_from_nginx() {
@@ -61,6 +65,8 @@ case "$1" in
             # shellcheck disable=SC2086
             deb-systemd-helper unmask $UNITS >/dev/null || true
         fi
+        # The directory of the worker's link, once it holds nothing.
+        rmdir "$WANTS" 2>/dev/null || true
         if [ -d /run/systemd/system ]; then
             systemctl --system daemon-reload >/dev/null || true
         fi
@@ -83,7 +89,21 @@ case "$1" in
             groupdel hirdir >/dev/null 2>&1 || true
         fi
         ;;
-    upgrade | failed-upgrade | abort-install | abort-upgrade | disappear)
+    upgrade)
+        # Going back to a release before 0.9.10, which has no unit for the background
+        # work: its scripts know nothing of what enabled that unit here, so it is
+        # taken away with the unit, whose file dpkg removes next: the link, and what
+        # the helper remembers of it.
+        if [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.9.10; then
+            if command -v deb-systemd-helper >/dev/null; then
+                deb-systemd-helper purge "$WORKER" >/dev/null || true
+                deb-systemd-helper unmask "$WORKER" >/dev/null || true
+            fi
+            rm -f "$WANTS/$WORKER"
+            rmdir "$WANTS" 2>/dev/null || true
+        fi
+        ;;
+    failed-upgrade | abort-install | abort-upgrade | disappear)
         ;;
     *)
         echo "postrm called with unknown argument '$1'" >&2

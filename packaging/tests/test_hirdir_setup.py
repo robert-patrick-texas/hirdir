@@ -680,13 +680,27 @@ EDITED = SETTINGS_OF_0_2_1.replace("# session_hours = 12", "session_hours = 11")
 # 0.7.0 says what [database] url is for. A file that has the key already keeps its own
 # lines for it, comment and all, as it keeps every line of its own.
 URL_COMMENT = "# The database, as a SQLAlchemy URL. Left out, hirdir.db in the state directory.\n"
+# 0.9.10 names a third unit that needs the drop-in of a state directory elsewhere, the
+# one of the background work (P-267). A file that has the key keeps its own lines here
+# too, which name two: docs/install.md tells such a site of the third.
+UNITS_NOW = (
+    "# the same change to ReadWritePaths in a drop-in for hirdir.service,\n"
+    "# hirdir-worker.service and hirdir-backup.service. A relative path is taken from this\n"
+    "# file's directory.\n"
+)
+UNITS_BEFORE = (
+    "# the same change to ReadWritePaths in a drop-in for hirdir.service and\n"
+    "# hirdir-backup.service. A relative path is taken from this file's directory.\n"
+)
 
 
 def test_a_settings_file_nobody_edited_becomes_the_one_this_version_ships() -> None:
     merged, added = setup.with_new_settings(SETTINGS_OF_0_2_1, SETTINGS_NOW)
     assert added == ["files.max_megabytes", "files.max_reference_megabytes", "upgrades.proxy"]
     assert URL_COMMENT in SETTINGS_NOW
-    assert merged == SETTINGS_NOW.replace(URL_COMMENT, "")
+    assert UNITS_NOW in SETTINGS_NOW
+    assert UNITS_BEFORE in SETTINGS_OF_0_2_1
+    assert merged == SETTINGS_NOW.replace(URL_COMMENT, "").replace(UNITS_NOW, UNITS_BEFORE)
 
 
 def test_new_settings_are_put_in_and_nothing_a_site_wrote_is_changed() -> None:
@@ -1046,24 +1060,33 @@ def test_after_an_upgrade_the_new_tool_reports_and_brings_the_settings_up_to_dat
 ) -> None:
     etc.mkdir()
     (etc / "config.toml").write_text(EDITED, encoding="utf-8")
-    serving = ["active"]
+    # The service is two units, the server and the process of the background work.
+    serving = {"hirdir.service": "active", "hirdir-worker.service": "active"}
 
     def run(command: list[str]) -> subprocess.CompletedProcess[str]:
         if command[0] == setup.DPKG_QUERY:
             return subprocess.CompletedProcess(command, 0, stdout="0.4.0", stderr="")
         if command[0] == setup.HIRDIR:
             return subprocess.CompletedProcess(command, 0, "schema revision: 0004\n", "")
-        return subprocess.CompletedProcess(command, 0, stdout=f"{serving[0]}\n", stderr="")
+        assert command[:2] == [setup.SYSTEMCTL, "is-active"]
+        return subprocess.CompletedProcess(command, 0, stdout=f"{serving[command[2]]}\n", stderr="")
 
     monkeypatch.setattr(setup, "_run", run)
     assert setup.main(["--after-upgrade", "0.3.0"]) == 0
     said = capsys.readouterr().out
     assert "files.max_megabytes" in said
+    assert "hirdir.service: active\nhirdir-worker.service: active\n" in said
     assert "hirdir 0.4.0 is installed, in place of 0.3.0, and is running." in said
     assert "# max_megabytes = 20" in (etc / "config.toml").read_text(encoding="utf-8")
-    serving[0] = "failed"
-    assert setup.main(["--after-upgrade", "0.3.0"]) == 1
-    assert "does not check out" in capsys.readouterr().err
+    # Either of the two not running is an upgrade that does not check out.
+    for unit in serving:
+        serving[unit] = "failed"
+        assert setup.main(["--after-upgrade", "0.3.0"]) == 1
+        told = capsys.readouterr()
+        assert f"{unit}: failed\n" in told.out
+        assert "does not check out" in told.err
+        assert "`journalctl -u hirdir -u hirdir-worker`" in told.err
+        serving[unit] = "active"
 
 
 def test_settings_and_upgrade_are_used_on_their_own() -> None:

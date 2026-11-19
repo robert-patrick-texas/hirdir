@@ -200,6 +200,7 @@ stage_files() {
     install -d "$STAGE/etc/nginx/snippets"
     local units=$STAGE/usr/lib/systemd/system
     install -Dm644 -t "$units" packaging/systemd/hirdir.service \
+        packaging/systemd/hirdir-worker.service \
         packaging/systemd/hirdir-backup.service packaging/systemd/hirdir-backup.timer \
         packaging/systemd/hirdir-upgrade.service packaging/systemd/hirdir-upgrade.timer
 
@@ -265,6 +266,7 @@ verify_units() {
     install -Dm755 "$STAGE/usr/sbin/hirdir-setup" /usr/sbin/hirdir-setup
     out=$(systemd-analyze verify --man=no --recursive-errors=no \
         "$STAGE"/usr/lib/systemd/system/hirdir.service \
+        "$STAGE"/usr/lib/systemd/system/hirdir-worker.service \
         "$STAGE"/usr/lib/systemd/system/hirdir-backup.service \
         "$STAGE"/usr/lib/systemd/system/hirdir-backup.timer \
         "$STAGE"/usr/lib/systemd/system/hirdir-upgrade.service \

@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 import hirdir_setup as setup
+import pytest
 
 from hirdir import config
 from hirdir.domain import reset
@@ -232,11 +233,103 @@ def test_the_units_run_the_commands_the_architecture_page_names() -> None:
     assert "\nExecStart=/opt/hirdir/venv/bin/hirdir admin serve\n" in service
     assert "\nStateDirectory=hirdir\n" in service
     assert "\nStateDirectoryMode=0750\n" in service
+    worker = (PACKAGING / "systemd" / "hirdir-worker.service").read_text(encoding="utf-8")
+    assert "\nUser=hirdir\n" in worker
+    assert "\nExecStart=/opt/hirdir/venv/bin/hirdir admin work\n" in worker
     backup = (PACKAGING / "systemd" / "hirdir-backup.service").read_text(encoding="utf-8")
     assert "\nUser=hirdir\n" in backup
     assert "\nExecStart=/opt/hirdir/venv/bin/hirdir admin backup\n" in backup
     timer = (PACKAGING / "systemd" / "hirdir-backup.timer").read_text(encoding="utf-8")
     assert "\nOnCalendar=daily\n" in timer
+
+
+def _settings_of(unit: str, section: str) -> list[str]:
+    """The lines of one section of a unit that set something, in their order."""
+    text = (PACKAGING / "systemd" / unit).read_text(encoding="utf-8")
+    body = text.split(f"[{section}]\n", 1)[1].split("\n[", 1)[0]
+    return [line for line in body.splitlines() if line and not line.startswith("#")]
+
+
+def test_the_worker_is_a_unit_of_the_service_under_the_limits_of_the_server() -> None:
+    """P-267: started, stopped and restarted with hirdir.service, under the same limits."""
+    server = _settings_of("hirdir.service", "Service")
+    worker = _settings_of("hirdir-worker.service", "Service")
+    # Line for line the server's, but for what each runs.
+    assert [line for line in worker if not line.startswith("ExecStart=")] == [
+        line for line in server if not line.startswith("ExecStart=")
+    ]
+    assert "ReadWritePaths=/var/lib/hirdir" in worker
+    assert "NoNewPrivileges=true" in worker
+    tied = _settings_of("hirdir-worker.service", "Unit")
+    # A stop or a restart of the server is handed on to it, and a stop of the server
+    # comes back once it has stopped, since it is ordered after the server.
+    assert "PartOf=hirdir.service" in tied
+    assert "After=hirdir.service" in tied
+    # Enabled, it is wanted by the server, so a start of the server starts it; it has
+    # no place of its own in the start of the host.
+    assert _settings_of("hirdir-worker.service", "Install") == ["WantedBy=hirdir.service"]
+    assert _settings_of("hirdir.service", "Install") == ["WantedBy=multi-user.target"]
+    build = (PACKAGING / "container" / "build.sh").read_text(encoding="utf-8")
+    assert build.count("hirdir-worker.service") == 2  # installed, and verified
+
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    prerm = (PACKAGING / "debian" / "prerm").read_text(encoding="utf-8")
+    postrm = (PACKAGING / "debian" / "postrm").read_text(encoding="utf-8")
+    # Enabled by the package, and started by the server, not beside it.
+    assert '\nUNITS="hirdir.service hirdir-worker.service hirdir-backup.timer"\n' in postinst
+    assert '\nSTARTED="hirdir.service hirdir-backup.timer"\n' in postinst
+    # Stopped with the server for a migration, and before its files go.
+    assert "deb-systemd-invoke stop hirdir-worker.service hirdir.service" in postinst
+    assert "hirdir-worker.service hirdir.service >/dev/null" in prerm
+    # Going back to a release that has no such unit: stopped by the script that leaves,
+    # and what enabled it taken away once the unit is gone.
+    assert 'dpkg --compare-versions "$2" lt 0.9.10' in prerm
+    assert 'dpkg --compare-versions "$2" lt 0.9.10' in postrm
+    assert 'deb-systemd-helper purge "$WORKER"' in postrm
+    assert '\nUNITS="hirdir.service hirdir-worker.service hirdir-backup.timer"\n' in postrm
+    # The setup tool reports on both after an upgrade.
+    assert setup.SERVICE_UNITS == ("hirdir.service", "hirdir-worker.service")
+    # A site that moved the state directory is told of all three units.
+    shipped = (PACKAGING / "config.toml").read_text(encoding="utf-8")
+    assert "hirdir.service,\n# hirdir-worker.service and hirdir-backup.service" in shipped
+
+
+def test_the_install_page_names_both_units_and_what_the_commands_say(
+    tmp_path: Path, capsys
+) -> None:
+    """docs/install.md says of the two processes what the code says."""
+    import typer
+
+    from hirdir.cli import admin
+    from hirdir.io import background
+
+    page = " ".join(INSTALL.split())
+    assert "| `hirdir.service` | `hirdir admin serve` |" in page
+    assert "| `hirdir-worker.service` | `hirdir admin work` |" in page
+    assert "journalctl -u hirdir-worker" in page
+    assert "### From 0.9.9 to 0.9.10" in INSTALL
+    source = (ROOT / "src" / "hirdir" / "cli" / "admin.py").read_text(encoding="utf-8")
+    for said in (
+        "another hirdir server is running on {state_dir}: stop it first",
+        "another process of the background work is running on {state_dir}: stop it first",
+        "hirdir: the background work of {config.state_dir} is under way",
+        "hirdir: the background work of {config.state_dir} is stopped",
+    ):
+        assert said in source
+        shown = said.replace("{config.state_dir}", "/var/lib/hirdir")
+        assert f"`{shown.replace('{state_dir}', '/var/lib/hirdir')}`" in page
+    # The refusal of a command that needs the service stopped, as the page shows it:
+    # here with the process of the background work alone running.
+    installed = config.Config(state_dir=tmp_path, listen="127.0.0.1:1")
+    held = background.hold_lock(tmp_path)
+    try:
+        with pytest.raises(typer.Exit):
+            admin._need_stopped(installed, "nobody is at work while the inventory goes")
+    finally:
+        held.close()
+    refused = capsys.readouterr().err.strip()
+    assert refused.startswith("hirdir: the service is running, the process of the background")
+    assert f"```text\n{refused}\n```" in INSTALL
 
 
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
@@ -297,13 +390,13 @@ def test_an_upgrade_backs_up_before_it_migrates_and_restarts_after() -> None:
     """The order the architecture and install pages give: stop, back up, migrate, start."""
     postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
     steps = [
-        "deb-systemd-invoke stop hirdir.service",
+        "deb-systemd-invoke stop hirdir-worker.service hirdir.service",
         '"$HIRDIR" admin backup',
         '"$HIRDIR" admin migrate',
         # The nginx snippet only once the migration is done: an upgrade that stops
         # there has changed nothing of nginx's.
         'renew_snippet "$2"',
-        'deb-systemd-invoke "$action" $UNITS',
+        'deb-systemd-invoke "$action" $STARTED',
     ]
     places = [postinst.index(step) for step in steps]
     assert places == sorted(places)
@@ -325,8 +418,8 @@ def test_the_nightly_upgrade_is_shipped_and_is_for_a_site_to_turn_on() -> None:
     # The package enables and starts the service and the backup, and not this.
     postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
     postrm = (PACKAGING / "debian" / "postrm").read_text(encoding="utf-8")
-    assert '\nUNITS="hirdir.service hirdir-backup.timer"\n' in postinst
-    assert '\nUNITS="hirdir.service hirdir-backup.timer"\n' in postrm
+    assert '\nUNITS="hirdir.service hirdir-worker.service hirdir-backup.timer"\n' in postinst
+    assert '\nUNITS="hirdir.service hirdir-worker.service hirdir-backup.timer"\n' in postrm
     assert "hirdir-upgrade" not in postinst
     # Removed, the package stops it and takes away the link that turned it on.
     prerm = (PACKAGING / "debian" / "prerm").read_text(encoding="utf-8")

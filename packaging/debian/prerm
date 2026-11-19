@@ -1,22 +1,30 @@
 #!/bin/sh
 # prerm for hirdir.
 #
-# On removal, stops the backup timer and the service before their files go. On an
-# upgrade the service keeps running; the new postinst stops it for the migration.
+# On removal, stops the backup timer and the service, the server and the process of
+# the background work, before their files go. On an upgrade the service keeps running;
+# the new postinst stops it for the migration. Going back to a release before 0.9.10,
+# which has no unit for the background work and whose postinst stops the server alone,
+# that process is stopped here: otherwise it would go on, from files that are gone.
 set -e
 
 case "$1" in
     remove)
         if [ -d /run/systemd/system ]; then
-            deb-systemd-invoke stop hirdir-backup.timer hirdir-backup.service hirdir.service \
-                >/dev/null || true
+            deb-systemd-invoke stop hirdir-backup.timer hirdir-backup.service \
+                hirdir-worker.service hirdir.service >/dev/null || true
             # The nightly upgrade, where a site turned it on: there is nothing left for
             # it to upgrade, and its unit file is about to go. postrm takes away the
             # link that turned it on.
             deb-systemd-invoke stop hirdir-upgrade.timer >/dev/null 2>&1 || true
         fi
         ;;
-    upgrade | deconfigure | failed-upgrade)
+    upgrade)
+        if [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.9.10 && [ -d /run/systemd/system ]; then
+            deb-systemd-invoke stop hirdir-worker.service >/dev/null || true
+        fi
+        ;;
+    deconfigure | failed-upgrade)
         ;;
     *)
         echo "prerm called with unknown argument '$1'" >&2
