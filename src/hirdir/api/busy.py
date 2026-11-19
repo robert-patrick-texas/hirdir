@@ -144,26 +144,37 @@ class Kinds:
     the request's. What was found is remembered, since every request of the API asks."""
 
     def __init__(self, routers: Iterable[APIRouter], prefix: str) -> None:
-        self._routes: list[tuple[re.Pattern[str], frozenset[str], Kind]] = [
-            (compile_path(prefix + route.path)[0], methods_of(route), kind_of(route))
+        self._routes: list[tuple[re.Pattern[str], frozenset[str], Kind, str]] = [
+            (
+                compile_path(prefix + route.path)[0],
+                methods_of(route),
+                kind_of(route),
+                prefix + route.path,
+            )
             for route in routes_of(routers)
         ]
-        self._found: dict[tuple[str, str], Kind] = {}
+        self._found: dict[tuple[str, str], tuple[Kind, str | None]] = {}
 
     def of(self, method: str, path: str) -> Kind:
         """Return what a request is. One that no route answers is left to the router,
         which says so at once: it stands apart."""
+        return self.found(method, path)[0]
+
+    def found(self, method: str, path: str) -> tuple[Kind, str | None]:
+        """Return what a request is, and its route as the pattern it was declared
+        with, `/api/v1/items/{hid}`: what is kept of a slow request in place of its
+        path. None for a request that no route answers."""
         asked = (method, path)
-        kind = self._found.get(asked)
-        if kind is None:
-            kind = self._look(method, path)
+        found = self._found.get(asked)
+        if found is None:
+            found = self._look(method, path)
             if len(self._found) >= MOST_REMEMBERED:
                 self._found.clear()
-            self._found[asked] = kind
-        return kind
+            self._found[asked] = found
+        return found
 
-    def _look(self, method: str, path: str) -> Kind:
-        for pattern, methods, kind in self._routes:
+    def _look(self, method: str, path: str) -> tuple[Kind, str | None]:
+        for pattern, methods, kind, route in self._routes:
             if method in methods and pattern.match(path):
-                return kind
-        return APART
+                return kind, route
+        return APART, None

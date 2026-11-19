@@ -7,7 +7,7 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from hirdir.auth.roles import Role
-from hirdir.domain import accounts
+from hirdir.domain import accounts, load
 from hirdir.domain.accounts import Principal
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import NotAllowed
@@ -49,7 +49,15 @@ def get_principal(request: Request, db: Db) -> Principal:
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise accounts.NotSignedIn("sign in to continue")
-    return accounts.authenticate(db, request.app.state.signing_key, token.strip())
+    principal = accounts.authenticate(db, request.app.state.signing_key, token.strip())
+    # Who asks is left where the gateway reads it once the answer is sent, as the ID of
+    # the request is kept: the server's own measures say what each account met (P-266).
+    request.state.who = load.Who(
+        principal.user.hid,
+        principal.user.username,
+        load.SERVICE if principal.kind == "service" else load.PERSON,
+    )
+    return principal
 
 
 SignedIn = Annotated[Principal, Depends(get_principal)]

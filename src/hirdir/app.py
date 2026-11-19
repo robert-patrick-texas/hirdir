@@ -81,8 +81,15 @@ BOOT_NAME = '<p class="boot-name">hirdir</p>'
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 # The header of every answer of the API that says the health of the server in a word,
-# for the mark in the menu bar (P-265).
+# for the mark in the menu bar, and what the server refuses for it: red with nothing
+# refused is a quiet server whose pages are slow, and not a busy one (P-265). Every
+# value it takes is made here, once.
 HEALTH = "X-Hirdir-Health"
+HEALTH_SAID = {
+    (health, refusing): f"{health}; refusing={refusing}"
+    for health in load.HEALTHS
+    for refusing in load.REFUSINGS
+}
 log = logging.getLogger("hirdir")
 KEEP_FOR_GOOD = "public, max-age=31536000, immutable"
 SMALLEST_COMPRESSED = 1024
@@ -125,10 +132,11 @@ class Gateway:
     is handed to the application, so that what a sender takes to send is never the
     server's time, and a request whose body never comes holds nothing busy. An answer
     that was not sent to its last byte, cut short, never begun or given up, is counted
-    as failed. And it is where a server past its ceiling answers that it is busy, at
-    once, on the event loop: before the request waits for a thread or for the database.
-    Every answer of the API says the health of the server, in `X-Hirdir-Health`, as the
-    meter had it in memory when the request arrived.
+    as failed. And it is where a server whose health is very slow or busy answers what
+    it refuses, at once, on the event loop: before the request waits for a thread or
+    for the database.
+    Every answer of the API says the health of the server and what it refuses, in
+    `X-Hirdir-Health`, as the meter had them in memory when the request arrived.
     """
 
     def __init__(
@@ -167,17 +175,20 @@ class Gateway:
         # What is not of the API, the page and its files, stands apart: in no measure,
         # never refused, and with no word of the server's health.
         kind: load.Kind = load.APART
-        health: load.Health | None = None
+        route: str | None = None
+        health: str | None = None
         if is_api:
             # What the measures say, from memory: read again once a second at the most.
             reading = meter.reading(now, cpu)
-            health = reading.health
+            health = HEALTH_SAID[reading.health, reading.refusing]
             if self.kinds is not None:
-                kind = self.kinds.of(scope["method"], scope["path"].removeprefix(root))
-            if load.refuses(reading.state, kind):
+                kind, route = self.kinds.found(scope["method"], scope["path"].removeprefix(root))
+            if load.refuses(reading.refusing, kind):
                 # An answer of busy is counted, and is in neither measure.
-                meter.turned_away(now, cpu)
+                meter.turned_away(now, cpu, who=self._asking(scope, headers, meter))
                 refused = problems.server_busy(reading)
+        # What is kept of the request for the lists of the slowest: never its path.
+        asked = load.Asked(scope["method"], route, request_id) if is_api else None
         declared = headers.get("content-length", "")
         # A request has a body where it says how long one is, or that one comes in pieces.
         has_body = "transfer-encoding" in headers or (declared.isdigit() and int(declared) > 0)
@@ -185,7 +196,14 @@ class Gateway:
         if refused is not None:
             flight = None
         else:
-            flight = meter.began(now, cpu, measured=load.measured(kind), whole=not has_body)
+            flight = meter.began(
+                now,
+                cpu,
+                measured=load.measured(kind),
+                whole=not has_body,
+                long=kind == load.LONG,
+                api=is_api,
+            )
             scope["state"]["in_flight"] = flight
             refused = self._too_large(scope, headers, root)
             if has_body and refused is None:
@@ -221,8 +239,15 @@ class Gateway:
                 # A file that the server itself sends whole is one message.
                 or message["type"] == "http.response.pathsend"
             ):
-                # The last byte of the answer is sent: what the request took is known.
-                meter.ended(flight, *measures.clock(), status=status)
+                # The last byte of the answer is sent: what the request took is known,
+                # and who asked it, where the check of the sign-in left that.
+                meter.ended(
+                    flight,
+                    *measures.clock(),
+                    status=status,
+                    who=scope["state"].get("who"),
+                    asked=asked,
+                )
                 flight = None
 
         try:
@@ -252,7 +277,28 @@ class Gateway:
                 # The last byte was never sent: the answer was cut short after it began,
                 # never begun, or given up with the request, and is over all the same.
                 # It failed, whatever status it began with.
-                meter.ended(flight, *measures.clock(), status=500)
+                meter.ended(
+                    flight,
+                    *measures.clock(),
+                    status=500,
+                    who=scope["state"].get("who"),
+                    asked=asked,
+                )
+
+    @staticmethod
+    def _asking(scope: Scope, headers: Headers, meter: load.Meter) -> load.Who | None:
+        """Return who asks a request that is refused before anything looks, where that
+        is known without the database: the session token's signature holds, and its
+        account asked of late and is remembered. Otherwise nobody is named."""
+        scheme, _, token = headers.get("authorization", "").partition(" ")
+        token = token.strip()
+        if scheme.lower() != "bearer" or not token or tokens.is_service_token(token):
+            return None
+        try:
+            claims = tokens.read_session(scope["app"].state.signing_key, token)
+        except tokens.InvalidToken:
+            return None
+        return meter.known(claims.user_hid)
 
     @staticmethod
     def _hearing(receive: Receive, meter: load.Meter, flight: int) -> Receive:

@@ -7,10 +7,10 @@ used. Nothing of it is written anywhere, and it starts empty.
 Two measures are read from it over the last `busy_over_seconds`: how long requests take,
 which is the 95th percentile of their times, and the processor time the process used as
 a percentage of one processor, which passes 100 where several threads of it work at
-once. Past the ceiling of either the server is busy, and what is long by nature and can
-wait is turned away at once; still busy a further `busy_over_seconds` later, by what
-came after it became busy, it is very busy, and every read is. The same percentile
-against the thirds of its ceiling is the health of the server, in a word.
+once. From them comes the health of the server, in one of four words, and what the
+server refuses follows from its health alone: nothing while it is good or slow, what is
+long by nature and can wait while it is very slow, and every read as well while it is
+busy.
 
 Nothing here reads a clock or the host. The time, in seconds that only go forward, and
 the processor time the process has used so far are given by whoever asks, so the rules
@@ -20,9 +20,9 @@ are tried without waiting. `hirdir.io.measures` reads both for the server.
 import threading
 from array import array
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from copy import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Final, Literal
 
@@ -30,8 +30,10 @@ from typing import Final, Literal
 WINDOW_SECONDS = 600
 STEP_SECONDS = 5
 STEPS = WINDOW_SECONDS // STEP_SECONDS
-# How long requests take is this percentile of their times, read of this many requests
-# at the least (P-265): one request in twenty may take as long as it likes.
+# How long requests take is this percentile of their times, at any count of them: the
+# colour is there to catch slow pages on a quiet server, where one slow answer is what
+# a person met. What is refused follows the colour only where there are this many
+# requests in the time the measures look back: fewer are no load to shed (P-265).
 PERCENTILE = 95
 FEWEST_REQUESTS = 20
 # The measures are read again this often at the most, however many requests ask.
@@ -44,6 +46,17 @@ MOST_TIMES = 20_000
 MOST_TIMES_OF_A_STEP = 1000
 # What an answer of busy says to wait, in seconds: a step, in which the measures move.
 RETRY_SECONDS = STEP_SECONDS
+# The slowest requests of the ten minutes that are listed: of the measure, and of what is
+# long by nature. A step keeps as many of its own, so the slowest of all are among them.
+MOST_SLOWEST = 10
+MOST_SLOWEST_LONG = 5
+# The accounts one step counts each by itself, and the accounts that are listed: past
+# either, the rest are counted together.
+MOST_PEOPLE_OF_A_STEP = 50
+MOST_PEOPLE = 50
+# The accounts remembered by their HID, for a request that is refused before anything
+# looks who asks; past so many, all are forgotten and learnt again.
+MOST_KNOWN = 1000
 
 # The three settings of the ceiling, and what each is unless set (P-265).
 RESPONSE_SETTING = "busy_response_ms"
@@ -63,30 +76,37 @@ CPU_PERCENT_OF_A_PROCESSOR = 100
 FEWEST_OVER_SECONDS = STEP_SECONDS
 MOST_OVER_SECONDS = WINDOW_SECONDS // 2
 
-# What the server is.
-State = Literal["ok", "busy", "very_busy"]
-OK: Final = "ok"
-BUSY: Final = "busy"
-VERY_BUSY: Final = "very_busy"
-# The two measures, as an answer names the one that is past its ceiling.
+# The two measures, as an answer names the one its health stands on.
 Measure = Literal["response_ms", "cpu_percent"]
 RESPONSE: Final = "response_ms"
 PROCESSOR: Final = "cpu_percent"
 
 # The health of the server in a word, for a mark that is green, yellow, orange or red:
-# how long requests take against the thirds of its ceiling, and whether it is busy.
+# how long requests take against the thirds of its ceiling. In order, the worst last.
 Health = Literal["good", "slow", "very_slow", "busy"]
 GOOD: Final = "good"
 SLOW: Final = "slow"
 VERY_SLOW: Final = "very_slow"
+BUSY: Final = "busy"
 HEALTHS: tuple[Health, ...] = (GOOD, SLOW, VERY_SLOW, BUSY)
+ORANGE = HEALTHS.index(VERY_SLOW)
+RED = HEALTHS.index(BUSY)
 
-# What a request is, to the meter and to a server that is busy.
+# What a server refuses, which follows from its health: nothing while it is good or
+# slow, what is long by nature while it is very slow, and every read as well while it
+# is busy.
+Refusing = Literal["nothing", "long", "reads"]
+NOTHING: Final = "nothing"
+THE_LONG: Final = "long"
+THE_READS: Final = "reads"
+REFUSINGS: tuple[Refusing, ...] = (NOTHING, NOTHING, THE_LONG, THE_READS)
+
+# What a request is, to the meter and to a server that refuses.
 Kind = Literal["long", "read", "kept", "apart"]
-# Long by nature, a report, an export or a preview: turned away while the server is
-# busy, and its time in no measure, since seconds of it say nothing of the server.
+# Long by nature, a report, an export or a preview: turned away from very slow on, and
+# its time in no measure, since seconds of it say nothing of the server.
 LONG: Final = "long"
-# Any other read of the API: in the measure, and turned away once it is very busy.
+# Any other read of the API: in the measure, and turned away while the server is busy.
 READ: Final = "read"
 # A sign-in or a change that is stored: in the measure, and never turned away.
 KEPT: Final = "kept"
@@ -96,11 +116,182 @@ KEPT: Final = "kept"
 APART: Final = "apart"
 
 
-def refuses(state: State, kind: Kind) -> bool:
-    """Say whether a server in a state turns a request of a kind away."""
+# Who asked: a person, a service account, nobody that is known, or the rest together.
+WhoKind = Literal["person", "service", "unnamed", "others"]
+PERSON: Final = "person"
+SERVICE: Final = "service"
+UNNAMED: Final = "unnamed"
+OTHERS: Final = "others"
+
+
+@dataclass(frozen=True)
+class Who:
+    """Who asked: an account, by its HID and its username, a person's or a service's."""
+
+    hid: str
+    username: str
+    kind: WhoKind = PERSON
+
+
+@dataclass(frozen=True)
+class Asked:
+    """What was asked, as much as is kept of it: the method, the route as its pattern,
+    `/api/v1/items/{hid}`, and the ID of the request. Never the path as it was asked nor
+    its query: no identifier and no word of a search is kept."""
+
+    method: str
+    route: str | None
+    request_id: str
+
+
+@dataclass(frozen=True)
+class Slow:
+    """One of the slowest requests of the ten minutes."""
+
+    at: datetime
+    method: str
+    route: str | None
+    ms: float
+    status: int
+    request_id: str
+    # None where nothing verifiable said who asked.
+    who: Who | None
+
+
+@dataclass(frozen=True)
+class Person:
+    """What one account met in the ten minutes; or those nobody is named for, or the
+    rest together."""
+
+    kind: WhoKind
+    hid: str | None
+    username: str | None
+    # Every request of the API, those that were refused among them.
+    requests: int
+    # Of its requests of the measure, how many in each band of time.
+    bands: tuple[int, int, int, int]
+    slowest_ms: float | None
+    busy: int
+    failed: int
+    last_at: datetime
+
+
+@dataclass
+class _Slow:
+    """A request that is among the slowest of its step."""
+
+    began: float
+    taken_ms: float
+    status: int
+    asked: Asked
+    who: Who | None
+
+
+@dataclass
+class _Met:
+    """What one account met in one step."""
+
+    who: Who | None
+    requests: int = 0
+    bands: list[int] = field(default_factory=lambda: [0, 0, 0, 0])
+    slowest_ms: float | None = None
+    busy: int = 0
+    failed: int = 0
+    # When the last of its requests came.
+    last: float = 0.0
+
+    def add(self, other: _Met) -> None:
+        if other.last >= self.last and other.who is not None:
+            # The username as it was when the account last asked.
+            self.who = other.who
+        self.requests += other.requests
+        self.bands = [mine + its for mine, its in zip(self.bands, other.bands, strict=True)]
+        if other.slowest_ms is not None:
+            self.slowest_ms = max(self.slowest_ms or 0.0, other.slowest_ms)
+        self.busy += other.busy
+        self.failed += other.failed
+        self.last = max(self.last, other.last)
+
+    @property
+    def worst(self) -> tuple[int, float]:
+        """How bad it was: the requests past the ceiling and those refused, and then
+        the slowest time."""
+        return self.bands[3] + self.busy, self.slowest_ms or 0.0
+
+
+def _keep(kept: list[_Slow], slow: _Slow, most: int) -> None:
+    """Keep a request among the slowest of a step, where it is one of them."""
+    if len(kept) < most:
+        kept.append(slow)
+        return
+    least = min(range(len(kept)), key=lambda at: kept[at].taken_ms)
+    if slow.taken_ms > kept[least].taken_ms:
+        kept[least] = slow
+
+
+def slowest_of(slow: Iterable[_Slow], most: int, when: Callable[[float], datetime]) -> list[Slow]:
+    """Return the slowest of some requests, the slowest first, and of two that took as
+    long the one that came first."""
+    ordered = sorted(slow, key=lambda one: (-one.taken_ms, one.began))
+    return [
+        Slow(
+            at=when(one.began),
+            method=one.asked.method,
+            route=one.asked.route,
+            ms=one.taken_ms,
+            status=one.status,
+            request_id=one.asked.request_id,
+            who=one.who,
+        )
+        for one in ordered[:most]
+    ]
+
+
+def people_of(met: Iterable[tuple[str, _Met]], when: Callable[[float], datetime]) -> list[Person]:
+    """Return what each account met, from what it met in each step: whoever had it
+    worst first, by the requests past the ceiling and those refused, then by the
+    slowest time, then by name. After the accounts, the requests that nothing
+    verifiable named an account for, in one row; and last the rest together, where
+    there were more accounts than are counted or listed each by itself."""
+    by_key: dict[str, _Met] = {}
+    for key, one in met:
+        whole = by_key.get(key)
+        if whole is None:
+            by_key[key] = replace(one, bands=list(one.bands))
+        else:
+            whole.add(one)
+    unnamed, others = by_key.pop(UNNAMED, None), by_key.pop(OTHERS, None)
+    named = sorted(
+        by_key.values(),
+        key=lambda one: (-one.worst[0], -one.worst[1], one.who.username if one.who else ""),
+    )
+    for one in named[MOST_PEOPLE:]:
+        if others is None:
+            others = _Met(None)
+        others.add(replace(one, who=None))
+    rows = [(one.who.kind if one.who else PERSON, one) for one in named[:MOST_PEOPLE]]
+    rows += [(kind, one) for kind, one in ((UNNAMED, unnamed), (OTHERS, others)) if one]
+    return [
+        Person(
+            kind=kind,
+            hid=one.who.hid if one.who else None,
+            username=one.who.username if one.who else None,
+            requests=one.requests,
+            bands=(one.bands[0], one.bands[1], one.bands[2], one.bands[3]),
+            slowest_ms=one.slowest_ms,
+            busy=one.busy,
+            failed=one.failed,
+            last_at=when(one.last),
+        )
+        for kind, one in rows
+    ]
+
+
+def refuses(refusing: Refusing, kind: Kind) -> bool:
+    """Say whether a server that refuses so much turns a request of a kind away."""
     if kind == LONG:
-        return state in (BUSY, VERY_BUSY)
-    return kind == READ and state == VERY_BUSY
+        return refusing in (THE_LONG, THE_READS)
+    return kind == READ and refusing == THE_READS
 
 
 def measured(kind: Kind) -> bool:
@@ -109,12 +300,16 @@ def measured(kind: Kind) -> bool:
 
 
 def percentile(ordered: Sequence[float], percent: int) -> float | None:
-    """Return the percentile of some times that are in order, the shortest first: the
-    shortest of them that at least `percent` in a hundred of them are no longer than.
-    It is one of the times, never a value between two. None of no times."""
+    """Return the percentile of some times that are in order, the shortest first, by
+    the nearest rank from the top: the k-th longest of them, where k is as many in a
+    hundred of them as the percentile leaves above it, rounded up, and one at the
+    least. So the 95th of twenty or fewer is the longest, of twenty-one the second
+    longest, and of a hundred the fifth. It is one of the times, never a value between
+    two. None of no times."""
     if not ordered:
         return None
-    return ordered[max(-(-len(ordered) * percent // 100), 1) - 1]
+    above = max(-(-len(ordered) * (100 - percent) // 100), 1)
+    return ordered[len(ordered) - above]
 
 
 def bounds_of(ceiling_ms: int) -> tuple[float, float, float]:
@@ -157,14 +352,15 @@ NO_CEILING = Ceiling(response_ms=0, cpu_percent=0)
 class Reading:
     """The two measures as the ceiling reads them at one moment, and what they say."""
 
-    state: State = OK
-    # The measures that are past the ceiling.
+    health: Health = GOOD
+    # The measures the health stands on: none while it is good.
     because: tuple[Measure, ...] = ()
-    # None with fewer than `FEWEST_REQUESTS` requests.
+    refusing: Refusing = NOTHING
+    # None with no request.
     response_ms: float | None = None
     cpu_percent: float = 0.0
-    # Busy where the state is; otherwise the band `response_ms` is in, good with none.
-    health: Health = GOOD
+    # How many requests `response_ms` is of.
+    requests: int = 0
 
 
 # What a meter says before anything has asked.
@@ -225,6 +421,11 @@ class Picture:
     in_flight: int
     oldest_ms: float | None
     points: Points
+    # The slowest requests of the ten minutes, of the measure and of what is long by
+    # nature, and what each account met in them.
+    slowest: list[Slow]
+    slowest_long: list[Slow]
+    people: list[Person]
 
 
 @dataclass
@@ -241,6 +442,27 @@ class _Step:
     cpu_seconds: float = 0.0
     # The times of the answers that are in the measure, the first of the step.
     times: array[float] = field(default_factory=lambda: array("d"))
+    # The slowest of its requests, of the measure and of what is long by nature; and
+    # what each account met in it, by the HID of the account.
+    slowest: list[_Slow] = field(default_factory=list)
+    slowest_long: list[_Slow] = field(default_factory=list)
+    people: dict[str, _Met] = field(default_factory=dict)
+
+    def met(self, who: Who | None) -> _Met:
+        """Return what an account met in the step, to add to: that of the requests
+        nobody is named for, where there is no account; and that of the rest together,
+        where the step counts as many accounts as it may."""
+        key = UNNAMED if who is None else who.hid
+        one = self.people.get(key)
+        if one is None:
+            if who is not None and len(self.people) >= MOST_PEOPLE_OF_A_STEP:
+                key, who = OTHERS, None
+                one = self.people.get(key)
+            if one is None:
+                one = self.people[key] = _Met(who)
+        elif who is not None:
+            one.who = who
+        return one
 
     @property
     def timed(self) -> int:
@@ -273,6 +495,9 @@ class _Flight:
     # Whether the server has the whole of it. One whose body has not all come waits
     # for its sender and not for the server: it is in flight, and in neither measure.
     whole: bool
+    # Whether it is long by nature, and whether it is of the API at all.
+    long: bool = False
+    api: bool = True
 
 
 @dataclass
@@ -301,11 +526,11 @@ class Meter:
     _times: deque[tuple[float, float]] = field(
         default_factory=lambda: deque(maxlen=MOST_TIMES), repr=False
     )
-    # Since when the server is busy, the processor time the process had used by then,
-    # and whether it is at the second step.
-    _busy_since: float | None = None
-    _busy_cpu: float = 0.0
-    _very_busy: bool = False
+    # When the server last refused its reads, while that is no longer ago than the
+    # measures look back: the one thing remembered of before.
+    _busy_at: float | None = None
+    # The accounts that asked of late, by their HID.
+    _known: dict[str, Who] = field(default_factory=dict, repr=False)
     _reading: Reading = UNREAD
     _read_at: float | None = None
 
@@ -320,15 +545,25 @@ class Meter:
             self.ceiling = ceiling
             self._read_at = None
 
-    def began(self, now: float, cpu: float, measured: bool, whole: bool = True) -> int:
+    def began(
+        self,
+        now: float,
+        cpu: float,
+        measured: bool,
+        whole: bool = True,
+        long: bool = False,
+        api: bool = True,
+    ) -> int:
         """Note that a request arrived, and return what to end it with. `measured` says
         whether its time is in the measure of time, as that of a read or a change of
         the API is, and `whole` whether the server has all of it: a request that
-        declares a body is not whole until the body has come."""
+        declares a body is not whole until the body has come. `long` says that it is
+        long by nature, and `api` that it is of the API, whose requests are counted
+        for who asked them."""
         with self._lock:
             now = self._advance(now, cpu)
             self._tokens += 1
-            self._flights[self._tokens] = _Flight(now, measured, whole)
+            self._flights[self._tokens] = _Flight(now, measured, whole, long, api)
             return self._tokens
 
     def heard(self, token: int, now: float, cpu: float, whole: bool) -> None:
@@ -342,32 +577,76 @@ class Meter:
             flight.began = self._advance(now, cpu)
             flight.whole = whole
 
-    def ended(self, token: int, now: float, cpu: float, status: int) -> None:
-        """Note that the last byte of the answer to a request was sent, with its status."""
+    def ended(
+        self,
+        token: int,
+        now: float,
+        cpu: float,
+        status: int,
+        who: Who | None = None,
+        asked: Asked | None = None,
+    ) -> None:
+        """Note that the last byte of the answer to a request was sent, with its
+        status; and for a request of the API who asked, where the check of the sign-in
+        found an account, and what was asked. It costs the request a few additions:
+        the lists are worked out when they are asked for."""
         with self._lock:
             flight = self._flights.pop(token, None)
             if flight is None:
                 return
             now = self._advance(now, cpu)
             taken_ms = (now - flight.began) * 1000
-            self._steps[-1].count(status, taken_ms, flight.measured)
+            step = self._steps[-1]
+            step.count(status, taken_ms, flight.measured)
             if flight.measured:
                 self._times.append((flight.began, taken_ms))
                 self._forget(now)
+            if not flight.api:
+                return
+            one = step.met(who)
+            one.requests += 1
+            one.last = max(one.last, flight.began)
+            if status >= 500:
+                one.failed += 1
+            if flight.measured:
+                one.bands[band_of(taken_ms, bounds_of(self.ceiling.response_ms))] += 1
+                one.slowest_ms = max(one.slowest_ms or 0.0, taken_ms)
+            if asked is not None and (flight.measured or flight.long):
+                slow = _Slow(flight.began, taken_ms, status, asked, who)
+                if flight.long:
+                    _keep(step.slowest_long, slow, MOST_SLOWEST_LONG)
+                else:
+                    _keep(step.slowest, slow, MOST_SLOWEST)
+            if who is not None:
+                if len(self._known) >= MOST_KNOWN and who.hid not in self._known:
+                    self._known.clear()
+                self._known[who.hid] = who
 
-    def turned_away(self, now: float, cpu: float) -> None:
-        """Note an answer of busy, which is counted and is in neither measure."""
+    def turned_away(self, now: float, cpu: float, who: Who | None = None) -> None:
+        """Note a request that was refused, which is counted and is in neither measure;
+        for who asked, where that is known."""
         with self._lock:
-            self._advance(now, cpu)
-            self._steps[-1].busy += 1
+            now = self._advance(now, cpu)
+            step = self._steps[-1]
+            step.busy += 1
+            one = step.met(who)
+            one.requests += 1
+            one.busy += 1
+            one.last = max(one.last, now)
+
+    def known(self, hid: str) -> Who | None:
+        """Return the account of a HID, where it asked of late: what a request that is
+        refused before anything looks who asks is counted for."""
+        with self._lock:
+            return self._known.get(hid)
 
     # --- what it says -----------------------------------------------------------------
 
     def reading(self, now: float, cpu: float) -> Reading:
-        """Return what the measures say to a request that arrives now: whether the
-        server is busy, and its health. The measures are read once a second at the
-        most, and what was read is given from memory otherwise. With no ceiling the
-        server is never busy, and its health is read all the same."""
+        """Return what the measures say to a request that arrives now: the health of
+        the server, and what it refuses. The measures are read once a second at the
+        most, and what was read is given from memory otherwise. With no ceiling
+        nothing is refused, and the health is read all the same."""
         with self._lock:
             if self._read_at is not None and 0 <= now - self._read_at < READ_EVERY_SECONDS:
                 return self._reading
@@ -388,6 +667,13 @@ class Meter:
             first = self._first
             # The times are taken as they are, and put in order once the lock is let go.
             kept = [step.times.tolist() for step in steps]
+            slow = [one for step in steps for one in step.slowest]
+            slow_long = [one for step in steps for one in step.slowest_long]
+            met = [
+                (key, replace(one, bands=list(one.bands)))
+                for step in steps
+                for key, one in step.people.items()
+            ]
             shares = [self._share(offset, now) for offset in range(len(steps))]
             under_way = now - self._begins(len(steps) - 1)
         for times in kept:
@@ -440,7 +726,14 @@ class Meter:
                 cpu_percent=[*shares[:-1], shares[-1] if under_way >= 1 else None],
                 busy=[step.busy for step in steps],
             ),
+            slowest=slowest_of(slow, MOST_SLOWEST, self._when),
+            slowest_long=slowest_of(slow_long, MOST_SLOWEST_LONG, self._when),
+            people=people_of(met, self._when),
         )
+
+    def _when(self, moment: float) -> datetime:
+        """Return the moment of the clock that only goes forward as a time of day."""
+        return self.started_at + timedelta(seconds=moment - self._origin)
 
     # --- the arithmetic, under the lock -----------------------------------------------
 
@@ -512,76 +805,62 @@ class Meter:
                 )
         return used / over * 100
 
-    def _response(self, now: float, since: float) -> float | None:
-        """Return how long requests take: the 95th percentile of the time taken by the
-        requests of the measure that the server has had since a moment, whatever each
-        took, and of the time waited so far by those in flight, however long ago they
-        came; or None where they are fewer than twenty. A request is in it from when
-        the server had the whole of it, so one leaves the measure `over_seconds` after
-        it came and not after it was answered: a stall that is over is not read as one
-        that lasts. The percentile, so that one request in twenty may take as long as
-        it likes, and a second one may not; those in flight, so that a server from
-        which nothing comes back is not taken for an idle one."""
+    def _response(self, now: float) -> tuple[float | None, int]:
+        """Return how long requests take, and of how many it is read: the 95th
+        percentile of the time taken by the requests of the measure that came in the
+        last `over_seconds`, whatever each took, and of the time waited so far by those
+        in flight, however long ago they came; None of none. A request is in it from
+        when the server had the whole of it, so one leaves the measure `over_seconds`
+        after it came and not after it was answered: a stall that is over is not read
+        as one that lasts. Those in flight are in it so that a server from which
+        nothing comes back is not taken for an idle one."""
+        since = now - self.ceiling.over_seconds
         times = [taken for began, taken in self._times if began > since]
         times += [
             (now - flight.began) * 1000
             for flight in self._flights.values()
             if flight.measured and flight.whole
         ]
-        if len(times) < FEWEST_REQUESTS:
-            return None
         times.sort()
-        return percentile(times, PERCENTILE)
-
-    def _health(self, state: State, response: float | None) -> Health:
-        """Return the health of the server in a word: busy where it is busy, by either
-        measure, and otherwise the band of time that how long requests take is in,
-        which past the ceiling is busy too. Good where there is no such measure."""
-        if state != OK:
-            return BUSY
-        if response is None:
-            return GOOD
-        return HEALTHS[band_of(response, bounds_of(self.ceiling.response_ms))]
-
-    def _past(self, response: float | None, processor: float) -> tuple[Measure, ...]:
-        """Return which of the two measures are past the ceiling. One at 0 is not
-        looked at."""
-        ceiling = self.ceiling
-        past: list[Measure] = []
-        if ceiling.response_ms and response is not None and response > ceiling.response_ms:
-            past.append(RESPONSE)
-        if ceiling.cpu_percent and processor > ceiling.cpu_percent:
-            past.append(PROCESSOR)
-        return tuple(past)
+        return percentile(times, PERCENTILE), len(times)
 
     def _read(self, now: float) -> Reading:
-        """Read the two measures, and say whether the server is busy and at which step.
+        """Read the two measures, and say the health of the server and what it refuses.
 
-        The second step is not reached by the passing of time alone. A server that has
-        been busy for a further `over_seconds` is very busy only where what came after
-        it became busy says so: twenty or more requests had since then and those in
-        flight, whose 95th percentile is past the ceiling, or the processor time used
-        since then,
-        which is counted and not read from the steps. Where neither does, what kept it
-        busy was the echo of before, and the further while is counted again from here.
+        How long requests take says the health by the band it is in, against the thirds
+        of its ceiling, at any count of requests: good with none. The processor past
+        its ceiling makes it very slow at the least, and never busy by itself.
+
+        What is refused follows the health where there is load to shed. Time refuses
+        by its colour only where `response_ms` has a ceiling and twenty or more
+        requests are in the measure: fewer are a quiet server whose pages are slow,
+        which the colour says and refusing would not mend. The processor refuses what
+        is long whatever the count. And a server that refused its reads refuses what is
+        long, and is very slow at the best, until `over_seconds` have passed since it
+        last did: what is long does not come back in the same moment as the reads.
+        Nothing else of before is remembered.
         """
-        over = self.ceiling.over_seconds
+        ceiling = self.ceiling
         self._forget(now)
-        response, processor = self._response(now, now - over), self._processor(now)
-        because = self._past(response, processor)
-        if not because:
-            self._busy_since = None
-            self._very_busy = False
-        elif self._busy_since is None:
-            self._busy_since, self._busy_cpu = now, self.cpu
-        elif not self._very_busy and now - self._busy_since >= over:
-            since = self._busy_since
-            used = (self.cpu - self._busy_cpu) / (now - since) * 100
-            if self._past(self._response(now, max(since, now - over)), used):
-                self._very_busy = True
+        (response, requests), processor = self._response(now), self._processor(now)
+        by_time = 0 if response is None else band_of(response, bounds_of(ceiling.response_ms))
+        loaded = bool(ceiling.response_ms) and requests >= FEWEST_REQUESTS
+        time_refuses = by_time if loaded else 0
+        if time_refuses == RED:
+            self._busy_at = now
+        elif self._busy_at is not None:
+            if ceiling.response_ms and now - self._busy_at < ceiling.over_seconds:
+                by_time, time_refuses = max(by_time, ORANGE), max(time_refuses, ORANGE)
             else:
-                self._busy_since, self._busy_cpu = now, self.cpu
-        state: State = OK if not because else VERY_BUSY if self._very_busy else BUSY
-        self._reading = Reading(state, because, response, processor, self._health(state, response))
+                self._busy_at = None
+        by_processor = ORANGE if ceiling.cpu_percent and processor > ceiling.cpu_percent else 0
+        level = max(by_time, by_processor)
+        because: tuple[Measure, ...] = tuple(
+            measure
+            for measure, its in ((RESPONSE, by_time), (PROCESSOR, by_processor))
+            if level and its == level
+        )
+        refusing = REFUSINGS[max(time_refuses, by_processor)]
+        self._reading = Reading(HEALTHS[level], because, refusing, response, processor, requests)
         self._read_at = now
         return self._reading

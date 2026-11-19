@@ -51,15 +51,18 @@ class ProblemDeleted(Model):
 
 
 class ProblemBusy(Model):
-    """Why a server past its ceiling did not take a request (P-265)."""
+    """Why a server did not take a request: its health, and what it refuses (P-265)."""
 
-    state: Literal["busy", "very_busy"] = Field(
-        description="`busy`: what is long by nature, a report, an export or a preview, "
-        "is not taken. `very_busy`: no read of the API is."
+    health: Literal["very_slow", "busy"] = Field(
+        description="The health of the server, as `X-Hirdir-Health` says it: `very_slow` or `busy`."
     )
     because: list[Literal["response_ms", "cpu_percent"]] = Field(
-        description="The measures that are past the ceiling: how long requests take, the "
+        description="The measures the health stands on: how long requests take, the "
         "processor time the process uses as a percentage of one processor."
+    )
+    refusing: Literal["long", "reads"] = Field(
+        description="What the server refuses: `long`, the reports, the exports and the "
+        "previews; or `reads`, those and every other read of the API."
     )
     retry_after: int = Field(description="The seconds to wait, as `Retry-After` says.")
 
@@ -90,8 +93,8 @@ class Problem(Model):
     )
     busy: ProblemBusy | None = Field(
         default=None,
-        description="On the 503 of a server that is past its ceiling and took nothing of "
-        "the request (P-265). Left out of every other problem, the 503 of a change that "
+        description="On the 503 of a server whose health had it take nothing of the "
+        "request (P-265). Left out of every other problem, the 503 of a change that "
         "waited for another to be stored among them.",
     )
 
@@ -334,15 +337,23 @@ class LoadCeiling(Model):
     """The ceiling in force: the three settings of it (P-265)."""
 
     response_ms: int = Field(
-        description="`busy_response_ms`: what `measures.response_ms` may reach. 0: not looked at."
+        description="`busy_response_ms`: what `measures.response_ms` may reach before "
+        "the health is `busy`; its thirds are the bounds of the other words. 0: nothing "
+        "is refused for it."
     )
     cpu_percent: int = Field(
-        description="`busy_cpu_percent`: what `measures.cpu_percent` may reach, which is "
-        "up to 100 for each processor of the host. 0: not looked at."
+        description="`busy_cpu_percent`: what `measures.cpu_percent` may reach before "
+        "the health is `very_slow` at the least; up to 100 for each processor of the "
+        "host. 0: not looked at."
     )
     over_seconds: int = Field(
-        description="`busy_over_seconds`: over how long the measures are read, and how "
-        "much longer a busy server is busy, by what came since, before it is very busy."
+        description="`busy_over_seconds`: over how long the measures are read, and for "
+        "how long after it last refused its reads the server refuses what is long."
+    )
+    fewest_requests: int = Field(
+        description="`busy_fewest_requests`, 20: with fewer than this in "
+        "`measures.requests`, nothing is refused for time whatever the health says. "
+        "They are too few to be load."
     )
 
 
@@ -353,9 +364,14 @@ class LoadMeasures(Model):
         description="How long requests take: the 95th percentile, in milliseconds, of "
         "the time taken by the reads and the changes of the API that came in that time, "
         "whatever each took, and of the time waited so far by those in flight, however "
-        "long ago they came. Reports, exports and previews are not in it. A request's "
-        "time begins when the server has the whole of it, its body with it. Null with "
-        "fewer than twenty."
+        "long ago they came. It is the longest of twenty or fewer, the second longest "
+        "of twenty-one to forty, and so on. Reports, exports and previews are not in "
+        "it. A request's time begins when the server has the whole of it, its body "
+        "with it. Null with no request."
+    )
+    requests: int = Field(
+        description="How many requests `response_ms` is of. With fewer than "
+        "`ceiling.fewest_requests`, nothing is refused for time."
     )
     cpu_percent: float = Field(
         description="The processor time the process used, every thread of it, as a "
@@ -374,13 +390,14 @@ class LoadSpread(Model):
 
 class LoadTimes(LoadSpread):
     """The times of the answers of the window, in milliseconds. `low`, `average` and
-    `high` are of every answer but an answer of busy. The percentiles are of the
+    `high` are of every answer but one that was refused. The percentiles are of the
     requests of the measure, the reads and the changes of the API: each is one of their
-    times, the shortest that so many in a hundred of them are no longer than."""
+    times, the k-th longest, k being what the percentile leaves above it in a hundred
+    of them, rounded up."""
 
-    p50: float | None = Field(description="Half of them took no longer. Null with none.")
-    p95: float | None = Field(description="95 in a hundred took no longer. Null with none.")
-    p99: float | None = Field(description="99 in a hundred took no longer. Null with none.")
+    p50: float | None = Field(description="Half of them took longer. Null with none.")
+    p95: float | None = Field(description="5 in a hundred took as long. Null with none.")
+    p99: float | None = Field(description="1 in a hundred took as long. Null with none.")
 
 
 class LoadBands(Model):
@@ -479,23 +496,78 @@ class LoadPoints(Model):
     busy: list[int] = Field(description="The answers of busy given in the step.")
 
 
+class LoadWho(Model):
+    """Who asked a request: the account, a person's or a service's. `unnamed` where
+    nothing verifiable said who: a sign-in, a token that did not hold, a request with
+    none; its `hid` and `username` are null."""
+
+    kind: Literal["person", "service", "unnamed"]
+    hid: str | None
+    username: str | None
+
+
+class LoadSlow(Model):
+    """One of the slowest requests of the last ten minutes. Its path as it was asked
+    and its query are not kept: no identifier and no word of a search."""
+
+    at: datetime = Field(description="When the server had the whole of it.")
+    method: str
+    route: str | None = Field(
+        description="The route as its pattern, `/api/v1/items/{hid}`. Null for a "
+        "request that no route answers."
+    )
+    ms: float = Field(description="How long its answer took, in milliseconds.")
+    status: int
+    request_id: str = Field(description="`X-Request-Id` of its answer, as the log has it.")
+    who: LoadWho
+
+
+class LoadPerson(Model):
+    """What one account met in the last ten minutes."""
+
+    kind: Literal["person", "service", "unnamed", "others"] = Field(
+        description="`person` or `service`: an account. `unnamed`: the requests that "
+        "nothing verifiable named an account for, together. `others`: the accounts "
+        "past the fifty that are counted each by itself, together."
+    )
+    hid: str | None = Field(description="Of the account. Null for `unnamed` and `others`.")
+    username: str | None = Field(description="Null for `unnamed` and `others`.")
+    requests: int = Field(description="Every request of the API, those refused among them.")
+    bands: list[int] = Field(
+        description="Its requests of the measure by how long each took: four counts, by "
+        "the bounds of `totals.bands` as they were when each was answered."
+    )
+    slowest_ms: float | None = Field(
+        description="The longest of its requests of the measure. Null with none."
+    )
+    busy: int = Field(description="How many of its requests were answered 503 as busy.")
+    failed: int = Field(description="How many failed: `5xx`.")
+    last_at: datetime = Field(description="When the last of its requests came.")
+
+
 class Load(Model):
     """The server's own measures of its last ten minutes, kept in memory (P-265, P-266)."""
 
-    state: Literal["ok", "busy", "very_busy"] = Field(
-        description="`busy`: past the ceiling, and what is long by nature, a report, "
-        "an export or a preview, is answered 503. `very_busy`: still so `over_seconds` "
-        "later, by what came since, and every read is."
+    health: Literal["good", "slow", "very_slow", "busy"] = Field(
+        description="The health of the server in a word, the colour of the mark: "
+        "`measures.response_ms` against the thirds of its ceiling, "
+        "`totals.bands.bounds_ms`. `good` under the first or with no request, `slow` "
+        "under the second, `very_slow` up to the third, `busy` past it. The processor "
+        "past its ceiling makes it `very_slow` at the least. Every answer of the API "
+        "carries it in `X-Hirdir-Health`, with `refusing`."
     )
     because: list[Literal["response_ms", "cpu_percent"]] = Field(
-        description="The measures that are past the ceiling. Empty while `state` is `ok`."
+        description="The measures the health stands on. Empty while it is `good`."
     )
-    health: Literal["good", "slow", "very_slow", "busy"] = Field(
-        description="The health of the server in a word, which every answer of the API "
-        "carries in `X-Hirdir-Health`. It stands on `measures.response_ms` against the "
-        "thirds of its ceiling, `totals.bands.bounds_ms`: `good` under the first or "
-        "with no measure, `slow` under the second, `very_slow` up to the third, `busy` "
-        "past it. And `busy` whenever `state` is not `ok`, by either measure."
+    refusing: Literal["nothing", "long", "reads"] = Field(
+        description="What the server answers 503 Busy: `long`, the reports, the exports "
+        "and the previews, or `reads`, those and every other read of the API. It follows "
+        "the health where there is load to shed: `long` at `very_slow` and `reads` at "
+        "`busy`, with `ceiling.fewest_requests` or more in `measures.requests`. With "
+        "fewer it is `nothing` for time whatever the health: a quiet server whose pages "
+        "are slow. The processor past its ceiling refuses `long` whatever the count, "
+        "and so does a server for `over_seconds` after it last refused `reads`. A "
+        "measure whose ceiling is 0 refuses nothing."
     )
     ceiling: LoadCeiling
     measures: LoadMeasures
@@ -512,6 +584,19 @@ class Load(Model):
         "own, by nothing, or by this process (P-267)."
     )
     points: LoadPoints
+    slowest: list[LoadSlow] = Field(
+        description="The ten slowest requests of the measure answered in the window, "
+        "the slowest first. Those in flight are not in it."
+    )
+    slowest_long: list[LoadSlow] = Field(
+        description="The five slowest of what is long by nature, the reports, the "
+        "exports and the previews, which are in no measure."
+    )
+    people: list[LoadPerson] = Field(
+        description="Who asked anything of the API in the window, and what each met: "
+        "whoever had it worst first, by the requests past the ceiling and those "
+        "refused, then by the slowest time. After the accounts, `unnamed` and `others`."
+    )
 
 
 class Health(Model):

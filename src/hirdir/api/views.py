@@ -129,18 +129,44 @@ def _spread(spread: load.Spread) -> schemas.LoadSpread:
     )
 
 
+def _slow(one: load.Slow) -> schemas.LoadSlow:
+    who = one.who
+    return schemas.LoadSlow(
+        at=one.at,
+        method=one.method,
+        route=one.route,
+        ms=round(one.ms, 1),
+        status=one.status,
+        request_id=one.request_id,
+        who=schemas.LoadWho(
+            kind=load.SERVICE if who.kind == load.SERVICE else load.PERSON,
+            hid=who.hid,
+            username=who.username,
+        )
+        if who is not None
+        else schemas.LoadWho(kind=load.UNNAMED, hid=None, username=None),
+    )
+
+
 def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
     """Return the server's own measures as its meter gives them, with what the host
     says of itself and whether the background work is being done."""
     reading, points = picture.reading, picture.points
     said = asdict(host)
     return schemas.Load(
-        state=reading.state,
-        because=list(reading.because),
         health=reading.health,
-        ceiling=schemas.LoadCeiling.model_validate(picture.ceiling),
+        because=list(reading.because),
+        refusing=reading.refusing,
+        ceiling=schemas.LoadCeiling(
+            response_ms=picture.ceiling.response_ms,
+            cpu_percent=picture.ceiling.cpu_percent,
+            over_seconds=picture.ceiling.over_seconds,
+            fewest_requests=load.FEWEST_REQUESTS,
+        ),
         measures=schemas.LoadMeasures(
-            response_ms=_tenth(reading.response_ms), cpu_percent=round(reading.cpu_percent, 1)
+            response_ms=_tenth(reading.response_ms),
+            requests=reading.requests,
+            cpu_percent=round(reading.cpu_percent, 1),
         ),
         window_seconds=load.WINDOW_SECONDS,
         step_seconds=load.STEP_SECONDS,
@@ -182,4 +208,20 @@ def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
             cpu_percent=[_tenth(value) for value in points.cpu_percent],
             busy=points.busy,
         ),
+        slowest=[_slow(one) for one in picture.slowest],
+        slowest_long=[_slow(one) for one in picture.slowest_long],
+        people=[
+            schemas.LoadPerson(
+                kind=one.kind,
+                hid=one.hid,
+                username=one.username,
+                requests=one.requests,
+                bands=list(one.bands),
+                slowest_ms=_tenth(one.slowest_ms),
+                busy=one.busy,
+                failed=one.failed,
+                last_at=one.last_at,
+            )
+            for one in picture.people
+        ],
     )
