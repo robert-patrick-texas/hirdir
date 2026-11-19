@@ -332,10 +332,17 @@ test("a member that leaves by End is given its condition in the same form: Faile
   const what = ending.getByRole("group", { name: "What becomes of it" });
   await what.getByLabel("To the spare pool").check();
   await expect(what.getByLabel("Condition")).toHaveValue("");
+  // What is typed stays when another choice is made.
+  await what.getByLabel("Hostname").fill(host("typed-91"));
   await what.getByLabel("To be returned to the manufacturer").check();
+  await expect(what.getByLabel("Hostname")).toHaveValue(host("typed-91"));
+  await what.getByLabel("Hostname").fill("");
   await expect(what.getByLabel("Condition")).toHaveValue("failed");
-  // The person may change it: this one is dead, not merely failed.
+  // The person may change it: this one is dead, not merely failed; and that stays too.
   await what.getByLabel("Condition").selectOption({ label: "Dead" });
+  await what.getByLabel("Excess").check();
+  await what.getByLabel("To be returned to the manufacturer").check();
+  await expect(what.getByLabel("Condition")).toHaveValue("dead");
   await ending.getByRole("button", { name: "End membership" }).click();
   const said = page.locator(".alert-ok");
   await expect(said).toContainText(`The membership of ${leaving} ended on`);

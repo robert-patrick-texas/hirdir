@@ -2501,7 +2501,9 @@ What 0.9.6 changes:
   Location, Lifecycle state (As it is, or a state its rule lets it move to), Reason (the
   published reasons, for a move), Disposition and Expected online (as the rule of the
   state allows), which the person may change, and a field left blank or As it is is not
-  sent: to the spare pool fills Spare and not expected online, the state as it is, and
+  sent; another choice made afterwards fills only the fields the person has not typed
+  into or set by hand since the form opened, in End and in Replace alike, so that
+  nothing typed is lost: to the spare pool fills Spare and not expected online, the state as it is, and
   leaves the name and the place to be typed; to be returned fills Pending-Removal for the
   reason RMA, not expected online, and the Condition Failed, a field of the
   `item_condition` list beside them that the others leave as it is, sent as

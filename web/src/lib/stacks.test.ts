@@ -22,6 +22,7 @@ import {
   saidWords,
   sameWords,
   stackOf,
+  withOwn,
 } from "./stacks";
 
 describe("offeredPosition (P-219)", () => {
@@ -260,6 +261,30 @@ describe("memberText", () => {
   it("is blank for an item in no stack", () => {
     expect(memberText([custom])).toBe("");
     expect(stackOf([custom])).toBeUndefined();
+  });
+});
+
+describe("another choice of what becomes of it keeps what was typed", () => {
+  const rules: LeavingRules = {
+    next: ["Pending-Removal"],
+    dispositions: () => ["Production", "Spare"],
+    reasons: ["rma"],
+    conditions: ["good", "failed", "dead"],
+  };
+
+  it("fills only what the person has not typed or set by hand", () => {
+    const returned = leavingPreset("returned", "Prod", rules);
+    expect(returned).not.toBeNull();
+    if (!returned) return;
+    const own = { hostname: "spare-sw-901", condition: "dead" };
+    expect(withOwn(returned, own)).toMatchObject({
+      hostname: "spare-sw-901",
+      condition: "dead",
+      lifecycle_state: "Pending-Removal",
+      state_reason: "rma",
+    });
+    // Nothing typed: the choice's own.
+    expect(withOwn(returned, {})).toEqual(returned);
   });
 });
 

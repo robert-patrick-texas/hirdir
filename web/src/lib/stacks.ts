@@ -344,6 +344,14 @@ export function leavingPreset(
   };
 }
 
+/**
+ * 0.9.8: the fields a choice fills, with what the person typed or set by hand since the
+ * form opened in place of them: changing the choice loses nothing typed.
+ */
+export function withOwn(preset: LeavingValues, own: Partial<LeavingValues>): LeavingValues {
+  return { ...preset, ...own };
+}
+
 /** What is sent as `item` with the end. */
 export interface LeavingBody {
   hostname?: string;
