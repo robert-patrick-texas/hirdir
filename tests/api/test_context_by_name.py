@@ -53,3 +53,19 @@ def test_a_row_with_a_name_and_a_serial_number_and_no_model_is_the_context_of_th
     make.item(name="lab-box-01")
     plain = files.preview("items", "name,serial_number\nlab-box-01,BOX0000X001\n")
     assert plain["rows"][0]["outcome"] == "create"
+
+
+def test_two_items_of_one_name_that_are_no_contexts_leave_a_row_as_it_was(
+    lab: Lab, files: Files
+) -> None:
+    """Two spares called alike, neither a context: a row that gives that name and a new
+    serial number and no model is a new item, as before 0.9.8, and no error of names."""
+    make = lab.make
+    for serial in ("EXSP0001", "EXSP0002"):
+        make.item(
+            catalog_entry_hid=lab.switch_model["hid"], serial_number=serial, name="site2-spare"
+        )
+
+    preview = files.preview("items", "name,serial_number\nsite2-spare,EXSP0003\n")
+
+    assert [row["outcome"] for row in preview["rows"]] == ["create"]

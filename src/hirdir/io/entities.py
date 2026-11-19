@@ -2018,7 +2018,9 @@ class Items(Entity):
     @staticmethod
     def _named(run: Run, values: Mapping[str, Any]) -> Item | None:
         """Return the one item, not retired, that a row names by its name or its host
-        name, as rule 4 of "Identity and matching" compares them; two are an error."""
+        name, as rule 4 of "Identity and matching" compares them. Two of one name are an
+        error where one of them is a virtual context, since the row may mean it; where
+        none is, the row is no context's, and is matched as it was before 0.9.8."""
         called: Any = func.coalesce(Item.name, Item.hostname)
         host: Any = Item.hostname
         for given, column in ((values.get("name"), called), (values.get("hostname"), host)):
@@ -2031,10 +2033,13 @@ class Items(Entity):
                         dialect.equals_text(column, str(given).strip()),
                         Item.record_status != "retired",
                     )
-                    .limit(2)
+                    .limit(20)
                 )
             )
             if len(named) > 1:
+                kinds = hosting.kinds_of(run.db, {one.catalog_entry_hid for one in named})
+                if hosting.VIRTUAL_CONTEXT not in kinds.values():
+                    return None
                 field = "name" if column is called else "hostname"
                 raise Invalid(
                     f"more than one item is called {given}",
