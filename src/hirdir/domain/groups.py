@@ -35,6 +35,7 @@ from hirdir.domain import (
     settings,
     tags,
 )
+from hirdir.domain import hosting as host_rules
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
 
@@ -1091,8 +1092,26 @@ def add_members(
         if taken_on:
             joining = audit.because(context, "joining_group", None, group.hid)
             take_on(db, joining, item, drop, taken_on, where)
+        if left is None and group.type == "stack":
+            _hand_to_stack(db, context, group, item, where)
         made.append(member)
     return made
+
+
+def _hand_to_stack(
+    db: Session, context: AuditContext, group: DeviceGroup, item: Item, where: str
+) -> None:
+    """Give a stack what runs on a switch that joins it (P-252).
+
+    A stack is one device, and what runs on it runs on whichever member is active, so a
+    current member of a stack hosts nothing: each item not retired that runs on the
+    switch runs on the stack from this change, by a change of its own that names the
+    stack. One retired is left as it is. A member that leaves takes nothing with it.
+    """
+    joining = audit.because(context, "joining_group", None, group.hid)
+    with named_at(where):
+        for one in host_rules.hosting(db, Item.host_item_hid, item.hid):
+            items.update_item(db, joining, one.hid, one.row_version, {"host_group_hid": group.hid})
 
 
 def _unmark_master(db: Session, context: AuditContext, group_hid: str, but: str | None) -> None:

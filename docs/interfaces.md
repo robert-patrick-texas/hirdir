@@ -216,7 +216,14 @@ more there are.
 `position` and `joined_on`, and `drop_identity`, `disposition` and `expected_online`
 (P-217); `POST /device-groups` takes the same in its `members`. All of them are made, or
 none: a refusal of one leaves no member added and no item changed. The answer is the
-memberships made.
+memberships made. What runs on a switch that joins a stack, each item not retired that
+names it as `host_item_hid`, runs on the stack from the same change: its
+`host_group_hid` is the stack and its `host_item_hid` is cleared, by an `update` of its
+own that holds `joining_group` (P-252). So it is for a file of members and for the item
+that comes in a replacement. One retired is left as it is; a new member of a cluster
+keeps what runs on it; and a member that leaves, is replaced or is retired takes
+nothing from the stack. The answer says nothing more: `hosted_count` of the item says
+beforehand how many go.
 
 - `drop_identity`, true, is for a member of a stack: in the same change as the
   membership the item's own `hostname` and `fqdn` are cleared, each of its addresses is
@@ -507,7 +514,8 @@ is in none, and puts the item into it as its first member, at position 1 (P-243)
   The item gives each of them up in the same change, and has the four from the stack
   from then on, read when it is read, as any member has them: nothing is held twice.
   Its serial number, model, asset tag, state, tags, coverage, registrations and
-  circuits stay its own. The stack has the item's `record_status`: the stack made of a
+  circuits stay its own, and what runs on it runs on the stack from the same change, as
+  for a switch that joins a stack (P-252). The stack has the item's `record_status`: the stack made of a
   draft is a draft, and of an active item active. It has no parent group.
 - `members` are more members, each as `POST /device-groups/{hid}/members` takes one,
   `drop_identity`, `disposition` and `expected_online` among them (P-217), added after

@@ -345,6 +345,12 @@ its host.
   `POST /items/retire` with `dry_run` changes nothing and answers the same, with
   `hosted`, the items that go with those named: it is what the web shows before it
   asks. Bringing the host back brings back none of them.
+- **What runs on a stack runs on the stack, and not on a member of it** (P-252). A
+  switch that joins a stack, by Add members, New group, a file of members, the item
+  that comes in a replacement or a stack made of it (P-243), hands what runs on it to
+  the stack in the same change, each with an event of its own that names the stack in
+  `joining_group`; one retired is left as it is. A member that leaves the stack, is
+  replaced or is retired takes nothing with it: what runs on the stack stays there.
 - **Retiring a stack or a cluster that something runs on is refused**, naming what
   runs on it: each is given another host, or retired, first. Retiring one host of a
   cluster leaves what runs on the cluster with the cluster.
@@ -589,7 +595,12 @@ Rules, checked on every write:
   cluster or of a controller domain keeps its name. The disposition and the intent of
   the item may be given with it, and are checked by the rule of its state. Nothing
   else of the item changes, and nothing changes by a rule on its own: only what the
-  request names.
+  request names, and what runs on it. A switch that joins a stack as a current member,
+  with `drop_identity` or without, hands what runs on it to the stack in the same
+  change: each item not retired that names it as `host_item_hid` names the stack as
+  `host_group_hid` from then on, by a change of its own that says the stack in
+  `joining_group` (P-252). One retired is left as it is, and what runs on those runs
+  on them still. A new member of a cluster keeps what runs on it.
 - **A member that leaves is given what becomes of it in the same step** (P-218). The
   end of a membership may carry a host name and an FQDN, a location, a lifecycle state
   with its reason, a disposition, an intent and a condition (P-245) for the item, each
@@ -615,7 +626,8 @@ Rules, checked on every write:
   group has the name; and for an item known by its host name alone, which the stack
   takes and which would leave it nothing to be known by, until it is given a name, a
   serial number with its model or an asset tag. A member that joins a stack with its
-  name and place given up is refused so too (P-217).
+  name and place given up is refused so too (P-217). What runs on the item runs on the
+  new stack from the same change, as for any switch that joins a stack (P-252).
 - An item is a current member of one group at most once, and of at most one stack and
   at most one cluster among the groups that are not retired. The members of a stack
   and of a cluster are major items.
