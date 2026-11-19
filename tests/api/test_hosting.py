@@ -267,6 +267,6 @@ def test_a_virtual_context_shows_its_hosts_serial_number_and_is_never_found_by_i
     # It is not stored, nor what a filter finds the context by.
     found = lab.make.get("/items", filter="serial_number:eq:JAF0000X001")["items"]
     assert [row["hid"] for row in found] == [lab.n7k["hid"]]
-    # One given a serial number of its own shows that.
-    own = lab.patch(vdc, serial_number="VDC0000X002")
-    assert own["effective"]["serial_number"]["source"] == "own"
+    # One that has a host holds no serial number: one given it is not kept (P-251).
+    kept = lab.patch(vdc, serial_number="VDC0000X002")
+    assert (kept["serial_number"], kept["effective"]["serial_number"]["source"]) == (None, "host")

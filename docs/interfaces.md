@@ -277,7 +277,12 @@ the rules, and this says how the API carries them.
 - **The fields.** `POST /items` and `PATCH /items/{hid}` take `host_item_hid`, the item
   it runs on, or `host_group_hid`, a stack or a cluster, and `observed_host_hid` with
   `host_observed_at`, the item it was seen on and when; `host_observed_at` left out is
-  the moment of the change, and `null` in `observed_host_hid` clears both. Each refusal
+  the moment of the change, and `null` in `observed_host_hid` clears both. A
+  `host_item_hid` that is a current member of a stack names the stack (P-252): the item
+  is given `host_group_hid` the stack, `host_item_hid` none, and, where the request
+  names no item seen, `observed_host_hid` the member with `host_observed_at` now; the
+  answer says so by its fields, `host` the stack, `observed_host` the member and
+  `host_differs` false. A member of a cluster is a host itself. Each refusal
   is a `422` that names its field: `host_group_hid` given with `host_item_hid`; a host
   given to an item of another kind, or of no model, or to an item that has a parent
   (`host_item_hid`, or `host_group_hid`); a parent given to an item that has a host
@@ -343,10 +348,26 @@ the rules, and this says how the API carries them.
   answer through the host as the record does, and so do the geography tree and the
   summary, which count what runs on a host where its host is and with its host's owner
   and operator.
+- **The serial number of a virtual context** (P-251) given in `serial_number`, by
+  `POST /items`, `PATCH /items/{hid}`, a file or a bulk edit, names its host where one
+  item that may host, not retired, has it as its own: that item is the host from the
+  change, as `host_item_hid` would make it, and the serial number is not stored. A
+  request that names another host too is a `422` on `serial_number` naming both, and so
+  is one that two such items have, naming them. Where none has it the context keeps it
+  and is `no_host`, whose `about` is the item that has it once exactly one does; nothing
+  joins them by itself. A context that is given a host by any way has its own
+  `serial_number` cleared in the same change. In a file a row of a virtual context is
+  not found by vendor, PID and serial number, but by `external_id` with `system`, its
+  HID, its asset tag, or its name or host name; so a tool's list of the contexts of one
+  chassis, each with the chassis's serial number, finds each context by its name and
+  hosts it on the chassis, and the chassis's own row still finds the chassis.
 - **The items file** has `host`, the item it runs on, named as `parent` names one;
   `host_group`, a stack or a cluster by its name; `observed_host`, named as `host` is;
   and `host_observed_at`. A row may name a host that an earlier or a later row of the
-  same file makes. An export writes them, and the reasons of `review`, joined, as a
+  same file makes. A row whose `host` is a current member of a stack has the stack as
+  its host: its changes show `host_group` the stack and `observed_host` the member, and
+  its notes say that the host named is a member of the stack, which is the host; the
+  same row loaded again changes nothing. An export writes them, and the reasons of `review`, joined, as a
   column it can write, and loads back changing nothing. A bulk edit sets `host` or
   `host_group` on the rows chosen, one clearing the other, or `null` to clear it.
 - **The CLI.** `hirdir items hosted <item>` lists what runs on an item, and `hirdir
@@ -649,11 +670,17 @@ them.
   of the replacement, as `new`; one retired keeps the host it was retired on. `hand_over_hosted` false leaves each where it is;
   left out, it is true. Where something is to be handed over and the item that comes may
   not be a host, being of a kind that hosts nothing, retired, or out of the team's hands,
-  the replacement is refused, a `422` on `hand_over_hosted` that says why and how many
-  run on the item that leaves, and nothing of it is done. The hand-over is done with the
-  request, as all that a replacement changes of either item is: with a `replaced_on` to
-  come, where something runs on the item that leaves and `hand_over_hosted` is not false,
-  the replacement is refused, a `422` on `replaced_on` that names `hand_over_hosted`.
+  the replacement is refused, a `422` on `hand_over_hosted`, whose words at the field say
+  that the item that comes may not be their host, why, and to leave them where they are
+  or choose another item, and whose `detail` says how many run on the item that leaves;
+  nothing of it is done. The hand-over is done with the request, as all that a
+  replacement changes of either item is: with a `replaced_on` to come, where something
+  runs on the item that leaves and `hand_over_hosted` is not false, the replacement is
+  refused, a `422` on `replaced_on` that says, as the refusal of `old_item` with a day to
+  come does, that what a replacement changes of either item is done on the day it is
+  entered, a day that has come, today or before; its `detail` names `hand_over_hosted`,
+  and that of `old_item` the fields given. The words at a field are for a person, and the
+  field beside them for the API's reader.
   `observed_host_hid` of what runs on it is left as it is: it is what was seen.
 - **Two requests at once.** Retiring an item and naming it as a host each take the one
   writer's place before they look, so the second sees what the first stored: a host

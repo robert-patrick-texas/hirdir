@@ -91,6 +91,7 @@ from hirdir.domain import (
 )
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
+from hirdir.io import hosted
 from hirdir.io.filters import Field, refuse
 
 
@@ -382,8 +383,9 @@ def _from_hosts(field: str, live: Any = None, column: str = "value") -> ColumnEl
         .scalar_subquery()
     )
     # Looked up only for an item whose line runs on something: the others, nearly all
-    # of an inventory, pay two columns they have read already.
-    return case((_RUNS_ON_SOMETHING, found), else_=None)
+    # of an inventory, pay two columns they have read already. And written only where
+    # something runs on a host at all: elsewhere the statement is as it was.
+    return hosted.IfHosted(case((_RUNS_ON_SOMETHING, found), else_=None))
 
 
 def _walk(field: str, live: Any = None) -> list[ColumnElement[Any]]:
