@@ -72,6 +72,61 @@ function InstalledIn({
   );
 }
 
+/**
+ * The item a virtual context's serial number is the serial number of, where it names no
+ * host and one item has it (P-251): the `about` of its `no_host` reason.
+ */
+function serialOf(item: Item): { hid: string; label: string } | null {
+  const about = item.review.find((reason) => reason.reason === "no_host")?.about;
+  return about && about.record_type === "item" && item.serial_number
+    ? { hid: about.hid, label: about.label }
+    : null;
+}
+
+/**
+ * A virtual context that holds the serial number of an item it does not name as its
+ * host, as one reported before its switch was entered (P-251): which item has it, and
+ * one press that makes that item its host. The server clears the number it held.
+ */
+function SerialOf({
+  item,
+  mayChange,
+  onChanged,
+}: {
+  item: Item;
+  mayChange: boolean;
+  onChanged: ((text: string) => void) | undefined;
+}) {
+  const action = useAction();
+  const of = serialOf(item);
+  if (!of) return null;
+  async function make() {
+    if (!of) return;
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/items/{hid}", {
+        path: { hid: item.hid },
+        body: { row_version: item.row_version, host_item_hid: of.hid },
+      }),
+    );
+    if (result.ok) onChanged?.(`${of.label} is now the host of ${itemName(item)}.`);
+  }
+  return (
+    <div className="review-line" data-testid="serial-of">
+      <span className="mono">{item.serial_number}</span> is the serial number of{" "}
+      <Link to={`/items/${encodeURIComponent(of.hid)}`}>{of.label}</Link>.
+      {mayChange && (
+        <>
+          {" "}
+          <button type="button" onClick={make} disabled={action.busy}>
+            Make it its host
+          </button>
+        </>
+      )}
+      <Problem error={action.error} />
+    </div>
+  );
+}
+
 /** The mark of a reason to look at an item: a word, not the colour of a fault. */
 export function ReviewMark() {
   return <span className="badge badge-plain review-mark">To be looked at</span>;
@@ -123,6 +178,8 @@ export function HostFacts({ item, change, mayChange = false, onChanged }: HostFa
         )}
         {!host && item.parent ? (
           <InstalledIn item={item} mayChange={mayChange} onChanged={onChanged} />
+        ) : !host && serialOf(item) ? (
+          <SerialOf item={item} mayChange={mayChange} onChanged={onChanged} />
         ) : (
           change
         )}

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { api, type Schemas } from "../api";
 import { itemName } from "../lib/format";
-import { HOST_FIELD, hostSpecs, sentHost } from "../lib/hosting";
+import { contextSerial, HOST_FIELD, hostSpecs, sentHost } from "../lib/hosting";
 import { useOwnerOptions, useTags } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
 import { entrySeen } from "../lib/pick";
@@ -62,7 +62,14 @@ export function NewItem({ states, within, onCancel, onCreated, onAnother }: NewI
         blank: "No catalog entry",
         hint: "The vendor and PID. A serial number needs one.",
       },
-      { name: "serial_number", label: "Serial number", kind: "text", maxLength: 100 },
+      {
+        name: "serial_number",
+        label: "Serial number",
+        kind: "text",
+        maxLength: 100,
+        // 0.9.8: a virtual context's names its host (P-251).
+        ...(minor ? {} : contextSerial({ kindOf: (hid) => entrySeen(hid)?.kind })),
+      },
       { name: "asset_tag", label: "Asset tag", kind: "text", maxLength: 100 },
       {
         name: "name",

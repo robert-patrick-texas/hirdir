@@ -104,6 +104,12 @@ export interface FieldSpec {
   fills?: (value: FormValue) => FormValues;
   /** 0.9.8: what more is said beneath the field, given what the form holds now. */
   hintFrom?: (values: FormValues) => string | undefined;
+  /**
+   * 0.9.8: where it gives text, given what the form holds now, the field is shown as that
+   * text, to be read, and nothing of it is sent: the serial number of a virtual context
+   * that has a host is its host's (P-251).
+   */
+  shownAs?: (values: FormValues) => string | undefined;
 }
 
 export type FormValue = string | boolean | string[];
@@ -128,6 +134,7 @@ export function hintOf(
 
 /** Whether a form asks for a field, given what the form holds now. */
 export function asked(spec: FieldSpec, values: FormValues): boolean {
+  if (spec.shownAs?.(values) !== undefined) return false;
   return spec.when === undefined || spec.when(values);
 }
 
