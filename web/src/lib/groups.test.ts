@@ -3,6 +3,7 @@ import {
   buildMembers,
   defaultRole,
   groupTypeLabel,
+  HOST_ALONE_ROW,
   isGroupType,
   MANAGED_AS,
   managedAsText,
@@ -74,6 +75,25 @@ describe("nextPosition", () => {
 });
 
 describe("buildMembers", () => {
+  it("sends no member known by its host name alone with the box ticked, and says why by its row (P-243)", () => {
+    const alone = {
+      ...pending(ONE, "member", "1"),
+      drop: true,
+      joining: { hostname: "vm-app-06" },
+    };
+    const built = buildMembers("stack", [alone]);
+    expect(built.members).toEqual([]);
+    expect(built.errors[ONE]).toBe(HOST_ALONE_ROW);
+    // Unticked, it keeps its host name, and is sent.
+    expect(buildMembers("stack", [{ ...alone, drop: false }]).members).toHaveLength(1);
+    // Known by its serial number with its model, it is sent with the box.
+    const known = {
+      ...alone,
+      joining: { ...alone.joining, serial_number: "S1", catalog_entry_hid: "c" },
+    };
+    expect(buildMembers("stack", [known]).errors).toEqual({});
+  });
+
   it("sends every item chosen, with its role and its position, in one list", () => {
     const built = buildMembers("stack", [pending(ONE, "master", "1"), pending(TWO, "member", "2")]);
     expect(built.errors).toEqual({});

@@ -124,6 +124,11 @@ export function refusedRows(
 
 /** What of a switch the form needs to say what joining a stack removes, and what it is. */
 export interface Joining {
+  /** 0.9.8: what else it is known by, besides its host name (P-243). */
+  name?: string | null;
+  asset_tag?: string | null;
+  serial_number?: string | null;
+  catalog_entry_hid?: string | null;
   hostname?: string | null;
   fqdn?: string | null;
   addresses?: ReadonlyArray<{ address: string }>;
@@ -131,6 +136,26 @@ export interface Joining {
   location?: { path: string } | null;
   lifecycle_state?: string | null;
   disposition?: string | null;
+}
+
+/**
+ * 0.9.8: whether an item is known by its host name alone: no name, no asset tag, and no
+ * serial number with a model (P-243). A stack takes the host name of a switch that joins
+ * it with its name and place, or is made of it, and the server refuses to leave an item
+ * with nothing to know it by: such an item is given one of the three first.
+ */
+export function knownByHostAlone(item: Joining): boolean {
+  return (
+    Boolean(item.hostname) &&
+    !item.name &&
+    !item.asset_tag &&
+    !(item.serial_number && item.catalog_entry_hid)
+  );
+}
+
+/** What is said of an item known by its host name alone, which a stack would take. */
+export function hostAloneText(name: string): string {
+  return `${name} is known by its host name alone, which the stack takes: it is given a name, a serial number with its model or an asset tag first, or keeps its own name.`;
 }
 
 /** Words joined as a list is said: "a, b and c". */
@@ -317,6 +342,14 @@ export function leavingPreset(
     state_reason: moves ? reason("retired") : "",
     disposition: allowed.includes("Excess") ? "Excess" : "",
   };
+}
+
+/**
+ * 0.9.8: the fields a choice fills, with what the person typed or set by hand since the
+ * form opened in place of them: changing the choice loses nothing typed.
+ */
+export function withOwn(preset: LeavingValues, own: Partial<LeavingValues>): LeavingValues {
+  return { ...preset, ...own };
 }
 
 /** What is sent as `item` with the end. */

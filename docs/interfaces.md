@@ -2508,7 +2508,9 @@ What 0.9.6 changes:
   Location, Lifecycle state (As it is, or a state its rule lets it move to), Reason (the
   published reasons, for a move), Disposition and Expected online (as the rule of the
   state allows), which the person may change, and a field left blank or As it is is not
-  sent: to the spare pool fills Spare and not expected online, the state as it is, and
+  sent; another choice made afterwards fills only the fields the person has not typed
+  into or set by hand since the form opened, in End and in Replace alike, so that
+  nothing typed is lost: to the spare pool fills Spare and not expected online, the state as it is, and
   leaves the name and the place to be typed; to be returned fills Pending-Removal for the
   reason RMA, not expected online, and the Condition Failed, a field of the
   `item_condition` list beside them that the others leave as it is, sent as
@@ -2587,7 +2589,17 @@ What 0.9.6 changes:
   a spare. Make the stack sends `POST /items/{hid}/make-stack`, the name left out when
   blank; a refusal of the name, of the item or of a member is said beside it, by its row
   for a member. Afterwards the stack's page is shown, which says at the top that the
-  stack was made of the item, member 1, and how many more members it has. No other page
+  stack was made of the item, member 1, and how many more members it has, once: not
+  again when the page is loaded again or come back to. An item known
+  by its host name alone, with no name, no asset tag and no serial number with a model,
+  would be left with nothing to know it by once a stack takes that host name, which the
+  server refuses: Make it a stack is not offered for it, and in its place the fact says
+  so, with Give it a name, which goes to Name in its Details; the box of a member that
+  joins says the same under it while it is ticked, and Join the stack waits until it is
+  unticked or the item is named, while New group, Add members and More members say it
+  beside the member's row and send nothing. An item of a kind that runs on a host, a
+  virtual machine, a virtual context or a container, is offered neither Join a stack nor
+  Make it a stack. No other page
   reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
   each replacement.
 
