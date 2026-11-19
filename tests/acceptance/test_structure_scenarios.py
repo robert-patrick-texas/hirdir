@@ -118,6 +118,8 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
             "label": "Network Engineering",
             "source": "parent_item",
             "source_hid": switch["hid"],
+            # The record that holds it, named, as a place in force is (P-246).
+            "source_label": "site2-sw-access-01",
         }
         assert made["effective"]["lifecycle_state"]["value"] == "Assigned"
         assert made["effective"]["location_hid"]["label"] == "Americas > Site-2 > Staging"
