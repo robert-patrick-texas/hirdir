@@ -19,6 +19,7 @@ import {
   sentHost,
 } from "./hosting";
 import { operatorSource } from "./operators";
+import { CATALOG_KINDS, optionLabel } from "./options";
 import { atFields, buildCreate, buildPatch, changedValues, formOf, localMoment } from "./patch";
 
 const server: HostRef = {
@@ -45,6 +46,17 @@ describe("the kinds", () => {
     expect(["virtual_machine", "virtual_context", "container"].every(runsOnHost)).toBe(true);
     expect(runsOnHost("hardware")).toBe(false);
     expect(runsOnHost(null)).toBe(false);
+  });
+
+  it("labels each of the six kinds", () => {
+    expect(CATALOG_KINDS.map((kind) => optionLabel(CATALOG_KINDS, kind.value))).toEqual([
+      "Hardware",
+      "Virtual machine",
+      "Virtual context",
+      "Container",
+      "Software",
+      "Service",
+    ]);
   });
 
   it("hosts on hardware, a virtual machine, or an item of no model", () => {

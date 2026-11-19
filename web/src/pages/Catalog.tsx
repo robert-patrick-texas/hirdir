@@ -215,7 +215,14 @@ function entrySpecs(lists: {
       hint: "The product ID as the vendor writes it",
     },
     { name: "model_name", label: "Model name", kind: "text", maxLength: 200 },
-    { name: "kind", label: "Kind", kind: "choice", options: CATALOG_KINDS },
+    {
+      name: "kind",
+      label: "Kind",
+      kind: "choice",
+      options: CATALOG_KINDS,
+      // 0.9.8: the three kinds that run on a host, and what may host them (P-246).
+      hint: "An item of a virtual machine, a virtual context or a container runs on a host, which its form names: an item of hardware or a virtual machine, or a stack or a cluster.",
+    },
     {
       name: "type",
       label: "Type",
