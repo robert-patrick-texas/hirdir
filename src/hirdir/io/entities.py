@@ -1924,6 +1924,12 @@ class Items(Entity):
         db = run.db
         vendor, pid = values.get("vendor"), values.get("pid")
         serial, tag = values.get("serial_number"), values.get("asset_tag")
+        if serial and self._of_a_context(run, values):
+            # A virtual context is never found by a serial number: it names its host,
+            # and the row is found as a row that gives none is (P-251).
+            serial = None
+            values = dict(values)
+            values["serial_number"] = None
         if vendor and pid and serial:
             entry = run.entry(vendor, pid)
             if entry is None:
@@ -1994,6 +2000,15 @@ class Items(Entity):
             if named:
                 return named[0]
         return None
+
+    def _of_a_context(self, run: Run, values: Mapping[str, Any]) -> bool:
+        """Say whether a row is of a model of the kind `virtual_context` (P-251)."""
+        vendor, pid = values.get("vendor"), values.get("pid")
+        entry = run.entry(vendor, pid) if vendor and pid else None
+        if entry is None and not (vendor or pid):
+            line_model = self._line_model(run, None, values)
+            entry = run.db.get(CatalogEntry, line_model) if line_model else None
+        return entry is not None and entry.kind == hosting.VIRTUAL_CONTEXT
 
     def _by_serial(
         self, db: Session, model: str, serial: str, values: Mapping[str, Any]
