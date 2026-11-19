@@ -275,6 +275,7 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
   await records(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`./items?filter=${encodeURIComponent(`host.name:eq:${server}`)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("12 items");
   await page.getByText("Columns", { exact: true }).click();
@@ -283,6 +284,22 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
   await columns.getByLabel("To be looked at", { exact: true }).check();
   await page.getByText("Columns", { exact: true }).click();
   const grid = page.getByTestId("grid-items");
+  // Turned on, the two stand after the place: the columns the owner asked to see in a
+  // window 1280 pixels wide are still all in view (P-193).
+  for (const column of [
+    "name",
+    "catalog.pid",
+    "serial_number",
+    "lifecycle_state",
+    "health",
+    "site",
+    "location.name",
+  ]) {
+    await expect(
+      grid.locator(`[role="columnheader"][col-id="${column}"]`),
+      `${column} is in view at 1280`,
+    ).toBeInViewport({ ratio: 1 });
+  }
   const row = grid.locator("[row-id]", { hasText: app });
   await expect(
     row.locator('[col-id="host.name"]').getByRole("link", { name: server }),

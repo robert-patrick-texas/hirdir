@@ -664,6 +664,12 @@ describe("the location, the site and the region in the item grid", () => {
     expect(ids.slice(0, 2)).toEqual(["name", "hostname"]);
     expect(ids.indexOf("parent")).toBeLessThan(ids.indexOf("lifecycle_state"));
     expect(ids.indexOf("planned_location")).toBe(ids.indexOf("location.name") + 1);
+    // 0.9.8: Runs on and To be looked at, turned on, stand after the places and before the
+    // operator, past the columns the owner asked to see at 1280 pixels (P-250).
+    expect(ids.slice(ids.indexOf("region") + 1, ids.indexOf("operator.label"))).toEqual([
+      "host.name",
+      "review",
+    ]);
     // Every column of the list is still there, once.
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain("hid");
