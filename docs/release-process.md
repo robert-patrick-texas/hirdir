@@ -176,6 +176,19 @@ what the release is:
   an agreement's earlier terms, what a contract's agreement gives, an item on a
   purchase line of another model, and the contracts that still count an item out of
   service: the test makes each with 0.6.0 and sees what 0.6.1 says of it.
+- **A release that brings a unit of systemd** asks of the unit what it asks, in
+  `packaging/package-test.sh`, of a package that has it and of an installation that has
+  it, read from the package and from the container, and names no release. 0.9.10
+  brought `hirdir-worker.service`, the second process of the service (P-267):
+  `ships_worker` says whether a package has the unit and `has_worker` whether the
+  installation in the container has. So the upgrade from a release without the unit
+  must leave it enabled and running beside the server, going back to such a release
+  must leave nothing of it, no process, no unit and no link, and a later pair, where
+  both have it, is held to the same checks with no change. Wherever a pass waits for
+  the server to answer, `wait_ready`, it then waits for the second process to say that
+  it is under way: what the server of the releases before did as it started, the
+  record of a week that has none, that process does a moment after the server answers,
+  and what a pass asks next must find it done.
 - **A release that brings a new kind of record** adds it to the inventory in
   `packaging/package-test.sh`, to be made where the previous release is at the revision
   that brought it. That is for the upgrades to come, which then carry it: the upgrade

@@ -1,7 +1,10 @@
 """What the acceptance scenarios share: a real server process on an empty database.
 
 The server is started on a free port, and the first Admin is made with `hirdir admin`,
-exactly as on a new installation.
+exactly as on a new installation. Beside the server runs what the package starts beside
+it: the process of the background work, `hirdir admin work`, on the same state (P-267).
+One thing is not as there: the server starts with no ceiling on its load, as
+`tests/acceptance/serve.py` says and why.
 """
 
 import os
@@ -18,7 +21,12 @@ import httpx2
 import pytest
 
 HIRDIR = [sys.executable, "-m", "hirdir.cli.main"]
+ROOT = Path(__file__).resolve().parents[2]
+# `hirdir`, as the server of a scenario is started: with no ceiling (P-265).
+SERVER = [sys.executable, "-m", "tests.acceptance.serve"]
 ADMIN = ("ada", "acceptance-admin")
+# What the process of the background work says once it is at work.
+UNDER_WAY = "is under way"
 
 
 @dataclass
@@ -83,14 +91,20 @@ def configured(tmp_path: Path) -> Server:
 def started(tmp_path: Path, first_admin: bool = True) -> Generator[Server]:
     """Start a server on an empty database in a directory, with its first Admin, and
     stop it again: a scenario that needs a second, empty inventory starts one. Without
-    `first_admin` it starts on what the directory holds already, such as a restore."""
+    `first_admin` it starts on what the directory holds already, such as a restore.
+
+    The process of the background work is started beside it once the server answers,
+    which has migrated the database by then, and is at work before the scenario begins:
+    what it does as it starts, the record of a week that has none, is done by then."""
     running = configured(tmp_path)
     process = subprocess.Popen(  # noqa: S603 - our own command with fixed arguments
-        [*HIRDIR, "admin", "serve", "--dev"],
+        [*SERVER, "admin", "serve", "--dev"],
         env=running.env,
+        cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    worker = None
     try:
         deadline = time.monotonic() + 20
         while True:
@@ -102,9 +116,30 @@ def started(tmp_path: Path, first_admin: bool = True) -> Generator[Server]:
             assert process.poll() is None, "the server stopped while starting"
             assert time.monotonic() < deadline, "the server did not become ready"
             time.sleep(0.1)
+        # Beside the state directory and not in it, which a scenario may look through.
+        said = tmp_path.with_name(f"{tmp_path.name}.work.log")
+        with said.open("wb") as log:
+            worker = subprocess.Popen(  # noqa: S603 - our own command with fixed arguments
+                [*HIRDIR, "admin", "work"],
+                env=running.env,
+                stdout=subprocess.DEVNULL,
+                stderr=log,
+            )
+        deadline = time.monotonic() + 20
+        while UNDER_WAY not in said.read_text(encoding="utf-8", errors="replace"):
+            assert worker.poll() is None, (
+                f"the process of the background work stopped while starting: {said.read_text()}"
+            )
+            assert time.monotonic() < deadline, "the background work did not get under way"
+            time.sleep(0.05)
         if first_admin:
             running.admin("create-user", ADMIN[0], "--role", "admin", "--access-code", ADMIN[1])
         yield running
     finally:
+        if worker is not None:
+            worker.terminate()
         process.terminate()
         process.wait(timeout=10)
+        if worker is not None:
+            # It stops after the batch it is applying, which it is given a minute for.
+            worker.wait(timeout=70)

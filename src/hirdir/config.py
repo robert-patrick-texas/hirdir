@@ -40,8 +40,9 @@ The addresses whose X-Forwarded-* headers are believed. Only the proxy belongs h
 _STATE_DIR = """\
 Where the database, the signing key and the backups are kept. The systemd units
 let the service write to /var/lib/hirdir and nowhere else, so a change here needs
-the same change to ReadWritePaths in a drop-in for hirdir.service and
-hirdir-backup.service. A relative path is taken from this file's directory."""
+the same change to ReadWritePaths in a drop-in for hirdir.service,
+hirdir-worker.service and hirdir-backup.service. A relative path is taken from this
+file's directory."""
 _URL = """\
 The database, as a SQLAlchemy URL. Left out, hirdir.db in the state directory."""
 _SESSION_HOURS = """\

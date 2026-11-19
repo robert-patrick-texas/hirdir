@@ -53,6 +53,8 @@ from pathlib import Path
 
 NGINX = "/usr/sbin/nginx"
 SYSTEMCTL = "/usr/bin/systemctl"
+# The two units of the service: the server, and the process of the background work.
+SERVICE_UNITS = ("hirdir.service", "hirdir-worker.service")
 OPENSSL = "/usr/bin/openssl"
 
 NGINX_DIR = Path("/etc/nginx")
@@ -1309,13 +1311,17 @@ def _after_upgrade(args: argparse.Namespace) -> int:
         print(f"hirdir-setup: {SETTINGS} was left as it is: {error}", file=sys.stderr)
     checked = _run([HIRDIR, "admin", "check"])
     print(checked.stdout, end="")
-    serving = _run([SYSTEMCTL, "is-active", "hirdir.service"]).stdout.strip() or "unknown"
-    print(f"hirdir.service: {serving}")
+    # The service is its two units: the server and the process of the background work.
+    running = True
+    for unit in SERVICE_UNITS:
+        state = _run([SYSTEMCTL, "is-active", unit]).stdout.strip() or "unknown"
+        print(f"{unit}: {state}")
+        running = running and state == "active"
     notes = Path(f"/usr/share/doc/hirdir/docs/releases/v{now}.html")
-    if checked.returncode != 0 or serving != "active":
+    if checked.returncode != 0 or not running:
         print(
             f"hirdir-setup: hirdir {now} is installed, and it does not check out as it "
-            "should: see above, and `journalctl -u hirdir`.",
+            "should: see above, and `journalctl -u hirdir -u hirdir-worker`.",
             file=sys.stderr,
         )
         return 1

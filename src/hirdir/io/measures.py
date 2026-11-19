@@ -10,7 +10,9 @@ import logging
 import os
 import resource
 import shutil
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,11 @@ from hirdir.domain import load, settings
 log = logging.getLogger("hirdir")
 MEMORY_OF_THE_HOST = Path("/proc/meminfo")
 MEMORY_OF_THE_PROCESS = Path("/proc/self/status")
+# Held while a ceiling is read from the settings and given to its meter, so that the
+# two are one step: of two saves at the same moment, the ceiling that is held is that
+# of the one that read last. It is not the meter's own lock, which is never held across
+# a read of the database.
+_RENEWING = threading.Lock()
 
 
 def clock() -> tuple[float, float]:
@@ -41,7 +48,7 @@ def start(state: Any) -> None:
     state.load = load.Meter(now, cpu, started_at=wall.now(), ceiling=at_start(state))
 
 
-def at_start(state: Any) -> load.Ceiling:
+def from_settings(state: Any) -> load.Ceiling:
     """Return the ceiling as the settings of an application's database have it, and as
     the defaults do where the database cannot be read yet: a server is never without a
     ceiling because its settings could not be read. A database that is not there is
@@ -56,16 +63,24 @@ def at_start(state: Any) -> load.Ceiling:
         return load.Ceiling()
 
 
+# Where the ceiling of an application comes from when it starts: its settings. What
+# starts applications for the tests puts another answer here, since the load of a test
+# is not the load of a server (see `tests/conftest.py`).
+at_start: Callable[[Any], load.Ceiling] = from_settings
+
+
 def renew(state: Any) -> None:
     """Give the meter of an application the ceiling as its settings have it now: what
-    an Admin saved holds from here on, and no request reads the database to learn it."""
-    try:
-        with state.sessions() as db:
-            ceiling = settings.ceiling(db)
-    except SQLAlchemyError:
-        log.exception("the ceiling could not be read again, and stays as it was")
-        return
-    state.load.hold(ceiling)
+    an Admin saved holds from here on, and no request reads the database to learn it.
+    The reading and the giving are one step: see `_RENEWING`."""
+    with _RENEWING:
+        try:
+            with state.sessions() as db:
+                ceiling = settings.ceiling(db)
+        except SQLAlchemyError:
+            log.exception("the ceiling could not be read again, and stays as it was")
+            return
+        state.load.hold(ceiling)
 
 
 # --- the host -------------------------------------------------------------------------

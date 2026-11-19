@@ -331,12 +331,18 @@ def about(_: SignedIn, request: Request, db: Db) -> schemas.About:
 
 @meta.get("/about/load")
 def about_load(_: SignedIn, request: Request) -> schemas.Load:
-    """Say how the server is doing, by its own measures of its last ten minutes: whether
-    it is busy and by which measure, what it answered and how long an answer took, the
-    processor time it used, the requests in flight, the memory and the disk of the host,
-    whether the background work is being done, and the ten minutes step by step, for a
-    graph. Kept in memory and read from there: it asks nothing of the database but who
-    is signed in, and a busy server answers it all the same (P-265, P-266)."""
+    """Say how the server is doing, by its own measures of its last ten minutes: its
+    health in a word, the measure it stands on and what is refused for it, which every
+    answer of the API carries in `X-Hirdir-Health`; what it answered and how long an
+    answer took, the processor time it used, the requests in flight, the memory and the
+    disk of the host, whether the background work is being done, the ten minutes step
+    by step, for a graph, the slowest requests of them, and who asked in them with
+    what each met. The time of a request begins when the server has the
+    whole of it, its body with it, so what a sender takes to send is in no time; and
+    the share of the processor is of one processor, which the process passes where
+    several requests are in the database at once. Kept in memory and read from there:
+    it asks nothing of the database but who is signed in, and it is never refused
+    (P-265, P-266)."""
     state = request.app.state
     picture = state.load.picture(*measures.clock(), but=getattr(request.state, "in_flight", None))
     return views.load_out(

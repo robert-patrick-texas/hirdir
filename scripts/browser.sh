@@ -8,7 +8,9 @@
 # It makes a fresh scratch inventory in dev-data/browser/ (git-ignored), with the Admin of
 # the environment, e2e-admin, and an access code of its own; builds the web UI, unless
 # --built says the build is current; serves it with `hirdir admin serve --dev` on a free
-# port, never 8715; and stops that server, by its port, when it ends or is interrupted.
+# port, never 8715, with `hirdir admin work` beside it on the same inventory, the two
+# processes that the package runs (P-267); and stops that server, by its port, and the
+# second process with it, when it ends or is interrupted.
 # The examples are not loaded: every spec file makes what it needs, as it does on the
 # fresh install of the package test.
 #
@@ -197,6 +199,7 @@ fresh_inventory() {
 # ---- the server ------------------------------------------------------------------------
 
 server=
+worker=
 child=
 
 # The processes that listen on the port and were started in the inventory's folder: the
@@ -208,8 +211,37 @@ ours_on_port() {
     done
 }
 
+# The processes of the background work that were started in the inventory's folder: the
+# one this script started, and nothing of anybody else.
+ours_working() {
+    local pid
+    for pid in $(pgrep -f 'hirdir admin work' 2>/dev/null); do
+        if [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$state" ]; then echo "$pid"; fi
+    done
+}
+
+# It stops after the batch it is applying, which it is given a minute for.
+stop_worker() {
+    local -a pids
+    [ -n "$worker" ] || return 0
+    mapfile -t pids < <(ours_working)
+    if [ ${#pids[@]} -gt 0 ]; then
+        kill -TERM "${pids[@]}" 2>/dev/null || true
+        for _ in $(seq 1 140); do
+            [ -n "$(ours_working)" ] || break
+            sleep 0.5
+        done
+        mapfile -t pids < <(ours_working)
+        if [ ${#pids[@]} -gt 0 ]; then kill -KILL "${pids[@]}" 2>/dev/null || true; fi
+    fi
+    kill -TERM "$worker" 2>/dev/null || true
+    wait "$worker" 2>/dev/null || true
+    worker=
+}
+
 stop_server() {
     local -a pids
+    stop_worker
     [ -n "$server" ] || return 0
     mapfile -t pids < <(ours_on_port)
     if [ ${#pids[@]} -gt 0 ]; then
@@ -224,7 +256,7 @@ stop_server() {
     kill -TERM "$server" 2>/dev/null || true
     wait "$server" 2>/dev/null || true
     server=
-    echo "browser: the server on 127.0.0.1:$port is stopped; the inventory is kept in $state"
+    echo "browser: the server on 127.0.0.1:$port and the process of the background work are stopped; the inventory is kept in $state"
 }
 
 interrupted() {
@@ -256,6 +288,26 @@ serve() {
         sleep 0.5
     done
     die "the server on 127.0.0.1:$port did not answer in a minute: see $state/serve.log"
+}
+
+# The second process of the service, started once the server answers, which has migrated
+# the inventory by then. The scenarios begin when it says that it is at work: what it
+# does as it starts, the record of a week that has none, is done by then.
+work() {
+    : >"$state/work.log"
+    (cd "$state" && HIRDIR_CONFIG=$state/config.toml exec uv run --project "$root" hirdir admin work) \
+        >>"$state/work.log" 2>&1 9>&- &
+    worker=$!
+    for _ in $(seq 1 120); do
+        if grep -q 'is under way' "$state/work.log"; then return 0; fi
+        if ! kill -0 "$worker" 2>/dev/null; then
+            worker=
+            tail -n 20 "$state/work.log" >&2
+            die "the process of the background work stopped as it started: see $state/work.log"
+        fi
+        sleep 0.5
+    done
+    die "the process of the background work was not under way in a minute: see $state/work.log"
 }
 
 # ---- the runs --------------------------------------------------------------------------
@@ -320,7 +372,8 @@ if [ "$again" = 0 ]; then
     printf '%s\n' "$plan" >"$state/plan.tsv"
 fi
 serve
-echo "browser: inventory $state, served on http://127.0.0.1:$port/, $workers at once"
+work
+echo "browser: inventory $state, served on http://127.0.0.1:$port/ with the background work beside it, $workers at once"
 
 while IFS=$'\t' read -r name names files; do
     [ -n "$name" ] || continue

@@ -62,17 +62,18 @@ def problem(
         }
     if busy is not None:
         body["busy"] = {
-            "state": busy.state,
+            "health": busy.health,
             "because": list(busy.because),
+            "refusing": busy.refusing,
             "retry_after": load.RETRY_SECONDS,
         }
     return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE, headers=headers)
 
 
 def server_busy(reading: load.Reading) -> JSONResponse:
-    """Build the answer of a server that is past its ceiling to a request it does not
-    take (P-265). It has the title of the answer to a change that waited for another to
-    be stored, and is told from it by `busy`, which says what the measures say."""
+    """Build the answer of a server to a request that its health has it refuse (P-265).
+    It has the title of the answer to a change that waited for another to be stored,
+    and is told from it by `busy`, which says the health and what is refused."""
     return problem(
         503,
         "Busy",

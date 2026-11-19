@@ -106,7 +106,7 @@ def test_an_import_and_a_bulk_edit_take_a_key(
     apply = f"{API}/imports/{first.json()['job']['hid']}/apply"
     keyed = {**inventory, KEY: "apply-1"}
     begun = client.post(apply, headers=keyed)
-    assert (begun.status_code, begun.json()["status"]) == (202, "applying")
+    assert (begun.status_code, begun.json()["status"]) == (202, "queued")
     assert wait_for_job(client, inventory, begun.json()["hid"])["status"] == "applied"
     # Sent again, it is answered as it was, the job as it was begun, and not refused as
     # applied already. The job itself says how far it got.

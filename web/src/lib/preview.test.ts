@@ -204,7 +204,7 @@ describe("countsText and statusLabel", () => {
 
   it("say what became of a job", () => {
     expect(statusLabel(job())).toBe("Previewed, not applied");
-    expect(statusLabel(job({ status: "queued" }))).toBe("Waiting for another to be applied");
+    expect(statusLabel(job({ status: "queued" }))).toBe("Waiting to be applied");
     expect(statusLabel(job({ status: "applying" }))).toBe("Being applied");
     expect(statusLabel(job({ status: "stopped" }))).toBe("Stopped partway, to be resumed");
     expect(statusLabel(job({ status: "failed" }))).toBe("Failed: nothing was applied");

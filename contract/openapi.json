@@ -15036,7 +15036,7 @@
             "type": "integer"
           },
           "status": {
-            "description": "`queued` and `applying` while it is applied in the background, `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied.",
+            "description": "`queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied.",
             "enum": [
               "previewed",
               "queued",
@@ -18328,7 +18328,7 @@
             "type": "string"
           },
           "because": {
-            "description": "The measures that are past the ceiling. Empty while `state` is `ok`.",
+            "description": "The measures the health stands on. Empty while it is `good`.",
             "items": {
               "enum": [
                 "response_ms",
@@ -18342,6 +18342,17 @@
           "ceiling": {
             "$ref": "#/components/schemas/LoadCeiling"
           },
+          "health": {
+            "description": "The health of the server in a word, the colour of the mark: `measures.response_ms` against the thirds of its ceiling, `totals.bands.bounds_ms`. `good` under the first or with no request, `slow` under the second, `very_slow` up to the third, `busy` past it. The processor past its ceiling makes it `very_slow` at the least. Every answer of the API carries it in `X-Hirdir-Health`, with `refusing`.",
+            "enum": [
+              "good",
+              "slow",
+              "very_slow",
+              "busy"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
           "host": {
             "$ref": "#/components/schemas/LoadHost"
           },
@@ -18351,26 +18362,50 @@
           "measures": {
             "$ref": "#/components/schemas/LoadMeasures"
           },
+          "people": {
+            "description": "Who asked anything of the API in the window, and what each met: whoever had it worst first, by the requests past the ceiling and those refused, then by the slowest time. After the accounts, `unnamed` and `others`.",
+            "items": {
+              "$ref": "#/components/schemas/LoadPerson"
+            },
+            "title": "People",
+            "type": "array"
+          },
           "points": {
             "$ref": "#/components/schemas/LoadPoints"
           },
           "process": {
             "$ref": "#/components/schemas/LoadProcess"
           },
+          "refusing": {
+            "description": "What the server answers 503 Busy: `long`, the reports, the exports and the previews, or `reads`, those and every other read of the API. It follows the health where there is load to shed: `long` at `very_slow` and `reads` at `busy`, with `ceiling.fewest_requests` or more in `measures.requests`. With fewer it is `nothing` for time whatever the health: a quiet server whose pages are slow. The processor past its ceiling refuses `long` whatever the count, and so does a server for `over_seconds` after it last refused `reads`. A measure whose ceiling is 0 refuses nothing.",
+            "enum": [
+              "nothing",
+              "long",
+              "reads"
+            ],
+            "title": "Refusing",
+            "type": "string"
+          },
+          "slowest": {
+            "description": "The ten slowest requests of the measure answered in the window, the slowest first. Those in flight are not in it.",
+            "items": {
+              "$ref": "#/components/schemas/LoadSlow"
+            },
+            "title": "Slowest",
+            "type": "array"
+          },
+          "slowest_long": {
+            "description": "The five slowest of what is long by nature, the reports, the exports and the previews, which are in no measure.",
+            "items": {
+              "$ref": "#/components/schemas/LoadSlow"
+            },
+            "title": "Slowest Long",
+            "type": "array"
+          },
           "started_at": {
             "description": "When the server started, and its measures.",
             "format": "date-time",
             "title": "Started At",
-            "type": "string"
-          },
-          "state": {
-            "description": "`busy`: past the ceiling, and what costs most and can wait is answered 503. `very_busy`: still so `over_seconds` later, and every read is.",
-            "enum": [
-              "ok",
-              "busy",
-              "very_busy"
-            ],
-            "title": "State",
             "type": "string"
           },
           "step_seconds": {
@@ -18398,8 +18433,9 @@
           }
         },
         "required": [
-          "state",
+          "health",
           "because",
+          "refusing",
           "ceiling",
           "measures",
           "window_seconds",
@@ -18411,9 +18447,40 @@
           "process",
           "host",
           "worker",
-          "points"
+          "points",
+          "slowest",
+          "slowest_long",
+          "people"
         ],
         "title": "Load",
+        "type": "object"
+      },
+      "LoadBands": {
+        "additionalProperties": false,
+        "description": "The requests of the measure answered in the window, by how long each took.",
+        "properties": {
+          "bounds_ms": {
+            "description": "The three bounds of the four bands, in milliseconds: a third of `busy_response_ms`, two thirds of it, and the ceiling. `[1000, 2000, 3000]` unless set, and those of 3000 where the setting is 0.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Bounds Ms",
+            "type": "array"
+          },
+          "counts": {
+            "description": "Four counts: under the first bound, from it to under the second, from the second to the third, and past the third.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bounds_ms",
+          "counts"
+        ],
+        "title": "LoadBands",
         "type": "object"
       },
       "LoadCeiling": {
@@ -18421,17 +18488,22 @@
         "description": "The ceiling in force: the three settings of it (P-265).",
         "properties": {
           "cpu_percent": {
-            "description": "`busy_cpu_percent`: what `measures.cpu_percent` may reach. 0: not looked at.",
+            "description": "`busy_cpu_percent`: what `measures.cpu_percent` may reach before the health is `very_slow` at the least; up to 100 for each processor of the host. 0: not looked at.",
             "title": "Cpu Percent",
             "type": "integer"
           },
+          "fewest_requests": {
+            "description": "`busy_fewest_requests`, 20: with fewer than this in `measures.requests`, nothing is refused for time whatever the health says. They are too few to be load.",
+            "title": "Fewest Requests",
+            "type": "integer"
+          },
           "over_seconds": {
-            "description": "`busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy before it is very busy.",
+            "description": "`busy_over_seconds`: over how long the measures are read, and for how long after it last refused its reads the server refuses what is long.",
             "title": "Over Seconds",
             "type": "integer"
           },
           "response_ms": {
-            "description": "`busy_response_ms`: what `measures.response_ms` may reach. 0: not looked at.",
+            "description": "`busy_response_ms`: what `measures.response_ms` may reach before the health is `busy`; its thirds are the bounds of the other words. 0: nothing is refused for it.",
             "title": "Response Ms",
             "type": "integer"
           }
@@ -18439,7 +18511,8 @@
         "required": [
           "response_ms",
           "cpu_percent",
-          "over_seconds"
+          "over_seconds",
+          "fewest_requests"
         ],
         "title": "LoadCeiling",
         "type": "object"
@@ -18548,6 +18621,7 @@
         "description": "The requests being answered now. The request that asks is not counted.",
         "properties": {
           "count": {
+            "description": "Those whose body has not all come are counted: they wait for their sender, are in neither measure, and have no age.",
             "title": "Count",
             "type": "integer"
           },
@@ -18560,7 +18634,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long the oldest has waited, in milliseconds. Null with none.",
+            "description": "How long the oldest has waited since the server had the whole of it, in milliseconds. Null with none.",
             "title": "Oldest Ms"
           }
         },
@@ -18576,9 +18650,14 @@
         "description": "The two measures as the ceiling reads them now, over the last `over_seconds`.",
         "properties": {
           "cpu_percent": {
-            "description": "The processor time the process used, as a percentage of one processor.",
+            "description": "The processor time the process used, every thread of it, as a percentage of one processor. It passes 100 where several requests are in the database at once.",
             "title": "Cpu Percent",
             "type": "number"
+          },
+          "requests": {
+            "description": "How many requests `response_ms` is of. With fewer than `ceiling.fewest_requests`, nothing is refused for time.",
+            "title": "Requests",
+            "type": "integer"
           },
           "response_ms": {
             "anyOf": [
@@ -18589,15 +18668,111 @@
                 "type": "null"
               }
             ],
-            "description": "How long requests take: the median, in milliseconds, of the time taken by the requests of the API answered in that time and of the time waited so far by those in flight. Null with fewer than five.",
+            "description": "How long requests take: the 95th percentile, in milliseconds, of the time taken by the reads and the changes of the API that came in that time, whatever each took, and of the time waited so far by those in flight, however long ago they came. It is the longest of twenty or fewer, the second longest of twenty-one to forty, and so on. Reports, exports and previews are not in it. A request's time begins when the server has the whole of it, its body with it. Null with no request.",
             "title": "Response Ms"
           }
         },
         "required": [
           "response_ms",
+          "requests",
           "cpu_percent"
         ],
         "title": "LoadMeasures",
+        "type": "object"
+      },
+      "LoadPerson": {
+        "additionalProperties": false,
+        "description": "What one account met in the last ten minutes.",
+        "properties": {
+          "bands": {
+            "description": "Its requests of the measure by how long each took: four counts, by the bounds of `totals.bands` as they were when each was answered.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "busy": {
+            "description": "How many of its requests were answered 503 as busy.",
+            "title": "Busy",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "How many failed: `5xx`.",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of the account. Null for `unnamed` and `others`.",
+            "title": "Hid"
+          },
+          "kind": {
+            "description": "`person` or `service`: an account. `unnamed`: the requests that nothing verifiable named an account for, together. `others`: the accounts past the fifty that are counted each by itself, together.",
+            "enum": [
+              "person",
+              "service",
+              "unnamed",
+              "others"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_at": {
+            "description": "When the last of its requests came.",
+            "format": "date-time",
+            "title": "Last At",
+            "type": "string"
+          },
+          "requests": {
+            "description": "Every request of the API, those refused among them.",
+            "title": "Requests",
+            "type": "integer"
+          },
+          "slowest_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The longest of its requests of the measure. Null with none.",
+            "title": "Slowest Ms"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for `unnamed` and `others`.",
+            "title": "Username"
+          }
+        },
+        "required": [
+          "kind",
+          "hid",
+          "username",
+          "requests",
+          "bands",
+          "slowest_ms",
+          "busy",
+          "failed",
+          "last_at"
+        ],
+        "title": "LoadPerson",
         "type": "object"
       },
       "LoadPoints": {
@@ -18634,7 +18809,7 @@
             "type": "array"
           },
           "cpu_percent": {
-            "description": "The processor time used, as a percentage of one processor. Null in the step under way until a second of it has passed.",
+            "description": "The processor time used, as a percentage of one processor, which may pass 100. Null in the step under way until a second of it has passed.",
             "items": {
               "anyOf": [
                 {
@@ -18663,6 +18838,36 @@
             "title": "High Ms",
             "type": "array"
           },
+          "p50_ms": {
+            "description": "The time that half of the requests of the measure answered in the step took no longer than. Null where none was.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "P50 Ms",
+            "type": "array"
+          },
+          "p95_ms": {
+            "description": "The time that 95 in a hundred of the requests of the measure answered in the step took no longer than. Null where none was.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "P95 Ms",
+            "type": "array"
+          },
           "requests": {
             "description": "The requests answered in the step.",
             "items": {
@@ -18677,6 +18882,8 @@
           "requests",
           "average_ms",
           "high_ms",
+          "p50_ms",
+          "p95_ms",
           "cpu_percent",
           "busy"
         ],
@@ -18704,6 +18911,62 @@
           "memory_bytes"
         ],
         "title": "LoadProcess",
+        "type": "object"
+      },
+      "LoadSlow": {
+        "additionalProperties": false,
+        "description": "One of the slowest requests of the last ten minutes. Its path as it was asked\nand its query are not kept: no identifier and no word of a search.",
+        "properties": {
+          "at": {
+            "description": "When the server had the whole of it.",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "ms": {
+            "description": "How long its answer took, in milliseconds.",
+            "title": "Ms",
+            "type": "number"
+          },
+          "request_id": {
+            "description": "`X-Request-Id` of its answer, as the log has it.",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The route as its pattern, `/api/v1/items/{hid}`. Null for a request that no route answers.",
+            "title": "Route"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "who": {
+            "$ref": "#/components/schemas/LoadWho"
+          }
+        },
+        "required": [
+          "at",
+          "method",
+          "route",
+          "ms",
+          "status",
+          "request_id",
+          "who"
+        ],
+        "title": "LoadSlow",
         "type": "object"
       },
       "LoadSpread": {
@@ -18752,10 +19015,98 @@
         "title": "LoadSpread",
         "type": "object"
       },
+      "LoadTimes": {
+        "additionalProperties": false,
+        "description": "The times of the answers of the window, in milliseconds. `low`, `average` and\n`high` are of every answer but one that was refused. The percentiles are of the\nrequests of the measure, the reads and the changes of the API: each is one of their\ntimes, the k-th longest, k being what the percentile leaves above it in a hundred\nof them, rounded up.",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Half of them took longer. Null with none.",
+            "title": "P50"
+          },
+          "p95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "5 in a hundred took as long. Null with none.",
+            "title": "P95"
+          },
+          "p99": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 in a hundred took as long. Null with none.",
+            "title": "P99"
+          }
+        },
+        "required": [
+          "low",
+          "average",
+          "high",
+          "p50",
+          "p95",
+          "p99"
+        ],
+        "title": "LoadTimes",
+        "type": "object"
+      },
       "LoadTotals": {
         "additionalProperties": false,
         "description": "What was answered in the window, and how.",
         "properties": {
+          "bands": {
+            "$ref": "#/components/schemas/LoadBands"
+          },
           "busy": {
             "description": "Answered 503 as busy, by a server past its ceiling.",
             "title": "Busy",
@@ -18763,10 +19114,10 @@
           },
           "cpu_percent": {
             "$ref": "#/components/schemas/LoadSpread",
-            "description": "The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole."
+            "description": "The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole. Each may pass 100."
           },
           "failed": {
-            "description": "Failed: `5xx`, the 503 of a change that waited for another among them.",
+            "description": "Failed: `5xx`, the 503 of a change that waited for another among them, and an answer that was not sent to its last byte.",
             "title": "Failed",
             "type": "integer"
           },
@@ -18786,8 +19137,8 @@
             "type": "integer"
           },
           "response_ms": {
-            "$ref": "#/components/schemas/LoadSpread",
-            "description": "The time of an answer, in milliseconds, from the arrival of the request to the last byte of its answer. An answer of busy is not in it."
+            "$ref": "#/components/schemas/LoadTimes",
+            "description": "The time of an answer, in milliseconds, from when the server had the whole request, its body with it, to the last byte of its answer. An answer of busy is not in it."
           }
         },
         "required": [
@@ -18797,9 +19148,54 @@
           "failed",
           "busy",
           "response_ms",
+          "bands",
           "cpu_percent"
         ],
         "title": "LoadTotals",
+        "type": "object"
+      },
+      "LoadWho": {
+        "additionalProperties": false,
+        "description": "Who asked a request: the account, a person's or a service's. `unnamed` where\nnothing verifiable said who: a sign-in, a token that did not hold, a request with\nnone; its `hid` and `username` are null.",
+        "properties": {
+          "hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hid"
+          },
+          "kind": {
+            "enum": [
+              "person",
+              "service",
+              "unnamed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "kind",
+          "hid",
+          "username"
+        ],
+        "title": "LoadWho",
         "type": "object"
       },
       "LocationCreate": {
@@ -24358,7 +24754,7 @@
                 "type": "null"
               }
             ],
-            "description": "On the 503 of a server that is past its ceiling and took nothing of the request (P-265). Left out of every other problem, the 503 of a change that waited for another to be stored among them."
+            "description": "On the 503 of a server whose health had it take nothing of the request (P-265). Left out of every other problem, the 503 of a change that waited for another to be stored among them."
           },
           "deleted": {
             "anyOf": [
@@ -24433,10 +24829,10 @@
       },
       "ProblemBusy": {
         "additionalProperties": false,
-        "description": "Why a server past its ceiling did not take a request (P-265).",
+        "description": "Why a server did not take a request: its health, and what it refuses (P-265).",
         "properties": {
           "because": {
-            "description": "The measures that are past the ceiling: how long requests take, the share of one processor the process uses.",
+            "description": "The measures the health stands on: how long requests take, the processor time the process uses as a percentage of one processor.",
             "items": {
               "enum": [
                 "response_ms",
@@ -24447,24 +24843,34 @@
             "title": "Because",
             "type": "array"
           },
+          "health": {
+            "description": "The health of the server, as `X-Hirdir-Health` says it: `very_slow` or `busy`.",
+            "enum": [
+              "very_slow",
+              "busy"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "refusing": {
+            "description": "What the server refuses: `long`, the reports, the exports and the previews; or `reads`, those and every other read of the API.",
+            "enum": [
+              "long",
+              "reads"
+            ],
+            "title": "Refusing",
+            "type": "string"
+          },
           "retry_after": {
             "description": "The seconds to wait, as `Retry-After` says.",
             "title": "Retry After",
             "type": "integer"
-          },
-          "state": {
-            "description": "`busy`: what costs most and can wait is not taken. `very_busy`: no read of the API is.",
-            "enum": [
-              "busy",
-              "very_busy"
-            ],
-            "title": "State",
-            "type": "string"
           }
         },
         "required": [
-          "state",
+          "health",
           "because",
+          "refusing",
           "retry_after"
         ],
         "title": "ProblemBusy",
@@ -31604,7 +32010,7 @@
     },
     "/api/v1/about/load": {
       "get": {
-        "description": "Say how the server is doing, by its own measures of its last ten minutes: whether\nit is busy and by which measure, what it answered and how long an answer took, the\nprocessor time it used, the requests in flight, the memory and the disk of the host,\nwhether the background work is being done, and the ten minutes step by step, for a\ngraph. Kept in memory and read from there: it asks nothing of the database but who\nis signed in, and a busy server answers it all the same (P-265, P-266).",
+        "description": "Say how the server is doing, by its own measures of its last ten minutes: its\nhealth in a word, the measure it stands on and what is refused for it, which every\nanswer of the API carries in `X-Hirdir-Health`; what it answered and how long an\nanswer took, the processor time it used, the requests in flight, the memory and the\ndisk of the host, whether the background work is being done, the ten minutes step\nby step, for a graph, the slowest requests of them, and who asked in them with\nwhat each met. The time of a request begins when the server has the\nwhole of it, its body with it, so what a sender takes to send is in no time; and\nthe share of the processor is of one processor, which the process passes where\nseveral requests are in the database at once. Kept in memory and read from there:\nit asks nothing of the database but who is signed in, and it is never refused\n(P-265, P-266).",
         "operationId": "about_load_api_v1_about_load_get",
         "responses": {
           "200": {
@@ -40041,7 +40447,7 @@
     },
     "/api/v1/imports/{hid}/apply": {
       "post": {
-        "description": "Apply a preview in the background, or resume one that stopped.\n\nThe answer is at once: the job, `applying`, or `queued` while another is applied.\nAnybody with the Inventory role may apply it, whoever made it. The rows are applied\n50 at a time; a row whose record changed since the preview is left out as `stale`,\nand the rest go on. `GET /imports/{hid}` says how far it has got.",
+        "description": "Apply a preview in the background, or resume one that stopped.\n\nThe answer is at once: the job, `queued`. It is `applying` once the background\nwork has taken it up, which is within a second where no other job is ahead.\nAnybody with the Inventory role may apply it, whoever made it. The rows are applied\n50 at a time; a row whose record changed since the preview is left out as `stale`,\nand the rest go on. `GET /imports/{hid}` says how far it has got.",
         "operationId": "apply_import_api_v1_imports__hid__apply_post",
         "parameters": [
           {
@@ -40656,7 +41062,7 @@
     },
     "/api/v1/items/bulk-update/{hid}/apply": {
       "post": {
-        "description": "Apply a previewed bulk edit in the background, or resume one that stopped.\n\nThe answer is at once: the job, `applying`, or `queued` while another is applied.\nAnybody with the Inventory role may apply it, whoever made it. An item that has been\nchanged since the preview, by anybody, is left as it is and its row is `stale`;\nthe rest are changed. `GET /imports/{hid}` says how far it has got.",
+        "description": "Apply a previewed bulk edit in the background, or resume one that stopped.\n\nThe answer is at once: the job, `queued`. It is `applying` once the background\nwork has taken it up, which is within a second where no other job is ahead.\nAnybody with the Inventory role may apply it, whoever made it. An item that has been\nchanged since the preview, by anybody, is left as it is and its row is `stale`;\nthe rest are changed. `GET /imports/{hid}` says how far it has got.",
         "operationId": "apply_bulk_update_api_v1_items_bulk_update__hid__apply_post",
         "parameters": [
           {

@@ -11,12 +11,27 @@ hirdir CLI ──────┤   nginx (Ubuntu's)            hirdir.service
 integrations ────┘   terminates TLS,      ──▶    one Python process       ──▶  SQLite file and
                      strips the prefix           FastAPI: API + web UI         reference files
                                                                                /var/lib/hirdir
+                                                 hirdir-worker.service    ──▶  the same
+                                                 one Python process
+                                                 the background work,
+                                                 no network
 ```
 
-One process serves both the API and the built web UI. nginx does TLS and nothing else
-of ours. There is no second service, no queue and no cache in the MVP. An import or a
-bulk edit is applied in the background by a thread of that one process, and the jobs
-waiting for it are rows of the database: see "Applying in the background" below.
+Two processes of the one package work one database, from 0.9.10 (P-263, P-267). **The
+server**, `hirdir admin serve`, serves both the API and the built web UI, and answers
+people. **The process of the background work**, `hirdir admin work`, does what no
+person waits for: it applies the imports and bulk edits that were asked for, and
+records the capacity balance of the week by the clock. It answers nothing on the
+network, so it has a processor of its own and the answers to people are not slowed by
+it. The two share the database and the state directory and nothing else: no signal
+passes between them, and the jobs that wait to be applied are rows of the database,
+which the second process looks for every second. See "Applying in the background" and
+"What is done by the clock" below. nginx does TLS and nothing else of ours. There is
+no queue and no cache in the MVP.
+
+`hirdir admin serve --work` is one process that does both, as the server did before
+0.9.10: `make dev` runs it, and the Python tests of the routes run the application so,
+inside the test's own process.
 
 ## Components
 
@@ -25,7 +40,8 @@ waiting for it are rows of the database: see "Applying in the background" below.
 | Operating system | Ubuntu 26.04 LTS, amd64 | |
 | Python | 3.15.2, shipped inside the package | moves to each new production release; 3.16 when it is released |
 | Python tooling | uv, ruff, ty | uv for the lock, the environment and the bundled interpreter |
-| Server | FastAPI on Uvicorn, Pydantic models | one worker |
+| Server | FastAPI on Uvicorn, Pydantic models | one process, `hirdir admin serve` |
+| Background work | the same package, with no web server in it | a second process, `hirdir admin work`: the applies of imports and bulk edits, and the record made by the clock |
 | Database access | SQLAlchemy 2 with Alembic migrations | |
 | Database | SQLite in WAL mode | PostgreSQL as an option LATER |
 | CLI | Typer, with httpx2 to call the API | same package as the server; httpx2 is the continuation of httpx under Pydantic |
@@ -42,13 +58,14 @@ cut. See [release-process.md](release-process.md).
 src/hirdir/
   __init__.py        the version, and nothing else
   app.py             application factory, middleware, static UI
-  schedule.py        what the server does by itself at set times
+  schedule.py        what is done by the clock, and which of the two processes does it
   config.py          /etc/hirdir/config.toml and its defaults
   db/                engine, models, dialect helpers, migrations/
   domain/            the rules: inheritance, lifecycle, matching, counting, geography
   api/               routers under /api/v1, one module per record type
   auth/              providers (local now; RADIUS and SAML later), tokens, roles
-  io/                filter grammar, CSV and JSON import and export, the store of reference files, the examples
+  io/                filter grammar, CSV and JSON import and export, the store of reference files, the examples,
+                     and the background work of the second process
   cli/               the hirdir command: client commands and `hirdir admin`
   static/            the built web UI (generated, not committed)
 web/                 TypeScript source of the web UI
@@ -217,11 +234,21 @@ upload, by its extension and by its first bytes.
   another is answered `503` with `Retry-After`, and nothing of it was done. Reading is
   never held up.
 - **Applying in the background.** `POST /imports/{hid}/apply`, and the apply of a bulk
-  edit, store the job as `applying`, or `queued` behind another, and answer `202` at
-  once. A worker in the server's own process, a thread with its own database session
-  (`io/background.py`), applies one job at a time: the one applying, then the queued
-  ones in the order they were asked for. The route wakes it once the request is
-  stored, and it also looks for work by itself every five seconds. It works out the
+  edit, store the job as `queued` and answer `202` at once. The server applies
+  nothing. A worker in the second process, `hirdir admin work`, a thread with its own
+  database session (`io/background.py`), applies one job at a time: the one applying,
+  then the queued ones in the order they were asked for. It takes a job up by making
+  it `applying`, in a transaction of its own, before the first batch: the process that
+  takes a piece of work is the one that owns it (P-263), and `applying` is said of a
+  job only by the process that applies it.
+  It finds its work by looking in the database every second, one read of an index, so
+  an apply begins within a second of being asked for; nothing is sent from the one
+  process to the other, since a signal that went astray would leave a job waiting
+  (P-267). It opens the database as the server does (`db/engine.py`), so it is one
+  writer among the others, with the same `busy_timeout`. Where one process does both,
+  `hirdir admin serve --work` and the tests of the routes, the worker is a thread of
+  that process, which the route wakes once the request is stored, and which also looks
+  for work by itself every five seconds. It works out the
   order of the rows once for the whole job, then works them 50 to a batch
   (`io/imports.py`), each batch a transaction that takes the one writer's place before
   it looks, as a small preview does, and stores with its rows what it did with each
@@ -235,13 +262,27 @@ upload, by its extension and by its first bytes.
   The batches are under the request ID of the apply, and as the person who asked for
   it, whose role is looked at again as the worker takes it up. An error nobody foresaw
   undoes the batch it happened in and stops the job, and is logged with its
-  traceback. When the server stops, the worker stops after the batch it is in, at
-  most a minute later, and the job is `stopped`; when it starts, before the worker
-  does anything, a job still `applying` is marked `stopped`, since only a stop that
-  cut it short leaves one so. A stopped job is resumed by asking for it to be applied
-  again, from the first row that was not applied. There is one worker for one
-  database, because there is one process: two servers on one database would each
-  take the jobs.
+  traceback. When the process that applies stops, on `SIGTERM` or `SIGINT`, the worker
+  stops after the batch it is in, at most a minute later, and the job is `stopped`;
+  when it starts, before the worker does anything, a job still `applying` is marked
+  `stopped`, since only a stop that cut it short leaves one so. A job that was asked
+  for while no process was there to apply it is another thing, and its row says so:
+  the server takes the request and stores it whether the second process runs or not,
+  the job waits as `queued`, with nothing of it applied, and is applied when that
+  process starts. A stopped job is resumed by asking for it to be applied again, which
+  stores it `queued` once more, from the first row that was not applied. There is one
+  worker for one
+  database: two on one database would each take the jobs, and each would take for
+  stopped what the other is applying. The process that applies holds a lock on
+  `worker.lock` in the state directory for as long as it runs, as the server holds one
+  on `server.lock`, and a second one stops with `another process of the background
+  work is running on /var/lib/hirdir: stop it first`; `hirdir admin serve --work`
+  holds both locks. The lock is asked for and nothing is written for it. The server
+  learns whether the process runs by asking for the same lock, shared, and being
+  refused (`worker_state` in `io/background.py`), which is `worker` of `GET
+  /about/load`: `running`, `not_running`, or `in_process` where one process does both.
+  Such a question holds the file for an instant, so a process that starts asks for
+  its lock for two seconds before it takes another to be running.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
@@ -280,22 +321,33 @@ upload, by its extension and by its first bytes.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent, and the worker's at the end of each batch. Every update of a
   row names the `row_version` it was read at.
-- **What the server does by itself.** A few things are done at set times, by the
-  server and not by a request: the record of the capacity balance each Monday just
-  after midnight, and each night just after midnight the long reports worked out ahead
-  and kept, the coverage report, the renewal worklist, the summary of the renewal alert
-  and the capacity report, each for the view its page opens with. `hirdir/schedule.py` holds them as a list of jobs, each a name, when
-  it is due and what it does, run by a scheduler in the server's own process. The
-  scheduler is started with the application and stopped with it. When the server
-  starts, the jobs that run at start are run before the first request is answered, and
+- **What is done by the clock.** A few things are done at set times, and not by a
+  request: the record of the capacity balance each Monday a minute after midnight, and
+  each night five minutes after midnight the long reports worked out ahead and kept,
+  the coverage report, the renewal worklist, the summary of the renewal alert and the
+  capacity report, each for the view its page opens with. `hirdir/schedule.py` holds
+  them as a list of jobs, each a name, when it is due and what it does, and says which
+  process runs which. **The record of the week is the second process's**, `hirdir
+  admin work`: it is written to the database, which is where the server finds it.
+  **The long reports are the server's own**, whichever process does the rest: what is
+  worked out is kept in the memory of the process that answers (D-184), so worked out
+  in another process it would be kept where no request reads it, and the first person
+  of the day would wait for each report all the same, in the server and at the moment
+  somebody is waiting. They are due four minutes after the record, whose audit event
+  would otherwise leave them stale on a Monday. Each process has a scheduler for its
+  own jobs, started with it and stopped with it. When a process starts, its jobs that
+  run at start are run first, in the server before the first request is answered, and
   then a thread of its own wakes once a minute and runs, each with a session of its
   own and as one writer among the others, every job that has come due since it last
   looked, by the clock of the `time_zone` setting. What a job writes is audited with
   `via` of `system`. A job that fails is logged and tried again a minute later. A time
-  that passed while the server was stopped is not made up for, so a job that must not
-  miss one also runs at start and looks for what is missing: the server records the
-  balance when it starts in a week that has no record. The tests run a job for a
-  moment they choose, through `run_due`, and do not wait for a Monday.
+  that passed while a process was stopped is not made up for, so a job that must not
+  miss one also runs at start and looks for what is missing: the second process
+  records the balance when it starts in a week that has no record. Where that happens,
+  the reports that the server worked out as it started are left stale by the record's
+  event, and are worked out again when they are first asked for, as after any change.
+  The tests run a job for a moment they choose, through `run_due`, and do not wait
+  for a Monday.
 - **Reference files.** The content of a file is kept beside the database and never in
   it, in `files/` under the state directory, `/var/lib/hirdir/files/`, in a file named
   for its SHA-256 checksum under a directory of its first two characters:
@@ -307,10 +359,14 @@ upload, by its extension and by its first bytes.
   refused as soon as it is over the limit; it is then checked, moved into place and
   its record stored. Content is written before the record that names it and removed
   only after the last such record is gone, under one lock of the server process, so
-  that what the database names is there; there is one process for one database. A
+  that what the database names is there; there is one server for one database, and
+  the second process neither reads nor writes the store. A
   part left in `files/.incoming/` by an upload that was cut short is removed when the
   server starts, with any content that no record names and that is more than a day
-  old. `src/hirdir/io/store.py` keeps them (P-161).
+  old. That sweep is the server's own, before it answers its first request, and not
+  the second process's: the lock is the server's, and a sweep made by another process
+  while the server takes an upload would remove the part that upload is being written
+  to. `src/hirdir/io/store.py` keeps them (P-161).
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
   `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. It puts into
   `backups/files/` the content the store holds that is not there yet, before it copies
@@ -338,7 +394,10 @@ upload, by its extension and by its first bytes.
   deletion of an item or a device group that was a mistake (P-227); it erases every
   reference and its content after the backup it takes. It is a
   command on the server, with no route behind it, and runs only while the service is
-  stopped, after a backup. Every table is named in `domain/reset.py` as one that a
+  stopped, the server and the process of the background work both, after a backup. It
+  looks for the two locks, and where the server listens, and says which of the two
+  runs; `hirdir admin restore` and `hirdir admin load-examples` refuse in the same
+  way. Every table is named in `domain/reset.py` as one that a
   reset clears or one that it keeps, and a test fails when a new table is in neither. Of
   those it clears, it names the bookkeeping too: what was asked of the inventory and
   what the server keeps of it, which an empty inventory may hold.
@@ -363,9 +422,12 @@ unused, and one that a change has made wrong is never given. At most 64 answers 
 kept, the least used dropped first, and a restart drops them all. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
 The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as D-184 first had it, was measured at three times as long on the fixture. All four are
-worked out just after midnight in the application's time zone, and when the server
-starts, for the view each page opens with, so that the first person of the day is not
-kept waiting; any other view is worked out when it is first asked for, and then kept. A
+worked out just after midnight in the application's time zone, at five minutes past,
+and when the server starts, for the view each page opens with, so that the first
+person of the day is not kept waiting. The server works them out itself, where the
+second process does the rest of what is done by the clock (P-267): they are kept in
+the memory of the process that answers, and nowhere that another process could put
+them. Any other view is worked out when it is first asked for, and then kept. A
 Try of the capacity report is worked out each time and never kept. An Admin may check
 what is kept, `POST /kept-answers/check`: each kept answer is worked out anew and
 compared with what was kept, and the check says which report and which request had
@@ -374,9 +436,10 @@ changes no record. `src/hirdir/io/kept.py` keeps them.
 
 ## The server's own measures
 
-The server measures its own load and, past a ceiling, answers at once that it is busy,
-where a request would have joined a queue and timed out (P-262, P-265). What is
-measured, what is refused, the settings and the route that shows it all are under
+The server measures its own load, says its health in one word, and by that word
+answers at once what it refuses, where a request would have joined a queue and timed
+out (P-262, P-265). What is measured, what is refused, the settings and the route that
+shows it all are under
 [The server's own measures](interfaces.md#the-servers-own-measures) on the interfaces
 page. This is how it is built, and why so.
 
@@ -385,48 +448,143 @@ page. This is how it is built, and why so.
   whatever answered it, and tells the meter when each arrives and ends, with its
   status. The meter is kept on the application's state, where `bind` puts everything of
   one installation, so an application has one for each installation it is bound to.
+- **When the time of a request begins.** When the server has the whole of it: at its
+  arrival where it declares no body, and otherwise when the last piece of its body is
+  handed to the application, which `Gateway` sees by standing between the two. What a
+  slow sender takes to send is the network's time and not the server's. And a request
+  whose body never comes, five sign-ins of which only the headers were sent, would
+  otherwise wait for ever with the others in flight and hold the server busy for
+  good: until it is whole it is counted as in flight, which it is, and is in neither
+  measure. nginx reads a body whole before it passes it on, so behind it the two
+  moments are the same.
+- **Every way out is counted.** A request leaves the meter when the last byte of its
+  answer is sent, and otherwise when `Gateway` is left: by an answer cut short after it
+  began, by a client that went away, by a request that was given up, by an error before
+  any answer. Each of those is counted as failed, whatever status it began with, and
+  nothing stays in flight that is not.
 - **In memory, and nothing stored.** Ten minutes in steps of five seconds are 120 small
-  records, and beside them are the times of the answers of the API over the last
-  `busy_over_seconds`, 20,000 at the most, for the median. Nothing is written to the
+  records, and beside them are the times of the answers of the measure over the last
+  `busy_over_seconds`, 20,000 at the most, for the percentile. Nothing is written to the
   disk or to the database. Measuring a request is a few additions under a lock that is
   held for arithmetic only, and a server that starts, starts empty. More than that, a
   history kept over days, waits until there is a use for it (P-266).
 - **The rules read no clock.** `domain/load.py` holds the steps, the two measures and
-  whether the server is busy, and is given the time and the processor time the process
+  the health of the server, and is given the time and the processor time the process
   has used by whoever asks. `io/measures.py` reads them for the server,
   `time.monotonic()` and `time.process_time()`, which counts every thread of the
   process, and reads what the host says of its memory, its disk and its load. So the
   tests of the rules move the time themselves and wait for nothing.
-- **Why the median.** One long export among quick answers is not a busy server, and an
-  average would say that it is. Under the load measured for P-261 every request took
-  twenty times as long as it does alone, and the tables that stood counting took 20 to
-  30 seconds: there the median moves, and five seconds of it over half a minute is well
-  past a slow moment and well before the minute at which a proxy gives up.
+- **Why the 95th percentile, at any count.** The owner's measure: "use p95 > 3 seconds
+  as trigger", and of how few requests it may be read: "Consider this threshold to
+  catch poor performance in development more so than a popular website with thousands
+  of users." So it is the plain percentile, with no least count: the k-th slowest of
+  the requests in the measure, where k is five in a hundred of them rounded up, and
+  one at the least. Of twenty or fewer that is the slowest, so one slow page on a quiet
+  server changes the colour for as long as it is in the measure, which is what the
+  person who waited for it met; of twenty-one it is the second slowest, and from there
+  one request in twenty may take as long as it likes. A percentile, and not an
+  average, so that the colour is what the slow requests are and not what the quick
+  ones make of them.
+- **Why refusing needs twenty requests.** The colour says what people meet; refusing
+  is for load. Three slow requests in half a minute are a slow page, and refusing the
+  next one would mend nothing and shed nothing. So how long requests take refuses by
+  its colour only where twenty or more requests are in the measure,
+  `busy_fewest_requests`; with fewer the mark is orange or red and nothing is refused
+  for it. The answer gives both words, and how many requests the measure is of, so
+  that the page says slow where it is slow and busy only where reads are refused.
+- **What is long by nature is in no percentile.** A report, an export or a preview
+  takes seconds on a server in good health, and one of them among nineteen quick
+  answers would be the measure. They are counted by how they were answered, and
+  their times are in the lowest, the average and the highest of a step, but not in the
+  measure of time, the percentiles or the bands. The routes that are asked for by the
+  clock and answered from memory, the health routes, About, the server's own measures,
+  the settings and the contract, are in none either: a page that asks About every five
+  seconds would otherwise be the health it shows. Every other read, and every change
+  that is stored, is: a save that takes four seconds is a slow server.
 - **Why the requests in flight count.** A server from which nothing comes back answers
   nothing, and a measure of answers alone would read it as idle. The time each request
-  in flight has waited so far is in the median with the answers, so that server is
-  busy for as long as it is so.
-- **Why five requests.** The median of two or three requests is one request. With
-  fewer than five answered and in flight, how long requests take is not read at all,
-  and the processor alone says whether the server is busy.
-- **The processor.** The process is one, and Python uses one processor at a time in it,
-  so the share of one processor it used is how near the server is to all it can do.
+  in flight has waited so far is in the percentile with the answers, so that server is
+  red for as long as it is so: one request that has waited past the ceiling is enough
+  for the colour.
+- **Why a request is counted from when it came.** The percentile is of the requests
+  that came in the last `busy_over_seconds`, whatever each took, and not of those
+  answered in it. Requests that stood for twenty seconds and then all ended would,
+  counted from their answers, keep an idle server busy for half a minute more; counted
+  from when they came, they are out of the measure half a minute after they came.
+- **The percentiles of the ten minutes.** Percentiles need the times and not their
+  sums. Each step keeps the times of the requests of the measure it answered, as they
+  are, up to its first thousand, which is two hundred requests a second and more than
+  one process answers: eight kilobytes a step at the most, under a megabyte for the
+  ten minutes. So `p50`, `p95` and `p99` of the window, `p50_ms` and `p95_ms` of each
+  step and the counts of the bands are exact, each percentile one of the times
+  themselves, and the bands follow `busy_response_ms` when it is changed; of a step of
+  more than a thousand they are of its first thousand. The times are copied under the
+  lock and put in order once it is let go, so About never holds a request up.
+- **One word, and what is refused follows from it.** The owner's rule: "report the
+  colors based on observed performance ... Refuse nothing until orange at which point
+  the heavy pages are refused, then at red the busy page is delivered." So there is one
+  notion and not two: the health is green under a third of `busy_response_ms`, yellow
+  to two thirds, orange to the whole and red past it, and a server with load to shed
+  refuses nothing while it is green or yellow, what is long by nature while it is
+  orange, and every read as well while it is red. There is no step that time alone
+  brings, and nothing of before is remembered but one thing: a server that refused its
+  reads refuses what is long, and is orange at the best, until `busy_over_seconds`
+  have passed since it last did, so that the reports do not come back in the same
+  moment as the lists. A red that refused nothing leaves nothing behind.
+- **The slowest, and who met what.** The lists live with the steps and leave with
+  them, in memory like the rest. A step keeps the ten slowest of its requests of the
+  measure and the five slowest of what is long by nature, so the slowest of the ten
+  minutes are always among what the steps keep; and for each account that asked in
+  it, nine numbers: its requests, the four bands of time, its slowest, those refused,
+  those that failed, and when the last came. Fifty accounts are counted each by
+  itself in one step and fifty are listed; the rest are counted together. A request
+  pays a look in a table by the HID of its account and a few additions; the lists are
+  merged, put in order and cut when About asks, once the lock is let go. Who asked is
+  what the check of the sign-in found, left on the request where `Gateway` reads it
+  after the answer, as the request ID is: nothing is asked of the database for it. A
+  request that is refused never reaches that check, so `Gateway` reads the session
+  token's signature, which needs no database, and counts it for the account if that
+  asked of late and is among the thousand remembered. Of a request the route's
+  pattern is kept and never its path or its query. Which accounts are listed, and in
+  what order, is `people_of` in `domain/load.py`.
+- **Both words on every answer.** They are worked out with the measures, once a second
+  at the most, and kept with them; a request reads them from memory when it arrives,
+  which it does anyway to learn whether it is refused, and `Gateway` writes them into
+  `X-Hirdir-Health` of the answer, `busy; refusing=nothing`, one of twelve values
+  that are made when the server starts. So the page learns the health from the
+  answers it gets, and asks nothing for it; and it has what is refused beside the
+  colour, since red with nothing refused is a slow page on a quiet server and must not
+  be called busy. With no ceiling the health is read all the same, against the thirds
+  of 3000, and nothing is refused for it.
+- **The processor.** The measure is the processor time of the process, every thread
+  of it, as a percentage of one processor. Python runs one thread of the process at a
+  time, so a server that does nothing but work reads near 100. It can pass 100: SQLite
+  lets go of the interpreter while it runs a query, so four threads each in a query
+  read about 200, and so does hashing an access code beside other work. Nothing holds
+  the measure to 100, in the meter or on About, and `busy_cpu_percent` takes up to 100
+  for each processor of the host; 95 unless set is the server at the limit of what
+  Python alone can do. Past it the health is orange at the least and what is long is
+  refused, whatever the count of requests, since the processor at its limit is load by
+  itself; the processor alone never makes it red, since a server that still answers
+  its lists in good time is not one to refuse them.
   It is read over the same `busy_over_seconds`, and a server that started later than
   that used nothing before it started: the work of starting is not a sustained load.
   Nothing samples it by the clock. Whatever next asks, a request or About, brings the
   steps up to date, and the processor time used since the last look is spread evenly
   over the time since.
 - **Decided on the event loop.** A request that is refused must cost next to nothing,
-  or refusing would be load of its own. The meter says from memory whether the server
-  is busy, which it works out once a second at the most; only while it is busy is the
-  route of the request looked for, to learn whether it is one that waits; and the
-  answer is made there, in `Gateway`, before the request waits for a thread of the pool
-  or for the database, and before who sent it is looked at. With both ceilings at 0
-  the meter answers without reading anything.
-- **Two steps.** What costs most and can wait goes first, the reports, the exports, the
-  previews of imports and the pages of lists: a list can be asked for again, and each
-  one refused is the most relief. Only a server still busy `busy_over_seconds` later
-  refuses every read.
+  or refusing would be load of its own. The meter says from memory what the server
+  refuses, which it works out once a second at the most; what the route of the request
+  is, is remembered from the last request of the same method and path; and the answer
+  is made there, in `Gateway`, before the request waits for a thread of the pool or for
+  the database, and before who sent it is looked at.
+- **What is refused first.** What is long by nature and can wait, the reports, the
+  exports and the previews of imports: each one refused is the most relief, and the
+  lists that people work in go on until the server is red. A server that is red and
+  refuses its reads soon has fewer than twenty requests in the time the measure looks
+  back: the reads come back, with what is long still refused for a while, and are
+  measured, and are refused again if twenty of them say that the server is still red.
+  That is how it learns that it has come back.
 - **What is never refused, and why.** A sign-in and every change that is stored: the
   work a person did is not thrown back at them while a list can wait (P-262). The
   health routes, so that what watches the service does not take a busy server for a
@@ -435,23 +593,30 @@ page. This is how it is built, and why so.
   say in words that the server is busy. And `GET /settings`, so that an Admin who set
   the ceiling too low reaches it to set it again.
 - **Which route is which.** `api/busy.py` reads it from what a route declares: a `GET`
-  that answers a page of a list, or is under `/reports`, costs most; any other `GET`
-  reads; and whatever takes the audit context stores a change, as every route that
-  writes does. A list or an export asked for with `POST` takes no audit context, and a
-  preview takes one and can wait all the same: those few are named. A test fails for a
-  route that is none of these, so a new route is decided when it is written.
+  under `/reports` is long by nature; any other `GET` reads; and whatever takes the
+  audit context stores a change, as every route that writes does. A list or an export
+  asked for with `POST` takes no audit context, and a preview takes one and can wait
+  all the same: those few are named. A test fails for a route that is none of these,
+  so a new route is decided when it is written. Every request of the API asks which
+  its route is, since its time is in the measure or is not, so what was found for a
+  method and a path is remembered.
 - **The settings.** The three settings of the ceiling are read into the meter when the
   application is bound to its database, and again when one of them is saved, once the
   change is stored. No request reads the database to learn them. Where the database
   cannot be read when the server starts, the ceiling is what it is unless set: a
-  server is never without one for that.
+  server is never without one for that. Reading the settings again and giving the
+  meter what was read are one step, under a lock of their own, so that of two saves at
+  the same moment the ceiling in force is that of the one that read last; it is not
+  the meter's lock, which is never held across a read of the database.
 - **In the tests.** The processor time of a test's process is the test's own, so an
   application inside the test process starts with no ceiling, and a test that wants
-  one gives the meter one or saves a setting. The acceptance scenarios start a server
-  as it is released, with its ceiling. Measured at 0.9.10 on the build host with other
-  work beside it: of their 54 servers none answered busy, and the one that worked
-  hardest, that of S13, held 78% of one processor over its busiest half minute, the
-  next 53%.
+  one gives the meter one or saves a setting. The servers of the acceptance scenarios
+  start with no ceiling too: `tests/acceptance/serve.py` is `hirdir admin`, started
+  with what the tests of the routes start with, so `hirdir admin serve --dev` itself
+  means nothing of the kind. With their ceiling, measured at 0.9.10 on the build host
+  with other work beside it, none of their 54 servers answered busy, but the one that
+  worked hardest, that of S13, held 78% of one processor over its busiest half minute:
+  too near 95 for a slower host.
 
 The ceiling is later what says that an installation has outgrown one process: the
 trigger to put a second behind a load balancer, which waits for PostgreSQL (P-262).
@@ -473,7 +638,8 @@ trigger to put a second behind a load balancer, which waits for PostgreSQL (P-26
 | `/etc/nginx/conf.d/hirdir.conf` | the `upstream hirdir` block (a conffile) |
 | `/usr/share/hirdir/nginx/snippet.conf` | the nginx snippet as this version ships it: the `location` block above, under `/hirdir`, with the upload limit |
 | `/etc/nginx/snippets/hirdir.conf` | that snippet under the prefix of this host. Written at install and at each upgrade, never shipped, and not a conffile |
-| `/usr/lib/systemd/system/hirdir.service` | runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
+| `/usr/lib/systemd/system/hirdir.service` | the server: runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
+| `/usr/lib/systemd/system/hirdir-worker.service` | the process of the background work: runs `hirdir admin work` as user `hirdir`, under the same limits, and listens on nothing. Started, stopped and restarted with `hirdir.service` |
 | `/usr/lib/systemd/system/hirdir-backup.{service,timer}` | the daily backup |
 | `/usr/lib/systemd/system/hirdir-upgrade.{service,timer}` | the nightly upgrade from GitHub. Shipped, and not enabled: a site turns it on |
 | `/var/lib/hirdir/` | database, signing key, the content of reference files in `files/`, backups with the files they name in `backups/files/` (created at install, never shipped) |
@@ -486,7 +652,7 @@ The package carries Python and every Python dependency. It depends on `libc6`,
 **On install** the maintainer script creates the user, the state directory, its backup
 directory and the store of reference files, `files/`, each for the `hirdir` user alone,
 creates the signing key, runs the migrations, writes the nginx snippet, enables and
-starts the service, and prints two lines: how to create the first Admin (`sudo hirdir
+starts the service, both its units, and prints two lines: how to create the first Admin (`sudo hirdir
 admin create-user --role admin NAME`), and how to add the site (`sudo hirdir-setup`).
 
 **On upgrade** it makes the store of reference files where it is missing, as at
@@ -498,6 +664,26 @@ service again. The signing key and the
 one conffile, the nginx upstream, are left as they are, and no value of the settings
 file is changed, so sessions and service tokens go on working, and `hirdir` stays under
 its prefix.
+
+**The two units of the service.** `hirdir.service` is the server and
+`hirdir-worker.service` the process of the background work, and to an operator the
+two are one service: `systemctl start hirdir`, `stop` and `restart` act on both. The
+worker's unit is `PartOf=hirdir.service`, which hands it every stop and restart of the
+server; `After=hirdir.service`, so that it starts once the server has and, since a
+stop goes in the other order, is stopped before `systemctl stop hirdir` comes back,
+which is what a command that needs the service stopped relies on; and
+`WantedBy=hirdir.service`, so that enabling it, which the package does, is what makes
+a start of the server start it. It has no place of its own in the start of the host:
+a server that a site has disabled leaves it unstarted too. `systemctl stop
+hirdir-worker` stops it alone, the server answering as before, and `systemctl start
+hirdir-worker` or a restart of the service brings it back. It has the limits of
+`hirdir.service`, line for line, which a test holds. The maintainer scripts name both
+units wherever they stop the service; they start and restart the server, which brings
+the worker with it. An upgrade from a release before 0.9.10, which has no such unit,
+enables it and starts it with the server. Going back to such a release, the script of
+the release that is leaving stops the worker before its files go, since the older
+release's own scripts stop the server alone, and takes away what enabled it once the
+unit is gone.
 
 **The settings file** is not a conffile, for the reason the snippet is not: a release
 that adds a setting ships a different file, and dpkg would ask every site that had
@@ -591,7 +777,7 @@ volume.
 | `make check` | `ruff format --check`, `ruff check`, `ty check`, `pytest` over `tests/unit`, `tests/api` and `packaging/tests`, and the web UI's type check, lint and unit tests |
 | `make test` | the Python tests of `make check`, alone |
 | `make test-changed` | only the Python tests that what has changed since their last run can reach; for use while working, never in place of `make check` |
-| `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server |
+| `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server, with the process of the background work beside it |
 | `make browser` | the browser scenarios on the host, against a fresh scratch inventory, with one list of every scenario that failed; `ARGS="--last-failed"`, `ARGS="--since <commit>"` or spec files, see "The browser scenarios on the host" below |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
@@ -624,6 +810,15 @@ itself is done once.
   One test keeps the cost that is released and checks it. The acceptance scenarios and
   the package test start the server as a process of its own, and so always run with
   the full cost.
+- **What production starts.** The tests of the routes run the application inside the
+  test's own process, with the worker that applies as a thread of it, which is
+  `in_process`. Every harness that starts a server as a process starts what the
+  package starts: `hirdir admin serve`, and `hirdir admin work` beside it once the
+  server answers, and waits for that process to say that it is at work before a
+  scenario begins, so that what that process does as it starts, the record of a week
+  that has none, is done before anything is asked. The acceptance scenarios
+  (`tests/acceptance/conftest.py`) and `make browser` do so; the package test has the
+  two units. Each stops the second process with the server.
 - **Only what a change can reach, while working.** `make test-changed` keeps a record,
   in `.testmondata`, of the lines of Python each test runs, and runs the tests whose
   lines have changed since. It does not see a change to a file that is not Python, such
@@ -642,8 +837,8 @@ Measured on the four-core build host with nothing else running, at 0.4.1: the 67
 Python tests of `make check` take 33 seconds, and the 22 scenarios of `make acceptance`
 42 seconds. Run one at a time and with everything done again for each test, as before
 0.4.1, the two together took 475 seconds. A scenario is not shortened further: nearly
-all of its time is the server and `hirdir admin` starting as real processes, which is
-what it is there to show.
+all of its time is the server, from 0.9.10 the process of the background work, and
+`hirdir admin` starting as real processes, which is what it is there to show.
 
 **The browser scenarios** of `make e2e` are the spec files in `web/e2e/`, which
 Playwright runs against the fresh install. The files run side by side, each in a worker
@@ -728,9 +923,10 @@ on the build host in one pass that reports every failure:
    Admin, `e2e-admin`, the Admin of the environment, as the package test does; the
    examples are not loaded, since every spec file makes what it needs. It builds the web
    UI, unless `--built` says the build is current, and serves it with
-   `hirdir admin serve --dev` on a free port, never 8715. When it ends, or is
-   interrupted, it stops that server by its port; the inventory is kept until the next
-   run.
+   `hirdir admin serve --dev` on a free port, never 8715, with `hirdir admin work`
+   beside it on the same inventory, as the package runs the two. When it ends, or is
+   interrupted, it stops that server by its port and the second process with it; the
+   inventory is kept until the next run.
 2. It waits for a quiet host and takes the number of files at once from `E2E_WORKERS`,
    or one fewer than `scripts/test_load.py` says, the server needing a processor too.
 3. It runs the ordinary project, and then each project that runs alone, in the order of
@@ -775,9 +971,9 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
-| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx; and, where the new version has the unit of the background work, both units are enabled and running once the upgrade is done, also from a release that had no such unit. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below. An upgrade that stops leaves both units stopped, and going back to a release that has no unit of the background work leaves no process, no unit and no link of it |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
@@ -1761,8 +1957,9 @@ run ends with the status 1.
 [requirements.md](requirements.md#qualities) against the fixture: 10,000 rows preview
 in under 30 s and apply in under 60 s. It copies the fixture's database into a folder
 of its own, which it throws away at the end, makes an account with the Inventory role
-in the copy, and serves the copy as `hirdir admin serve` does, with uvicorn on a free
-port of 127.0.0.1 and the worker that applies imports beside the requests. It makes a
+in the copy, and serves the copy as `hirdir admin serve --work` does, with uvicorn on
+a free port of 127.0.0.1 and the worker that applies imports beside the requests, in
+the one process. It makes a
 file of 10,000 new switches and access points of the fixture's models, places and
 owners, previews it, applies it and asks the job how far it has got until it is
 applied, while a person signs in every second. The parts of the apply are timed by
