@@ -499,7 +499,10 @@ def _checked(
     def final(name: str) -> Any:
         return values.get(name, getattr(item, name) if item is not None else None)
 
-    if any(
+    brought_back = (
+        item is not None and item.record_status == "retired" and "record_status" in fields
+    )
+    if brought_back or any(
         name in fields
         for name in (*hosting.FIELDS, "catalog_entry_hid", "parent_item_hid", "serial_number")
     ):
