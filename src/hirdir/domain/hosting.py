@@ -596,7 +596,9 @@ def checked(
         # what it was seen on; a file that says it again changes nothing. A new item's
         # request holds every field, blank where nothing is said.
         restated = item is not None and item.observed_host_hid == member_seen
-        if not restated or looked_again:
+        # Where it runs on that stack already, the member seen again is no news.
+        on_it = item is not None and item.host_group_hid == out.get("host_group_hid")
+        if not restated or (looked_again and not on_it):
             out["observed_host_hid"], out["host_observed_at"] = member_seen, clock.now()
     return out
 
