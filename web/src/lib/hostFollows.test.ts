@@ -48,9 +48,12 @@ describe("what a tool's report marks as not reported (P-248)", () => {
     system: { name: "Example vCenter" },
   };
 
-  it("says how many the preview would mark", () => {
-    expect(notReportedText(job)).toBe(
+  it("says how many the preview would mark, ending in a colon only where names follow", () => {
+    expect(notReportedText(job, true)).toBe(
       "1 item registered with Example vCenter is not named by the file, and will be marked as not reported once it is applied whole:",
+    );
+    expect(notReportedText(job)).toBe(
+      "1 item registered with Example vCenter is not named by the file, and will be marked as not reported once it is applied whole.",
     );
     expect(notReportedText({ ...job, not_reported: 0 })).toBe(
       "Every item registered with Example vCenter is named by the file: none will be marked as not reported.",
@@ -59,6 +62,19 @@ describe("what a tool's report marks as not reported (P-248)", () => {
 
   it("says a file with a row rejected marks nothing", () => {
     expect(notReportedText({ ...job, rejected: 2, not_reported: 0 })).toMatch(
+      /^Nothing will be marked as not reported: a row is rejected/,
+    );
+  });
+
+  it("says why an applied file marked nothing, as the job holds it", () => {
+    const applied = { ...job, status: "applied", not_reported: 0 };
+    expect(notReportedText({ ...applied, not_reported_held: "stale" })).toBe(
+      "Nothing was marked as not reported: a row was left out, its record having changed since the preview, and only a file applied whole is everything Example vCenter reports.",
+    );
+    expect(notReportedText({ ...applied, not_reported_held: "skipped" })).toMatch(
+      /^Nothing was marked as not reported: the rows that were rejected were left out,/,
+    );
+    expect(notReportedText({ ...job, not_reported_held: "rejected", not_reported: 0 })).toMatch(
       /^Nothing will be marked as not reported: a row is rejected/,
     );
   });

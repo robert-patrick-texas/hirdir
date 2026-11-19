@@ -46,31 +46,55 @@ export function hostsNothingHint(name: string, kind: string): string {
 export const COMPLETE_HINT =
   "Every item registered with the system that the file does not name is marked as not reported, to be looked at. Nothing is retired, moved or unregistered: the next file that names it makes it registered again.";
 
-/** What the preview of a complete report says it would mark, or the applied one marked. */
-export function notReportedText(job: {
-  complete: boolean | null;
-  status: string;
-  not_reported: number;
-  rejected: number;
-  system: { name: string } | null;
-}): string {
+/** Why a complete import marks nothing, as the job says in `not_reported_held`. */
+export type NotReportedHeld = "rejected" | "skipped" | "stale" | null;
+
+const HELD_WORDS: Readonly<Record<string, string>> = {
+  rejected: "a row was rejected",
+  skipped: "the rows that were rejected were left out",
+  stale: "a row was left out, its record having changed since the preview",
+};
+
+/**
+ * What the preview of a complete report says it would mark, or the applied one marked.
+ * `named` says whether the first of them are listed after it: the sentence then ends in
+ * a colon, and otherwise in a full stop.
+ */
+export function notReportedText(
+  job: {
+    complete: boolean | null;
+    status: string;
+    not_reported: number;
+    not_reported_held?: NotReportedHeld;
+    rejected: number;
+    system: { name: string } | null;
+  },
+  named = false,
+): string {
   if (!job.complete) return "";
   const system = job.system?.name ?? "the system";
   const count = job.not_reported;
+  const held = job.not_reported_held ?? null;
   if (job.status === "previewed") {
-    if (job.rejected > 0) {
+    if (held !== null || job.rejected > 0) {
       return `Nothing will be marked as not reported: a row is rejected, and only a file applied whole is everything ${system} reports.`;
     }
     return count === 0
       ? `Every item registered with ${system} is named by the file: none will be marked as not reported.`
-      : `${plural(count, "item registered with", "items registered with")} ${system} ${count === 1 ? "is" : "are"} not named by the file, and will be marked as not reported once it is applied whole:`;
+      : `${plural(count, "item registered with", "items registered with")} ${system} ${count === 1 ? "is" : "are"} not named by the file, and will be marked as not reported once it is applied whole${named ? ":" : "."}`;
   }
-  if (job.status === "applied") {
+  if (job.status === "applied" || job.status === "stopped") {
+    if (held !== null) {
+      return `Nothing was marked as not reported: ${HELD_WORDS[held] ?? held}, and only a file applied whole is everything ${system} reports.`;
+    }
+    if (job.status === "stopped") {
+      return "Nothing is marked as not reported until the file is applied whole.";
+    }
     return count === 0
       ? `No item was marked as not reported by ${system}.`
       : `${plural(count, "item was", "items were")} marked as not reported by ${system}, each to be looked at.`;
   }
-  return `Nothing is marked as not reported until the file is applied whole.`;
+  return "Nothing is marked as not reported until the file is applied whole.";
 }
 
 // --- what is to be looked at (P-249) -----------------------------------------------------

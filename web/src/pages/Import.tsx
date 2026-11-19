@@ -399,9 +399,12 @@ function NotReported({
   job: Job;
   first: readonly { hid: string; label: string }[];
 }) {
-  const text = notReportedText(job);
+  // The first of them are named where the page has them: from the answer of the preview
+  // made on this page. A preview come back to says how many, with no names.
+  const named =
+    job.status === "previewed" && job.rejected === 0 && !job.not_reported_held ? first : [];
+  const text = notReportedText(job, named.length > 0);
   if (!text) return null;
-  const named = job.status === "previewed" && job.rejected === 0 ? first : [];
   return (
     <div
       className="not-reported-preview"
