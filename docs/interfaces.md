@@ -35,8 +35,8 @@ and CLI's types are generated from it.
 | Access | `POST /auth/sign-in`, `POST /auth/sign-out-everywhere`, `GET /auth/me` |
 | Accounts (Admin) | `/users`, `/user-groups`, `/role-grants`, `/users/{hid}/access-code`, `/users/{hid}/service-tokens` |
 | Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio`; `GET` and `POST /vendors/{hid}/contacts`, `PATCH` and `DELETE /vendors/{hid}/contacts/{link_hid}` |
-| Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`, `POST /items/{hid}/make-stack`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once; for an Admin, `POST /item-replacements/{hid}/remove` |
-| Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}`; `POST /device-groups/retire` and, for an Admin, `POST /device-groups/delete`, of several at once |
+| Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/hosted`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`, `POST /items/{hid}/make-stack`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once; for an Admin, `POST /item-replacements/{hid}/remove` |
+| Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/hosted`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}`; `POST /device-groups/retire` and, for an Admin, `POST /device-groups/delete`, of several at once |
 | Addresses | `/networks`, `/addresses` |
 | Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening` |
 | People | `/contacts`, `POST /contacts/{hid}/retire`, `GET /contacts/{hid}/uses`, `/operators`, `GET /operators/{hid}/assignments`, `POST /operators/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
@@ -101,6 +101,7 @@ out, these decide it:
 | `help_organization`, `help_email`, `help_phone`, `help_url` | `help` of `GET /about`, each `null` where it is blank |
 | `help_on_sign_in` | whether the page that is served before signing in carries `help` as well; while it is false the page holds nothing of it |
 | `map_link` | `map_url` of a site and of a location: the setting with the place's latitude and longitude in it, or null where it is blank or the place has none (P-229, P-236) |
+| `count_kinds` | the kinds of model whose major items are components, managed nodes and carry weight in the summary and the reports. Its default holds `hardware`, `virtual_machine`, `virtual_context` and `container` from 0.9.8 (P-246); an installation that has set it itself keeps what it set, and adds the two new kinds to count them |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 
 The fixed values are these. What was decided:
@@ -255,6 +256,72 @@ is released, is audited as it always is, with no such entry. `item` is given wit
 `left_on` that has come, today or before: what becomes of the item is done with the
 request, so a day to come is refused with it. A membership ended with a `left_on` to
 come, without `item`, is ended as the request is made, and its position is free at once.
+
+### What runs on a host
+
+A virtual machine, a virtual context and a container are items of a model of the kind
+`virtual_machine`, `virtual_context` or `container`, and name what they run on (P-246):
+"What runs on a host" under `items` on the [data model](data-model.md#items) page says
+the rules, and this says how the API carries them.
+
+- **The fields.** `POST /items` and `PATCH /items/{hid}` take `host_item_hid`, the item
+  it runs on, or `host_group_hid`, a stack or a cluster, and `observed_host_hid` with
+  `host_observed_at`, the item it was seen on and when; `host_observed_at` left out is
+  the moment of the change, and `null` in `observed_host_hid` clears both. Each refusal
+  is a `422` that names its field: `host_group_hid` given with `host_item_hid`; a host
+  given to an item of another kind, or of no model, or to an item that has a parent
+  (`host_item_hid`, or `host_group_hid`); a parent given to an item that has a host
+  (`parent_item_hid`); a host that is not there, is retired, has left the team's
+  hands, is of a kind that hosts nothing, is the item itself or runs on it, or makes a
+  line of hosts longer than three; a group that is not a stack or a cluster, or is
+  retired; an item seen that is the item itself; a moment seen more than a day ahead;
+  and a moment given with no item seen. `PATCH /catalog-entries/{hid}` that makes a
+  model a kind that runs on nothing, while an item of it names a host, is refused on
+  `kind`.
+- **The answer.** An item answers the four fields, and `host`, what it runs on, with
+  `item_hid` or `group_hid`, its `name`, a group's `type`, an item's `pid` and its own
+  `lifecycle_state`, and its `record_status`; `observed_host`, the item seen, as an item
+  is named on another record; `host_differs`, true where both are known and the item
+  seen is neither the host named nor a current member of the stack or the cluster
+  named, false where it is, and `null` where either is not known; `hosted_count`, how
+  many items not retired name it as their host; and `review`, the reasons it is to be
+  looked at (P-249), each `{reason, about}`: `reason` one of `no_host`, `host_gone` and
+  `not_reported`, and `about` the host (`record_type` `item` or `device_group`) or the
+  external system (`external_system`) it is about, with its `hid` and `label`, `null`
+  for `no_host`. A retired item has none. A device group answers `hosted_count` too.
+- **What it has from its host.** `effective.location_hid`, `planned_location_hid`,
+  `owner_hid` and `operator_hid` of an item that runs on a host go on through it where
+  the item and its groups have none, with `source` `host` and `source_hid` the record
+  it runs on, or an item that one is installed in, that holds the value; a value of a
+  group of the host is `device_group` as always, and so is one the stack or the cluster
+  it runs on has from a group it is nested in. `effective.serial_number`, on every item,
+  is its own, or for a virtual context with none the serial number of the item it runs
+  on, with `source` `host`. `GET /items/{hid}/resolution` has the steps of the host
+  with `level` `host`, after those of the item and what it is installed in, each
+  followed by the host's groups.
+- **What runs on a record.** `GET /items/{hid}/hosted` and `GET
+  /device-groups/{hid}/hosted`, which every role reads, answer `{total, items}`: each
+  item that names the record as its host, and beneath each what runs on that, each as
+  `{depth, host_hid, item}`, `depth` 1 for what runs on the record itself, and `item`
+  as an item of a list is answered. Each comes after its host, and those of one host by
+  name. Retired ones are listed with `include_retired=true`.
+- **The item list** filters and sorts by `host_item_hid`, `host_group_hid`,
+  `observed_host_hid`, `host.name`, the name of the item or the group it runs on,
+  `observed_host.name`, `host_observed_at`, `host_differs`, `hosted_count`, and
+  `review`, which holds each reason: `review:eq:no_host`, and `review:empty:false` for
+  every item with one. `effective.location_hid`, `location`, `site`, `region`,
+  `effective.owner_hid`, `effective.operator_hid` and `effective.planned_location_hid`
+  answer through the host as the record does, and so do the geography tree and the
+  summary, which count what runs on a host where its host is and with its host's owner
+  and operator.
+- **The items file** has `host`, the item it runs on, named as `parent` names one;
+  `host_group`, a stack or a cluster by its name; `observed_host`, named as `host` is;
+  and `host_observed_at`. A row may name a host that an earlier or a later row of the
+  same file makes. An export writes them, and the reasons of `review`, joined, as a
+  column it can write, and loads back changing nothing. A bulk edit sets `host` or
+  `host_group` on the rows chosen, one clearing the other, or `null` to clear it.
+- **The CLI.** `hirdir items hosted <item>` lists what runs on an item, and `hirdir
+  items show` says what an item runs on and how many run on it.
 
 A position in a stack is held by one current member (P-219). A member added at a
 position that another current member of the stack holds, or moved to it, is refused
@@ -843,7 +910,7 @@ contacts of vendors, and the support weight of a place.
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status`, `tags` | |
 | `owner_members` | `owner`, `contact`, `role`, `priority` | |
 | `networks` | `label`, `kind` | |
-| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `operator`, `location`, `planned_location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `purchase_line`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew`, `record_status`, `tags`, and `external_id` with `system` (see [What a tool reports](#what-a-tool-reports)) | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, `covered`, `covered_until`, `contract_count` and `contracts`, the numbers of the contracts that cover it today, `out_of_service_contracts`, the numbers of those that still count it while it is out of service, `purchase_line_mismatch`, and a `_source` for each of the fourteen fields that inherit, `do_not_renew_source` among them |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `host`, `host_group`, `observed_host`, `host_observed_at`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `operator`, `location`, `planned_location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `purchase_line`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew`, `record_status`, `tags`, and `external_id` with `system` (see [What a tool reports](#what-a-tool-reports)) | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, `covered`, `covered_until`, `contract_count` and `contracts`, the numbers of the contracts that cover it today, `out_of_service_contracts`, the numbers of those that still count it while it is out of service, `purchase_line_mismatch`, `review`, the reasons it is to be looked at, `hosted_count`, and a `_source` for each of the fourteen fields that inherit, `do_not_renew_source` among them |
 | `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | `family` |
 | `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `operator`, `location`, `planned_location`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
 | `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at`, and `drop_identity`, `disposition` and `expected_online`, which an export writes only when they are asked for by name, and then blank (P-217) | |

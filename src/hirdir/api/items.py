@@ -10,7 +10,8 @@ from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
-from hirdir.domain import groups, items, removal, replacements, resolution
+from hirdir.db.models import Item
+from hirdir.domain import groups, hosting, items, removal, replacements, resolution
 from hirdir.domain.lifecycle import UNSET
 from hirdir.io import bulk, fields, imports, tables
 
@@ -184,6 +185,18 @@ def item_children(
     unless a sort says otherwise."""
     page, total = items.children(db, hid, limit, offset, tables.arrange(tables.CHILDREN, sort))
     return Page(items=shapes.items_out(db, page), total=total, limit=limit, offset=offset)
+
+
+@router.get("/{hid}/hosted")
+def item_hosted(
+    hid: str,
+    _: Viewer,
+    db: Db,
+    include_retired: Annotated[bool, Query(description="List the retired ones too.")] = False,
+) -> r.HostedList:
+    """List what runs on an item, and beneath each what runs on that (P-246)."""
+    items.get_item(db, hid)
+    return shapes.hosted_out(db, hosting.hosted(db, Item.host_item_hid, hid, include_retired))
 
 
 @router.post("/{hid}/replace", status_code=201)

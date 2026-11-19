@@ -193,8 +193,15 @@ def test_s31_the_portfolio_of_a_vendor_lists_all_four_kinds_and_exports(money: M
 
     portfolio = money.get(f"/vendors/{vendor['hid']}/portfolio")
     by_kind = {row["kind"]: row for row in portfolio["kinds"]}
-    assert list(by_kind) == ["hardware", "virtual_machine", "software", "service"]
-    assert [by_kind[kind]["items"] for kind in by_kind] == [2, 1, 1, 1]
+    assert list(by_kind) == [
+        "hardware",
+        "virtual_machine",
+        "virtual_context",
+        "container",
+        "software",
+        "service",
+    ]
+    assert [by_kind[kind]["items"] for kind in by_kind] == [2, 1, 0, 0, 1, 1]
     assert by_kind["hardware"]["annual_support_cost"] == "2400.00"
     assert by_kind["hardware"]["support_weight"] == "2"
     assert by_kind["service"]["annual_support_cost"] == "20000.00"

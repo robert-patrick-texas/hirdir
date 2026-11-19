@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir.db.models import DeviceGroup, Item
-from hirdir.domain import groups
+from hirdir.domain import groups, items
 from hirdir.domain.inheritance import NOTHING, Effective
 
 # Which of an item's groups decides, the first that has a value: the stack before the
@@ -101,25 +101,46 @@ def of_items(
 
     `lines` gives the items above each item, the nearest first. The walk goes up one
     record at a time (P-175): the item's own value, then its own groups, then the item
-    it is in and that item's groups, and so on to the top. The groups of one record are
-    ranked as `from_groups` ranks them.
+    it is in and that item's groups, and so on to the top; and for what runs on a host,
+    then the host and its groups, and on from it in the same way, or the stack or the
+    cluster it runs on, which answers as a group does (P-246). The groups of one record
+    are ranked as `from_groups` ranks them. A value had through a host says `host`,
+    where the record it is had from holds it, and `device_group` where a group does.
     """
-    walks = {item.hid: [item, *lines[item.hid]] for item in found}
+    walks = items.walks_above(db, found, lines)
     # Only the groups of the records that the walk reaches before a value of its own.
     wanted: set[str] = set()
-    for line in walks.values():
-        for one in line:
+    hosting: dict[str, DeviceGroup] = {}
+    for item in found:
+        for one in (item, *(step.record for step in walks[item.hid])):
+            if isinstance(one, DeviceGroup):
+                hosting[one.hid] = one
+                break
             if _held(one, field, skip) is not None:
                 break
             wanted.add(one.hid)
     by_group = from_groups(db, sorted(wanted), field, skip) if wanted else {}
+    # A stack or a cluster that something runs on, as it answers: a retired one passes
+    # nothing down.
+    live = [group for group in hosting.values() if group.record_status != RETIRED]
+    by_host = of_groups(db, live, field, skip) if live else {}
     in_force: dict[str, Effective] = {}
     for item in found:
         result = NOTHING
-        for one in walks[item.hid]:
+        steps = [items.Above(item, "parent_item"), *walks[item.hid]]
+        for step in steps:
+            one = step.record
+            if isinstance(one, DeviceGroup):
+                held = by_host.get(one.hid, NOTHING)
+                if held.value is not None:
+                    by_itself = held.source == "own"
+                    result = Effective(
+                        held.value, "host" if by_itself else SOURCE_GROUP, held.source_hid
+                    )
+                break
             value = _held(one, field, skip)
             if value is not None:
-                result = Effective(value, "own" if one is item else "parent_item", one.hid)
+                result = Effective(value, "own" if one is item else step.source, one.hid)
                 break
             grouped = by_group[one.hid]
             if grouped.value is not None:

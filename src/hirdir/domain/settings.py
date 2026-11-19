@@ -28,7 +28,16 @@ from hirdir.domain import file_kinds, lifecycle, product, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
-CATALOG_KINDS = ("hardware", "virtual_machine", "software", "service")
+# The kinds of a model. The three in the middle run on a host (P-246): see
+# `hirdir.domain.hosting`.
+CATALOG_KINDS = (
+    "hardware",
+    "virtual_machine",
+    "virtual_context",
+    "container",
+    "software",
+    "service",
+)
 BIGGEST = Decimal(10) ** 12
 # How far ahead or how long a number of days may say: a hundred years.
 MOST_DAYS = 36_500
@@ -312,7 +321,9 @@ SPECS: dict[str, Spec] = {
         _subset("service_states", _states),
     ),
     "count_kinds": Spec(
-        ["hardware", "virtual_machine"],
+        # What runs on a host is counted from the start (P-246). An installation that
+        # has set the setting itself keeps what it set.
+        ["hardware", "virtual_machine", "virtual_context", "container"],
         "kinds in the headline component count",
         _subset("count_kinds", _kinds),
     ),

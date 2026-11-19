@@ -3466,6 +3466,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/device-groups/{hid}/hosted": {
+    /** List what runs on a stack or a cluster, and beneath each what runs on that (P-246). */
+    get: {
+      parameters: {
+        query?: {
+          /** List the retired ones too. */
+          include_retired?: boolean;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["HostedList"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/device-groups/{hid}/members": {
     /**
      * List the members of a group by position, the current ones first, unless a sort
@@ -4582,6 +4612,36 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["Page_AuditEventOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}/hosted": {
+    /** List what runs on an item, and beneath each what runs on that (P-246). */
+    get: {
+      parameters: {
+        query?: {
+          /** List the retired ones too. */
+          include_retired?: boolean;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["HostedList"];
           };
         };
         /** Validation Error */
@@ -9897,7 +9957,7 @@ export interface components {
       from_agreement_label: string | null;
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -9909,7 +9969,7 @@ export interface components {
     ContractEffectiveValue: {
       /** What the agreement gives for this field today, whether the contract overrides it or not. Blank for a contract in no agreement, and where the agreement has nothing. */
       from_agreement: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -10350,6 +10410,8 @@ export interface components {
       /** Of a stack and a cluster; otherwise null. */
       health: components["schemas"]["HealthOut"] | null;
       hid: string;
+      /** How many items not retired name it as their host (P-246). */
+      hosted_count: number;
       hostname: string | null;
       location: components["schemas"]["LocationRef"] | null;
       location_hid: string | null;
@@ -10476,7 +10538,7 @@ export interface components {
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label: string | null;
@@ -10495,7 +10557,7 @@ export interface components {
       label: string | null;
       /** internal where its contact is a user's, external where not; none if nobody. */
       scope?: "internal" | "external" | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or group, or the path of the place, it came from. */
       source_label: string | null;
@@ -10515,7 +10577,7 @@ export interface components {
     EffectiveReference: {
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -10538,7 +10600,7 @@ export interface components {
      * A decimal and a date are text, and a truth value is true or false.
      */
     EffectiveValue: {
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -10550,7 +10612,7 @@ export interface components {
       /** The weight before it was raised to the minimum of its kind. Blank where it was not raised. */
       raised_from: string | null;
       /** `setting` where it is the default of its kind. */
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The weight in force, as text. Blank: none. */
       value: string | null;
@@ -10776,6 +10838,38 @@ export interface components {
       reasons: string[];
       value: "good" | "degraded" | "failed" | "unknown";
     };
+    /**
+     * What an item runs on, as a person names it: an item, or a stack or a cluster.
+     * One of `item_hid` and `group_hid` is given, as a device of a circuit names one.
+     */
+    HostRef: {
+      /** The stack or the cluster, where it is a group. */
+      group_hid: string | null;
+      /** The item it runs on, where it is an item. */
+      item_hid: string | null;
+      /** Of an item: its own lifecycle state. */
+      lifecycle_state: string | null;
+      /** What it is called: an item's name, a group's name. */
+      name: string;
+      /** Of an item: the PID of its model. */
+      pid: string | null;
+      record_status: "draft" | "active" | "retired";
+      /** Of a group: `stack` or `cluster`. Null for an item. */
+      type: string | null;
+    };
+    /** An item that runs on a record, or on what runs on it. */
+    HostedItem: {
+      /** 1 for what runs on the record itself, 2 for what runs on that. */
+      depth: number;
+      /** The item or the group it names as its host. */
+      host_hid: string;
+      item: components["schemas"]["ItemOut"];
+    };
+    /** What runs on an item or a group, and beneath that, each after its host. */
+    HostedList: {
+      items: components["schemas"]["HostedItem"][];
+      total: number;
+    };
     /** An item retired with the host it runs on, which the request named (P-247). */
     HostedRetired: {
       hid: string;
@@ -10908,6 +11002,12 @@ export interface components {
       est_value?: string | null;
       expected_online?: boolean | null;
       fqdn?: string | null;
+      /** The stack or the cluster it runs on. Not with host_item_hid. */
+      host_group_hid?: string | null;
+      /** The item it runs on. Only an item of a kind that runs on a host has one. */
+      host_item_hid?: string | null;
+      /** When it was seen there. Left out, now. With observed_host_hid. */
+      host_observed_at?: string | null;
       hostname?: string | null;
       in_service_on?: string | null;
       ldos?: string | null;
@@ -10918,6 +11018,8 @@ export interface components {
       name?: string | null;
       /** Left out, now. Given with observed_status only. */
       observed_at?: string | null;
+      /** The item it was seen on. */
+      observed_host_hid?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
       /** An operator: the label of who of the team looks after it. */
       operator_hid?: string | null;
@@ -10963,6 +11065,8 @@ export interface components {
       owner_hid: components["schemas"]["EffectiveReference"];
       /** Where it is going, by its own plan or by that of what it is in. */
       planned_location_hid: components["schemas"]["EffectiveLocation"];
+      /** Its own serial number; for a virtual context with none, that of the item it runs on, with the source `host` (P-246). Shown, and never matched by. */
+      serial_number: components["schemas"]["EffectiveValue"];
       /** Its own, or its model's; for a major item then the setting `default_item_weight`, raised to `minimum_item_weight` where it is below it. */
       support_weight: components["schemas"]["EffectiveWeight"];
     };
@@ -11014,6 +11118,18 @@ export interface components {
       groups: components["schemas"]["MembershipRef"][];
       health: components["schemas"]["HealthOut"];
       hid: string;
+      /** What it runs on, as a person names it. */
+      host: components["schemas"]["HostRef"] | null;
+      /** The item it was seen on is neither the host named nor a current member of the stack or cluster named. No fault. Null where either is not known. */
+      host_differs: boolean | null;
+      /** The stack or the cluster it runs on, as a person names it. */
+      host_group_hid: string | null;
+      /** The item it runs on, as a person names it. */
+      host_item_hid: string | null;
+      /** When it was seen there. */
+      host_observed_at: string | null;
+      /** How many items not retired name it as their host. */
+      hosted_count: number;
       hostname: string | null;
       in_service_on: string | null;
       /** An item with no parent. Major items are counted. */
@@ -11030,6 +11146,9 @@ export interface components {
       /** Blank shows the hostname. */
       name: string | null;
       observed_at: string | null;
+      observed_host: components["schemas"]["ItemRef"] | null;
+      /** The item it was seen to run on. */
+      observed_host_hid: string | null;
       /** What is seen of it: on the network, or `present`, by a person. */
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
       /** Its own operator: the label of who of the team looks after it. */
@@ -11067,6 +11186,8 @@ export interface components {
       replacements: components["schemas"]["ReplacementEntry"][];
       /** The item whose place this one took, the latest where it took several. */
       replaces: components["schemas"]["ReplacementRef"] | null;
+      /** The reasons a person should look at it. Empty where there is none. */
+      review: components["schemas"]["ReviewReason"][];
       row_version: number;
       serial_number: string | null;
       state_changed_at: string | null;
@@ -11100,6 +11221,12 @@ export interface components {
       est_value?: string | null;
       expected_online?: boolean | null;
       fqdn?: string | null;
+      /** The stack or the cluster it runs on. Not with host_item_hid. */
+      host_group_hid?: string | null;
+      /** The item it runs on. Only an item of a kind that runs on a host has one. */
+      host_item_hid?: string | null;
+      /** When it was seen there. Left out, now. Null with observed_host_hid. */
+      host_observed_at?: string | null;
       hostname?: string | null;
       in_service_on?: string | null;
       ldos?: string | null;
@@ -11108,6 +11235,8 @@ export interface components {
       mac_address?: string | null;
       name?: string | null;
       observed_at?: string | null;
+      /** The item it was seen on. */
+      observed_host_hid?: string | null;
       /** Null clears it, and the moment with it. */
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
       /** Null: the operator it has from above, if any. */
@@ -12859,7 +12988,7 @@ export interface components {
       hid: string | null;
       /** What the value is called: a path, a label. */
       label: string | null;
-      level: "own" | "device_group" | "parent_item" | "catalog" | "setting" | "location" | "site" | "region";
+      level: "own" | "device_group" | "parent_item" | "host" | "catalog" | "setting" | "location" | "site" | "region";
       /** Its name, its path for a place, or the setting's key. */
       name: string | null;
       outcome: "decides" | "passed_over" | "nothing" | "retired" | "raises";
@@ -12901,6 +13030,20 @@ export interface components {
       refused: components["schemas"]["RetireRefused"][];
       /** What this request retired. */
       retired: components["schemas"]["RecordLabel"][];
+    };
+    /** The record a reason to look at an item is about: its host, or a system. */
+    ReviewAbout: {
+      hid: string;
+      /** What it is known by: its name. */
+      label: string;
+      record_type: "item" | "device_group" | "external_system";
+    };
+    /** One reason a person should look at an item (P-249). A mark: it refuses nothing. */
+    ReviewReason: {
+      /** The host or the system the reason is about. Null for `no_host`. */
+      about: components["schemas"]["ReviewAbout"] | null;
+      /** `no_host`: of a kind that runs on a host, and names none; `host_gone`: the host it names is retired, or has left the team's hands; `not_reported`: a system it is registered with reports it no more. */
+      reason: "no_host" | "host_gone" | "not_reported";
     };
     /** The contacts in force for one role, and the level they came from. */
     RoleContacts: {

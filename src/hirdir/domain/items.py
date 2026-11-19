@@ -1,9 +1,10 @@
 """Items: the tracked things, their identity, and their standing in the lifecycle."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import func, literal, or_, select
 from sqlalchemy.orm import Session
@@ -31,6 +32,7 @@ from hirdir.domain import (
     deleted,
     geography,
     health,
+    hosting,
     lifecycle,
     not_renewed,
     records,
@@ -61,6 +63,11 @@ FIELDS = (
     "operator_hid",
     "parent_item_hid",
     "position",
+    # What it runs on (P-246).
+    "host_item_hid",
+    "host_group_hid",
+    "observed_host_hid",
+    "host_observed_at",
     "purchase_line_hid",
     *DAYS,
     *catalog.AMOUNTS,
@@ -130,6 +137,70 @@ def lines_above(db: Session, found: Sequence[Item]) -> dict[str, list[Item]]:
             parent_hid = above[parent_hid].parent_item_hid
         lines[item.hid] = line
     return lines
+
+
+@dataclass(frozen=True)
+class Above:
+    """A record the walk of an item goes up through, and how it is reached: `parent_item`
+    by what the item is installed in, `host` once the walk has gone through what
+    something runs on (P-246). A group is one that something runs on, and ends the walk."""
+
+    record: Item | DeviceGroup
+    source: Literal["parent_item", "host"]
+
+
+def walks_above(
+    db: Session, found: Sequence[Item], lines: Mapping[str, Sequence[Item]] | None = None
+) -> dict[str, list[Above]]:
+    """Return the records above each of the items, the nearest first, as step 3 and step 4
+    of "How an item finds a value it does not have" walk them: the items it is installed
+    in, to the top; then what the top runs on, the items that one is installed in, what
+    the top of those runs on, and so on, ending at a stack or a cluster that something
+    runs on. `lines` are the items above each, by `lines_above`, where they are read.
+
+    An inventory in which nothing runs on a host reads nothing more than the lines.
+    """
+    lines = lines if lines is not None else lines_above(db, found)
+
+    def top(item: Item) -> Item:
+        line = lines_of.get(item.hid, ())
+        return line[-1] if line else item
+
+    lines_of: dict[str, Sequence[Item]] = dict(lines)
+    hosts: dict[str, Item] = {}
+    level = [top(item) for item in found]
+    for _ in range(hosting.MAX_LINE):
+        wanted = {one.host_item_hid for one in level if one.host_item_hid} - set(hosts)
+        if not wanted:
+            break
+        read = list(db.scalars(select(Item).where(Item.hid.in_(wanted))))
+        hosts.update((one.hid, one) for one in read)
+        lines_of.update(lines_above(db, read))
+        level = [top(one) for one in read]
+    tops = [top(one) for one in (*found, *hosts.values())]
+    group_hids = {one.host_group_hid for one in tops if one.host_group_hid}
+    its_groups = (
+        {g.hid: g for g in db.scalars(select(DeviceGroup).where(DeviceGroup.hid.in_(group_hids)))}
+        if group_hids
+        else {}
+    )
+    walks: dict[str, list[Above]] = {}
+    for item in found:
+        walk = [Above(one, "parent_item") for one in lines_of.get(item.hid, ())]
+        at, seen = top(item), {item.hid}
+        while len(seen) <= hosting.MAX_LINE * (MAX_DEPTH + 1):
+            if at.host_group_hid in its_groups:
+                walk.append(Above(its_groups[at.host_group_hid], "host"))
+                break
+            host = hosts.get(at.host_item_hid or "")
+            if host is None or host.hid in seen:
+                break
+            seen.add(host.hid)
+            walk.append(Above(host, "host"))
+            walk += [Above(one, "host") for one in lines_of.get(host.hid, ())]
+            at = top(host)
+        walks[item.hid] = walk
+    return walks
 
 
 def children(
@@ -427,6 +498,12 @@ def _checked(
 
     def final(name: str) -> Any:
         return values.get(name, getattr(item, name) if item is not None else None)
+
+    if any(name in fields for name in (*hosting.FIELDS, "catalog_entry_hid", "parent_item_hid")):
+        # What it runs on, held against its model and its parent as they will be (P-246).
+        values.update(
+            hosting.checked(db, fields, values, item, settings.time_zone(db), looked_again)
+        )
 
     if item is not None and item.record_status == "retired" and "record_status" in values:
         _check_still_there(db, final("location_hid"))
