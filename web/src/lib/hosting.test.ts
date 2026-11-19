@@ -63,6 +63,8 @@ describe("the kinds", () => {
     expect(mayHost("virtual_machine")).toBe(true);
     expect(mayHost(null)).toBe(true);
     expect(mayHost("container")).toBe(false);
+    expect(mayHost("virtual_context")).toBe(false);
+    expect(mayHost("software")).toBe(false);
   });
 });
 

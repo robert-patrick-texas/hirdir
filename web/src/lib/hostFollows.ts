@@ -4,18 +4,6 @@
 
 import { plural } from "./format";
 
-/** The kinds of model whose items may be a host; an item with no model may be one too. */
-const HOSTING: readonly string[] = ["hardware", "virtual_machine"];
-
-/**
- * Whether an item of a model of this kind may be a host, as the box of Replace is ticked
- * for it from the start: an item of another kind hosts nothing, and the server refuses
- * to hand what runs on the item that leaves to it.
- */
-export function mayHostKind(kind: string | null | undefined): boolean {
-  return kind === null || kind === undefined || HOSTING.includes(kind);
-}
-
 /** The box of Replace (P-247): "The 3 things that run on it go to the new one". */
 export function handOverLabel(count: number): string {
   return count === 1
