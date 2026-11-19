@@ -1,5 +1,5 @@
 // The portfolio of a vendor: everything from one vendor in one place, as the server
-// counts it. The totals, the four kinds, the models with their dates and their cover,
+// counts it. The totals, the kinds, the models with their dates and their cover,
 // the vendor's items as a grid, which is the item list with the filter the portfolio
 // gives, its own filter box narrowing within them, and is exported like any other: the
 // working list for a renewal; then the agreements, the contracts and the capacity lines.

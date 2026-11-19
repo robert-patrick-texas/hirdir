@@ -132,7 +132,7 @@ export function Vendors() {
 
 /**
  * Vendors → one vendor: its name, the other names it goes by and its notes, and its
- * portfolio: the totals, the four kinds, the models with their dates and their cover,
+ * portfolio: the totals, the kinds, the models with their dates and their cover,
  * the agreements, the contracts and the capacity lines of the vendor, and its items.
  */
 export function VendorDetail() {

@@ -102,7 +102,7 @@ interface PortfolioCountsProps {
 }
 
 /**
- * What a portfolio counts: the totals, the four kinds, the models, the agreements, the
+ * What a portfolio counts: the totals, the kinds, the models, the agreements, the
  * contracts and the capacity lines, each table sorted by its headers in the browser,
  * since it holds all of its rows. The models show the first twenty until Show all.
  */
@@ -156,7 +156,7 @@ function Kinds({ kinds, money }: { kinds: Portfolio["kinds"]; money: string }) {
   return (
     <div className="scroll">
       <table data-testid="portfolio-kinds">
-        <caption>The four kinds, also one the vendor has nothing of</caption>
+        <caption>The kinds, also one the vendor has nothing of</caption>
         <thead>
           <tr>
             <SortTh sort={sorting} column="kind">

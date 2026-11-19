@@ -499,7 +499,7 @@ describe("what a portfolio counts", () => {
     expect(markup).toContain("Estimated value (USD)");
   });
 
-  it("lists all four kinds, also the ones the vendor has nothing of", () => {
+  it("lists every kind, also the ones the vendor has nothing of", () => {
     const kinds = rows(markup, "portfolio-kinds");
     expect(kinds.map((row) => /data-kind="([a-z_]+)"/.exec(row)?.[1])).toEqual([
       "hardware",

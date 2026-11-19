@@ -1,7 +1,7 @@
 // The browser scenario of the portfolio of a vendor in release 0.6.0:
 //
 //   S31  A vendor with switches, a virtual machine template, a software application and
-//        a service: the portfolio lists all four kinds with cost and weight totals, and
+//        a service: the portfolio lists every kind with cost and weight totals, and
 //        its items are exported like any other grid.
 //
 // It keeps to the rules of support.ts: an account and names of its own, and a vendor of
@@ -93,7 +93,7 @@ test("a vendor with models of all four kinds, and an item of each, are loaded fr
   await expectClean(page, seen);
 });
 
-test("S31: the portfolio lists all four kinds with cost and weight totals, and exports", async ({
+test("S31: the portfolio lists every kind with cost and weight totals, and exports", async ({
   page,
   account,
 }, testInfo) => {
@@ -113,12 +113,15 @@ test("S31: the portfolio lists all four kinds with cost and weight totals, and e
   // No contract covers any of them yet.
   await expect(portfolio.getByTestId("portfolio-covered")).toHaveText("0");
 
-  // All four kinds, each with its items, its weight and its cost.
+  // All six kinds, each with its items, its weight and its cost: the two that 0.9.8
+  // added, a virtual context and a container, are listed with none (P-246).
   const kinds = portfolio.getByTestId("portfolio-kinds").locator("tbody tr");
-  await expect(kinds).toHaveCount(4);
+  await expect(kinds).toHaveCount(6);
   for (const [kind, items, weight, cost] of [
     ["hardware", "2", "2", "1,800.00"],
     ["virtual_machine", "1", "0.5", "400.00"],
+    ["virtual_context", "0", "0", "0.00"],
+    ["container", "0", "0", "0.00"],
     ["software", "1", "0.25", "1,500.00"],
     ["service", "1", "0.25", "600.00"],
   ] as const) {
