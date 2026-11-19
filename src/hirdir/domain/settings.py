@@ -9,6 +9,7 @@ decided, with the decision, and the limits that protect the service. Each is the
 value that is used, read from where it lives.
 """
 
+import os
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -256,6 +257,12 @@ def usable_map_link(value: Any) -> str | None:
         return None
 
 
+def _processors() -> int:
+    """Return how many processors the host has: the most the threads of one process
+    can use at once, each to its 100 percent (P-265)."""
+    return os.cpu_count() or 1
+
+
 def _states() -> tuple[str, ...]:
     return lifecycle.STATES
 
@@ -466,22 +473,29 @@ SPECS: dict[str, Spec] = {
     load.RESPONSE_SETTING: Spec(
         load.DEFAULT_RESPONSE_MS,
         "how long requests may take before the server is busy, in milliseconds: the "
-        "median of the answers of the API over the last busy_over_seconds and of the "
-        "wait of the requests still in flight. Past it, reports, exports, previews and "
-        "pages of lists are answered 503 Busy at once. 0: not looked at",
+        "95th percentile of the reads and the changes of the API that came over the "
+        "last busy_over_seconds, with the wait of those still in flight, which of "
+        "twenty or fewer is the slowest. Its thirds are the health of the server: good "
+        "under a third, slow to two thirds, very slow to the whole and busy past it. "
+        "With twenty or more requests in that time, reports, exports and previews are "
+        "answered 503 Busy from very slow on, and every read while it is busy. 0: "
+        "nothing is refused for it, and the health is said by the thirds of 3000",
         _whole(load.RESPONSE_SETTING, 0, load.MOST_RESPONSE_MS, " of milliseconds"),
     ),
     load.PROCESSOR_SETTING: Spec(
         load.DEFAULT_CPU_PERCENT,
-        "the share of one processor, in percent, that the server's process may use over "
-        "the last busy_over_seconds before the server is busy. 0: not looked at, and "
-        "both at 0 is no ceiling",
-        _whole(load.PROCESSOR_SETTING, 0, load.MOST_CPU_PERCENT),
+        "the processor time the server's process may use over the last "
+        "busy_over_seconds, as a percentage of one processor, before the health of the "
+        "server is very slow at the least, and reports, exports and previews are "
+        "answered 503 Busy. The process passes 100 where several requests are in the "
+        "database at once, so it takes up to 100 for each processor of the host. 0: not "
+        "looked at, and both at 0 is no ceiling",
+        _whole(load.PROCESSOR_SETTING, 0, load.CPU_PERCENT_OF_A_PROCESSOR * _processors()),
     ),
     load.OVER_SETTING: Spec(
         load.DEFAULT_OVER_SECONDS,
-        "over how long the two measures of the ceiling are read, in seconds, and how "
-        "much longer the server is busy before every read of the API is answered Busy",
+        "over how long the two measures of the ceiling are read, in seconds, and for "
+        "how long after it last refused its reads the server refuses what is long",
         _whole(load.OVER_SETTING, load.FEWEST_OVER_SECONDS, load.MOST_OVER_SECONDS, " of seconds"),
     ),
 }
@@ -764,8 +778,9 @@ def fixed_values() -> dict[str, Fixed]:
         Fixed(
             "busy_fewest_requests",
             load.FEWEST_REQUESTS,
-            "the requests, answered and in flight, of which how long requests take is "
-            "read: with fewer, busy_response_ms is not looked at",
+            "the requests, answered and in flight over the last busy_over_seconds, "
+            "from which on what is refused follows the health: with fewer, nothing is "
+            "refused for how long requests take, whatever the health says",
             DECIDED,
             "P-265",
         ),

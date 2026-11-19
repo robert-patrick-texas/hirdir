@@ -436,9 +436,10 @@ changes no record. `src/hirdir/io/kept.py` keeps them.
 
 ## The server's own measures
 
-The server measures its own load and, past a ceiling, answers at once that it is busy,
-where a request would have joined a queue and timed out (P-262, P-265). What is
-measured, what is refused, the settings and the route that shows it all are under
+The server measures its own load, says its health in one word, and by that word
+answers at once what it refuses, where a request would have joined a queue and timed
+out (P-262, P-265). What is measured, what is refused, the settings and the route that
+shows it all are under
 [The server's own measures](interfaces.md#the-servers-own-measures) on the interfaces
 page. This is how it is built, and why so.
 
@@ -447,48 +448,143 @@ page. This is how it is built, and why so.
   whatever answered it, and tells the meter when each arrives and ends, with its
   status. The meter is kept on the application's state, where `bind` puts everything of
   one installation, so an application has one for each installation it is bound to.
+- **When the time of a request begins.** When the server has the whole of it: at its
+  arrival where it declares no body, and otherwise when the last piece of its body is
+  handed to the application, which `Gateway` sees by standing between the two. What a
+  slow sender takes to send is the network's time and not the server's. And a request
+  whose body never comes, five sign-ins of which only the headers were sent, would
+  otherwise wait for ever with the others in flight and hold the server busy for
+  good: until it is whole it is counted as in flight, which it is, and is in neither
+  measure. nginx reads a body whole before it passes it on, so behind it the two
+  moments are the same.
+- **Every way out is counted.** A request leaves the meter when the last byte of its
+  answer is sent, and otherwise when `Gateway` is left: by an answer cut short after it
+  began, by a client that went away, by a request that was given up, by an error before
+  any answer. Each of those is counted as failed, whatever status it began with, and
+  nothing stays in flight that is not.
 - **In memory, and nothing stored.** Ten minutes in steps of five seconds are 120 small
-  records, and beside them are the times of the answers of the API over the last
-  `busy_over_seconds`, 20,000 at the most, for the median. Nothing is written to the
+  records, and beside them are the times of the answers of the measure over the last
+  `busy_over_seconds`, 20,000 at the most, for the percentile. Nothing is written to the
   disk or to the database. Measuring a request is a few additions under a lock that is
   held for arithmetic only, and a server that starts, starts empty. More than that, a
   history kept over days, waits until there is a use for it (P-266).
 - **The rules read no clock.** `domain/load.py` holds the steps, the two measures and
-  whether the server is busy, and is given the time and the processor time the process
+  the health of the server, and is given the time and the processor time the process
   has used by whoever asks. `io/measures.py` reads them for the server,
   `time.monotonic()` and `time.process_time()`, which counts every thread of the
   process, and reads what the host says of its memory, its disk and its load. So the
   tests of the rules move the time themselves and wait for nothing.
-- **Why the median.** One long export among quick answers is not a busy server, and an
-  average would say that it is. Under the load measured for P-261 every request took
-  twenty times as long as it does alone, and the tables that stood counting took 20 to
-  30 seconds: there the median moves, and five seconds of it over half a minute is well
-  past a slow moment and well before the minute at which a proxy gives up.
+- **Why the 95th percentile, at any count.** The owner's measure: "use p95 > 3 seconds
+  as trigger", and of how few requests it may be read: "Consider this threshold to
+  catch poor performance in development more so than a popular website with thousands
+  of users." So it is the plain percentile, with no least count: the k-th slowest of
+  the requests in the measure, where k is five in a hundred of them rounded up, and
+  one at the least. Of twenty or fewer that is the slowest, so one slow page on a quiet
+  server changes the colour for as long as it is in the measure, which is what the
+  person who waited for it met; of twenty-one it is the second slowest, and from there
+  one request in twenty may take as long as it likes. A percentile, and not an
+  average, so that the colour is what the slow requests are and not what the quick
+  ones make of them.
+- **Why refusing needs twenty requests.** The colour says what people meet; refusing
+  is for load. Three slow requests in half a minute are a slow page, and refusing the
+  next one would mend nothing and shed nothing. So how long requests take refuses by
+  its colour only where twenty or more requests are in the measure,
+  `busy_fewest_requests`; with fewer the mark is orange or red and nothing is refused
+  for it. The answer gives both words, and how many requests the measure is of, so
+  that the page says slow where it is slow and busy only where reads are refused.
+- **What is long by nature is in no percentile.** A report, an export or a preview
+  takes seconds on a server in good health, and one of them among nineteen quick
+  answers would be the measure. They are counted by how they were answered, and
+  their times are in the lowest, the average and the highest of a step, but not in the
+  measure of time, the percentiles or the bands. The routes that are asked for by the
+  clock and answered from memory, the health routes, About, the server's own measures,
+  the settings and the contract, are in none either: a page that asks About every five
+  seconds would otherwise be the health it shows. Every other read, and every change
+  that is stored, is: a save that takes four seconds is a slow server.
 - **Why the requests in flight count.** A server from which nothing comes back answers
   nothing, and a measure of answers alone would read it as idle. The time each request
-  in flight has waited so far is in the median with the answers, so that server is
-  busy for as long as it is so.
-- **Why five requests.** The median of two or three requests is one request. With
-  fewer than five answered and in flight, how long requests take is not read at all,
-  and the processor alone says whether the server is busy.
-- **The processor.** The process is one, and Python uses one processor at a time in it,
-  so the share of one processor it used is how near the server is to all it can do.
+  in flight has waited so far is in the percentile with the answers, so that server is
+  red for as long as it is so: one request that has waited past the ceiling is enough
+  for the colour.
+- **Why a request is counted from when it came.** The percentile is of the requests
+  that came in the last `busy_over_seconds`, whatever each took, and not of those
+  answered in it. Requests that stood for twenty seconds and then all ended would,
+  counted from their answers, keep an idle server busy for half a minute more; counted
+  from when they came, they are out of the measure half a minute after they came.
+- **The percentiles of the ten minutes.** Percentiles need the times and not their
+  sums. Each step keeps the times of the requests of the measure it answered, as they
+  are, up to its first thousand, which is two hundred requests a second and more than
+  one process answers: eight kilobytes a step at the most, under a megabyte for the
+  ten minutes. So `p50`, `p95` and `p99` of the window, `p50_ms` and `p95_ms` of each
+  step and the counts of the bands are exact, each percentile one of the times
+  themselves, and the bands follow `busy_response_ms` when it is changed; of a step of
+  more than a thousand they are of its first thousand. The times are copied under the
+  lock and put in order once it is let go, so About never holds a request up.
+- **One word, and what is refused follows from it.** The owner's rule: "report the
+  colors based on observed performance ... Refuse nothing until orange at which point
+  the heavy pages are refused, then at red the busy page is delivered." So there is one
+  notion and not two: the health is green under a third of `busy_response_ms`, yellow
+  to two thirds, orange to the whole and red past it, and a server with load to shed
+  refuses nothing while it is green or yellow, what is long by nature while it is
+  orange, and every read as well while it is red. There is no step that time alone
+  brings, and nothing of before is remembered but one thing: a server that refused its
+  reads refuses what is long, and is orange at the best, until `busy_over_seconds`
+  have passed since it last did, so that the reports do not come back in the same
+  moment as the lists. A red that refused nothing leaves nothing behind.
+- **The slowest, and who met what.** The lists live with the steps and leave with
+  them, in memory like the rest. A step keeps the ten slowest of its requests of the
+  measure and the five slowest of what is long by nature, so the slowest of the ten
+  minutes are always among what the steps keep; and for each account that asked in
+  it, nine numbers: its requests, the four bands of time, its slowest, those refused,
+  those that failed, and when the last came. Fifty accounts are counted each by
+  itself in one step and fifty are listed; the rest are counted together. A request
+  pays a look in a table by the HID of its account and a few additions; the lists are
+  merged, put in order and cut when About asks, once the lock is let go. Who asked is
+  what the check of the sign-in found, left on the request where `Gateway` reads it
+  after the answer, as the request ID is: nothing is asked of the database for it. A
+  request that is refused never reaches that check, so `Gateway` reads the session
+  token's signature, which needs no database, and counts it for the account if that
+  asked of late and is among the thousand remembered. Of a request the route's
+  pattern is kept and never its path or its query. Which accounts are listed, and in
+  what order, is `people_of` in `domain/load.py`.
+- **Both words on every answer.** They are worked out with the measures, once a second
+  at the most, and kept with them; a request reads them from memory when it arrives,
+  which it does anyway to learn whether it is refused, and `Gateway` writes them into
+  `X-Hirdir-Health` of the answer, `busy; refusing=nothing`, one of twelve values
+  that are made when the server starts. So the page learns the health from the
+  answers it gets, and asks nothing for it; and it has what is refused beside the
+  colour, since red with nothing refused is a slow page on a quiet server and must not
+  be called busy. With no ceiling the health is read all the same, against the thirds
+  of 3000, and nothing is refused for it.
+- **The processor.** The measure is the processor time of the process, every thread
+  of it, as a percentage of one processor. Python runs one thread of the process at a
+  time, so a server that does nothing but work reads near 100. It can pass 100: SQLite
+  lets go of the interpreter while it runs a query, so four threads each in a query
+  read about 200, and so does hashing an access code beside other work. Nothing holds
+  the measure to 100, in the meter or on About, and `busy_cpu_percent` takes up to 100
+  for each processor of the host; 95 unless set is the server at the limit of what
+  Python alone can do. Past it the health is orange at the least and what is long is
+  refused, whatever the count of requests, since the processor at its limit is load by
+  itself; the processor alone never makes it red, since a server that still answers
+  its lists in good time is not one to refuse them.
   It is read over the same `busy_over_seconds`, and a server that started later than
   that used nothing before it started: the work of starting is not a sustained load.
   Nothing samples it by the clock. Whatever next asks, a request or About, brings the
   steps up to date, and the processor time used since the last look is spread evenly
   over the time since.
 - **Decided on the event loop.** A request that is refused must cost next to nothing,
-  or refusing would be load of its own. The meter says from memory whether the server
-  is busy, which it works out once a second at the most; only while it is busy is the
-  route of the request looked for, to learn whether it is one that waits; and the
-  answer is made there, in `Gateway`, before the request waits for a thread of the pool
-  or for the database, and before who sent it is looked at. With both ceilings at 0
-  the meter answers without reading anything.
-- **Two steps.** What costs most and can wait goes first, the reports, the exports, the
-  previews of imports and the pages of lists: a list can be asked for again, and each
-  one refused is the most relief. Only a server still busy `busy_over_seconds` later
-  refuses every read.
+  or refusing would be load of its own. The meter says from memory what the server
+  refuses, which it works out once a second at the most; what the route of the request
+  is, is remembered from the last request of the same method and path; and the answer
+  is made there, in `Gateway`, before the request waits for a thread of the pool or for
+  the database, and before who sent it is looked at.
+- **What is refused first.** What is long by nature and can wait, the reports, the
+  exports and the previews of imports: each one refused is the most relief, and the
+  lists that people work in go on until the server is red. A server that is red and
+  refuses its reads soon has fewer than twenty requests in the time the measure looks
+  back: the reads come back, with what is long still refused for a while, and are
+  measured, and are refused again if twenty of them say that the server is still red.
+  That is how it learns that it has come back.
 - **What is never refused, and why.** A sign-in and every change that is stored: the
   work a person did is not thrown back at them while a list can wait (P-262). The
   health routes, so that what watches the service does not take a busy server for a
@@ -497,23 +593,30 @@ page. This is how it is built, and why so.
   say in words that the server is busy. And `GET /settings`, so that an Admin who set
   the ceiling too low reaches it to set it again.
 - **Which route is which.** `api/busy.py` reads it from what a route declares: a `GET`
-  that answers a page of a list, or is under `/reports`, costs most; any other `GET`
-  reads; and whatever takes the audit context stores a change, as every route that
-  writes does. A list or an export asked for with `POST` takes no audit context, and a
-  preview takes one and can wait all the same: those few are named. A test fails for a
-  route that is none of these, so a new route is decided when it is written.
+  under `/reports` is long by nature; any other `GET` reads; and whatever takes the
+  audit context stores a change, as every route that writes does. A list or an export
+  asked for with `POST` takes no audit context, and a preview takes one and can wait
+  all the same: those few are named. A test fails for a route that is none of these,
+  so a new route is decided when it is written. Every request of the API asks which
+  its route is, since its time is in the measure or is not, so what was found for a
+  method and a path is remembered.
 - **The settings.** The three settings of the ceiling are read into the meter when the
   application is bound to its database, and again when one of them is saved, once the
   change is stored. No request reads the database to learn them. Where the database
   cannot be read when the server starts, the ceiling is what it is unless set: a
-  server is never without one for that.
+  server is never without one for that. Reading the settings again and giving the
+  meter what was read are one step, under a lock of their own, so that of two saves at
+  the same moment the ceiling in force is that of the one that read last; it is not
+  the meter's lock, which is never held across a read of the database.
 - **In the tests.** The processor time of a test's process is the test's own, so an
   application inside the test process starts with no ceiling, and a test that wants
-  one gives the meter one or saves a setting. The acceptance scenarios start a server
-  as it is released, with its ceiling. Measured at 0.9.10 on the build host with other
-  work beside it: of their 54 servers none answered busy, and the one that worked
-  hardest, that of S13, held 78% of one processor over its busiest half minute, the
-  next 53%.
+  one gives the meter one or saves a setting. The servers of the acceptance scenarios
+  start with no ceiling too: `tests/acceptance/serve.py` is `hirdir admin`, started
+  with what the tests of the routes start with, so `hirdir admin serve --dev` itself
+  means nothing of the kind. With their ceiling, measured at 0.9.10 on the build host
+  with other work beside it, none of their 54 servers answered busy, but the one that
+  worked hardest, that of S13, held 78% of one processor over its busiest half minute:
+  too near 95 for a slower host.
 
 The ceiling is later what says that an installation has outgrown one process: the
 trigger to put a second behind a load balancer, which waits for PostgreSQL (P-262).

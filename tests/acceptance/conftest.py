@@ -3,6 +3,8 @@
 The server is started on a free port, and the first Admin is made with `hirdir admin`,
 exactly as on a new installation. Beside the server runs what the package starts beside
 it: the process of the background work, `hirdir admin work`, on the same state (P-267).
+One thing is not as there: the server starts with no ceiling on its load, as
+`tests/acceptance/serve.py` says and why.
 """
 
 import os
@@ -19,6 +21,9 @@ import httpx2
 import pytest
 
 HIRDIR = [sys.executable, "-m", "hirdir.cli.main"]
+ROOT = Path(__file__).resolve().parents[2]
+# `hirdir`, as the server of a scenario is started: with no ceiling (P-265).
+SERVER = [sys.executable, "-m", "tests.acceptance.serve"]
 ADMIN = ("ada", "acceptance-admin")
 # What the process of the background work says once it is at work.
 UNDER_WAY = "is under way"
@@ -93,8 +98,9 @@ def started(tmp_path: Path, first_admin: bool = True) -> Generator[Server]:
     what it does as it starts, the record of a week that has none, is done by then."""
     running = configured(tmp_path)
     process = subprocess.Popen(  # noqa: S603 - our own command with fixed arguments
-        [*HIRDIR, "admin", "serve", "--dev"],
+        [*SERVER, "admin", "serve", "--dev"],
         env=running.env,
+        cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

@@ -25,7 +25,8 @@ and CLI's types are generated from it.
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back. `POST /items/retire` and `POST /device-groups/retire` retire several at once, each as its own route does (P-228): see [Retiring several, and deleting](#retiring-several-and-deleting) |
 | Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. An Admin deletes an item or a device group that was a mistake and that nothing else depends on with `POST /items/delete` and `POST /device-groups/delete` (P-227), and removes a replacement that was a mistake with `POST /item-replacements/{hid}/remove` (P-238). Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, which for an item or a device group that was deleted holds `deleted`, when, by whom and why, read from the audit trail (P-236), `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
-| A busy server | A server past its ceiling answers `503` with the title `Busy`, `Retry-After` and the member `busy`, at once and with nothing of the request done: first what costs most and can wait, the reports, the exports, the previews of imports and the pages of lists, and then every read. A change that is stored, a sign-in, the health routes and About are never so answered. It is told from the `503` of a change that waited for another to be stored by `busy`, which only it has (P-265). See [The server's own measures](#the-servers-own-measures) |
+| A busy server | A server refuses by its health, where there is load to shed: nothing while it is `good` or `slow`; what is long by nature, the reports, the exports and the previews, while it is `very_slow`; and every other read of the API as well while it is `busy`, with twenty or more requests in the measure. What it refuses it answers `503` with the title `Busy`, `Retry-After` and the member `busy`, at once and with nothing of the request done. A change that is stored, a sign-in, the health routes and About are never so answered. It is told from the `503` of a change that waited for another to be stored by `busy`, which only it has (P-265). See [The server's own measures](#the-servers-own-measures) |
+| Health | Every answer of the API carries `X-Hirdir-Health`, the health of the server in a word and what it refuses, as they were when the request arrived: `good`, `slow`, `very_slow` or `busy`, then `; refusing=` and `nothing`, `long` or `reads`, as in `busy; refusing=nothing`. The health is the 95th percentile of how long requests take against the thirds of `busy_response_ms`, under 1, 2 and 3 seconds unless set, for a mark that is green, yellow, orange or red. The page's own files carry none. See [The server's own measures](#the-servers-own-measures) |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
@@ -54,7 +55,7 @@ and CLI's types are generated from it.
 | Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
 | Audit | `GET /audit-events` |
-| About | `GET /about`: the version and what it runs on, the product name and whom to ask (P-168, P-169). `GET /about/load`: the server's own measures of its last ten minutes, and whether it is busy (P-265, P-266) |
+| About | `GET /about`: the version and what it runs on, the product name and whom to ask (P-168, P-169). `GET /about/load`: the server's own measures of its last ten minutes, its health and what it refuses (P-265, P-266) |
 | Health | `GET /health/live`, `GET /health/ready` (no sign-in needed) |
 
 ### Roles
@@ -105,7 +106,7 @@ out, these decide it:
 | `map_link` | `map_url` of a site and of a location: the setting with the place's latitude and longitude in it, or null where it is blank or the place has none (P-229, P-236) |
 | `count_kinds` | the kinds of model whose major items are components, managed nodes and carry weight in the summary and the reports. Its default holds `hardware`, `virtual_machine`, `virtual_context` and `container` from 0.9.8 (P-246); an installation that has set it itself keeps what it set, and adds the two new kinds to count them |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
-| `busy_response_ms`, `busy_cpu_percent`, `busy_over_seconds` | the ceiling past which the server answers `503` Busy, and `ceiling` of `GET /about/load`. Each holds from the moment it is saved, and no request reads the database to learn it. `busy_response_ms` or `busy_cpu_percent` at 0 is a measure not looked at, and both at 0 is no ceiling (P-265). See [The server's own measures](#the-servers-own-measures) |
+| `busy_response_ms`, `busy_cpu_percent`, `busy_over_seconds` | the health of the server and what it answers `503` Busy for it, and `ceiling` of `GET /about/load`: the thirds of `busy_response_ms` are the bounds of `health`, of `X-Hirdir-Health` and of `totals.bands`. Each holds from the moment it is saved, and no request reads the database to learn it. `busy_response_ms` or `busy_cpu_percent` at 0 refuses nothing, and both at 0 is no ceiling (P-265). See [The server's own measures](#the-servers-own-measures) |
 
 The fixed values are these. What was decided:
 
@@ -117,7 +118,7 @@ The fixed values are these. What was decided:
 | `condition_health` | failed and dead say failed, degraded and suspect degraded, good good; any other condition says nothing of health | D-112 |
 | `review_status_of_what_a_file_makes` | unreviewed | P-14 |
 | `refused_file_types` | the extensions of a web page, a script or a program, which no reference may have whatever `reference_file_types` says | P-159 |
-| `busy_fewest_requests` | 5, the requests, answered and in flight, of which how long requests take is read: with fewer, `busy_response_ms` is not looked at | P-265 |
+| `busy_fewest_requests` | 20, the requests, answered and in flight over the last `busy_over_seconds`, from which on what is refused follows the health: with fewer, nothing is refused for how long requests take, whatever the health says | P-265 |
 
 And the limits that protect the service: `default_page_size` 100 and `max_page_size`
 1000, the rows of a page of a list, and `max_offset` 10,000,000; `max_filter_length`
@@ -704,87 +705,186 @@ them.
 ### The server's own measures
 
 The server keeps its last ten minutes in memory, in steps of five seconds, and reads
-from them whether it is busy (P-262, P-265). Nothing of it is written anywhere, and it
-starts empty when the server starts.
+from them its health, in one word, from which what it refuses follows (P-262, P-265).
+Nothing of it is written anywhere, and it starts empty when the server starts.
 
 In each step it counts every request it answered, the page and its files among them, by
 how it was answered: well, with a status below `400`; not taken as asked, `4xx`; failed,
 `5xx`, the `503` of a change that waited for another to be stored among them; and as
-busy, below. It keeps the shortest, the average and the longest time of an answer, from
-the arrival of the request to the last byte of its answer, and the processor time the
-process used, every thread of it, as a percentage of one processor. A stretch in which
-nothing was asked is filled, when something next asks, with the processor time used in
-it, spread evenly.
+refused, below. An answer that was not sent to its last byte, cut short, never begun or
+given up with its request, is counted as failed. It keeps the shortest, the average and
+the longest time of an answer, and the processor time the process used, every thread of
+it, as a percentage of one processor: a share that passes 100 where several requests
+are in the database at once, since the database works without holding the others up.
+A stretch in which nothing was asked is filled, when something next asks, with the
+processor time used in it, spread evenly.
 
-**The ceiling.** Two measures are read over the last `busy_over_seconds`, 30 unless set:
+**The time of a request** begins when the server has the whole of it and ends at the
+last byte of its answer. A request that declares no body is whole when it arrives. One
+that declares a body is whole when the last piece of the body has been handed to the
+application, so what a sender, or the network, takes to send is in no time. Until then
+it is in flight, and is in neither measure and has no age: a request whose body never
+comes holds nothing busy. One that is answered before its body has all come, as a
+request that is not signed in is, is timed from the last piece that did come, or from
+its arrival; one refused as too large, from its arrival.
+
+**What a request is.** Each route of the API is one of four, by the route and not by
+its method alone:
+
+| A request | In the measure of time | Refused |
+|---|:-:|---|
+| Long by nature: everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check`. Seconds of one say nothing of the server | no | while the health is `very_slow` or `busy` |
+| A read: every other `GET` of the API, the pages of lists among them, and the `POST .../query` that asks for a page of a list | yes | while the health is `busy` |
+| Kept: `POST /auth/sign-in` and the rest of `/auth`, and every request that stores a change, which is every other `POST`, `PUT`, `PATCH` and `DELETE`, applying a preview among them. A save that takes four seconds is a slow server | yes | never |
+| Apart: `/health/live` and `/health/ready`; `GET /about` and `GET /about/load`; `GET /settings`, so that an Admin who set the ceiling too low can set it again; `GET /openapi.json`; and a request that no route answers. They are asked for by the clock and answered at once | no | never |
+
+The page itself and its files are not of the API: never refused, and in no measure.
+
+**The two measures** are read over the last `busy_over_seconds`, 30 unless set:
 
 | Measure | What it is | Its ceiling |
 |---|---|---|
-| `response_ms` | how long requests take: the median, in milliseconds, of the time taken by the requests under `/api/v1` answered in that time and of the time waited so far by those still in flight, where the two together are five or more. With fewer there is no such measure. The median, so that one long export among quick answers is not a busy server; those in flight, so that a server from which nothing comes back is not taken for an idle one | `busy_response_ms`, 5000 unless set |
-| `cpu_percent` | the processor: the processor time the process used in that time, as a percentage of that time on one processor. A server that started later than that used nothing before | `busy_cpu_percent`, 95 unless set |
+| `response_ms` | how long requests take: the 95th percentile, in milliseconds, of the time taken by the requests of the measure that came in that time, whatever each took, and of the time waited so far by those still in flight, however long ago they came. With no such request there is no measure. The percentile is one of the times, by the nearest rank from the top: the k-th slowest, where k is five in a hundred of them rounded up, and one at the least. So of twenty or fewer it is the slowest, of twenty-one to forty the second slowest, and of a hundred the fifth: on a quiet server one slow answer is the measure for as long as it is in it, which is what the person who waited for it met. A request is in it from when the server had the whole of it: it leaves the measure `busy_over_seconds` after it came, not after it was answered, so a stall that is over is not read as one that lasts. Those in flight are in it so that a server from which nothing comes back is not taken for an idle one | `busy_response_ms`, 3000 unless set |
+| `cpu_percent` | the processor: the processor time the process used in that time, every thread of it, as a percentage of that time on one processor. It is near 100 where the server works without a pause, and passes it where several requests are in the database at once: four at once read about 200. A server that started later than that used nothing before | `busy_cpu_percent`, 95 unless set |
 
-Past either ceiling the server is `busy`; once it has been so without a break for a
-further `busy_over_seconds` it is `very_busy`; and it is `ok` again as soon as neither
-measure is past its ceiling. Whether it is busy is asked when a request of the API
-arrives, or `GET /about/load` is read, so being busy begins when something asks and
-finds it so. A ceiling of 0 is a measure not looked at, and both at 0 is
-no ceiling: nothing is refused and nothing is read for it. The measures are read again
-once a second at the most, however many requests arrive.
+**The health of the server** is one word, for a mark that is green, yellow, orange or
+red. It is how long requests take, `measures.response_ms`, against the thirds of its
+ceiling, at any count of requests:
 
-**What is refused.** Each route is one of three to a busy server, by the route and not
-by its method alone:
+| `health` | Where | With the ceiling unless set | `refusing`, with twenty or more requests in the measure |
+|---|---|---|---|
+| `good` | the percentile is under a third of `busy_response_ms`, or there is none, no request having come | under 1 second | `nothing` |
+| `slow` | from a third to under two thirds | 1 to 2 seconds | `nothing` |
+| `very_slow` | from two thirds to the ceiling | 2 to 3 seconds | `long`: what is long by nature, the reports, the exports and the previews |
+| `busy` | past the ceiling | over 3 seconds | `reads`: those, and every other read of the API |
 
-| A request | While `busy` | While `very_busy` |
-|---|---|---|
-| What costs most and can wait: every `GET` that answers a page of a list, `{items, total, limit, offset}`, and the `POST .../query` that asks for the same; everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check` | refused | refused |
-| Every other `GET` of the API | answered | refused |
-| Everything else: `POST /auth/sign-in` and the rest of `/auth`; every request that stores a change, which is every other `POST`, `PUT`, `PATCH` and `DELETE`, applying a preview among them; `/health/live` and `/health/ready`; `GET /about` and `GET /about/load`; `GET /settings`, so that an Admin who set the ceiling too low can set it again; `GET /openapi.json`; and the page itself and its files | answered | answered |
+**What is refused** follows the health where there is load to shed, and nothing is
+refused until orange:
 
-A request that is refused is answered at once, before it waits for anything and before
-who sent it is looked at, so one with no sign-in is answered so as well:
+- **Twenty requests.** How long requests take refuses by its colour only where twenty
+  or more requests are in the measure, `measures.requests` against
+  `ceiling.fewest_requests`, which is the fixed value `busy_fewest_requests`. With
+  fewer, `refusing` is `nothing` for time whatever the health says: the mark is orange
+  or red because a person on a quiet server met slow pages, and refusing a handful of
+  requests would shed nothing. A page that shows red with `refusing` at `nothing` says
+  slow, and not busy; where `measures.requests` is under `ceiling.fewest_requests` it
+  can say that they are too few to be load.
+- **The processor.** Past `busy_cpu_percent` over the same time, the health is
+  `very_slow` at the least, whatever the percentile says, and what is long is refused,
+  whatever the count of requests. The processor alone never makes it `busy`, and never
+  refuses a read.
+- **Coming back.** A server that refused its reads refuses what is long, and is
+  `very_slow` at the best, until `busy_over_seconds` have passed since it last did, so
+  that what is long does not come back in the same moment as the reads. A red that
+  refused nothing leaves nothing behind. Nothing else of before is remembered: there
+  is no step that time alone brings.
+- **`because`** names the measure the health stands on, `response_ms`, `cpu_percent` or
+  both, and is empty while it is `good`.
+- **A ceiling of 0.** With `busy_response_ms` at 0 nothing is refused for time, and the
+  health is said all the same, by the thirds of 3000. With `busy_cpu_percent` at 0 the
+  processor is not looked at. With both at 0 nothing is ever refused.
+
+The health is asked when a request of the API arrives, or `GET /about/load` is read,
+and is read again once a second at the most, however many requests arrive. Every
+answer of the API carries it with what is refused, in one header, as they were read
+when the request arrived: an answer that is well, a `4xx` and a `503` alike.
+
+```http
+X-Hirdir-Health: busy; refusing=nothing
+```
+
+The first word is `health` and the value after `refusing=` is `refusing`, always both
+and always in this form, so that a page tells red with nothing refused, which is
+slow, from red with reads refused, which is busy. The page's own files carry no such
+header. Its value is read from memory, where the two words are kept with the measures
+and worked out with them.
+
+**A request that is refused** is answered at once, before it waits for anything and
+before who sent it is looked at, so one with no sign-in is answered so as well:
 
 ```http
 HTTP/1.1 503 Service Unavailable
 Content-Type: application/problem+json
 Retry-After: 5
+X-Hirdir-Health: very_slow; refusing=long
 
 { "type": "about:blank", "title": "Busy", "status": 503,
   "detail": "the server is busy and this request was not answered; try again shortly",
   "errors": [],
-  "busy": { "state": "busy", "because": ["cpu_percent"], "retry_after": 5 } }
+  "busy": { "health": "very_slow", "because": ["response_ms"], "refusing": "long",
+            "retry_after": 5 } }
 ```
 
 Nothing of it was done, and it may be sent again after `Retry-After`, 5 seconds, which
-`busy.retry_after` repeats. `busy.state` is `busy` or `very_busy`, and `busy.because`
-the measures that are past the ceiling. The `503` of a change that waited for another
-to be stored has the same title and no `busy`. An answer of busy is counted, in `busy`
-below, and is in neither measure: its time is in no time of an answer.
+`busy.retry_after` repeats. `busy.health` is `very_slow` or `busy`, `busy.because` the
+measure the health stands on, and `busy.refusing` what is refused, `long` or `reads`.
+The `503` of a change that waited for another to be stored has the same title and no
+`busy`. A request that is refused is counted, in `busy` below, and is in neither
+measure: its time is in no time of an answer.
 
 The three settings are the Admin's, `PUT /settings/{key}` as any other: `busy_response_ms`,
 a whole number of milliseconds from 0 to 600,000; `busy_cpu_percent`, a whole number
-from 0 to 100; `busy_over_seconds`, a whole number of seconds from 5 to 300. Each holds
+from 0 to 100 for each processor of the host, 400 on a host of four, as `accepts` of the
+setting says; `busy_over_seconds`, a whole number of seconds from 5 to 300. Each holds
 from the moment it is saved, and when the server starts: the server keeps them in
-memory, and no request reads the database to learn them.
+memory, and no request reads the database to learn them. Of two saves at the same
+moment the one stored last is the one in force.
 
 **`GET /about/load`** returns the measures, for anyone signed in (P-266). It asks
-nothing of the database but who is signed in, is never refused as busy, and is a few
+nothing of the database but who is signed in, is never refused, and is some
 kilobytes, so that it can be asked every few seconds:
 
 | Member | What it holds |
 |---|---|
-| `state`, `because` | `ok`, `busy` or `very_busy`, and the measures that are past the ceiling, `response_ms`, `cpu_percent` or both; empty while it is `ok` |
-| `ceiling` | the settings in force: `response_ms`, `cpu_percent` and `over_seconds` |
-| `measures` | the two measures as the ceiling reads them now: `response_ms`, null with fewer than five requests, and `cpu_percent` |
+| `health`, `because` | `good`, `slow`, `very_slow` or `busy`, as above; and the measure it stands on, `response_ms`, `cpu_percent` or both, empty while it is `good` |
+| `refusing` | what is answered `503` Busy: `nothing`, `long` or `reads`. `X-Hirdir-Health` carries it with `health` |
+| `ceiling` | the settings in force, `response_ms`, `cpu_percent` and `over_seconds`, and `fewest_requests`, 20, under which nothing is refused for time |
+| `measures` | the two measures as the ceiling reads them now: `response_ms`, the 95th percentile, null with no request; `requests`, how many it is of; and `cpu_percent`, which may pass 100 |
 | `window_seconds`, `step_seconds` | 600 and 5 |
 | `started_at`, `at` | when the server started, and its measures with it; when this was read |
-| `totals` | over the window: `requests`, and of them `ok`, `not_accepted`, `failed` and `busy`; `response_ms` and `cpu_percent`, each with `low`, `average` and `high`. The times are null where nothing was answered. Those of the processor are of the steps that are whole, the one under way being read only while there is no other |
-| `in_flight` | `count`, the requests being answered now, this one not counted, and `oldest_ms`, how long the oldest has waited, null with none |
+| `totals` | over the window: `requests`, and of them `ok`, `not_accepted`, `failed` and `busy`, those refused; `response_ms` and `cpu_percent`, each with `low`, `average` and `high`; and `bands`. `low`, `average` and `high` of `response_ms` are of every answer but an answer of busy; its `p50`, `p95` and `p99` are of the requests of the measure, the reads and the changes of the API, answered in the window. The times are null where nothing was answered. Those of the processor are of the steps that are whole, the one under way being read only while there is no other, and each may pass 100 |
+| `totals.bands` | the requests of the measure answered in the window, counted by how long each took: `bounds_ms`, three bounds in milliseconds, a third of `busy_response_ms`, two thirds of it and the ceiling, `[1000, 2000, 3000]` unless set, and those of 3000 where the setting is 0; and `counts`, four numbers: under the first bound, from it to under the second, from the second to the third, and past the third |
+| `in_flight` | `count`, the requests being answered now, this one not counted and those whose body has not all come counted, and `oldest_ms`, how long the oldest has waited since the server had the whole of it, null with none |
 | `process` | `memory_bytes`, the memory the server's process holds |
 | `host` | `memory_total_bytes`, `memory_used_bytes` and `memory_free_bytes`, free being what a new process could have; `disk_total_bytes` and `disk_free_bytes`, of the disk the inventory is kept on; `processors`; and `load_1m`, the load average of the last minute. Each is null where the host does not say |
 | `worker` | whether the background work is being done: `running`, by the process of its own; `not_running`; or `in_process`, by the server itself (P-267) |
-| `points` | the steps of the window, the oldest first, as lists side by side, for a graph: `at`, when the first began, and `requests`, `average_ms`, `high_ms`, `cpu_percent` and `busy`, entry `i` of each being the step that began `i` times `step_seconds` after `at`. There are as many as the server has run steps, 120 at the most, and the last is under way. A step in which nothing was answered has null for its times, and the step under way has null for `cpu_percent` until a second of it has passed |
+| `points` | the steps of the window, the oldest first, as lists side by side, for a graph: `at`, when the first began, and `requests`, `average_ms`, `high_ms`, `p50_ms`, `p95_ms`, `cpu_percent` and `busy`, entry `i` of each being the step that began `i` times `step_seconds` after `at`. There are as many as the server has run steps, 120 at the most, and the last is under way. A step in which nothing was answered has null for its times, one in which nothing of the measure was has null for `p50_ms` and `p95_ms`, and the step under way has null for `cpu_percent` until a second of it has passed. `cpu_percent` may pass 100 |
+| `slowest` | the ten slowest requests of the measure answered in the window, the slowest first, those in flight not among them. Each has `at`, when the server had the whole of it; `method`; `route`, the route as its pattern, `/api/v1/items/{hid}`, and null for a request that no route answers; `ms`, how long its answer took; `status`; `request_id`, as the log has it; and `who`, with `kind`, `hid` and `username` |
+| `slowest_long` | the five slowest of what is long by nature, the reports, the exports and the previews, with the same members: kept apart, since they are in no measure |
+| `people` | who asked anything of the API in the window, and what each met: `kind`, `hid` and `username`; `requests`, every request, those refused among them; `bands`, its requests of the measure by how long each took, four counts as in `totals.bands`; `slowest_ms`, the longest of them, null with none; `busy`, how many were answered `503` as busy; `failed`, how many failed, `5xx`; and `last_at`, when the last came |
+
+**The slowest, and who met what.** Every signed-in person is one of the team's own and
+sees the names of the others, here as elsewhere: the two lists are for whoever reads the
+route, so that whoever supports the team sees who is having a bad time of it.
+
+- **What is kept of a request** is its method, its route as the pattern it was declared
+  with, its time, its status, its request ID and who asked. The path as it was asked
+  and its query are not kept: no identifier and no word of a search.
+- **Who asked** is the account the check of the sign-in found, at no cost to the
+  request: `kind` is `person`, or `service` for a service account, which is listed by
+  its username as any account is. A request that nothing verifiable names an account
+  for, a sign-in, a token that did not hold, a request with none, has a `who` of kind
+  `unnamed` with null `hid` and `username`, and all of them are counted together in one
+  row of `people`.
+- **A request that is refused** is refused before anything looks who asks. It is
+  counted for an account only where that is known without the database: its session
+  token's signature holds, and its account asked something in the last while and is
+  remembered. Otherwise, and for a service token always, it is counted in the unnamed
+  row.
+- **The order of `people`**: whoever had it worst first, by the requests past the
+  ceiling and those refused together, then by the slowest time, then by username.
+  After the accounts comes the unnamed row, and last a row of kind `others`, where
+  more than fifty accounts asked in one step of five seconds or in the window: the
+  rest are counted together in it.
+- **`bands` of a person** are counted when each request is answered, by the bounds in
+  force then; those of the totals are counted anew when they are read.
 
 Every time is in milliseconds and every share of the processor in percent, to a tenth.
+A percentile is one of the times themselves, the k-th longest, k being what the
+percentile leaves above it in a hundred of them, rounded up, and one at the least: the
+same rule as the measure of time. The times of a step are kept up to its
+first thousand requests of the measure, two hundred a second; of a step with more, the
+percentiles and the bands are of those thousand.
 
 ## Filter grammar
 
