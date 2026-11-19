@@ -1263,8 +1263,11 @@ system its file was read from; its rows then have `external_id`, that system's
 identifier of each thing. Such a row is matched before every other rule of "Identity
 and matching" but the HID: it is the item registered with that system under that
 identifier, whatever its name or its host is now, so that a rename or a move in the
-tool makes no second record. Where no item is registered so, the row is matched as
-any row is, and the item it finds or makes is registered with the system under the
+tool makes no second record. Where the item registered so is retired, the row is
+rejected, naming it: the system reports an item that is retired here, which is brought
+back first, or whose registration is removed so that the row makes a new record; nothing
+of the retired item changes, its registration included. Where no item is registered so,
+the row is matched as any row is, and the item it finds or makes is registered with the system under the
 identifier, in the same change. Two items registered under one identifier, and an
 item that the system knows under another identifier than the row gives, are errors on
 the row, never a guess. Every row that is matched or registered so says that the

@@ -1898,7 +1898,10 @@ class Items(Entity):
                 {"external_id": "more than one item is registered with the system under this"},
             )
         if registered:
-            return run.db.get(Item, registered[0].item_hid)
+            item = run.db.get_one(Item, registered[0].item_hid)
+            # A retired record is not changed by what a tool reports (P-248).
+            systems.refuse_retired(item, given)
+            return item
         found = self._find(run, values)
         if found is not None:
             known = systems.find_registration(run.db, run.system_hid, "item_hid", found.hid)

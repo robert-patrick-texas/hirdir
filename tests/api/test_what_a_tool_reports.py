@@ -146,6 +146,60 @@ def test_an_identifier_two_items_have_and_an_item_known_otherwise_are_errors_on_
     assert "vm-203" in second["reasons"][0]["message"]
 
 
+def test_a_row_the_system_reports_for_a_retired_item_is_rejected_and_changes_nothing(
+    make: Maker, files: Files
+) -> None:
+    system = _system(make)
+    app = _vm(make, "site2-vm-app01")
+    registration = _register(make, system, app, "vm-101")
+    now = make.get(f"/items/{app['hid']}")
+    make.post(f"/items/{app['hid']}/retire", {"row_version": now["row_version"]}, 200)
+    before = make.get(f"/items/{app['hid']}")
+    text = _csv("vm-101,site2-vm-app01-renamed,")
+
+    preview = files.preview("items", text, system=SYSTEM)
+
+    [row] = preview["rows"]
+    assert row["outcome"] == "rejected"
+    assert {reason["field"] for reason in row["reasons"]} == {"external_id"}
+    message = row["reasons"][0]["message"]
+    assert "site2-vm-app01, which is retired here" in message
+    assert "bring it back, or remove its registration" in message
+    files.apply(preview, skip_rejected="true")
+    assert make.get(f"/items/{app['hid']}") == before
+    kept = make.get(f"/registrations/{registration['hid']}")
+    assert (kept["row_version"], kept["confirmed_at"]) == (
+        registration["row_version"],
+        registration["confirmed_at"],
+    )
+
+    # Brought back, the same row changes it.
+    back = make.get(f"/items/{app['hid']}")
+    make.patch(
+        f"/items/{app['hid']}", {"row_version": back["row_version"], "record_status": "active"}
+    )
+    files.load("items", text, system=SYSTEM)
+    assert make.get(f"/items/{app['hid']}")["name"] == "site2-vm-app01-renamed"
+
+
+def test_a_retired_item_whose_registration_is_removed_leaves_the_row_a_new_record(
+    make: Maker, files: Files
+) -> None:
+    system = _system(make)
+    app = _vm(make, "site2-vm-app01")
+    registration = _register(make, system, app, "vm-101")
+    now = make.get(f"/items/{app['hid']}")
+    make.post(f"/items/{app['hid']}/retire", {"row_version": now["row_version"]}, 200)
+    make.delete(f"/registrations/{registration['hid']}")
+
+    files.load("items", _csv("vm-101,site2-vm-app01,"), system=SYSTEM)
+
+    made = make.get("/items", filter="name:eq:site2-vm-app01")["items"]
+    [new] = [one for one in made if one["hid"] != app["hid"]]
+    assert _registration(make, system, new)["external_id"] == "vm-101"
+    assert make.get(f"/items/{app['hid']}")["record_status"] == "retired"
+
+
 def test_a_row_that_names_its_item_by_hid_is_held_to_the_identifier_as_any_row(
     make: Maker, files: Files
 ) -> None:

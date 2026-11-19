@@ -1161,7 +1161,12 @@ page says the rules, and this says how a file carries them.
 - **`external_id`** is a column of the items file: that system's identifier of the row's
   item. A row that gives one is matched first by it, before the vendor, PID and serial
   number, the asset tag and the name: the item registered with the system under that
-  identifier, whatever its status, its name or its host is now. Where none is, the row is
+  identifier, whatever its name or its host is now. Where that item is retired the row
+  is rejected, on `external_id`, naming it: the system reports an item that is retired
+  here, which is brought back first, or whose registration is removed so that the same
+  row makes a new record. Nothing of the retired item changes, its registration and
+  `confirmed_at` included, and a `complete` file marks nothing while such a row stands,
+  as with any rejected row. Where none is, the row is
   matched as any row, and the item it finds or makes is registered with the system under
   the identifier in the same change, or its registration given the identifier where it
   had none. Two errors reject the row, each on `external_id`, however the row found its

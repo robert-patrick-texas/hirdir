@@ -331,6 +331,21 @@ def of_system(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[st
     return {one.item_hid: one for one in found if one.item_hid}
 
 
+def refuse_retired(item: Item, external_id: str) -> None:
+    """Refuse a row that a system reports for an item that is retired here (P-248): it is
+    brought back first, or its registration removed so that the row makes a new record.
+    Nothing of the retired item is changed, its registration included."""
+    if item.record_status == "retired":
+        name = _item_name(item)
+        raise Invalid(
+            f"the system reports {name}, which is retired here",
+            {
+                "external_id": f"the system reports {external_id} as {name}, which is retired "
+                "here: bring it back, or remove its registration so that a new record is made"
+            },
+        )
+
+
 def reported(
     db: Session, context: AuditContext, system_hid: str, item_hid: str, external_id: str
 ) -> Registration:
@@ -344,6 +359,7 @@ def reported(
     """
     now = clock.now()
     given = external_id.strip()
+    refuse_retired(db.get_one(Item, item_hid), given)
     others = [one for one in registered_as(db, system_hid, given) if one.item_hid != item_hid]
     if others:
         other = db.get_one(Item, others[0].item_hid)
