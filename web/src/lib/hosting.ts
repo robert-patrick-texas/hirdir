@@ -209,7 +209,7 @@ export function hostedRows(
 export const REVIEW_REASONS: readonly Option[] = [
   { value: "no_host", label: "Names no host" },
   { value: "host_gone", label: "Its host is gone" },
-  { value: "not_reported", label: "Reported no more" },
+  { value: "not_reported", label: "Not reported" },
 ];
 
 /** One reason in words, with what it is about. */

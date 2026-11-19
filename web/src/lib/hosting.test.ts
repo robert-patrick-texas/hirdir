@@ -241,7 +241,7 @@ describe("what is to be looked at", () => {
           about: { hid: "sys", record_type: "external_system", label: "Example vCenter" },
         },
       ]),
-    ).toBe("Names no host; Reported no more: Example vCenter");
+    ).toBe("Names no host; Not reported: Example vCenter");
   });
 });
 
