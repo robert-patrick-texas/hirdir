@@ -15,7 +15,7 @@ from hirdir.config import Config
 from hirdir.db import dialect, migrate
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.domain import accounts, audit
-from hirdir.io import fields, filters, listing, tables
+from hirdir.io import fields, filters, hosted, listing, tables
 from tests.api.inventory import Maker, errors
 from tests.conftest import INVENTORY_CODE, sign_in
 
@@ -287,12 +287,16 @@ def test_what_a_sort_needs_is_in_the_statement_only_when_it_is_asked_for(db: Ses
     def note(_connection: object, _cursor: object, statement: str, *_more: object) -> None:
         statements.append(statement)
 
+    def of_the_list(one: str) -> bool:
+        # Not the question, once for a session, whether anything runs on a host (P-246).
+        return "FROM items" in one and hosted.MARK not in one
+
     event.listen(db.get_bind(), "before_cursor_execute", note)
     listing.page(db, fields.ITEMS)
-    plain = [one for one in statements if "FROM items" in one]
+    plain = [one for one in statements if of_the_list(one)]
     statements.clear()
     listing.page(db, fields.ITEMS, sort=["tags", "address", "group.name", "minor_items"])
-    asked = [one for one in statements if "FROM items" in one]
+    asked = [one for one in statements if of_the_list(one)]
     event.remove(db.get_bind(), "before_cursor_execute", note)
 
     # The list as it is asked for by default reads no tag and no address, and counts

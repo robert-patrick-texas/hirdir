@@ -499,7 +499,10 @@ def _checked(
     def final(name: str) -> Any:
         return values.get(name, getattr(item, name) if item is not None else None)
 
-    if any(name in fields for name in (*hosting.FIELDS, "catalog_entry_hid", "parent_item_hid")):
+    if any(
+        name in fields
+        for name in (*hosting.FIELDS, "catalog_entry_hid", "parent_item_hid", "serial_number")
+    ):
         # What it runs on, held against its model and its parent as they will be (P-246).
         values.update(
             hosting.checked(db, fields, values, item, settings.time_zone(db), looked_again)

@@ -1924,6 +1924,12 @@ class Items(Entity):
         db = run.db
         vendor, pid = values.get("vendor"), values.get("pid")
         serial, tag = values.get("serial_number"), values.get("asset_tag")
+        if serial and self._of_a_context(run, values):
+            # A virtual context is never found by a serial number: it names its host,
+            # and the row is found as a row that gives none is (P-251).
+            serial = None
+            values = dict(values)
+            values["serial_number"] = None
         if vendor and pid and serial:
             entry = run.entry(vendor, pid)
             if entry is None:
@@ -1994,6 +2000,15 @@ class Items(Entity):
             if named:
                 return named[0]
         return None
+
+    def _of_a_context(self, run: Run, values: Mapping[str, Any]) -> bool:
+        """Say whether a row is of a model of the kind `virtual_context` (P-251)."""
+        vendor, pid = values.get("vendor"), values.get("pid")
+        entry = run.entry(vendor, pid) if vendor and pid else None
+        if entry is None and not (vendor or pid):
+            line_model = self._line_model(run, None, values)
+            entry = run.db.get(CatalogEntry, line_model) if line_model else None
+        return entry is not None and entry.kind == hosting.VIRTUAL_CONTEXT
 
     def _by_serial(
         self, db: Session, model: str, serial: str, values: Mapping[str, Any]
@@ -2273,7 +2288,9 @@ class Items(Entity):
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         try:
-            return self._write(run, record, values)
+            written = self._write(run, record, values)
+            self._stack_noted(run, written, values)
+            return written
         except Invalid as refused:
             if not set(refused.fields) & self._HOST_WORDS:
                 raise
@@ -2286,6 +2303,28 @@ class Items(Entity):
                     for name, text in refused.fields.items()
                 },
             ) from None
+
+    @staticmethod
+    def _stack_noted(run: Run, record: Item, values: Mapping[str, Any]) -> None:
+        """Say in a row's notes that the host it names, by `host` or by the serial number
+        of a virtual context, is a member of a stack, which is the host (P-252)."""
+        named, serial = values.get("host"), values.get("serial_number")
+        if not (named or serial) or not record.host_group_hid or not record.observed_host_hid:
+            return
+        group = run.db.get(DeviceGroup, record.host_group_hid)
+        member = run.db.get(Item, record.observed_host_hid)
+        if group is None or member is None or group.type != "stack":
+            return
+        if named:
+            meant = items.known_as(run.db, str(named))
+            if [one.hid for one in meant] != [member.hid]:
+                return
+        elif member.serial_key != records.key(str(serial)):
+            return
+        run.notes.append(
+            f"{items.shown_name(member)}, the host named, is a member of the stack "
+            f"{group.name}, which is the host"
+        )
 
     def _write(self, run: Run, record: Any | None, values: Mapping[str, Any]) -> Any:
         db, context = run.db, run.context
