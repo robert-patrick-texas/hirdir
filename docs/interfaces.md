@@ -274,10 +274,20 @@ the rules, and this says how the API carries them.
   (`parent_item_hid`); a host that is not there, is retired, has left the team's
   hands, is of a kind that hosts nothing, is the item itself or runs on it, or makes a
   line of hosts longer than three; a group that is not a stack or a cluster, or is
-  retired; an item seen that is the item itself; a moment seen more than a day ahead;
-  and a moment given with no item seen. `PATCH /catalog-entries/{hid}` that makes a
-  model a kind that runs on nothing, while an item of it names a host, is refused on
-  `kind`.
+  retired; an item seen that is the item itself, or an item seen given to an item of a
+  kind that runs on nothing (one that holds one from before keeps it until it is
+  changed); a moment seen more than a day ahead; and a moment given with no item seen.
+  A request that makes an item's model a kind that runs on nothing clears its host and
+  the item seen in the same request, `host_item_hid`, `host_group_hid` and
+  `observed_host_hid` each `null`. `PATCH /catalog-entries/{hid}` that makes a model a
+  kind that runs on nothing, while an item of it that is not retired names a host, is
+  refused on `kind`. A refusal by a file or a bulk edit names the file's columns,
+  `host`, `host_group`, `observed_host` and `parent`, where the API names its fields.
+- **A machine entered as installed in its server**, as one was before 0.9.8 and as
+  migration 0014 leaves it, is marked `no_host`, and naming its host alone is refused,
+  saying that the parent is cleared with it. It is put right in one change: `PATCH
+  /items/{hid}` with `host_item_hid` and `parent_item_hid` `null`, or a file of items
+  with `host` and `parent` `!clear` on its row.
 - **The answer.** An item answers the four fields, and `host`, what it runs on, with
   `item_hid` or `group_hid`, its `name`, a group's `type`, an item's `pid` and its own
   `lifecycle_state`, and its `record_status`; `observed_host`, the item seen, as an item
