@@ -17,7 +17,7 @@ import logging
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import case, func, insert, select, update
 from sqlalchemy.exc import OperationalError
@@ -415,11 +415,11 @@ def _read_from(db: Session, parsed: files.Parsed, system: str | None, complete: 
 # Why a file that is everything its system reports marks nothing (P-248): a row the
 # preview or the apply rejected, a rejected row left out by `skip_rejected`, or a row
 # left out as stale. Each is named as the outcome of such a row is.
-HELD = ("rejected", "skipped", "stale")
+Held = Literal["rejected", "skipped", "stale"]
 
 
-def not_reported_held(job: ImportJob) -> str | None:
-    """Say why a `complete` import marks, or will mark, nothing: one of `HELD`, or None
+def not_reported_held(job: ImportJob) -> Held | None:
+    """Say why a `complete` import marks, or will mark, nothing: one of `Held`, or None
     where nothing holds it. A preview is held by a rejected row; an apply by a row
     refused when it was applied, a row left out as stale, or rejected rows left out."""
     if not job.complete or job.system_hid is None:
