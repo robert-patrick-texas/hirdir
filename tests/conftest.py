@@ -16,6 +16,14 @@ its full cost is meant to be slow, and nearly every test makes three users and s
 one in. `full_cost` gives a test the hashing that is released. The acceptance
 scenarios and the package test start the server as a process of its own, and so
 always run with it.
+
+And one thing is for the tests being tests: an application starts with no ceiling on its
+load (P-265). The process of a test is busy with the test, which is not the load of a
+server, and a request that was turned away for it would fail a test that asked nothing
+of the ceiling. A test that wants a ceiling gives the meter one, or saves a setting of
+it, which holds as it does for a server; `ceiling_at_start` gives a test the start of a
+server, with the ceiling its settings have. The acceptance scenarios start a server as
+it is released, with its ceiling.
 """
 
 import shutil
@@ -35,7 +43,8 @@ from hirdir.auth import codes
 from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.domain import accounts, audit
+from hirdir.domain import accounts, audit, load
+from hirdir.io import measures
 
 ADMIN_CODE = "admin-code"
 INVENTORY_CODE = "inventory-code"
@@ -55,6 +64,24 @@ def quick_codes() -> Iterator[None]:
         patch.setattr(codes, "_HASHER", quick)
         patch.setattr(codes, "_DUMMY_HASH", quick.hash("no such user"))
         yield
+
+
+AT_START = measures.at_start
+
+
+@pytest.fixture(scope="session", autouse=True)
+def no_ceiling() -> Iterator[None]:
+    """Start every application of the tests inside this process with no ceiling."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(measures, "at_start", lambda state: load.NO_CEILING)
+        yield
+
+
+@pytest.fixture
+def ceiling_at_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start the applications of the test that asks as a server starts: with the
+    ceiling the settings of its database have. Ask for it before `client`."""
+    monkeypatch.setattr(measures, "at_start", AT_START)
 
 
 @pytest.fixture

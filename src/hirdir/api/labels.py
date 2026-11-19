@@ -1,12 +1,13 @@
 """The routes of labels and lists: tags, choices, settings and the lifecycle rules."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks, Request
 
 from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
-from hirdir.domain import choices, lifecycle, settings, tags
+from hirdir.domain import choices, lifecycle, load, settings, tags
+from hirdir.io import measures
 
 tag_routes = APIRouter(prefix="/tags", tags=["Labels and lists"], route_class=IdempotentRoute)
 choice_routes = APIRouter(prefix="/choices", tags=["Labels and lists"], route_class=IdempotentRoute)
@@ -96,9 +97,22 @@ def list_settings(_: Viewer, db: Db) -> list[r.SettingOut]:
 
 
 @setting_routes.put("/{key}")
-def set_setting(key: str, body: r.SettingSet, _: Admin, context: Audit, db: Db) -> r.SettingOut:
-    """Give a setting a value. Null returns it to its default."""
+def set_setting(
+    key: str,
+    body: r.SettingSet,
+    _: Admin,
+    context: Audit,
+    db: Db,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> r.SettingOut:
+    """Give a setting a value. Null returns it to its default. A setting of the ceiling,
+    `busy_response_ms`, `busy_cpu_percent` or `busy_over_seconds`, holds from the moment
+    it is stored (P-265)."""
     setting = settings.set_setting(db, context, key, body.row_version, body.value)
+    if key in load.SETTINGS:
+        # Once the change is stored, the server's meter takes the ceiling as it now is.
+        background_tasks.add_task(measures.renew, request.app.state)
     return shapes.setting_out(setting)
 
 

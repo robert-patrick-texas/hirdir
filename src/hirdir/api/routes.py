@@ -17,7 +17,7 @@ from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
 from hirdir.domain import accounts, product
-from hirdir.io import tables
+from hirdir.io import background, measures, tables
 
 health = APIRouter(prefix="/health", tags=["Health"])
 # The answer of an account route may hold an access code or a token. Neither is kept
@@ -326,6 +326,21 @@ def about(_: SignedIn, request: Request, db: Db) -> schemas.About:
         schema_revision=migrate.current(request.app.state.engine),
         product_name=product.name(db),
         help=schemas.AboutHelp(**asdict(product.help_of(db))),
+    )
+
+
+@meta.get("/about/load")
+def about_load(_: SignedIn, request: Request) -> schemas.Load:
+    """Say how the server is doing, by its own measures of its last ten minutes: whether
+    it is busy and by which measure, what it answered and how long an answer took, the
+    processor time it used, the requests in flight, the memory and the disk of the host,
+    whether the background work is being done, and the ten minutes step by step, for a
+    graph. Kept in memory and read from there: it asks nothing of the database but who
+    is signed in, and a busy server answers it all the same (P-265, P-266)."""
+    state = request.app.state
+    picture = state.load.picture(*measures.clock(), but=getattr(request.state, "in_flight", None))
+    return views.load_out(
+        picture, measures.host(state.config.state_dir), background.worker_state(state)
     )
 
 

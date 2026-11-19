@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException
 
 from hirdir.api import idempotent
 from hirdir.db import dialect, engine
-from hirdir.domain import errors
+from hirdir.domain import errors, load
 from hirdir.domain.accounts import NotSignedIn
 from hirdir.io import files
 
@@ -29,10 +29,12 @@ def problem(
     existing: errors.Existing | None = None,
     deleted: errors.Deleted | None = None,
     depends_on: list[errors.Existing] | None = None,
+    busy: load.Reading | None = None,
 ) -> JSONResponse:
     """Build a problem response. `existing` is the record that has the value already,
-    `deleted` the deletion of a record that is asked for and is not there, and
-    `depends_on` the records that stand on the one a change was refused for."""
+    `deleted` the deletion of a record that is asked for and is not there,
+    `depends_on` the records that stand on the one a change was refused for, and `busy`
+    what the measures of a server past its ceiling say."""
     body: dict[str, object] = {
         "type": "about:blank",
         "title": title,
@@ -58,7 +60,26 @@ def problem(
             "actor_name": deleted.actor_name,
             "reason": deleted.reason,
         }
+    if busy is not None:
+        body["busy"] = {
+            "state": busy.state,
+            "because": list(busy.because),
+            "retry_after": load.RETRY_SECONDS,
+        }
     return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE, headers=headers)
+
+
+def server_busy(reading: load.Reading) -> JSONResponse:
+    """Build the answer of a server that is past its ceiling to a request it does not
+    take (P-265). It has the title of the answer to a change that waited for another to
+    be stored, and is told from it by `busy`, which says what the measures say."""
+    return problem(
+        503,
+        "Busy",
+        "the server is busy and this request was not answered; try again shortly",
+        headers={"Retry-After": str(load.RETRY_SECONDS)},
+        busy=reading,
+    )
 
 
 def install(app: FastAPI) -> None:

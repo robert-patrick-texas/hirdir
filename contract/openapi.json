@@ -18317,6 +18317,491 @@
         "title": "ListedReference",
         "type": "object"
       },
+      "Load": {
+        "additionalProperties": false,
+        "description": "The server's own measures of its last ten minutes, kept in memory (P-265, P-266).",
+        "properties": {
+          "at": {
+            "description": "When this was read.",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "because": {
+            "description": "The measures that are past the ceiling. Empty while `state` is `ok`.",
+            "items": {
+              "enum": [
+                "response_ms",
+                "cpu_percent"
+              ],
+              "type": "string"
+            },
+            "title": "Because",
+            "type": "array"
+          },
+          "ceiling": {
+            "$ref": "#/components/schemas/LoadCeiling"
+          },
+          "host": {
+            "$ref": "#/components/schemas/LoadHost"
+          },
+          "in_flight": {
+            "$ref": "#/components/schemas/LoadInFlight"
+          },
+          "measures": {
+            "$ref": "#/components/schemas/LoadMeasures"
+          },
+          "points": {
+            "$ref": "#/components/schemas/LoadPoints"
+          },
+          "process": {
+            "$ref": "#/components/schemas/LoadProcess"
+          },
+          "started_at": {
+            "description": "When the server started, and its measures.",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "description": "`busy`: past the ceiling, and what costs most and can wait is answered 503. `very_busy`: still so `over_seconds` later, and every read is.",
+            "enum": [
+              "ok",
+              "busy",
+              "very_busy"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_seconds": {
+            "description": "The length of a step: 5.",
+            "title": "Step Seconds",
+            "type": "integer"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/LoadTotals"
+          },
+          "window_seconds": {
+            "description": "How long the measures are kept: 600.",
+            "title": "Window Seconds",
+            "type": "integer"
+          },
+          "worker": {
+            "description": "Whether the background work is being done: by the process of its own, by nothing, or by this process (P-267).",
+            "enum": [
+              "running",
+              "not_running",
+              "in_process"
+            ],
+            "title": "Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "because",
+          "ceiling",
+          "measures",
+          "window_seconds",
+          "step_seconds",
+          "started_at",
+          "at",
+          "totals",
+          "in_flight",
+          "process",
+          "host",
+          "worker",
+          "points"
+        ],
+        "title": "Load",
+        "type": "object"
+      },
+      "LoadCeiling": {
+        "additionalProperties": false,
+        "description": "The ceiling in force: the three settings of it (P-265).",
+        "properties": {
+          "cpu_percent": {
+            "description": "`busy_cpu_percent`: what `measures.cpu_percent` may reach. 0: not looked at.",
+            "title": "Cpu Percent",
+            "type": "integer"
+          },
+          "over_seconds": {
+            "description": "`busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy before it is very busy.",
+            "title": "Over Seconds",
+            "type": "integer"
+          },
+          "response_ms": {
+            "description": "`busy_response_ms`: what `measures.response_ms` may reach. 0: not looked at.",
+            "title": "Response Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "response_ms",
+          "cpu_percent",
+          "over_seconds"
+        ],
+        "title": "LoadCeiling",
+        "type": "object"
+      },
+      "LoadHost": {
+        "additionalProperties": false,
+        "description": "What the host says of itself. Each is null where the host does not say.",
+        "properties": {
+          "disk_free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of the disk the inventory is kept on.",
+            "title": "Disk Free Bytes"
+          },
+          "disk_total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of the disk the inventory is kept on.",
+            "title": "Disk Total Bytes"
+          },
+          "load_1m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The load average of the last minute.",
+            "title": "Load 1M"
+          },
+          "memory_free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a new process could have.",
+            "title": "Memory Free Bytes"
+          },
+          "memory_total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Total Bytes"
+          },
+          "memory_used_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The total less what is free.",
+            "title": "Memory Used Bytes"
+          },
+          "processors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processors"
+          }
+        },
+        "required": [
+          "memory_total_bytes",
+          "memory_used_bytes",
+          "memory_free_bytes",
+          "disk_total_bytes",
+          "disk_free_bytes",
+          "processors",
+          "load_1m"
+        ],
+        "title": "LoadHost",
+        "type": "object"
+      },
+      "LoadInFlight": {
+        "additionalProperties": false,
+        "description": "The requests being answered now. The request that asks is not counted.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "oldest_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the oldest has waited, in milliseconds. Null with none.",
+            "title": "Oldest Ms"
+          }
+        },
+        "required": [
+          "count",
+          "oldest_ms"
+        ],
+        "title": "LoadInFlight",
+        "type": "object"
+      },
+      "LoadMeasures": {
+        "additionalProperties": false,
+        "description": "The two measures as the ceiling reads them now, over the last `over_seconds`.",
+        "properties": {
+          "cpu_percent": {
+            "description": "The processor time the process used, as a percentage of one processor.",
+            "title": "Cpu Percent",
+            "type": "number"
+          },
+          "response_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long requests take: the median, in milliseconds, of the time taken by the requests of the API answered in that time and of the time waited so far by those in flight. Null with fewer than five.",
+            "title": "Response Ms"
+          }
+        },
+        "required": [
+          "response_ms",
+          "cpu_percent"
+        ],
+        "title": "LoadMeasures",
+        "type": "object"
+      },
+      "LoadPoints": {
+        "additionalProperties": false,
+        "description": "The steps of the window as lists side by side, the oldest first: entry `i` of each\nis the step that began `i` times `step_seconds` after `at`. The last is under way.",
+        "properties": {
+          "at": {
+            "description": "When the first step began.",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "average_ms": {
+            "description": "The average time of an answer. Null where nothing was answered.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Average Ms",
+            "type": "array"
+          },
+          "busy": {
+            "description": "The answers of busy given in the step.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Busy",
+            "type": "array"
+          },
+          "cpu_percent": {
+            "description": "The processor time used, as a percentage of one processor. Null in the step under way until a second of it has passed.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Cpu Percent",
+            "type": "array"
+          },
+          "high_ms": {
+            "description": "The longest time of an answer. Null where nothing was answered.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "High Ms",
+            "type": "array"
+          },
+          "requests": {
+            "description": "The requests answered in the step.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Requests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "at",
+          "requests",
+          "average_ms",
+          "high_ms",
+          "cpu_percent",
+          "busy"
+        ],
+        "title": "LoadPoints",
+        "type": "object"
+      },
+      "LoadProcess": {
+        "additionalProperties": false,
+        "description": "The server's process.",
+        "properties": {
+          "memory_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The memory it holds. Null where unknown.",
+            "title": "Memory Bytes"
+          }
+        },
+        "required": [
+          "memory_bytes"
+        ],
+        "title": "LoadProcess",
+        "type": "object"
+      },
+      "LoadSpread": {
+        "additionalProperties": false,
+        "description": "The lowest, the average and the highest of a value. Null where there was none.",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          }
+        },
+        "required": [
+          "low",
+          "average",
+          "high"
+        ],
+        "title": "LoadSpread",
+        "type": "object"
+      },
+      "LoadTotals": {
+        "additionalProperties": false,
+        "description": "What was answered in the window, and how.",
+        "properties": {
+          "busy": {
+            "description": "Answered 503 as busy, by a server past its ceiling.",
+            "title": "Busy",
+            "type": "integer"
+          },
+          "cpu_percent": {
+            "$ref": "#/components/schemas/LoadSpread",
+            "description": "The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole."
+          },
+          "failed": {
+            "description": "Failed: `5xx`, the 503 of a change that waited for another among them.",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "not_accepted": {
+            "description": "Not taken as asked: `4xx`.",
+            "title": "Not Accepted",
+            "type": "integer"
+          },
+          "ok": {
+            "description": "Answered well: a status below 400.",
+            "title": "Ok",
+            "type": "integer"
+          },
+          "requests": {
+            "description": "Every request answered: the four below together.",
+            "title": "Requests",
+            "type": "integer"
+          },
+          "response_ms": {
+            "$ref": "#/components/schemas/LoadSpread",
+            "description": "The time of an answer, in milliseconds, from the arrival of the request to the last byte of its answer. An answer of busy is not in it."
+          }
+        },
+        "required": [
+          "requests",
+          "ok",
+          "not_accepted",
+          "failed",
+          "busy",
+          "response_ms",
+          "cpu_percent"
+        ],
+        "title": "LoadTotals",
+        "type": "object"
+      },
       "LocationCreate": {
         "additionalProperties": false,
         "description": "A new location: in a site, or within a location of one.",
@@ -23864,6 +24349,17 @@
         "additionalProperties": false,
         "description": "An error, as an RFC 9457 problem document.",
         "properties": {
+          "busy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemBusy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On the 503 of a server that is past its ceiling and took nothing of the request (P-265). Left out of every other problem, the 503 of a change that waited for another to be stored among them."
+          },
           "deleted": {
             "anyOf": [
               {
@@ -23933,6 +24429,45 @@
           "status"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "ProblemBusy": {
+        "additionalProperties": false,
+        "description": "Why a server past its ceiling did not take a request (P-265).",
+        "properties": {
+          "because": {
+            "description": "The measures that are past the ceiling: how long requests take, the share of one processor the process uses.",
+            "items": {
+              "enum": [
+                "response_ms",
+                "cpu_percent"
+              ],
+              "type": "string"
+            },
+            "title": "Because",
+            "type": "array"
+          },
+          "retry_after": {
+            "description": "The seconds to wait, as `Retry-After` says.",
+            "title": "Retry After",
+            "type": "integer"
+          },
+          "state": {
+            "description": "`busy`: what costs most and can wait is not taken. `very_busy`: no read of the API is.",
+            "enum": [
+              "busy",
+              "very_busy"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "because",
+          "retry_after"
+        ],
+        "title": "ProblemBusy",
         "type": "object"
       },
       "ProblemDeleted": {
@@ -31062,6 +31597,28 @@
           }
         },
         "summary": "About",
+        "tags": [
+          "About"
+        ]
+      }
+    },
+    "/api/v1/about/load": {
+      "get": {
+        "description": "Say how the server is doing, by its own measures of its last ten minutes: whether\nit is busy and by which measure, what it answered and how long an answer took, the\nprocessor time it used, the requests in flight, the memory and the disk of the host,\nwhether the background work is being done, and the ten minutes step by step, for a\ngraph. Kept in memory and read from there: it asks nothing of the database but who\nis signed in, and a busy server answers it all the same (P-265, P-266).",
+        "operationId": "about_load_api_v1_about_load_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Load"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "About Load",
         "tags": [
           "About"
         ]
@@ -46744,7 +47301,7 @@
     },
     "/api/v1/settings/{key}": {
       "put": {
-        "description": "Give a setting a value. Null returns it to its default.",
+        "description": "Give a setting a value. Null returns it to its default. A setting of the ceiling,\n`busy_response_ms`, `busy_cpu_percent` or `busy_over_seconds`, holds from the moment\nit is stored (P-265).",
         "operationId": "set_setting_api_v1_settings__key__put",
         "parameters": [
           {
