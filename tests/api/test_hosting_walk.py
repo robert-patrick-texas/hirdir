@@ -205,3 +205,26 @@ def test_the_summary_and_the_tree_count_it_where_its_host_is(placed: Placed) -> 
         return None
 
     assert counted(tree["roots"][0], "Room 102") == 2
+
+
+def test_what_runs_on_a_host_counts_as_a_component_a_node_and_its_weight_at_its_hosts_site(
+    placed: Placed,
+) -> None:
+    make, lab = placed.make, placed.lab
+    for model in (lab.vm_model, lab.vdc_model, lab.ctr_model, lab.server_model, lab.switch_model):
+        path = f"/catalog-entries/{model['hid']}"
+        make.patch(path, {"row_version": make.get(path)["row_version"], "support_weight": "0.5"})
+    _patch(make, lab.n7k, location_hid=placed.places["room"]["hid"])
+    vm = lab.vm(host_item_hid=lab.esx["hid"])
+    vdc = lab.vdc(host_item_hid=lab.n7k["hid"])
+    ctr = lab.ctr(host_item_hid=vm["hid"])
+    for one in (lab.esx, lab.n7k, vm, vdc, ctr):
+        make.move(make.get(f"/items/{one['hid']}"), "Prod")
+    rows = {row["label"]: row for row in make.get("/reports/summary", by="site")["rows"]}
+    site = rows["Americas > Central > Site-2"]
+    # The server, the switch, and the three that run on them, each one of its own.
+    assert (site["items"], site["component_count"], site["managed_node_count"]) == (5, 5, 5)
+    assert site["support_weight"] == "2.5"
+    kinds = {row["key"]: row for row in make.get("/reports/summary", by="kind")["rows"]}
+    for kind in ("virtual_machine", "virtual_context", "container"):
+        assert kinds[kind]["component_count"] == 1, kind
