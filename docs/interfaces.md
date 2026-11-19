@@ -277,7 +277,12 @@ the rules, and this says how the API carries them.
 - **The fields.** `POST /items` and `PATCH /items/{hid}` take `host_item_hid`, the item
   it runs on, or `host_group_hid`, a stack or a cluster, and `observed_host_hid` with
   `host_observed_at`, the item it was seen on and when; `host_observed_at` left out is
-  the moment of the change, and `null` in `observed_host_hid` clears both. Each refusal
+  the moment of the change, and `null` in `observed_host_hid` clears both. A
+  `host_item_hid` that is a current member of a stack names the stack (P-252): the item
+  is given `host_group_hid` the stack, `host_item_hid` none, and, where the request
+  names no item seen, `observed_host_hid` the member with `host_observed_at` now; the
+  answer says so by its fields, `host` the stack, `observed_host` the member and
+  `host_differs` false. A member of a cluster is a host itself. Each refusal
   is a `422` that names its field: `host_group_hid` given with `host_item_hid`; a host
   given to an item of another kind, or of no model, or to an item that has a parent
   (`host_item_hid`, or `host_group_hid`); a parent given to an item that has a host
@@ -359,7 +364,10 @@ the rules, and this says how the API carries them.
 - **The items file** has `host`, the item it runs on, named as `parent` names one;
   `host_group`, a stack or a cluster by its name; `observed_host`, named as `host` is;
   and `host_observed_at`. A row may name a host that an earlier or a later row of the
-  same file makes. An export writes them, and the reasons of `review`, joined, as a
+  same file makes. A row whose `host` is a current member of a stack has the stack as
+  its host: its changes show `host_group` the stack and `observed_host` the member, and
+  its notes say that the host named is a member of the stack, which is the host; the
+  same row loaded again changes nothing. An export writes them, and the reasons of `review`, joined, as a
   column it can write, and loads back changing nothing. A bulk edit sets `host` or
   `host_group` on the rows chosen, one clearing the other, or `null` to clear it.
 - **The CLI.** `hirdir items hosted <item>` lists what runs on an item, and `hirdir

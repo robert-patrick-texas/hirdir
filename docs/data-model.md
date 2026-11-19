@@ -285,8 +285,14 @@ its host.
   minor item as well, since a blade in a chassis is one. Never the item itself, nor
   one that runs on it, and the line of hosts is at most three long: a container in a
   virtual machine on a server. A group that hosts is a `stack` or a `cluster`, the two
-  that are one device, and is not retired. The item seen is any item that is not the
-  item itself.
+  that are one device, and is not retired. A current member of a stack that is not
+  retired is the host of nothing (P-252): a stack is one device, and what runs on it
+  runs on whichever member is active. Where a request names such a member as a host,
+  by the page, a file, the API, a bulk edit or the serial number of a virtual context,
+  the host is its stack, and the member is what the item was seen on, at the moment of
+  the change, unless the request says what it was seen on itself. A member of a
+  cluster is a host as any item. The item seen is any item that is not the item
+  itself.
 - **A major item.** What runs on a host is installed in nothing: it has no
   `parent_item_hid`, and an item with a parent is given no host. It may have minor
   items of its own, and be a member of groups, as any major item.

@@ -456,7 +456,10 @@ def checked(
         from_serial = host_by_serial(db, serial, item)
         if from_serial is not None:
             named_item, named_group = out.get("host_item_hid"), out.get("host_group_hid")
-            if named_group or (named_item and named_item != from_serial.hid):
+            # A member of a stack stands for the stack (P-252).
+            its_stack = stack_of(db, from_serial.hid)
+            another_group = named_group and (its_stack is None or named_group != its_stack.hid)
+            if another_group or (named_item and named_item != from_serial.hid):
                 other = (
                     db.get(DeviceGroup, named_group) if named_group else db.get(Item, named_item)
                 )
@@ -476,6 +479,17 @@ def checked(
                     },
                 )
             out["host_item_hid"] = from_serial.hid
+            if named_group:
+                out.pop("host_group_hid")
+    # A current member of a stack is the host of nothing: the stack is, and the member is
+    # what the item was seen on (P-252).
+    member_seen = None
+    if out.get("host_item_hid"):
+        dialect.hold_other_writers(db)
+        stack = stack_of(db, out["host_item_hid"])
+        if stack is not None:
+            member_seen = out["host_item_hid"]
+            out["host_item_hid"], out["host_group_hid"] = None, stack.hid
     # Naming the one clears the other: what it runs on is one record.
     if out.get("host_item_hid") and "host_group_hid" not in fields:
         out["host_group_hid"] = None
@@ -555,7 +569,25 @@ def checked(
                 },
             )
     out.update(_observation(db, fields, item, looked_again, zone))
+    if member_seen is not None and not fields.get("observed_host_hid"):
+        # Seen on the member named, at the moment of the change, unless the request says
+        # what it was seen on; a file that says it again changes nothing. A new item's
+        # request holds every field, blank where nothing is said.
+        restated = item is not None and item.observed_host_hid == member_seen
+        if not restated or looked_again:
+            out["observed_host_hid"], out["host_observed_at"] = member_seen, clock.now()
     return out
+
+
+def stack_of(db: Session, item_hid: str) -> DeviceGroup | None:
+    """Return the stack, not retired, that an item is a current member of, if it is in
+    one: an item is in one stack at most."""
+    from hirdir.domain import items
+
+    return next(
+        (group for group in items.major_only_groups(db, item_hid) if group.type == "stack"),
+        None,
+    )
 
 
 # How a file and a bulk edit name the fields that the rules above name as the API does.
