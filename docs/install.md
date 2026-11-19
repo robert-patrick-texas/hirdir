@@ -1687,6 +1687,33 @@ Going back to 0.9.7 is by the backup the upgrade took, as under
 entered since is lost, including any second replacement of an item and every host
 named.
 
+### From 0.9.8 to 0.9.9
+
+The schema stays at revision `0014`: 0.9.9 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+0.9.9 mends one fault, in the web page. With 0.9.8, a person who opened Items,
+Circuits, Catalog, External systems or Capacity, went to another tab of the browser for
+five seconds or more and came back, was shown "This page could not be drawn" with the
+text `TypeError: Cannot read properties of undefined (reading 'filter')` where the list
+had been; with 0.9.6 and before, the window was left blank. The list now stays as it
+was, with its rows, its place and what was ticked. Nothing was lost by the fault: Load
+again brought the list back each time.
+
+A web page that was open while the upgrade ran says under its menu bar, the next time
+its person comes back to it, that a new version has been installed, with a button, Load
+again. Until it is loaded again it is the page of 0.9.8, and has the fault still.
+
+For a script that reads the API: nothing is changed.
+
+Going back to 0.9.8 needs no backup, because the schema is the same:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.8_amd64.deb
+```
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -1737,7 +1764,7 @@ installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
 goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
-0.9.4, 0.9.5, 0.9.6 and 0.9.7 are such releases. The section of each release above says what its upgrade changed.
+0.9.4, 0.9.5, 0.9.6, 0.9.7 and 0.9.9 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 

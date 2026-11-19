@@ -126,7 +126,11 @@ when 0.9.7 was built: a code of a region refused for a site and the reverse (P-2
 replacement that was a mistake removed by an Admin (P-238), the username of a contact a
 link for an Admin (P-239), and the tables not yet looked at one by one for values that
 should be links (P-240). Its two migrations, `0013` and `0014`, change no record that
-is held. 0.9.9 is to follow it, as the owner confirmed on 2026-11-19, with what the final checks of
+is held. 0.9.9 follows it the same day with one fault mended, and changes nothing that
+is held: coming back to the tab of a list whose columns hold the lists of choices,
+Items, Circuits, Catalog, External systems and Capacity, showed the page of a fault
+where the list had been, and now leaves the list as it was (P-264). 0.9.10 is to follow
+it, as the owner confirmed on 2026-11-19, with what the final checks of
 0.9.8 asked for (P-261): the server's own measures of its last minutes and a ceiling
 past which it answers at once to wait (P-262), and a process of its own for the work
 that no person waits for (P-263). What the walk through hosts costs, what the first

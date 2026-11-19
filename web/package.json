@@ -1,6 +1,6 @@
 {
   "name": "hirdir-web",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "private": true,
   "description": "The web UI of hirdir",
   "type": "module",
