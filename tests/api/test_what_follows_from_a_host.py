@@ -14,7 +14,11 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import Item
+from tests.api import test_cli
 from tests.api.inventory import API, Maker, errors
+
+# The fixture that runs `hirdir` against the test client.
+run = test_cli.run
 
 NOBODY = "01900000-0000-7000-8000-000000000000"
 
@@ -508,3 +512,28 @@ def test_a_replacement_on_a_day_to_come_hands_nothing_over(make: Maker, db: Sess
     assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
     # And where nothing runs on the item that leaves, a day to come asks nothing of it.
     _replace(make, made["web"], new_item_hid=made["other"]["hid"], replaced_on=ahead)
+
+
+# --- the command line (P-247) --------------------------------------------------------
+
+
+def test_the_command_says_first_what_retiring_a_host_takes_with_it(
+    run: Any, make: Maker, db: Session
+) -> None:
+    made = _virtual(make)
+    _hosted(db, made)
+
+    tried = run("items", "retire", "site2-esx-01", "--dry-run")
+
+    assert "would be retired: site2-esx-01" in tried.stdout
+    assert "would be retired with its host: site2-vm-app01" in tried.stdout
+    assert "would be retired with its host: site2-ctr-dns1" in tried.stdout
+    assert "nothing was changed" in tried.stderr
+    assert _status(make, made["esx"], made["app"], made["dns"]) == ["active"] * 3
+
+    done = run("items", "retire", "site2-esx-01")
+
+    assert "retired with its host: site2-vm-web01" in done.stdout
+    assert "1 retired, 3 with their hosts" in done.stderr
+    assert _status(make, made["esx"], made["app"], made["web"], made["dns"]) == ["retired"] * 4
+    assert "What runs on an item is retired with it" in run("items", "retire", "--help").stdout

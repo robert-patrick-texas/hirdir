@@ -1386,35 +1386,52 @@ def _depends(one: dict[str, Any]) -> str:
 def _retire_many(path: str, find: Any, plural: str, metavar: str) -> Any:
     def retire(
         records: Annotated[list[str], typer.Argument(metavar=metavar, help=NAMED)],
+        dry_run: Annotated[
+            bool,
+            typer.Option(
+                "--dry-run",
+                help="Say what would be retired, what would go with its host and what would "
+                "be refused, and do nothing.",
+            ),
+        ] = False,
         format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
         url: Url = None,
         token: Token = None,
     ) -> None:
         target = client.load_target(url, token)
-        done = _sent(target, f"{path}/retire", _hids(target, records, find, "retired"))
+        hids = _hids(target, records, find, "retired")
+        done = _sent(target, f"{path}/retire", hids, dry_run=dry_run)
+        would = "would be " if dry_run else ""
         if format_ == "json":
             typer.echo(json.dumps(done, indent=2))
         else:
-            _said(done["retired"], "retired")
+            _said(done["retired"], f"{would}retired")
             # What ran on those, and went with them (P-247).
-            _said(done["hosted"], "retired with its host")
+            _said(done["hosted"], f"{would}retired with its host")
             _said(done["already"], "retired already")
             for one in done["refused"]:
                 what = f" ({_depends(one)})" if one["depends_on"] else ""
-                typer.echo(f"refused: {one['label']}  {one['hid']}: {one['detail']}{what}")
+                typer.echo(f"{would}refused: {one['label']}  {one['hid']}: {one['detail']}{what}")
             for hid in done["missing"]:
                 typer.echo(f"not found: {hid}")
-        counts = [f"{len(done['retired'])} retired", f"{len(done['already'])} retired already"]
+        counts = [
+            f"{len(done['retired'])} {would}retired",
+            f"{len(done['already'])} retired already",
+        ]
         if done["hosted"]:
             counts.insert(1, f"{len(done['hosted'])} with their hosts")
-        counts += [f"{len(done['refused'])} refused", f"{len(done['missing'])} not found"]
+        counts += [f"{len(done['refused'])} {would}refused", f"{len(done['missing'])} not found"]
+        if dry_run:
+            counts.append("nothing was changed")
         if done["refused"] or done["missing"]:
             raise client.fail(", ".join(counts), client.EXIT_INVALID)
         typer.echo(", ".join(counts), err=True)
 
     retire.__doc__ = (
         f"Retire several {plural} at once, each as its own page retires it. One retired "
-        "already is counted, not refused."
+        "already is counted, not refused. What runs on an item is retired with it, and what "
+        "runs on that; a stack or a cluster that something runs on is refused. --dry-run "
+        "says first what it would do."
     )
     return retire
 
