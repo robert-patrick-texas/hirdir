@@ -28,6 +28,8 @@ Source = Literal[
     "own",
     "catalog",
     "parent_item",
+    # What an item that runs on a host has from what it runs on (P-246).
+    "host",
     "device_group",
     "location",
     "site",

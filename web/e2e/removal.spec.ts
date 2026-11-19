@@ -181,22 +181,34 @@ test("Inventory: one retired already is counted, and one refused is named with w
   await page.getByLabel("Include archived").check();
   await expect(page.getByTestId("grid-total")).toHaveText("5 items");
   // The rules of the server refuse little when an item is retired: the answer is made
-  // to refuse the last row ticked, as one that the rules refused, and the others go.
+  // to refuse the last row ticked, as one that the rules refused, and the others go. 0.9.8:
+  // the question asks with the dry run first, which is answered the same (P-247).
   await page.route("**/api/v1/items/retire", async (route) => {
-    const asked = route.request().postDataJSON() as { hids: string[] };
+    const asked = route.request().postDataJSON() as { hids: string[]; dry_run?: boolean };
     const refused = asked.hids.at(-1) ?? "";
     const response = await route.fetch({
-      postData: JSON.stringify({ hids: asked.hids.slice(0, -1) }),
+      postData: JSON.stringify({ ...asked, hids: asked.hids.slice(0, -1) }),
     });
     const answer = (await response.json()) as { refused: unknown[] };
-    answer.refused.push({ hid: refused, label: host(3), detail: "an example refusal" });
+    answer.refused.push({
+      hid: refused,
+      label: host(3),
+      detail: "an example refusal",
+      depends_on: [],
+    });
     await route.fulfill({ response, json: answer });
   });
   await rowBox(page, "grid-items", host(0)).check();
   await rowBox(page, "grid-items", host(2)).check();
   await rowBox(page, "grid-items", host(3)).check();
   await page.getByRole("button", { name: "Retire (3)" }).click();
-  await page.getByTestId("removal-dialog").getByRole("button", { name: "Retire 3 items" }).click();
+  const dialog = page.getByTestId("removal-dialog");
+  // The question says what the dry run answers: only one of the three is retired.
+  await expect(dialog.getByTestId("retire-will")).toHaveText(
+    "1 of the 3 items ticked will be retired. 1 item retired already. 1 item refused:",
+  );
+  await expect(dialog.getByTestId("retire-refused")).toHaveText(`${host(3)}: an example refusal`);
+  await dialog.getByRole("button", { name: "Retire 1 item" }).click();
   const outcome = page.getByTestId("removal-outcome");
   await expect(outcome).toContainText(
     "Retired 1 item. 1 item retired already. 1 item refused, still ticked:",

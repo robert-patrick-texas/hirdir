@@ -126,7 +126,10 @@ own group is nearer to it than the item it is in. A value of the item's own alwa
 decides: the access points of a domain are each where they hang.
 
 **What the answer says.** Every value in force comes with its source, `own`,
-`parent_item`, `host` where the record the item runs on holds it, or `device_group`,
+`parent_item`, `host` where an item it runs on, or an item that one is installed
+in or runs on, holds it, or `device_group` where a group holds it, the stack or the
+cluster it runs on among them, so that `host` always names an item and
+`device_group` a group,
 then `location`, `site` or `region` for the operator,
 and with the HID of the record that holds it, which for a group may be the one that the
 item's group is nested in. Nothing is copied down: putting an operator on the group
@@ -289,8 +292,10 @@ its host.
   items of its own, and be a member of groups, as any major item.
 - **What it has from its host**: its location, its planned location, its owner and
   its operator, where it has none of its own and its own groups have none, resolved
-  when it is read and never copied down, with the source `host` and the record that
-  holds the value. Moving the server moves what runs on it and writes to none of it.
+  when it is read and never copied down, with the source `host` and the item that
+  holds the value, or `device_group` and the group where a group holds it: one a host
+  is a member of, the stack or the cluster it runs on, or a group that one is nested
+  in. Moving the server moves what runs on it and writes to none of it.
   An override is the item's own value, as everywhere. Nothing of its standing comes
   from its host: its lifecycle state, disposition and intent are its own, and a blank
   state is blank.
@@ -1659,7 +1664,7 @@ and is refused, not rounded, when it has more.
 | `count_states` | Assigned, Test, Prod, Down, Pending-Removal | states that count toward the component count |
 | `weight_states` | Test, Prod, Down | states that carry support weight |
 | `service_states` | Assigned, Test, Prod, Down | states in which an item is in service, for the coverage report |
-| `count_kinds` | hardware, virtual_machine | kinds in the headline component count |
+| `count_kinds` | hardware, virtual_machine, virtual_context, container | kinds in the headline component count. An installation that had set it before 0.9.8 keeps what it set, and adds the two new kinds itself to count them |
 | `weight_per_resource_unit` | 300 | how much support weight one resource unit carries; a placeholder until the team sets its own |
 | `renewal_warning_days` | 90 | how far ahead a contract counts as ending soon: the renewal worklist, the alert after sign-in and the coverage report's list of what runs out soon. From 1 to 36,500 |
 | `renewal_pending_overdue_days` | 60 | how long a renewal may be pending, counted from the end of the term it is for, before it is overdue. From 1 to 36,500 |

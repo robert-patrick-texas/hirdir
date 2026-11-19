@@ -4,10 +4,11 @@
 // shows what the server's dry run answers, and needs a reason. The server holds the
 // roles and every rule: the page only offers the buttons to the roles that may.
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { api } from "../api";
+import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { itemName, plural } from "../lib/format";
 import { useAction, useLoad } from "../lib/hooks";
 import {
   countOf,
@@ -16,14 +17,20 @@ import {
   deletedText,
   dependentKind,
   dependentPath,
+  goesWithItText,
+  itemsInTheWay,
   type RemovalKind,
   type RetiredMany,
   reasonGiven,
   removalPath,
   retiredText,
   retireQuestion,
+  retireWillText,
+  runningOn,
+  runOnItLead,
   stayTicked,
   tooManyText,
+  withThemText,
 } from "../lib/removal";
 import { allows } from "../lib/roles";
 import type { Chosen } from "../lib/transfer";
@@ -42,11 +49,18 @@ export type Outcome =
   | { what: "retire"; answer: RetiredMany }
   | { what: "delete"; answer: DeletedMany };
 
-function retire(kind: RemovalKind, hids: readonly string[]): Promise<RetiredMany> {
-  const body = { hids: [...hids] };
+function retire(
+  kind: RemovalKind,
+  hids: readonly string[],
+  dryRun: boolean,
+  signal?: AbortSignal,
+): Promise<RetiredMany> {
+  // 0.9.8: a dry run says what would be retired, and what with it, first (P-247).
+  const body = { hids: [...hids], dry_run: dryRun };
+  const more = signal ? { signal } : {};
   return kind === "item"
-    ? api.request("post", "/api/v1/items/retire", { body })
-    : api.request("post", "/api/v1/device-groups/retire", { body });
+    ? api.request("post", "/api/v1/items/retire", { body, ...more })
+    : api.request("post", "/api/v1/device-groups/retire", { body, ...more });
 }
 
 function remove(
@@ -104,31 +118,133 @@ interface AskProps {
 
 function RetireAsk({ kind, hids, onDone, onCancel }: AskProps) {
   const action = useAction();
+  // 0.9.8: what the Retire would do, as the server judges it now, and what goes with
+  // those ticked because it runs on one of them (P-247). Nothing is changed by it.
+  const dry = useLoad(`retire dry run ${kind} ${hids.join(" ")}`, (signal) =>
+    retire(kind, hids, true, signal),
+  );
+  const answer = dry.data;
+  const count = answer?.retired.length ?? 0;
   async function go() {
-    const result = await action.run(() => retire(kind, hids));
+    const result = await action.run(() => retire(kind, hids, false));
     if (result.ok) onDone({ what: "retire", answer: result.value });
   }
   return (
     <>
       <h2 id="removal-title">{retireQuestion(kind, hids.length)}</h2>
       <div className="dialog-body">
+        <Problem error={dry.error} />
         <Problem error={action.error} />
-        <p>
-          {kind === "item"
-            ? "Each is retired as its own page retires it: it stays in the inventory, is left out of counts and default views, and its memberships of groups end today."
-            : "Each is retired as its own page retires it: its current memberships end today, and its record and past memberships are kept."}{" "}
-          A retired record is shown again with Include archived on, and brought back on its page.
-        </p>
+        {dry.loading && !answer && (
+          <p role="status" className="muted">
+            Asking the server what would be retired…
+          </p>
+        )}
+        {answer && (
+          <div data-testid="retire-dry-run">
+            <p data-testid="retire-will">{retireWillText(kind, answer, hids.length)}</p>
+            <RetireRefusedList kind={kind} refused={answer.refused} />
+            <HostedWith answer={answer} />
+          </div>
+        )}
+        {count > 0 && (
+          <p>
+            {kind === "item"
+              ? "Each is retired as its own page retires it: it stays in the inventory, is left out of counts and default views, and its memberships of groups end today."
+              : "Each is retired as its own page retires it: its current memberships end today, and its record and past memberships are kept."}{" "}
+            A retired record is shown again with Include archived on, and brought back on its page.
+          </p>
+        )}
       </div>
       <p className="actions">
         <button type="button" onClick={onCancel} disabled={action.busy}>
-          Cancel
+          {answer && count === 0 ? "Close" : "Cancel"}
         </button>
-        <button type="button" className="danger" onClick={go} disabled={action.busy}>
-          Retire {countOf(kind, hids.length)}
-        </button>
+        {!(answer && count === 0) && (
+          <button type="button" className="danger" onClick={go} disabled={action.busy || !answer}>
+            {answer ? `Retire ${countOf(kind, count)}` : "Retire"}
+          </button>
+        )}
       </p>
     </>
+  );
+}
+
+/** Those refused retirement, each with why, and the items that run on it as links (P-247). */
+function RetireRefusedList({
+  kind,
+  refused,
+}: {
+  kind: RemovalKind;
+  refused: RetiredMany["refused"];
+}) {
+  if (refused.length === 0) return null;
+  return (
+    <ul className="removal-refused" data-testid="retire-refused">
+      {refused.map((one) => (
+        <li key={one.hid} data-hid={one.hid}>
+          <RecordLink kind={kind} record={one} gone={false} />: {one.detail}
+          {one.depends_on.length > 0 && (
+            <ul className="removal-depends" data-testid="retire-depends-on">
+              {one.depends_on.map((dependent) => {
+                const to = dependentPath(dependent);
+                return (
+                  <li key={`${dependent.record_type} ${dependent.hid}`}>
+                    {to ? <Link to={to}>{dependent.label}</Link> : dependent.label}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// How many of what goes with a Retire are named in its question, at most.
+const HOSTED_SHOWN = 50;
+
+/**
+ * 0.9.8: what is retired with those named, or would be, because it runs on one of them
+ * (P-247): each as a link, with the item it runs on.
+ */
+function HostedWith({ answer }: { answer: RetiredMany }) {
+  const { hosted } = answer;
+  if (hosted.length === 0) return null;
+  const names = new Map(
+    [...answer.retired, ...answer.already, ...hosted].map((one) => [one.hid, one.label]),
+  );
+  const shown = hosted.slice(0, HOSTED_SHOWN);
+  const list = (
+    <ul className="removal-hosted">
+      {shown.map((one) => (
+        <li key={one.hid} data-hid={one.hid}>
+          <Link to={removalPath("item", one.hid)}>{one.label}</Link>
+          <span className="muted"> · on {names.get(one.host_hid) ?? "an item"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+  const more = hosted.length > shown.length && (
+    <p className="muted">and {plural(hosted.length - shown.length, "more")}.</p>
+  );
+  // Once retired, the sentence of the outcome has said how many: the list is beneath it.
+  if (!answer.dry_run) {
+    return (
+      <details data-testid="retire-hosted" data-count={hosted.length}>
+        <summary>What went with them</summary>
+        {list}
+        {more}
+      </details>
+    );
+  }
+  return (
+    <div data-testid="retire-hosted" data-count={hosted.length}>
+      <p>{withThemText(hosted.length, answer.retired.length, "ahead")}</p>
+      {list}
+      {more}
+    </div>
   );
 }
 
@@ -219,13 +335,42 @@ function RecordLink({
   );
 }
 
-function DependentLink({ dependent }: { dependent: Dependent }) {
+function DependentLink({ dependent, runsOn }: { dependent: Dependent; runsOn: boolean }) {
   const to = dependentPath(dependent);
   return (
     <>
-      {dependentKind(dependent)} {to ? <Link to={to}>{dependent.label}</Link> : dependent.label}
+      {dependentKind(dependent, runsOn)}{" "}
+      {to ? <Link to={to}>{dependent.label}</Link> : dependent.label}
     </>
   );
+}
+
+/**
+ * 0.9.8: of the items in the way of a deletion, those that run on the record, so that
+ * each is said to run on it rather than to be installed in it (P-247). Every item in the
+ * way of a group runs on it; for an item, what each names as its host is read.
+ */
+function useRunningOn(kind: RemovalKind, answer: DeletedMany): (hid: string) => boolean {
+  // A hundred HIDs at most, so that the address of the request stays short; beyond them
+  // an item is said to be installed in it, as before.
+  const asked = kind === "item" ? itemsInTheWay(answer.refused).slice(0, HOSTS_READ) : [];
+  const hosts = useLoad(`hosts in the way ${asked.join(" ")}`, (signal) =>
+    asked.length === 0
+      ? Promise.resolve({ items: [] as { hid: string; host_item_hid?: string | null }[] })
+      : api.request("get", "/api/v1/items", {
+          query: {
+            filter: `hid:in:${asked.join(",")}`,
+            fields: ["host_item_hid"],
+            include_archived: true,
+            include_drafts: true,
+            limit: HOSTS_READ,
+          },
+          signal,
+        }),
+  );
+  if (kind === "device_group") return () => true;
+  const found = runningOn(answer.refused, hosts.data?.items ?? []);
+  return (hid) => found.has(hid);
 }
 
 /** What a deletion did, or would do: what is deleted, and each refused with what is in its way. */
@@ -238,6 +383,7 @@ function DeletedAnswer({
   answer: DeletedMany;
   ticked?: boolean;
 }) {
+  const runsOn = useRunningOn(kind, answer);
   return (
     <>
       <p data-testid="delete-said">{deletedText(kind, answer, ticked)}</p>
@@ -249,7 +395,7 @@ function DeletedAnswer({
               {one.depends_on.map((dependent, at) => (
                 <span key={`${dependent.record_type} ${dependent.hid}`}>
                   {at > 0 && ", "}
-                  <DependentLink dependent={dependent} />
+                  <DependentLink dependent={dependent} runsOn={runsOn(dependent.hid)} />
                 </span>
               ))}
             </li>
@@ -293,15 +439,8 @@ export function RemovalOutcome({
           {outcome.what === "retire" ? (
             <>
               <p>{retiredText(kind, outcome.answer, ticked)}</p>
-              {outcome.answer.refused.length > 0 && (
-                <ul className="removal-refused">
-                  {outcome.answer.refused.map((one) => (
-                    <li key={one.hid} data-hid={one.hid}>
-                      <RecordLink kind={kind} record={one} gone={false} />: {one.detail}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <RetireRefusedList kind={kind} refused={outcome.answer.refused} />
+              <HostedWith answer={outcome.answer} />
             </>
           ) : (
             <DeletedAnswer kind={kind} answer={outcome.answer} ticked={ticked} />
@@ -373,6 +512,114 @@ export function useTickedRemoval<T>(kind: RemovalKind): TickedRemoval<T> {
     </>
   );
   return { actions, ask, shown, turn, keep };
+}
+
+// How many items in the way of a deletion are read for what each runs on, at most.
+const HOSTS_READ = 100;
+
+type HostedRow = Schemas["HostedItem"];
+
+/** What the question of a Retire on a record's page says of what runs on the record. */
+export interface HostedQuestion {
+  /** Give it as `onOpen` of the question: what runs on the record is read afresh. */
+  onOpen: () => void;
+  /** What the question says of it, as links; nothing where nothing runs on the record. */
+  shown: ReactNode;
+  /** What runs on it has been read, where anything does: the question may be answered. */
+  ready: boolean;
+  /** How many were read: those that go with an item, or that stand on a group. */
+  count: number;
+}
+
+/**
+ * 0.9.8: Retire on the page of an item or a group that something runs on (P-247). The
+ * question, once open, reads `GET /items/{hid}/hosted` or `GET /device-groups/{hid}/hosted`
+ * and names what is there, each as a link: of an item, what is retired with it, and what
+ * runs on that; of a stack or a cluster, what runs on it, which is to be given another
+ * host, or retired, first. Nothing is read where the record says nothing runs on it.
+ */
+export function useHostedQuestion(
+  kind: RemovalKind,
+  hid: string,
+  hostedCount: number,
+): HostedQuestion {
+  const [turn, setTurn] = useState(0);
+  const [read, setRead] = useState<{ turn: number; rows: readonly HostedRow[] } | null>(null);
+  const asks = hostedCount > 0;
+  const current = read !== null && read.turn === turn ? read.rows : null;
+  return {
+    onOpen: () => setTurn((count) => count + 1),
+    ready: !asks || current !== null,
+    count: current ? current.length : 0,
+    shown:
+      asks && turn > 0 ? (
+        <HostedOf key={turn} kind={kind} hid={hid} onRead={(rows) => setRead({ turn, rows })} />
+      ) : null,
+  };
+}
+
+function HostedOf({
+  kind,
+  hid,
+  onRead,
+}: {
+  kind: RemovalKind;
+  hid: string;
+  onRead: (rows: readonly HostedRow[]) => void;
+}) {
+  const found = useLoad(`hosted ${kind} ${hid}`, (signal) =>
+    kind === "item"
+      ? api.request("get", "/api/v1/items/{hid}/hosted", { path: { hid }, signal })
+      : api.request("get", "/api/v1/device-groups/{hid}/hosted", { path: { hid }, signal }),
+  );
+  // Of a group, what stands in the way is what names it; what runs on those goes with them.
+  const rows = (found.data?.items ?? []).filter((row) => kind === "item" || row.depth === 1);
+  const heard = useEffectEvent(onRead);
+  const data = found.data;
+  useEffect(() => {
+    if (data) heard(data.items.filter((row) => kind === "item" || row.depth === 1));
+  }, [data, kind]);
+  if (!data) {
+    return (
+      <>
+        <Problem error={found.error} />
+        {!found.error && (
+          <p role="status" className="muted">
+            Reading what runs on it…
+          </p>
+        )}
+      </>
+    );
+  }
+  if (rows.length === 0) return null;
+  const names = new Map(rows.map((row) => [row.item.hid, itemName(row.item)]));
+  const deeper = rows.some((row) => row.depth > 1);
+  return (
+    <div data-testid="hosted-question" data-count={rows.length}>
+      {kind === "item" ? (
+        <p>{goesWithItText(rows.length, deeper)}</p>
+      ) : (
+        <p>
+          {rows.length === 1 ? "1 item runs" : `${rows.length.toLocaleString("en-US")} items run`}{" "}
+          on it, so it is not retired: give each another host, or retire it, first.{" "}
+          {runOnItLead(rows.length)}
+        </p>
+      )}
+      <ul className="removal-hosted">
+        {rows.slice(0, HOSTED_SHOWN).map((row) => (
+          <li key={row.item.hid} data-hid={row.item.hid} data-depth={row.depth}>
+            <Link to={removalPath("item", row.item.hid)}>{itemName(row.item)}</Link>
+            {row.depth > 1 && (
+              <span className="muted"> · on {names.get(row.host_hid) ?? "an item"}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {rows.length > HOSTED_SHOWN && (
+        <p className="muted">and {plural(rows.length - HOSTED_SHOWN, "more")}.</p>
+      )}
+    </div>
+  );
 }
 
 /** The state of the history entry of a list reached by a deletion on a record's page. */

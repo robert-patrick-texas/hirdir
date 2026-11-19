@@ -10,7 +10,8 @@ from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import Page, Problem
-from hirdir.domain import groups, removal, resolution
+from hirdir.db.models import Item
+from hirdir.domain import groups, hosting, removal, resolution
 from hirdir.io import fields, tables
 
 router = APIRouter(prefix="/device-groups", tags=["Groups"], route_class=IdempotentRoute)
@@ -114,6 +115,18 @@ def retire_group(
     A stack or a cluster that items run on is refused, a `409` that names them in
     `depends_on` (P-247)."""
     return shapes.group_out(db, groups.retire_group(db, context, hid, body.row_version))
+
+
+@router.get("/{hid}/hosted")
+def group_hosted(
+    hid: str,
+    _: Viewer,
+    db: Db,
+    include_retired: Annotated[bool, Query(description="List the retired ones too.")] = False,
+) -> r.HostedList:
+    """List what runs on a stack or a cluster, and beneath each what runs on that (P-246)."""
+    groups.get_group(db, hid)
+    return shapes.hosted_out(db, hosting.hosted(db, Item.host_group_hid, hid, include_retired))
 
 
 @router.get("/{hid}/resolution")

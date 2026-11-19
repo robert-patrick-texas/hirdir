@@ -8,6 +8,7 @@ import {
   isEntity,
   modeLabel,
   previewQuery,
+  readsFromSystem,
 } from "./imports";
 
 describe("entities", () => {
@@ -258,6 +259,27 @@ describe("previewQuery", () => {
     expect(previewQuery("tags", "", " ")).toEqual({ entity: "tags" });
   });
 
+  it("puts the system a file of items was read from beside it, and complete only with it (P-248)", () => {
+    const from = { system: "0193a1f4-0301", complete: true };
+    expect(previewQuery("items", "", "vcenter.csv", from)).toEqual({
+      entity: "items",
+      file_name: "vcenter.csv",
+      system: "0193a1f4-0301",
+      complete: true,
+    });
+    expect(previewQuery("items", "", "vcenter.csv", { system: "", complete: true })).toEqual({
+      entity: "items",
+      file_name: "vcenter.csv",
+    });
+    // A file of other records is read from no system.
+    expect(previewQuery("sites", "", "sites.csv", from)).toEqual({
+      entity: "sites",
+      file_name: "sites.csv",
+    });
+    expect(readsFromSystem("")).toBe(true);
+    expect(readsFromSystem("vendors")).toBe(false);
+  });
+
   it("keeps a name within what the server takes, and its ending with it", () => {
     const name = `${"a".repeat(300)}.csv`;
     const sent = previewQuery("items", "", name).file_name ?? "";
@@ -273,6 +295,12 @@ describe("fileIdentity", () => {
     expect(fileIdentity(file, "items", "create")).not.toBe(fileIdentity(file, "items", ""));
     expect(fileIdentity({ ...file, lastModified: 1794000000001 }, "items", "")).not.toBe(
       fileIdentity(file, "items", ""),
+    );
+    // 0.9.8: read from another system, or as everything it reports, it is another preview.
+    const from = { system: "0193a1f4-0301", complete: false };
+    expect(fileIdentity(file, "items", "", from)).not.toBe(fileIdentity(file, "items", ""));
+    expect(fileIdentity(file, "items", "", { ...from, complete: true })).not.toBe(
+      fileIdentity(file, "items", "", from),
     );
   });
 });

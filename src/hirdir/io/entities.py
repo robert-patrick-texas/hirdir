@@ -70,6 +70,7 @@ from hirdir.domain import (
     geography,
     groups,
     health,
+    hosting,
     inheritance,
     items,
     lifecycle,
@@ -1705,6 +1706,23 @@ def _weight_in_force(
     return value == in_force.value and (in_force.defaulted or in_force.raised)
 
 
+# What an item runs on, as a file names it (P-246): an item as `parent` names one, a
+# stack or a cluster by its name, and the item it was seen on with the moment.
+HOSTING = (
+    Column("host"),
+    Column("host_group"),
+    Column("observed_host"),
+    Column("host_observed_at", "timestamp"),
+)
+HOSTING_ALIASES = {
+    "host_item_hid": "host",
+    "host.name": "host",
+    "host_group_hid": "host_group",
+    "observed_host_hid": "observed_host",
+    "observed_host.name": "observed_host",
+}
+
+
 class Items(Entity):
     """Items."""
 
@@ -1734,6 +1752,8 @@ class Items(Entity):
         Column("mac_address", limit=40),
         Column("parent"),
         Column("position", limit=100),
+        # What it runs on, and what it was seen on (P-246).
+        *HOSTING,
         Column("description", limit=LONG),
         Column("comments", limit=LONG),
         Column("quantity", "integer"),
@@ -1774,6 +1794,9 @@ class Items(Entity):
         Column("contract_count", "integer", settable=False),
         Column("out_of_service_contracts", "list", settable=False),
         Column("purchase_line_mismatch", "boolean", settable=False),
+        # What it is to be looked at for, and how many run on it (P-249, P-246).
+        Column("review", "list", settable=False),
+        Column("hosted_count", "integer", settable=False),
         *_sources(
             (_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES, NOT_RENEWED)
         ),
@@ -1789,6 +1812,7 @@ class Items(Entity):
         "owner.label": "owner",
         "parent_item_hid": "parent",
         "parent.name": "parent",
+        **HOSTING_ALIASES,
         **{f"effective.{name}": name for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": "owner",
         "location_hid": "location",
@@ -1806,7 +1830,7 @@ class Items(Entity):
         **{f"effective.{name}": name for name in inheritance.STANDING},
         **MGMT_SPELLINGS,
     }
-    by_the_clock = frozenset({"observed_at"})
+    by_the_clock = frozenset({"observed_at", "host_observed_at"})
     restated = frozenset({"mgmt_address"})
     renamed: ClassVar[Mapping[str, str]] = {
         "catalog_entry_hid": "pid",
@@ -1815,6 +1839,9 @@ class Items(Entity):
         "location_hid": "location",
         "planned_location_hid": "planned_location",
         "parent_item_hid": "parent",
+        "host_item_hid": "host",
+        "host_group_hid": "host_group",
+        "observed_host_hid": "observed_host",
         "purchase_line_hid": "purchase_line",
         "address": "mgmt_address",
         "network_hid": "mgmt_network",
@@ -1842,6 +1869,7 @@ class Items(Entity):
         "condition",
         "observed_status",
         "observed_at",
+        "host_observed_at",
         *items.DAYS,
         "tags",
     )
@@ -2097,12 +2125,14 @@ class Items(Entity):
         db = run.db
         plain = list(range(1, len(rows) + 1))
         uses_parents = any("parent" in row for row in rows)
+        # A row whose host a row of the same file makes is worked after that row (P-246).
+        later = _hosts_first(db, rows)
         if (
             not uses_parents
             and db.scalar(select(Item.hid).where(Item.parent_item_hid.is_not(None)).limit(1))
             is None
         ):
-            return plain
+            return sorted(plain, key=lambda number: (later[number - 1], number))
         named: dict[int, Item | None] = {}
         for number, row in zip(plain, rows, strict=True):
             try:
@@ -2126,7 +2156,7 @@ class Items(Entity):
             else:
                 depths[number] = len(lines[item.hid]) if item is not None else 0
         run.let_go()
-        return sorted(plain, key=lambda number: (depths[number], number))
+        return sorted(plain, key=lambda number: (later[number - 1], depths[number], number))
 
     @staticmethod
     def _above(run: Run, record: Any | None, given: Mapping[str, Any]) -> list[Item]:
@@ -2139,7 +2169,7 @@ class Items(Entity):
     def _from_above(
         run: Run,
         record: Any | None,
-        above: list[Item],
+        above: list,
         field: str,
         skip: frozenset[str] | set[str] = frozenset(),
     ) -> str | None:
@@ -2147,8 +2177,15 @@ class Items(Entity):
         its own groups, then the item above it and that item's groups, and so on to the
         top. A value in `skip`, a retired operator, is passed over."""
         line = above if record is None else [record, *above]
-        grouped = descent.from_groups(run.db, [one.hid for one in line], field, skip)
+        grouped = descent.from_groups(
+            run.db, [one.hid for one in line if isinstance(one, Item)], field, skip
+        )
         for one in line:
+            if isinstance(one, DeviceGroup):
+                # A stack or a cluster that the item runs on answers as a group does.
+                live = one.record_status != "retired"
+                held = descent.of_groups(run.db, [one], field, skip)[one.hid] if live else None
+                return held.value if held is not None else None
             if one is not record:
                 value = getattr(one, field)
                 if value is not None and value not in skip:
@@ -2159,8 +2196,30 @@ class Items(Entity):
         return None
 
     @staticmethod
+    def _walk(run: Run, record: Any | None, given: Mapping[str, Any], above: list[Item]) -> list:
+        """Return the records an item's walk goes up through, the nearest first: what it
+        will be installed in, and then what it will run on, and on from that (P-246)."""
+        top = above[-1] if above else None
+        if top is None:
+
+            def will(name: str) -> Any:
+                return given.get(name, getattr(record, name) if record is not None else None)
+
+            host_item, host_group = will("host_item_hid"), will("host_group_hid")
+        else:
+            host_item, host_group = top.host_item_hid, top.host_group_hid
+        if host_group:
+            group = run.db.get(DeviceGroup, host_group)
+            return [*above, group] if group is not None else above
+        host = run.db.get(Item, host_item) if host_item else None
+        if host is None:
+            return above
+        beyond = items.walks_above(run.db, [host])[host.hid]
+        return [*above, host, *(step.record for step in beyond)]
+
+    @staticmethod
     def _operator_above(
-        run: Run, record: Any | None, given: Mapping[str, Any], above: list[Item]
+        run: Run, record: Any | None, given: Mapping[str, Any], above: list
     ) -> str | None:
         """Return the operator an item has with none of its own: from its own groups, the
         item above it and that item's groups, up the line, or else from the place it is,
@@ -2222,11 +2281,26 @@ class Items(Entity):
             given["purchase_line_hid"] = (
                 purchases.the_line(db, named, "purchase_line").hid if named is not None else None
             )
+        if "host" in values:
+            host = values["host"]
+            given["host_item_hid"] = run.item(host, "host").hid if host is not None else None
+        if "host_group" in values:
+            named = values["host_group"]
+            given["host_group_hid"] = (
+                run.group(named, "host_group").hid if named is not None else None
+            )
+        if "observed_host" in values:
+            seen = values["observed_host"]
+            given["observed_host_hid"] = (
+                run.item(seen, "observed_host").hid if seen is not None else None
+            )
         above = self._above(run, record, given)
+        # What it has from above, through what it runs on too (P-246).
+        walk = self._walk(run, record, given, above)
         if "owner" in values:
             named = values["owner"]
             owner_hid = run.owner(named).hid if named is not None else None
-            inherited = self._from_above(run, record, above, "owner_hid")
+            inherited = self._from_above(run, record, walk, "owner_hid")
             own = record.owner_hid if record is not None else None
             if owner_hid is None or own is not None or owner_hid != inherited:
                 # Otherwise the row holds the owner the item has from the item above
@@ -2237,7 +2311,7 @@ class Items(Entity):
             location_hid = (
                 run.place(named, "location", geography.LOCATION).hid if named is not None else None
             )
-            inherited = self._from_above(run, record, above, "location_hid")
+            inherited = self._from_above(run, record, walk, "location_hid")
             own = record.location_hid if record is not None else None
             if location_hid is None or own is not None or location_hid != inherited:
                 # Otherwise the row says where the item is anyway, with the item above
@@ -2252,7 +2326,7 @@ class Items(Entity):
             if (
                 operator_hid is None
                 or own is not None
-                or operator_hid != self._operator_above(run, record, given, above)
+                or operator_hid != self._operator_above(run, record, given, walk)
             ):
                 # Otherwise the row names the operator the item has anyway, from above.
                 given["operator_hid"] = operator_hid
@@ -2263,7 +2337,7 @@ class Items(Entity):
                 if named is not None
                 else None
             )
-            inherited = self._from_above(run, record, above, "planned_location_hid")
+            inherited = self._from_above(run, record, walk, "planned_location_hid")
             own = record.planned_location_hid if record is not None else None
             if planned_hid is None or own is not None or planned_hid != inherited:
                 given["planned_location_hid"] = planned_hid
@@ -2350,6 +2424,7 @@ class Items(Entity):
         labels = tags.labels_of(db, self.record_type, hids)
         primaries = _primaries(db, "item_hid", hids)
         parents = items.reference_texts(db, [line[0] for line in lines.values() if line])
+        on_hosts = _hosting_cells(db, found)
         atlas = geography.Atlas(db)
         atlas.read_locations(
             {item.location_hid for item in found}
@@ -2410,6 +2485,7 @@ class Items(Entity):
                 "pid": entry.pid if entry else None,
                 **{name: getattr(item, name) for name in self._direct if name != "tags"},
                 "parent": parents[line[0].hid] if line else None,
+                **on_hosts[item.hid],
                 "state_reason": item.state_reason,
                 **primaries.get(item.hid, NO_MGMT),
                 "record_status": item.record_status,
@@ -2461,6 +2537,78 @@ class Items(Entity):
                 row[f"{column}_source"] = effective.source
             rows.append(row)
         return rows
+
+
+def _hosting_cells(db: Session, found: list[Any]) -> dict[str, dict[str, Any]]:
+    """Return the cells of what each item runs on, was seen on, has running on it and is
+    to be looked at for."""
+    named = _by_hid(
+        db,
+        Item,
+        {item.host_item_hid for item in found} | {item.observed_host_hid for item in found},
+    )
+    texts = items.reference_texts(db, list(named.values()))
+    its_groups = _by_hid(db, DeviceGroup, {item.host_group_hid for item in found})
+    hosts = hosting.hosts_of(db, found)
+    kinds = hosting.kinds_of(db, {item.catalog_entry_hid for item in found})
+    marks = hosting.reviews(db, found, kinds, hosts)
+    counts = hosting.hosted_counts(db, Item.host_item_hid, [item.hid for item in found])
+    cells: dict[str, dict[str, Any]] = {}
+    for item in found:
+        group = its_groups.get(item.host_group_hid or "")
+        cells[item.hid] = {
+            "host": texts.get(item.host_item_hid or ""),
+            "host_group": items.name_or_hid(group.name, group.hid) if group is not None else None,
+            "observed_host": texts.get(item.observed_host_hid or ""),
+            "host_observed_at": item.host_observed_at,
+            "review": [mark.reason for mark in marks[item.hid]],
+            "hosted_count": counts[item.hid],
+        }
+    return cells
+
+
+def _hosts_first(db: Session, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Return, for each row of a file of items, how many rows of the same file it waits
+    for: one that names a host that no item is yet, which a row of the file makes, comes
+    after that row, and one whose host waits in its turn after that one (P-246)."""
+    waits = [0] * len(rows)
+    named = [row.get("host") for row in rows]
+    if not any(named):
+        return waits
+
+    def known_as(row: Mapping[str, Any]) -> set[str]:
+        return {
+            str(row[name]).strip().lower()
+            for name in ("hid", "name", "hostname", "serial_number", "asset_tag")
+            if row.get(name)
+        }
+
+    known: dict[str, bool] = {}
+
+    def is_an_item(text: str) -> bool:
+        if text not in known:
+            known[text] = bool(items.known_as(db, text, limit=1))
+        return known[text]
+
+    makers: dict[str, int] = {}
+    for at, row in enumerate(rows):
+        for text in known_as(row):
+            makers.setdefault(text, at)
+    for at, host in enumerate(named):
+        depth, hop = 0, host
+        seen = {at}
+        while hop and len(seen) <= hosting.MAX_LINE:
+            text = str(hop).strip().lower()
+            if is_an_item(str(hop)):
+                break
+            maker = makers.get(text)
+            if maker is None or maker in seen:
+                break
+            seen.add(maker)
+            depth += 1
+            hop = named[maker]
+        waits[at] = depth
+    return waits
 
 
 def _line_names(db: Session, hids: set[str | None]) -> dict[str, str]:

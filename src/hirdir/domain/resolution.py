@@ -2,8 +2,9 @@
 
 The value in force of an item's location, planned location, operator and owner is the
 first value of a walk up from the item, one record at a time: its own, then its own
-groups, then the item it is in and that item's groups, and, for the operator, then the
-place chain of where it is (P-175). The values of its model are its own, then its catalog
+groups, then the item it is in and that item's groups, then what it runs on and that
+record's groups (P-246), and, for the operator, then the place chain of where it is
+(P-175). The values of its model are its own, then its catalog
 entry's, and for the support weight of a major item then the setting. This module walks
 the same way and says what each step holds: which decides, which is passed over, which
 holds nothing. It uses the rules that the value in force is worked out by, so the two
@@ -22,7 +23,7 @@ from hirdir.domain import items as item_rules
 
 Outcome = Literal["decides", "passed_over", "nothing", "retired", "raises"]
 StepLevel = Literal[
-    "own", "device_group", "parent_item", "catalog", "setting", "location", "site", "region"
+    "own", "device_group", "parent_item", "host", "catalog", "setting", "location", "site", "region"
 ]
 # The four values an item has from its groups and from the item it is in.
 GROUP_FIELDS = ("location_hid", "planned_location_hid", "operator_hid", "owner_hid")
@@ -180,16 +181,72 @@ def _place_steps(
     return steps
 
 
+def _host_group_step(
+    db: Session, name: str, group: DeviceGroup, gone: set[str], names: _Names
+) -> Step:
+    """Return the step of a stack or a cluster that something runs on: it answers as a
+    group does, with its own value or that of the group it is nested in, and is a group's
+    step (P-246)."""
+    if group.record_status == descent.RETIRED:
+        # A retired group passes nothing down.
+        own = getattr(group, name)
+        return Step(
+            level="device_group",
+            hid=group.hid,
+            name=group.name,
+            value=own,
+            label=names.of(name, own),
+            type=group.type,
+            retired=True,
+        )
+    found = descent.of_groups(db, [group], name, gone)[group.hid]
+    own = getattr(group, name)
+    if found.value is None and own is not None and own in gone:
+        return Step(
+            level="device_group",
+            hid=group.hid,
+            name=group.name,
+            value=own,
+            label=names.of(name, own),
+            type=group.type,
+            retired=True,
+        )
+    via = None
+    if found.value is not None and found.source_hid != group.hid:
+        via = db.get(DeviceGroup, found.source_hid)
+    return Step(
+        level="device_group",
+        hid=group.hid,
+        name=group.name,
+        value=found.value,
+        label=names.of(name, found.value),
+        type=group.type,
+        via_hid=via.hid if via is not None else None,
+        via_name=via.name if via is not None else None,
+    )
+
+
 def _line_walk(
-    db: Session, item: Item, line: Sequence[Item], name: str, gone: set[str], names: _Names
+    db: Session,
+    item: Item,
+    line: Sequence[item_rules.Above],
+    name: str,
+    gone: set[str],
+    names: _Names,
 ) -> list[Step]:
-    """Return the steps of an item's walk up its line for one of the four values."""
+    """Return the steps of an item's walk up its line for one of the four values: the
+    item, what it is installed in, and what it runs on, each followed by its groups."""
     steps: list[Step] = []
-    for one in line:
+    skip = gone if name == "operator_hid" else set()
+    for above in (item_rules.Above(item, "parent_item"), *line):
+        one = above.record
+        if isinstance(one, DeviceGroup):
+            steps.append(_host_group_step(db, name, one, skip, names))
+            break
         value = getattr(one, name)
         steps.append(
             Step(
-                level="own" if one is item else "parent_item",
+                level="own" if one is item else above.source,
                 hid=one.hid,
                 name=item_rules.shown_name(one),
                 value=value,
@@ -197,13 +254,13 @@ def _line_walk(
                 retired=name == "operator_hid" and value in gone,
             )
         )
-        steps += _group_steps(db, name, one, gone if name == "operator_hid" else set(), names)
+        steps += _group_steps(db, name, one, skip, names)
     return steps
 
 
 def of_item(db: Session, item: Item) -> list[Walk]:
     """Return the walk of every value an item may have from elsewhere."""
-    line = [item, *item_rules.lines_above(db, [item])[item.hid]]
+    line = item_rules.walks_above(db, [item])[item.hid]
     gone = operators.released(db)
     names = _Names(db)
     walks = []

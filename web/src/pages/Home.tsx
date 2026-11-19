@@ -7,6 +7,7 @@ import { HeadlineTotals } from "../components/Totals";
 import { type ItemsView, itemsViewPath } from "../lib/filter";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { TO_REVIEW, toReviewPath, toReviewText } from "../lib/hostFollows";
 import { useSettings } from "../lib/lists";
 import { assignmentPath, OPEN, UNASSIGNED, unassignedComponents } from "../lib/operators";
 import { useSite } from "../lib/product";
@@ -73,6 +74,28 @@ function Assigned() {
 }
 
 /**
+ * 0.9.8: how many items are to be looked at (P-249), as the item list counts them with the
+ * filter that lists them, which the line is a link to. Nothing is said where there is none.
+ */
+function ToLookAt() {
+  const found = useLoad("home-review", (signal) =>
+    api.request("get", "/api/v1/items", {
+      query: { filter: TO_REVIEW, limit: 1, fields: ["hid"] },
+      signal,
+    }),
+  );
+  const count = found.data?.total ?? 0;
+  if (count === 0) return <Problem error={found.error} />;
+  const { link, after } = toReviewText(count);
+  return (
+    <p data-testid="home-review" data-count={count}>
+      <Link to={toReviewPath()}>{link}</Link>
+      {after}
+    </p>
+  );
+}
+
+/**
  * The headline of the summary, for the inventory as a list shows it by default: the
  * components beside the managed nodes, the support weight, and the components by health.
  * The server counts them. No money is shown here: that is in the management report.
@@ -102,6 +125,7 @@ function Headline() {
         />
       )}
       {!summary.loading && <Assigned />}
+      {!summary.loading && <ToLookAt />}
       <p>
         <Link to="/reports/scoreboard" data-testid="scoreboard-link">
           The scoreboard

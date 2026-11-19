@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 import { Link } from "react-router";
-import type { ApiError } from "../api/client";
+import type { ApiError, ExistingRecord } from "../api/client";
 import { hearChanges } from "../lib/hooks";
 import { existingLead, existingPath, fieldErrors, fieldLine, sentence } from "../lib/problems";
+import { runOnItLead } from "../lib/removal";
 
 /**
  * What else than another person may have changed the record a page shows, said where a
@@ -71,6 +72,8 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
               )}
             </p>
           )}
+          {/* 0.9.8: what runs on a stack or a cluster refused retirement, as links (P-247). */}
+          {visible.dependsOn.length > 0 && <DependsOn records={visible.dependsOn} />}
           {others.length > 0 && (
             <ul>
               {others.map(([field, message]) => (
@@ -87,6 +90,29 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The records a refusal names as standing on the record refused: today, the items that
+ * run on a stack or a cluster, which the server's words say to give another host, or to
+ * retire, first. Each is a link to its page.
+ */
+function DependsOn({ records }: { records: readonly ExistingRecord[] }) {
+  return (
+    <div data-testid="problem-depends-on">
+      <p>{runOnItLead(records.length)}</p>
+      <ul className="removal-refused">
+        {records.map((record) => {
+          const to = existingPath(record);
+          return (
+            <li key={`${record.record_type} ${record.hid}`}>
+              {to ? <Link to={to}>{record.label}</Link> : <strong>{record.label}</strong>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

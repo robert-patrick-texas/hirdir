@@ -20,7 +20,7 @@ import { ItemPurchaseLine } from "../components/PurchaseLine";
 import { EditForm } from "../components/RecordForm";
 import { References } from "../components/References";
 import { Registrations } from "../components/Registrations";
-import { DeleteRecord } from "../components/Removal";
+import { DeleteRecord, useHostedQuestion } from "../components/Removal";
 import { SortTh } from "../components/SortTh";
 import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
@@ -68,6 +68,7 @@ import type { FieldSpec } from "../lib/patch";
 import { entryLabel } from "../lib/pick";
 import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
+import { itemRetiredText } from "../lib/removal";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
 import type { SaidPart } from "../lib/stacks";
@@ -242,6 +243,8 @@ export function ItemDetail() {
             whose={itemName(record)}
             note="The registrations of the item itself. A stack or a cluster that a system knows as one device is registered as the group: what the group this item is a member of is registered with is listed beneath, to be read."
             throughGroups={record.group_registrations}
+            review={record.review}
+            retireAt="retire"
             mayEdit={mayEdit && record.record_status !== "retired"}
             onChanged={changed}
           />
@@ -1495,6 +1498,8 @@ interface RecordStatusProps {
 function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
   const action = useAction();
   const name = itemName(item);
+  // 0.9.8: what runs on it is named before the question is answered, and goes with it (P-247).
+  const hosted = useHostedQuestion("item", item.hid, item.hosted_count);
 
   async function retire() {
     const result = await action.run(() =>
@@ -1503,7 +1508,7 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
         body: { row_version: item.row_version },
       }),
     );
-    if (result.ok) onChanged("The item was retired.");
+    if (result.ok) onChanged(itemRetiredText(hosted.count));
   }
 
   /** Bring the item back: as it was, or with another location, or none, in the same change. */
@@ -1558,7 +1563,10 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
               confirmLabel="Retire item"
               onConfirm={retire}
               disabled={action.busy}
+              onOpen={hosted.onOpen}
+              confirmDisabled={!hosted.ready}
             >
+              {hosted.shown}
               <p>The item stays in the inventory and can be brought back.</p>
               {item.groups.length > 0 && (
                 <p>

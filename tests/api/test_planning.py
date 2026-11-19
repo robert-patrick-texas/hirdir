@@ -200,7 +200,14 @@ def test_the_portfolio_is_everything_from_one_vendor(make: Maker) -> None:
         "uncovered": 2,
     }
     kinds = {row["kind"]: row for row in portfolio["kinds"]}
-    assert list(kinds) == ["hardware", "virtual_machine", "software", "service"]
+    assert list(kinds) == [
+        "hardware",
+        "virtual_machine",
+        "virtual_context",
+        "container",
+        "software",
+        "service",
+    ]
     assert (kinds["hardware"]["items"], kinds["software"]["annual_support_cost"]) == (2, "900.00")
     assert kinds["service"] == {
         "kind": "service",

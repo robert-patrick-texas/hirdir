@@ -5,9 +5,9 @@
 // is given the status Removed and stays on record; registered again, it is the same
 // record.
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 import { Link } from "react-router";
-import { api } from "../api";
+import { api, type Schemas } from "../api";
 import { useAction, useLoad } from "../lib/hooks";
 import { EVERY, useChoices, useSystems } from "../lib/lists";
 import { choiceLabel, optionLabel } from "../lib/options";
@@ -17,6 +17,8 @@ import {
   type GroupRegistration,
   type Holder,
   holderFilter,
+  NOT_REPORTED,
+  notReportedBy,
   REGISTRATION_STATUSES,
   REMOVED,
   type Registration,
@@ -43,6 +45,13 @@ interface RegistrationsProps {
    * with. It is shown beneath the item's own registrations, to be read only.
    */
   throughGroups?: readonly GroupRegistration[];
+  /**
+   * 0.9.8: of an item, the reasons it is to be looked at (P-249). A registration whose
+   * system reports it no more, `not_reported`, is marked so, with the two ways on.
+   */
+  review?: readonly Schemas["ReviewReason"][];
+  /** The section of its page where the item is retired, the second way on, by its id. */
+  retireAt?: string;
   mayEdit: boolean;
   /** Something changed: the record is read again, for what it lists itself. */
   onChanged: (text: string) => void;
@@ -52,7 +61,17 @@ const STATUSES_TO_SET = REGISTRATION_STATUSES.filter((status) => status.value !=
 
 /** The registrations of one item or one device group, and the forms that change them. */
 export function Registrations(props: RegistrationsProps) {
-  const { holder, whose, note, throughGroups = [], mayEdit, onChanged } = props;
+  const {
+    holder,
+    whose,
+    note,
+    throughGroups = [],
+    review = [],
+    retireAt,
+    mayEdit,
+    onChanged,
+  } = props;
+  const unreported = notReportedBy(review);
   const filter = holderFilter(holder);
   const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -142,85 +161,138 @@ export function Registrations(props: RegistrationsProps) {
             <tbody>
               {sorting.rows.map((row) => {
                 const removed = row.status === REMOVED;
+                const looked = row.status === NOT_REPORTED && unreported.has(row.system_hid);
                 return (
-                  <tr
-                    key={row.hid}
-                    data-system={row.system.name}
-                    data-status={row.status}
-                    className={removed ? "muted" : undefined}
-                  >
-                    <th scope="row">
-                      <Link to={systemPath(row.system_hid)}>{row.system.name}</Link>
-                    </th>
-                    <td>{kindOf(row.system.kind)}</td>
-                    <td className="mono">{row.external_id || <span className="muted">—</span>}</td>
-                    <td>{optionLabel(REGISTRATION_STATUSES, row.status)}</td>
-                    <td className="nowrap">
-                      <Time at={row.confirmed_at} />
-                    </td>
-                    {mayEdit && (
-                      <td className="row-actions">
-                        {!removed && (
-                          <button
-                            type="button"
-                            disabled={action.busy}
-                            aria-label={`${row.system.name} confirmed it now`}
-                            onClick={() =>
-                              patch(
-                                row,
-                                { confirmed_at: new Date().toISOString() },
-                                `${row.system.name} confirmed ${whose}, now.`,
-                              )
-                            }
-                          >
-                            Confirmed now
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={action.busy}
-                          aria-label={`Change the registration with ${row.system.name}`}
-                          onClick={() => {
-                            setAdding(false);
-                            setEditing(row.hid);
-                          }}
-                        >
-                          Change
-                        </button>
-                        {removed ? (
-                          <button
-                            type="button"
-                            disabled={action.busy}
-                            aria-label={`Register with ${row.system.name} again`}
-                            onClick={() =>
-                              patch(
-                                row,
-                                { status: "registered" },
-                                `${whose} is registered with ${row.system.name} again: it is the same registration.`,
-                              )
-                            }
-                          >
-                            Register again
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={action.busy}
-                            aria-label={`Remove the registration with ${row.system.name}`}
-                            onClick={() =>
-                              patch(
-                                row,
-                                { status: REMOVED },
-                                `The registration of ${whose} with ${row.system.name} has the status Removed. It stays on record.`,
-                              )
-                            }
-                          >
-                            Remove
-                          </button>
+                  <Fragment key={row.hid}>
+                    <tr
+                      data-system={row.system.name}
+                      data-status={row.status}
+                      data-review={looked ? "not_reported" : undefined}
+                      className={removed ? "muted" : looked ? "to-look-at" : undefined}
+                    >
+                      <th scope="row">
+                        <Link to={systemPath(row.system_hid)}>{row.system.name}</Link>
+                      </th>
+                      <td>{kindOf(row.system.kind)}</td>
+                      <td className="mono">
+                        {row.external_id || <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        {optionLabel(REGISTRATION_STATUSES, row.status)}
+                        {looked && (
+                          <>
+                            {" "}
+                            <span className="badge badge-plain registration-review">
+                              To be looked at
+                            </span>
+                          </>
                         )}
                       </td>
+                      <td className="nowrap">
+                        <Time at={row.confirmed_at} />
+                      </td>
+                      {mayEdit && (
+                        <td className="row-actions">
+                          {!removed && (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              aria-label={`${row.system.name} confirmed it now`}
+                              onClick={() =>
+                                patch(
+                                  row,
+                                  { confirmed_at: new Date().toISOString() },
+                                  `${row.system.name} confirmed ${whose}, now.`,
+                                )
+                              }
+                            >
+                              Confirmed now
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={action.busy}
+                            aria-label={`Change the registration with ${row.system.name}`}
+                            onClick={() => {
+                              setAdding(false);
+                              setEditing(row.hid);
+                            }}
+                          >
+                            Change
+                          </button>
+                          {removed ? (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              aria-label={`Register with ${row.system.name} again`}
+                              onClick={() =>
+                                patch(
+                                  row,
+                                  { status: "registered" },
+                                  `${whose} is registered with ${row.system.name} again: it is the same registration.`,
+                                )
+                              }
+                            >
+                              Register again
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              aria-label={`Remove the registration with ${row.system.name}`}
+                              onClick={() =>
+                                patch(
+                                  row,
+                                  { status: REMOVED },
+                                  `The registration of ${whose} with ${row.system.name} has the status Removed. It stays on record.`,
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                    {looked && (
+                      <tr className="registration-review-line" data-testid="not-reported-line">
+                        <td colSpan={mayEdit ? 6 : 5}>
+                          {row.system.name} reports {whose} no more: find out what became of it.{" "}
+                          {mayEdit ? (
+                            <>
+                              Where it is still there, set the registration back to Registered;
+                              where it is gone,{" "}
+                              {retireAt ? (
+                                <a
+                                  href={`${window.location.pathname}${window.location.search}#${retireAt}`}
+                                >
+                                  retire the item
+                                </a>
+                              ) : (
+                                "retire the item"
+                              )}
+                              .{" "}
+                              <button
+                                type="button"
+                                disabled={action.busy}
+                                onClick={() =>
+                                  patch(
+                                    row,
+                                    { status: "registered" },
+                                    `${whose} is registered with ${row.system.name} again.`,
+                                  )
+                                }
+                              >
+                                Set back to Registered
+                              </button>
+                            </>
+                          ) : (
+                            "The Inventory role sets the registration back to Registered, or retires the item."
+                          )}
+                        </td>
+                      </tr>
                     )}
-                  </tr>
+                  </Fragment>
                 );
               })}
             </tbody>

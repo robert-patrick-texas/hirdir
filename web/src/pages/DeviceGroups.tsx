@@ -25,7 +25,12 @@ import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
-import { DeleteRecord, useDeletedNote, useTickedRemoval } from "../components/Removal";
+import {
+  DeleteRecord,
+  useDeletedNote,
+  useHostedQuestion,
+  useTickedRemoval,
+} from "../components/Removal";
 import { ReplaceMember } from "../components/ReplaceItem";
 import { FormRow } from "../components/RowForm";
 import { SortTh } from "../components/SortTh";
@@ -2095,6 +2100,9 @@ interface GroupStatusProps {
 /** Retire a group, or bring a retired one back. Nothing is ever deleted. */
 function GroupStatus({ group, onChanged, onReload }: GroupStatusProps) {
   const action = useAction();
+  // 0.9.8: a stack or a cluster that something runs on is not retired: the question names
+  // what does, and the server refuses it as well, naming the same (P-247).
+  const hosted = useHostedQuestion("device_group", group.hid, group.hosted_count);
 
   async function retire() {
     const result = await action.run(() =>
@@ -2158,7 +2166,10 @@ function GroupStatus({ group, onChanged, onReload }: GroupStatusProps) {
               confirmLabel="Retire group"
               onConfirm={retire}
               disabled={action.busy}
+              onOpen={hosted.onOpen}
+              confirmDisabled={!hosted.ready || hosted.count > 0}
             >
+              {hosted.shown}
               <p>
                 {group.member_count > 0
                   ? `The ${plural(group.member_count, "current membership")} of ${group.name} will end today.`

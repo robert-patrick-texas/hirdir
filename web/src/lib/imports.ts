@@ -126,17 +126,39 @@ function firstEntity(name: string): Entity | "" {
 // The longest file name the server takes.
 const LONGEST_NAME = 255;
 
+/**
+ * 0.9.8: what a file of items says of the tool it was read from (P-248): the external
+ * system, by its HID, and whether the file is everything it reports. Blank, it was read
+ * from none.
+ */
+export interface ReadFrom {
+  system: string;
+  complete: boolean;
+}
+
+export const FROM_NONE: ReadFrom = { system: "", complete: false };
+
+/** Whether a file of these records may be read from a system: only a file of items. */
+export function readsFromSystem(entity: Entity | ""): boolean {
+  return entity === "items" || entity === "";
+}
+
 /** What goes beside the file in the URL of `POST /imports/preview`. A blank is left out. */
 export function previewQuery(
   entity: Entity | "",
   mode: Mode | "",
   fileName: string,
-): { entity?: Entity; mode?: Mode; file_name?: string } {
+  from: ReadFrom = FROM_NONE,
+): { entity?: Entity; mode?: Mode; file_name?: string; system?: string; complete?: boolean } {
   const name = fileName.trim().slice(-LONGEST_NAME);
+  // A system is sent with a file of items alone, and `complete` with a system alone.
+  const system = readsFromSystem(entity) ? from.system : "";
   return {
     ...(entity === "" ? {} : { entity }),
     ...(mode === "" ? {} : { mode }),
     ...(name === "" ? {} : { file_name: name }),
+    ...(system === "" ? {} : { system }),
+    ...(system !== "" && from.complete ? { complete: true } : {}),
   };
 }
 
@@ -145,6 +167,16 @@ export function fileIdentity(
   file: { name: string; size: number; lastModified: number },
   entity: string,
   mode: string,
+  from: ReadFrom = FROM_NONE,
 ): string {
-  return ["preview", file.name, file.size, file.lastModified, entity, mode].join("\u0000");
+  return [
+    "preview",
+    file.name,
+    file.size,
+    file.lastModified,
+    entity,
+    mode,
+    from.system,
+    from.complete ? "complete" : "",
+  ].join("\u0000");
 }
