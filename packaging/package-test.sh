@@ -1101,6 +1101,9 @@ install_previous() {
 #                        compared in the columns that are left
 #   new_keys[TABLE]      the indexes and foreign keys that it adds, as table_read keys
 #                        prints them, one on a line
+#   gone_keys[TABLE]     the indexes, uniquenesses and foreign keys that it drops, as
+#                        table_read keys printed them before, one on a line: they must
+#                        be gone
 #   more_tables          tables that hold what a site made and are no part of the
 #                        inventory, which the migration changes, such as its import jobs,
 #                        with a space between them: they are read from the database
@@ -1134,7 +1137,7 @@ particulars_dir=packaging/package-test.d
 particulars=()
 particular_files=()
 unwritten=""
-declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() gone_columns=() new_keys=() rest_of=() rest_before=()
+declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() gone_columns=() new_keys=() gone_keys=() rest_of=() rest_before=()
 more_tables=""
 counted_view=""
 writes_no_event=""
@@ -1144,8 +1147,9 @@ fail_by=""
 upgrade_days=""
 
 # also NAME TABLE LINES: put LINES after what the files of the earlier migrations of the
-# upgrade have said of a table in new_columns, altered_columns or new_keys, which NAME
-# is, so that an upgrade that runs two migrations, each with its file, is told of both:
+# upgrade have said of a table in new_columns, altered_columns, new_keys or gone_keys,
+# which NAME is, so that an upgrade that runs two migrations, each with its file, is told
+# of both:
 #   also new_columns items 'do_not_renew BOOLEAN NULL -'
 also() {
     local -n said=$1
@@ -1260,9 +1264,10 @@ failed_upgrade() {
     # installed exactly as it was built. Where the new version creates a table, the
     # table it creates last is already there. Where it creates none, or where the file
     # of the migration asks for it, a trigger refuses the last thing every migration
-    # does, which is to write its revision into alembic_version: by then the migration
-    # has made every change it makes, to the tables and to what they hold, and all of
-    # it has to be undone. A column of a name the migration adds would not do: SQLite
+    # does, which is to write its revision into alembic_version, for the revision of the
+    # new version alone: by then every migration of the upgrade has made every change it
+    # makes, to the tables and to what they hold, the earlier ones of an upgrade that
+    # runs several among it, and all of it has to be undone. A column of a name the migration adds would not do: SQLite
     # refuses it where the column is added to the table as it stands, and at the first
     # statement, with nothing to undo, and where the table is rebuilt the column is
     # taken over without a word.
@@ -1277,8 +1282,8 @@ failed_upgrade() {
     else
         cause="no migration of $version after revision $revision_before creates a table"
         if [ "$fail_by" = trigger ]; then cause="the file of the migration asks for it"; fi
-        cause="$cause, so a trigger is put on alembic_version that refuses the new revision: the migration fails at its last statement, with everything else it does done"
-        cause_sql="CREATE TRIGGER planted_by_package_test BEFORE UPDATE ON alembic_version BEGIN SELECT RAISE(ABORT, 'refused by the trigger of the package test'); END"
+        cause="$cause, so a trigger is put on alembic_version that refuses the new revision, $head: the last migration fails at its last statement, with everything else that the upgrade does done"
+        cause_sql="CREATE TRIGGER planted_by_package_test BEFORE UPDATE ON alembic_version WHEN NEW.version_num = '$head' BEGIN SELECT RAISE(ABORT, 'refused by the trigger of the package test'); END"
         said="refused by the trigger of the package test"
         cure="the trigger that refused the revision is taken out"
         cure_sql="DROP TRIGGER planted_by_package_test"
@@ -1597,6 +1602,7 @@ witness_undo=()
 declare -A answers_before=()
 members_made=0
 addresses_made=0
+replacements_made=0
 declare -A columns_before=() keys_before=() rows_before=()
 tables_then=0
 schema_then=""
@@ -1845,6 +1851,7 @@ witness_structure() {
     witness_day=$day
     witness_items+=("$s9")
     members_made=$((members_made + 1))
+    replacements_made=1
     api GET "/device-groups/$witness_stack/members?include_past=true"
     expect "pkg the stack has three members now and has had five: two memberships are ended, each with its day" \
         "$status $(json '[sum(1 for m in d["items"] if not m["left_on"]), sorted(m["left_on"] for m in d["items"] if m["left_on"])]')" \
@@ -2869,7 +2876,7 @@ witness_kept() {
     if [ "${#witness_groups[@]}" -gt 0 ]; then
         expect "pkg and so are the tables of the replacements, the groups, their members, the networks and the addresses: their rows" \
             "${rows_before[item_replacements]%% *} ${rows_before[device_groups]%% *} ${rows_before[device_group_members]%% *} ${rows_before[networks]%% *} ${rows_before[addresses]%% *}" \
-            "1 ${#witness_groups[@]} $members_made 2 $addresses_made"
+            "$replacements_made ${#witness_groups[@]} $members_made 2 $addresses_made"
     fi
 }
 
@@ -3051,6 +3058,25 @@ print("\n".join([now.get(line.split(" ", 1)[0], line) for line in kept] + [line 
         "${columns_before[$1]}" "${altered_columns[$1]:-}" "${new_columns[$1]:-}" "${gone_columns[$1]:-}"
 }
 
+# keys_meant TABLE: the indexes, uniquenesses and foreign keys that the table is to have
+# after the upgrade, as table_read keys prints them: those it had and that the files do
+# not say are dropped, and those that the files say are added, in table_read's order. A
+# key that a file says is dropped and that the table did not have is printed as such,
+# so that the comparison fails on it.
+keys_meant() {
+    python3 -c '
+import sys
+before, gone, added = ([line for line in text.splitlines() if line] for text in sys.argv[1:4])
+missing = []
+for line in gone:
+    if line in before:
+        before.remove(line)
+    else:
+        missing.append(f"never there: {line}")
+print("\n".join(sorted(before + added) + missing))' \
+        "${keys_before[$1]}" "${gone_keys[$1]:-}" "${new_keys[$1]:-}"
+}
+
 # every_line_in BEFORE NOW: whether every line of the first text is a line of the second.
 every_line_in() {
     python3 -c '
@@ -3067,7 +3093,8 @@ sys.exit(0 if set(sys.argv[1].splitlines()) <= set(sys.argv[2].splitlines()) els
 #
 # With "migrated", each has every column it had, as it was, but for those that the files
 # of the migrations say are dropped, and after them those that the files say are added,
-# and no other; the indexes, uniquenesses and foreign keys likewise; and every row holds
+# and no other; the indexes, uniquenesses and foreign keys likewise, those that the files
+# say are dropped gone and those they say are added there; and every row holds
 # what it held in the columns it had and keeps, but for the rows that a file says are
 # meant to change. While a migration of the upgrade
 # has no file, nobody has said what is added: what a table had must then still be
@@ -3109,9 +3136,14 @@ tables_carried() {
             else
                 [ "$columns" = "${columns_before[$table]}" ] || differing="${differing}columns. "
             fi
-            if [ -n "${new_keys[$table]:-}" ]; then
-                [ "$keys" = "$(printf '%s\n' "${keys_before[$table]}" "${new_keys[$table]}" | LC_ALL=C sort)" ] || differing="${differing}keys. "
-                added="$added, and with its keys $(printf '%s\n' "${new_keys[$table]}" | wc -l) more"
+            if [ -n "${new_keys[$table]:-}${gone_keys[$table]:-}" ]; then
+                [ "$keys" = "$(keys_meant "$table")" ] || differing="${differing}keys. "
+                if [ -n "${gone_keys[$table]:-}" ]; then
+                    added="$added, but for $(printf '%s\n' "${gone_keys[$table]}" | wc -l) of its keys, which the migration drops"
+                fi
+                if [ -n "${new_keys[$table]:-}" ]; then
+                    added="$added, and with its keys $(printf '%s\n' "${new_keys[$table]}" | wc -l) more"
+                fi
             else
                 [ "$keys" = "${keys_before[$table]}" ] || differing="${differing}keys. "
             fi

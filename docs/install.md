@@ -1573,6 +1573,66 @@ database as 0.9.7 leaves it; a `map_link` that was set is kept and not used:
 sudo apt install --allow-downgrades ./hirdir_0.9.6_amd64.deb
 ```
 
+### From 0.9.7 to 0.9.8
+
+The schema goes from revision `0012` to `0014`, in two steps. Neither changes anything
+that is held, and neither writes an audit event. The upgrade takes its backup and stops
+and starts the service as always. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+- **`0013`: an item is replaced more than once.** `item_replacements` loses its two
+  uniquenesses, of the item that left and of the item that came. Each of the two
+  columns gets an index in their place, and the table gets one new uniqueness: the two
+  items with the day. Every replacement stays as it was. Each item still says which
+  item it replaces and which item replaced it, and lists that one replacement in its
+  new `replacements`.
+- **`0014`: what runs on a host, and what an external system reports.** `items` gains
+  `host_item_hid`, `host_group_hid`, `observed_host_hid` and `host_observed_at`. The
+  first three each have a foreign key and an index, and a check says that an item
+  names an item or a group as its host, never both. `import_jobs` gains `system_hid`,
+  with a foreign key to the external systems, `complete`, and `not_reported`, which is
+  0. After the upgrade all of them are empty: no item has a host, and no import was
+  read from a system.
+
+<!-- STAGE TWO: what a person sees of what runs on a host and of an import read from
+a system (P-246 to P-250), written when that code is merged. -->
+
+What is new, for the work of each day:
+
+- **An item is replaced, and takes another's place, as often as that happens.** A spare
+  that took a place goes back to the pool and takes another. A switch that comes back
+  from the manufacturer can take the place of the spare that took its own. The same two
+  items cannot be swapped the same way twice on one day: that is refused. An item's page
+  lists every replacement it is part of, the latest first.
+- **Replace is one press on a member's row** of a group. The form asks for the item that
+  comes, the reason and a reference. In a stack it also asks whether the new item takes
+  the stack's name and place, and what becomes of the item that left, its condition
+  among it. One request does all of it.
+- **Make it a stack**, on the page of a switch that stands alone, makes the stack and
+  moves the switch's host name, addresses and place to it. New group offers the first
+  members of a stack the same box as a member that joins one.
+- **An Admin removes a replacement that was a mistake**, with a reason, from the item's
+  page. The audit trail keeps the replacement as it was.
+- **A region and a site cannot share a code.** A region and a site that already share a
+  code are left as they are, and either can still be saved with the code it holds.
+- **More links.** For an Admin, the username in the list of contacts links to the user.
+  Who made a change, in the audit trail, is a link, and so are the rows of the summary
+  and the management report by vendor, owner, site and region.
+
+For a script that reads the API: nothing is taken away. New are
+`POST /items/{hid}/make-stack` and, for an Admin, `POST /item-replacements/{hid}/remove`.
+An item answers `replacements`, and its `replaces` and `replaced_by` are now the latest
+of each. `POST /items/{hid}/replace` takes `drop_identity`, `disposition`,
+`expected_online` and `old_item`, and what an item that leaves a group is to have may
+name its `condition`. A script that expected `409` for a replacement of an item that was
+replaced, or by one that took a place, now gets the replacement made. A row of a file of
+replacements is matched by its HID, or by its two items and its day, no longer by the
+item that left.
+
+Going back to 0.9.7 is by the backup the upgrade took, as under
+[Going back to the release before](#going-back-to-the-release-before). Everything
+entered since is lost, including any second replacement of an item.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -1623,7 +1683,7 @@ installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
 goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
-0.9.4, 0.9.5 and 0.9.6 are such releases. The section of each release above says what its upgrade changed.
+0.9.4, 0.9.5, 0.9.6 and 0.9.7 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 
