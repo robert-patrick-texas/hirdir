@@ -4,6 +4,7 @@ import { knownAbove, ownerSource } from "./descent";
 import {
   bulkHost,
   type HostRef,
+  hostedRows,
   hostFields,
   hostHint,
   hostIsGone,
@@ -11,7 +12,6 @@ import {
   hostSourcePath,
   hostSpecs,
   hostValue,
-  hostedRows,
   hostWhat,
   mayHost,
   reviewsText,
@@ -84,7 +84,9 @@ describe("a host as a link", () => {
     expect(hostIsGone(server)).toBe(false);
     expect(hostIsGone({ ...server, record_status: "retired" })).toBe(true);
     expect(hostIsGone({ ...server, lifecycle_state: "Released" })).toBe(true);
-    expect(hostHint({ ...server, lifecycle_state: "Archived" })).toContain("out of the team's hands");
+    expect(hostHint({ ...server, lifecycle_state: "Archived" })).toContain(
+      "out of the team's hands",
+    );
   });
 
   it("names the record a value came from through the host, a group's page for a cluster", () => {

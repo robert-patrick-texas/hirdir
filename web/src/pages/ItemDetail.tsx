@@ -928,8 +928,8 @@ function ValuesInForce({ item }: { item: Item }) {
       >
         <p className="hint" id="walks-intro">
           The records it looks at in their order, its own first, then its own groups, the item it is
-          in and that item's groups, and for the operator where it is. The first that holds a value
-          decides, and those after it are passed over.
+          in and that item's groups, or what it runs on and that one's groups, and for the operator
+          where it is. The first that holds a value decides, and those after it are passed over.
         </p>
       </WhyEachValue>
     </section>
