@@ -20,6 +20,7 @@ import {
   type LeavingValues,
   leavingBody,
   leavingPreset,
+  withOwn,
 } from "../lib/stacks";
 import { SelectField, TextField } from "./Field";
 import { LocationField } from "./LocationField";
@@ -75,6 +76,9 @@ export function WhatBecomesOfIt(props: WhatBecomesOfItProps) {
   const choices = useChoices();
   const [choice, setChoice] = useState<Leaving>("nothing");
   const [values, setValues] = useState<LeavingValues | null>(null);
+  // 0.9.8: what the person typed or set by hand since the form opened, which a choice
+  // made after it leaves as it is.
+  const [own, setOwn] = useState<Partial<LeavingValues>>({});
   const ruled = rules.data ?? [];
   const record = item.data;
   const state = record?.lifecycle_state ?? null;
@@ -91,21 +95,27 @@ export function WhatBecomesOfIt(props: WhatBecomesOfItProps) {
 
   function choose(chosen: Leaving) {
     setChoice(chosen);
-    update(
-      leavingPreset(chosen, state, {
-        next: nextStates(ruled, state),
-        dispositions: (inState) => dispositionsIn(ruled, inState, kept),
-        reasons: reasons.map((reason) => reason.value),
-        ...(condition ? { conditions: conditions.map((one) => one.value) } : {}),
-      }),
-    );
+    const preset = leavingPreset(chosen, state, {
+      next: nextStates(ruled, state),
+      dispositions: (inState) => dispositionsIn(ruled, inState, kept),
+      reasons: reasons.map((reason) => reason.value),
+      ...(condition ? { conditions: conditions.map((one) => one.value) } : {}),
+    });
+    // A choice fills only what the person has not typed or set by hand (P-245).
+    update(preset ? agreeing(withOwn(preset, own)) : null);
   }
 
   function set(field: keyof LeavingValues, value: string) {
     if (!values) return;
-    const next = { ...values, [field]: value };
+    setOwn((was) => ({ ...was, [field]: value }));
+    update(agreeing({ ...values, [field]: value }));
+  }
+
+  /** What the form shows is what is sent: the fields made to agree with one another. */
+  function agreeing(given: LeavingValues): LeavingValues {
+    const next = { ...given };
     // A reason is for a move: none is kept once the state is left as it is.
-    if (field === "lifecycle_state" && value === "") next.state_reason = "";
+    if (next.lifecycle_state === "") next.state_reason = "";
     // What the form shows is what is sent: a disposition or an intent that the state now
     // aimed at does not offer is shown as "As it is", so it is not kept to be sent.
     const aimed = next.lifecycle_state || state;
@@ -114,7 +124,7 @@ export function WhatBecomesOfIt(props: WhatBecomesOfItProps) {
     }
     const offered = intentChoices(ruled, aimed, next.disposition || kept).map(String);
     if (next.online !== "" && !offered.includes(next.online)) next.online = "";
-    update(next);
+    return next;
   }
 
   const target = values?.lifecycle_state || state;

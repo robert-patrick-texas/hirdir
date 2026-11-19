@@ -591,3 +591,52 @@ def test_the_command_removes_a_replacement_and_asks_first(
     assert done.stdout.splitlines()[-1].startswith("removed: ex-cli-old replaced by ex-cli-new")
     assert _item(make, old)["replacements"] == []
     run("replacements", "remove", hid, "--reason", "wrong", "--yes", expect=4)
+
+
+# --- an item known by its host name alone ---------------------------------------------
+
+ALONE_SAID = "give it a name, a serial number with its model, or an asset tag first"
+
+
+def test_a_switch_known_by_its_host_name_alone_is_not_made_a_stack(make: Maker) -> None:
+    places = _places(make)
+    bare = make.item(hostname="cw07-idf07-acc1", location_hid=places["room"]["hid"])
+    problem = _make_stack(make, bare, 422, name="cw07-idf07-stack")
+    assert problem["detail"] == (
+        "cw07-idf07-acc1 is known by its host name alone, which the stack takes"
+    )
+    assert errors(problem) == {"item_hid": ALONE_SAID}
+    # Nothing was changed: no stack, and the switch as it was.
+    assert make.get("/device-groups")["total"] == 0
+    assert _item(make, bare)["row_version"] == bare["row_version"]
+    # Given a name of its own first, it is made one.
+    named = make.patch(f"/items/{bare['hid']}", {"row_version": bare["row_version"], "name": "x1"})
+    assert _make_stack(make, named)["name"] == "x1"
+
+
+def test_a_member_known_by_its_host_name_alone_does_not_take_the_stacks_name(
+    make: Maker,
+) -> None:
+    places = _places(make)
+    stack, switches = _in_service(make, places["room"])
+    bare = make.item(hostname="spare-sw-099", lifecycle_state="Prod")
+    # Joining a stack.
+    problem = make.add(stack, [{"item_hid": bare["hid"], "drop_identity": True}], 422)
+    assert errors(problem) == {"members.0.item_hid": ALONE_SAID}
+    assert "known by its host name alone" in problem["detail"]
+    # Taking a member's place by a replacement.
+    problem = _replace(make, switches[1], 422, new_item_hid=bare["hid"], drop_identity=True)
+    assert errors(problem) == {"new_item_hid": ALONE_SAID}
+    # And as a further member of a stack made of a switch.
+    switch = _alone(make, places)
+    problem = _make_stack(
+        make, switch, 422, members=[{"item_hid": bare["hid"], "drop_identity": True}]
+    )
+    assert errors(problem) == {"members.0.item_hid": ALONE_SAID}
+    # Nothing was done: the stack has its three, and the spare keeps its host name.
+    assert len(make.members(stack)) == 3
+    assert make.audit(record_type="item_replacement") == []
+    assert _item(make, bare)["hostname"] == "spare-sw-099"
+    # Without drop_identity it joins and keeps its name.
+    make.add(stack, [{"item_hid": bare["hid"]}])
+    assert _item(make, bare)["hostname"] == "spare-sw-099"

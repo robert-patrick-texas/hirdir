@@ -5,6 +5,7 @@ import {
   handOverLabel,
   hostsNothingHint,
   notReportedText,
+  reviewReasonParts,
   TO_REVIEW,
   toReviewPath,
   toReviewText,
@@ -48,9 +49,12 @@ describe("what a tool's report marks as not reported (P-248)", () => {
     system: { name: "Example vCenter" },
   };
 
-  it("says how many the preview would mark", () => {
-    expect(notReportedText(job)).toBe(
+  it("says how many the preview would mark, ending in a colon only where names follow", () => {
+    expect(notReportedText(job, true)).toBe(
       "1 item registered with Example vCenter is not named by the file, and will be marked as not reported once it is applied whole:",
+    );
+    expect(notReportedText(job)).toBe(
+      "1 item registered with Example vCenter is not named by the file, and will be marked as not reported once it is applied whole.",
     );
     expect(notReportedText({ ...job, not_reported: 0 })).toBe(
       "Every item registered with Example vCenter is named by the file: none will be marked as not reported.",
@@ -59,6 +63,19 @@ describe("what a tool's report marks as not reported (P-248)", () => {
 
   it("says a file with a row rejected marks nothing", () => {
     expect(notReportedText({ ...job, rejected: 2, not_reported: 0 })).toMatch(
+      /^Nothing will be marked as not reported: a row is rejected/,
+    );
+  });
+
+  it("says why an applied file marked nothing, as the job holds it", () => {
+    const applied = { ...job, status: "applied", not_reported: 0 };
+    expect(notReportedText({ ...applied, not_reported_held: "stale" })).toBe(
+      "Nothing was marked as not reported: a row was left out, its record having changed since the preview, and only a file applied whole is everything Example vCenter reports.",
+    );
+    expect(notReportedText({ ...applied, not_reported_held: "skipped" })).toMatch(
+      /^Nothing was marked as not reported: the rows that were rejected were left out,/,
+    );
+    expect(notReportedText({ ...job, not_reported_held: "rejected", not_reported: 0 })).toMatch(
       /^Nothing will be marked as not reported: a row is rejected/,
     );
   });
@@ -81,6 +98,17 @@ describe("the first page's count of what is to be looked at (P-249)", () => {
     expect(path.pathname).toBe("/items");
     expect(path.searchParams.get("filter")).toBe(TO_REVIEW);
     expect(TO_REVIEW).toBe("review:empty:false");
+  });
+
+  it("says why, a link for each reason to the list filtered by it, and none for a reason with none", () => {
+    const parts = reviewReasonParts({ no_host: 2, host_gone: 0, not_reported: 1 });
+    expect(parts.map((part) => part.text)).toEqual([
+      "2 name no host",
+      "1 is reported no more by a tool",
+    ]);
+    const path = new URL(parts[1]?.path ?? "", "http://localhost");
+    expect(path.searchParams.get("filter")).toBe("review:eq:not_reported");
+    expect(reviewReasonParts({})).toEqual([]);
   });
 
   it("says how many", () => {

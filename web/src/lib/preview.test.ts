@@ -175,6 +175,15 @@ describe("valueText and changeText", () => {
     expect(changeText({ field: "tags", old: ["lab"], new: [] })).toBe("tags: lab → (blank)");
   });
 
+  it("say a registration a row makes or brings back by its status (P-248)", () => {
+    expect(changeText({ field: "registration", old: "not_reported", new: "registered" })).toBe(
+      "registration with the system: Not reported → Registered",
+    );
+    expect(changeText({ field: "registration", old: null, new: "registered" })).toBe(
+      "registration with the system: not registered → Registered",
+    );
+  });
+
   it("name the field of a reason, when it has one", () => {
     expect(reasonText({ field: "owner", message: "there is no owner Voice" })).toBe(
       "owner: there is no owner Voice",

@@ -10,7 +10,11 @@
 
 import type { Schemas } from "../api/client";
 import type { Option } from "./patch";
-import type { Joining } from "./stacks";
+import { type Joining, knownByHostAlone } from "./stacks";
+
+/** 0.9.8: a member known by its host name alone, beside its row, before it is sent (P-243). */
+export const HOST_ALONE_ROW =
+  "It is known by its host name alone, which the stack takes: give it a name, a serial number with its model or an asset tag first, or untick its box.";
 
 export type DeviceGroup = Schemas["DeviceGroupOut"];
 export type GroupType = DeviceGroup["type"];
@@ -151,6 +155,12 @@ export function buildMembers(
     }
     // A member of a stack that takes the stack's name and place, with what it becomes.
     const drops = type === "stack" && row.drop === true;
+    // 0.9.8: one known by its host name alone would be left with nothing to know it by,
+    // which the server refuses: it is said beside its row, and nothing is sent (P-243).
+    if (drops && row.joining && knownByHostAlone(row.joining)) {
+      errors[row.item_hid] = HOST_ALONE_ROW;
+      continue;
+    }
     const online = row.online === "true" ? true : row.online === "false" ? false : null;
     members.push({
       item_hid: row.item_hid,

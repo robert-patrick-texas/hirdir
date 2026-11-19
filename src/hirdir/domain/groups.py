@@ -681,6 +681,9 @@ def make_stack(
                 {"item_hid": f"an item is a member of one stack at a time: {other.name}"},
                 Existing(RECORD_TYPE, other.hid, other.name),
             )
+    if item.hostname:
+        # Refused before anything is changed: the stack takes the host name.
+        refuse_known_by_hostname(item, "item_hid")
     called = records.clean(name) or item.name or item.hostname
     if called is None:
         raise Invalid(
@@ -893,6 +896,18 @@ def named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[
         raise
 
 
+def refuse_known_by_hostname(item: Item, field: str) -> None:
+    """Refuse to take the host name of an item that is known by it alone: it would be left
+    with nothing to know it by, which the item's own rule refuses in words that do not say
+    why (P-217, P-243)."""
+    if item.name or item.asset_tag or (item.serial_number and item.catalog_entry_hid):
+        return
+    raise Invalid(
+        f"{items.shown_name(item)} is known by its host name alone, which the stack takes",
+        {field: "give it a name, a serial number with its model, or an asset tag first"},
+    )
+
+
 def take_on(
     db: Session,
     caused: AuditContext,
@@ -907,6 +922,11 @@ def take_on(
     the cause of `caused` what it was made by: joining the group (P-217), or the
     replacement whose item takes a member's place (P-242).
     """
+    if drop and item.hostname:
+        # The request names the item that comes by `new_item_hid` in a replacement, and
+        # by `item_hid`, at the member's place, where a member joins.
+        replacing = caused.cause is not None and caused.cause[0] == "replacing"
+        refuse_known_by_hostname(item, "new_item_hid" if replacing else f"{where}item_hid")
     with named_at(where):
         items.update_item(db, caused, item.hid, item.row_version, dict(fields))
         if drop:

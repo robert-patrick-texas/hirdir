@@ -46,31 +46,55 @@ export function hostsNothingHint(name: string, kind: string): string {
 export const COMPLETE_HINT =
   "Every item registered with the system that the file does not name is marked as not reported, to be looked at. Nothing is retired, moved or unregistered: the next file that names it makes it registered again.";
 
-/** What the preview of a complete report says it would mark, or the applied one marked. */
-export function notReportedText(job: {
-  complete: boolean | null;
-  status: string;
-  not_reported: number;
-  rejected: number;
-  system: { name: string } | null;
-}): string {
+/** Why a complete import marks nothing, as the job says in `not_reported_held`. */
+export type NotReportedHeld = "rejected" | "skipped" | "stale" | null;
+
+const HELD_WORDS: Readonly<Record<string, string>> = {
+  rejected: "a row was rejected",
+  skipped: "the rows that were rejected were left out",
+  stale: "a row was left out, its record having changed since the preview",
+};
+
+/**
+ * What the preview of a complete report says it would mark, or the applied one marked.
+ * `named` says whether the first of them are listed after it: the sentence then ends in
+ * a colon, and otherwise in a full stop.
+ */
+export function notReportedText(
+  job: {
+    complete: boolean | null;
+    status: string;
+    not_reported: number;
+    not_reported_held?: NotReportedHeld;
+    rejected: number;
+    system: { name: string } | null;
+  },
+  named = false,
+): string {
   if (!job.complete) return "";
   const system = job.system?.name ?? "the system";
   const count = job.not_reported;
+  const held = job.not_reported_held ?? null;
   if (job.status === "previewed") {
-    if (job.rejected > 0) {
+    if (held !== null || job.rejected > 0) {
       return `Nothing will be marked as not reported: a row is rejected, and only a file applied whole is everything ${system} reports.`;
     }
     return count === 0
       ? `Every item registered with ${system} is named by the file: none will be marked as not reported.`
-      : `${plural(count, "item registered with", "items registered with")} ${system} ${count === 1 ? "is" : "are"} not named by the file, and will be marked as not reported once it is applied whole:`;
+      : `${plural(count, "item registered with", "items registered with")} ${system} ${count === 1 ? "is" : "are"} not named by the file, and will be marked as not reported once it is applied whole${named ? ":" : "."}`;
   }
-  if (job.status === "applied") {
+  if (job.status === "applied" || job.status === "stopped") {
+    if (held !== null) {
+      return `Nothing was marked as not reported: ${HELD_WORDS[held] ?? held}, and only a file applied whole is everything ${system} reports.`;
+    }
+    if (job.status === "stopped") {
+      return "Nothing is marked as not reported until the file is applied whole.";
+    }
     return count === 0
       ? `No item was marked as not reported by ${system}.`
       : `${plural(count, "item was", "items were")} marked as not reported by ${system}, each to be looked at.`;
   }
-  return `Nothing is marked as not reported until the file is applied whole.`;
+  return "Nothing is marked as not reported until the file is applied whole.";
 }
 
 // --- what is to be looked at (P-249) -----------------------------------------------------
@@ -87,6 +111,37 @@ export function toReviewPath(): string {
 export function toReviewText(count: number): { link: string; after: string } {
   return {
     link: plural(count, "item is", "items are"),
-    after: ` to be looked at: no host named, a host gone, or a tool that reports ${count === 1 ? "it" : "them"} no more. ${count === 1 ? "Its" : "Each"} page says why, and the way to put it right.`,
+    after: " to be looked at",
   };
+}
+
+/** The reasons an item is to be looked at, in the order the first page says them. */
+export const REVIEW_ORDER = ["no_host", "host_gone", "not_reported"] as const;
+export type ReviewReasonName = (typeof REVIEW_ORDER)[number];
+
+const REASON_WORDS: Readonly<Record<ReviewReasonName, [one: string, many: string]>> = {
+  no_host: ["names no host", "name no host"],
+  host_gone: ["has a host that is gone", "have a host that is gone"],
+  not_reported: ["is reported no more by a tool", "are reported no more by a tool"],
+};
+
+/**
+ * 0.9.8, review: the first page says why each is to be looked at by a link of its own for
+ * each reason, to the item list filtered by it, so that the list it opens says the reason
+ * in its filter without a column of its own. A reason that counts none is left out.
+ */
+export function reviewReasonParts(
+  counts: Readonly<Partial<Record<ReviewReasonName, number>>>,
+): { reason: ReviewReasonName; count: number; text: string; path: string }[] {
+  return REVIEW_ORDER.flatMap((reason) => {
+    const count = counts[reason] ?? 0;
+    if (count === 0) return [];
+    const [one, many] = REASON_WORDS[reason];
+    return [{ reason, count, text: plural(count, one, many), path: reviewPath(reason) }];
+  });
+}
+
+/** The item list of the items to be looked at for one reason. */
+export function reviewPath(reason: ReviewReasonName): string {
+  return `/items?${new URLSearchParams({ filter: `review:eq:${reason}`, minor: "1" }).toString()}`;
 }

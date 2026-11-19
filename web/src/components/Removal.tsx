@@ -7,6 +7,7 @@
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { api, type Schemas } from "../api";
+import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
 import { itemName, plural } from "../lib/format";
 import { useAction, useLoad } from "../lib/hooks";
@@ -512,6 +513,37 @@ export function useTickedRemoval<T>(kind: RemovalKind): TickedRemoval<T> {
     </>
   );
   return { actions, ask, shown, turn, keep };
+}
+
+/**
+ * 0.9.8: retire an item from its page, and answer how many items went with it (P-247).
+ * Where something runs on it, it is retired by `POST /items/retire` with its one HID,
+ * whose answer says in `hosted` what the server retired with it: a machine added or moved
+ * after the question opened is counted as it went. Otherwise by its own route, with its
+ * version. A refusal of the one asked is thrown, as the route's own would be.
+ */
+export async function retireItem(
+  item: { hid: string; row_version: number },
+  hostedCount: number,
+): Promise<number> {
+  if (hostedCount === 0) {
+    await api.request("post", "/api/v1/items/{hid}/retire", {
+      path: { hid: item.hid },
+      body: { row_version: item.row_version },
+    });
+    return 0;
+  }
+  const answer = await retire("item", [item.hid], false);
+  const refused = answer.refused[0];
+  if (refused) throw new ApiError({ status: 409, title: "Not retired", detail: refused.detail });
+  if (answer.missing.length > 0) {
+    throw new ApiError({
+      status: 404,
+      title: "Not found",
+      detail: "The item is not there any more.",
+    });
+  }
+  return answer.hosted.length;
 }
 
 // How many items in the way of a deletion are read for what each runs on, at most.
