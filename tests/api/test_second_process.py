@@ -43,7 +43,7 @@ from tests.api.inventory import API, Maker
 from tests.conftest import INVENTORY_CODE, sign_in
 
 HEAD = "vendor,pid,serial_number,hostname"
-STOPPED_BY_A_STOP = "the server stopped while it was being applied"
+STOPPED_BY_A_STOP = "the background work stopped while it was being applied"
 runner = CliRunner()
 
 
@@ -228,28 +228,25 @@ def test_the_server_alone_applies_nothing_and_the_second_process_applies_what_is
     alone = built_alone.state
     assert not isinstance(getattr(alone, "worker", None), background.Worker)
     waiting = preview(server, "tags", "label\nlab\n")
-    # The server takes the request whether anything is there to apply it or not.
-    assert begin(server, waiting)["status"] == "applying"
+    # The server takes the request whether anything is there to apply it or not, and
+    # stores it as queued: nothing here takes it up.
+    assert begin(server, waiting)["status"] == "queued"
     background.wake(alone)
     time.sleep(0.5)
     left = server.get(f"/imports/{waiting['hid']}")
-    assert (left["status"], left["rows_done"], left["applied"]) == ("applying", 0, 0)
+    assert (left["status"], left["rows_done"], left["applied"]) == ("queued", 0, 0)
     assert labels(server) == []
 
     with closing(background.hold_lock(config.state_dir)), background.working(config):
         assert background.worker_state(alone) == "running"
-        # What it found applying as it started is marked stopped, as it was when the
-        # server started (P-267): nothing tells it from an apply that a stop cut short.
-        found = server.get(f"/imports/{waiting['hid']}")
-        assert (found["status"], found["applied"]) == ("stopped", 0)
-        assert found["failure"].startswith(STOPPED_BY_A_STOP)
-        assert labels(server) == []
-        # Asked for again, it is applied, and so is one asked for while the process runs.
-        assert begin(server, waiting)["status"] == "applying"
-        assert ended(server, waiting)["status"] == "applied"
+        # What waited is applied when the process starts: it was never cut short, and
+        # nobody has to ask again.
+        found = ended(server, waiting)
+        assert (found["status"], found["applied"], found["failure"]) == ("applied", 1, None)
+        # And so is one asked for while the process runs.
         other = preview(server, "tags", "label\nspare\n")
         asked = time.monotonic()
-        begin(server, other)
+        assert begin(server, other)["status"] == "queued"
         assert ended(server, other)["status"] == "applied"
         # Within a second of being asked for, and the time one row takes: nobody woke it.
         assert time.monotonic() - asked < background.LOOK_EVERY_ALONE + 5
@@ -289,7 +286,7 @@ def test_a_stop_in_the_middle_of_an_apply_stops_after_the_batch_and_is_resumed(
     with background.working(config):
         time.sleep(0.3)
         assert server.get(f"/imports/{job['hid']}")["status"] == "stopped"
-        assert begin(server, job)["status"] == "applying"
+        assert begin(server, job)["status"] == "queued"
         done = ended(server, job)
     assert (done["status"], done["rows_done"], done["applied"]) == ("applied", 120, 120)
     assert server.get("/items", limit=1)["total"] == 120
@@ -328,12 +325,18 @@ def test_the_work_command_does_what_is_due_at_start_applies_and_stops_on_a_signa
     settings.write_text('[server]\nlisten = "127.0.0.1:1"\nstate_dir = "."\n', encoding="utf-8")
     env = {**os.environ, "HIRDIR_CONFIG": str(settings)}
     asked = asker(db, "apply-request-02")
-    # A job that was being applied when the process stopped the last time.
+    # A job that was being applied when the process stopped the last time: taken up, as
+    # only a worker takes one, and left so. And one that was asked for since, and waits.
     cut_short = imports.preview(
         db, asked, None, data=b"label\nlab\n", format_="csv", entity_name="tags"
     )
+    waited = imports.preview(
+        db, asked, None, data=b"label\nwaited\n", format_="csv", entity_name="tags"
+    )
     imports.begin_apply(db, asked, cut_short.hid, source="file")
+    imports.begin_apply(db, asked, waited.hid, source="file")
     db.commit()
+    assert imports._take(db, cut_short.hid) is not None
 
     said = tmp_path / "work.log"
     with said.open("wb") as log:
@@ -353,8 +356,15 @@ def test_the_work_command_does_what_is_due_at_start_applies_and_stops_on_a_signa
         # What is due at start is done before it says so: the record of the week.
         anew(db)
         assert db.scalar(select(func.count()).select_from(CapacityRecord)) == 1
-        assert cut_short.status == "stopped"
-        assert (cut_short.failure or "").startswith(STOPPED_BY_A_STOP)
+        found = db.get_one(ImportJob, cut_short.hid)
+        assert found.status == "stopped"
+        assert (found.failure or "").startswith(STOPPED_BY_A_STOP)
+        # What waited queued while no process ran is applied by the one that starts.
+        deadline = time.monotonic() + 30
+        while db.get_one(ImportJob, waited.hid).status != "applied":
+            assert time.monotonic() < deadline, db.get_one(ImportJob, waited.hid).status
+            time.sleep(0.05)
+            anew(db)
 
         # A second one on the same state directory stops with words, and the first goes on.
         second = subprocess.run(
@@ -382,7 +392,7 @@ def test_the_work_command_does_what_is_due_at_start_applies_and_stops_on_a_signa
         )
         first = imports.begin_apply(db, asked, job.hid, source="file")
         second_job = imports.begin_apply(db, asked, behind.hid, source="file")
-        assert (first.status, second_job.status) == ("applying", "queued")
+        assert (first.status, second_job.status) == ("queued", "queued")
         db.commit()
         deadline = time.monotonic() + 30
         while True:
@@ -392,7 +402,7 @@ def test_the_work_command_does_what_is_due_at_start_applies_and_stops_on_a_signa
                 break
             assert time.monotonic() < deadline, found
             time.sleep(0.05)
-        assert sorted(db.scalars(select(Tag.label))) == ["spare", "staging"]
+        assert sorted(db.scalars(select(Tag.label))) == ["spare", "staging", "waited"]
 
         process.send_signal(signal.SIGTERM)
         assert process.wait(timeout=70) == 0
@@ -435,7 +445,7 @@ def served(installed: Config, monkeypatch, *options: str) -> dict[str, Any]:
                 while True:
                     anew(db)
                     seen["job"] = db.get_one(ImportJob, hid).status
-                    if seen["job"] != "applying" or time.monotonic() >= deadline:
+                    if seen["job"] == "applied" or time.monotonic() >= deadline:
                         break
                     time.sleep(0.05)
         application.state.engine.dispose()
@@ -452,7 +462,7 @@ def test_serve_does_none_of_the_background_work_and_keeps_what_is_the_servers_ow
     seen = served(installed, monkeypatch)
     # It holds its own lock and not the other, applies nothing and records nothing.
     assert (seen["server_lock"], seen["worker_lock"]) == (True, False)
-    assert (seen["worker"], seen["job"], seen["records"]) == ("not_running", "applying", 0)
+    assert (seen["worker"], seen["job"], seen["records"]) == ("not_running", "queued", 0)
     # The long reports are kept in its own memory, so it works them out itself.
     assert seen["kept"] == {"coverage", "renewals", "renewal_alert", "capacity"}
     assert not background.is_held(installed.state_dir / admin.SERVER_LOCK)

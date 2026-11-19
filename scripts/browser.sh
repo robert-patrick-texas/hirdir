@@ -291,8 +291,8 @@ serve() {
 }
 
 # The second process of the service, started once the server answers, which has migrated
-# the inventory by then. The scenarios begin when it says that it is at work: an apply
-# asked for before that would be taken for one that a stop cut short.
+# the inventory by then. The scenarios begin when it says that it is at work: what it
+# does as it starts, the record of a week that has none, is done by then.
 work() {
     : >"$state/work.log"
     (cd "$state" && HIRDIR_CONFIG=$state/config.toml exec uv run --project "$root" hirdir admin work) \

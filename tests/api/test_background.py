@@ -134,8 +134,9 @@ def test_an_apply_answers_at_once_and_works_fifty_rows_to_a_transaction(
 
     monkeypatch.setattr(imports, "_one", within_a_batch)
 
+    # The request stores the job as queued and applies nothing: the worker takes it up.
     begun = begin(make, job)
-    assert begun["status"] == "applying"
+    assert (begun["status"], begun["rows_done"]) == ("queued", 0)
     ended = wait_for_job(client, make.headers, job["hid"])
     assert (ended["status"], ended["rows_done"], ended["applied"], ended["stale"]) == (
         "applied",
@@ -155,6 +156,8 @@ def test_an_apply_answers_at_once_and_works_fifty_rows_to_a_transaction(
     assert all(row["record_hid"] for row in rows(make, job))
     # One request ID for the apply, its batches and its events on the job alike.
     started = make.audit(record_type="import_job", action="apply_started")[0]
+    # The event of the request says the status that the request stored.
+    assert {"field": "status", "old": "previewed", "new": "queued"} in started["changes"]
     made = make.audit(record_type="item", action="create", limit=1000)
     assert len(made) == 120
     assert {event["request_id"] for event in made} == {started["request_id"]}
@@ -244,7 +247,7 @@ def test_a_stop_partway_keeps_what_was_stored_and_a_resume_applies_nothing_twice
 
     # Anybody with the Inventory role resumes it, from the first row it had not applied.
     resumed = Maker(client, admin)
-    assert begin(resumed, job)["status"] == "applying"
+    assert begin(resumed, job)["status"] == "queued"
     ended = wait_for_job(client, make.headers, job["hid"])
     assert (ended["status"], ended["rows_done"], ended["applied"]) == ("applied", 120, 120)
     assert (ended["applied_by_name"], ended["failure"]) == ("ada", None)
@@ -266,27 +269,40 @@ def test_a_stop_partway_keeps_what_was_stored_and_a_resume_applies_nothing_twice
     assert "applied already" in begin(make, job, expect=409)["detail"]
 
 
-def test_a_job_found_applying_when_the_server_starts_was_stopped_by_the_stop(
+def test_a_job_found_applying_when_the_worker_starts_was_cut_short_and_a_queued_one_waits(
     config: Config, db
 ) -> None:
     asked = AuditContext(actor_hid=None, via="api", request_id="apply-request-01")
     job = imports.preview(db, asked, None, data=b"label\nlab\n", format_="csv", entity_name="tags")
-    imports.begin_apply(db, asked, job.hid, source="file")
+    waiting = imports.preview(
+        db, asked, None, data=b"label\nspare\n", format_="csv", entity_name="tags"
+    )
+    begun = imports.begin_apply(db, asked, job.hid, source="file")
+    behind = imports.begin_apply(db, asked, waiting.hid, source="file")
     db.commit()
-    assert job.status == "applying"
-    # The server stopped before its worker had begun, and starts again.
+    # Asking stores a job as queued, whether another is ahead of it or none.
+    assert (begun.status, behind.status) == ("queued", "queued")
+    # A worker took the first up, which is what makes it applying, and stopped there.
+    taken = imports._take(db, job.hid)
+    assert taken is not None
+    assert taken.status == "applying"
+    # The background work starts again, here as the worker of a server that does both.
     with TestClient(create_app(config)):
         db.expire_all()
         found = db.get_one(ImportJob, job.hid)
         assert found.status == "stopped"
-        assert found.failure is not None
-        assert found.failure.startswith("the server stopped while it was being applied")
+        assert found.failure == imports.CUT_SHORT
+        assert found.failure.startswith("the background work stopped while it was being applied")
+        # The one that nobody had taken up was not cut short, and is not said to be.
+        assert db.get_one(ImportJob, waiting.hid).failure != imports.CUT_SHORT
     stopped = db.query(AuditEvent).filter_by(record_hid=job.hid, action="apply_stopped").one()
     assert (stopped.actor_hid, stopped.via, stopped.request_id) == (
         None,
         "system",
         "apply-request-01",
     )
+    # A worker that starts now finds nothing applying, and stops nothing.
+    assert imports.recover(db) == []
 
 
 def test_one_job_is_applied_at_a_time_and_the_next_waits_queued(
@@ -305,8 +321,9 @@ def test_one_job_is_applied_at_a_time_and_the_next_waits_queued(
         return original(db, run, which, hid, batch, typed)
 
     monkeypatch.setattr(imports, "_apply_batch", held_in_its_first_batch)
-    assert begin(make, first)["status"] == "applying"
+    assert begin(make, first)["status"] == "queued"
     assert working.wait(30)
+    assert make.get(f"/imports/{first['hid']}")["status"] == "applying"
     assert begin(make, second)["status"] == "queued"
     assert make.get(f"/imports/{second['hid']}")["status"] == "queued"
     # Asked again while it waits, it is not taken twice.
@@ -410,7 +427,7 @@ def test_a_bulk_edit_is_applied_in_the_background_like_a_file(
     response = client.post(
         f"{API}/items/bulk-update/{edit['job']['hid']}/apply", headers=make.headers
     )
-    assert (response.status_code, response.json()["status"]) == (202, "applying")
+    assert (response.status_code, response.json()["status"]) == (202, "queued")
     ended = wait_for_job(client, make.headers, edit["job"]["hid"])
     assert (ended["status"], ended["applied"]) == ("applied", 3)
     assert {item["comments"] for item in make.get("/items")["items"]} == {"x"}

@@ -90,7 +90,7 @@ def started(tmp_path: Path, first_admin: bool = True) -> Generator[Server]:
 
     The process of the background work is started beside it once the server answers,
     which has migrated the database by then, and is at work before the scenario begins:
-    an apply asked for earlier would be taken for one that a stop cut short."""
+    what it does as it starts, the record of a week that has none, is done by then."""
     running = configured(tmp_path)
     process = subprocess.Popen(  # noqa: S603 - our own command with fixed arguments
         [*HIRDIR, "admin", "serve", "--dev"],

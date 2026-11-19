@@ -4204,7 +4204,7 @@ files() {
         "$status $(job_counts)" "202 [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
     authorized POST "$prefix/api/v1/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
     expect "pkg sent again with the same key, the apply is answered with the first answer, the job as it was begun, and marked as replayed" \
-        "$status $(header idempotency-replayed) $(job_counts)" "202 true [\"applying\", $large_rows, $large_rows, 0, 0, 0]"
+        "$status $(header idempotency-replayed) $(job_counts)" "202 true [\"queued\", $large_rows, $large_rows, 0, 0, 0]"
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-sw-*' --data-urlencode 'limit=1'
     expect "pkg and the $large_rows items are there once" "$status $(json_field total)" "200 $large_rows"
 
@@ -7422,26 +7422,26 @@ second_process() {
     code=$status
     sleep 5
     api GET "/imports/$hid"
-    expect "pkg an apply asked for while the unit is stopped is taken, 202, and nothing of it is applied, by the server or by anything else: it waits as it was asked" \
-        "$code $status $(job_said)" '202 200 ["applying", 0, 0, ""]'
+    expect "pkg an apply asked for while the unit is stopped is taken, 202, and nothing of it is applied, by the server or by anything else: it waits, queued" \
+        "$code $status $(job_said)" '202 200 ["queued", 0, 0, ""]'
     api GET /tags
     expect "pkg its tag is not there" "$status $(json 'sum(t["label"] == "pkgtest-worker-2" for t in d)')" "200 0"
 
-    # Started again, it marks stopped what it finds applying, as the server did when it
-    # started (P-267): the row of a job does not say whether anybody had begun it.
+    # Started again, it applies what waited: a job is applying only once a process has
+    # taken it up, so one that waited queued was never cut short, and nobody asks again.
     check "pkg systemctl start hirdir-worker succeeds, by itself" inside systemctl start hirdir-worker.service
     if wait_worker; then
         pass "pkg and the process of the background work says that it is under way, as another process than before"
     else
         fail "pkg and the process of the background work says that it is under way, as another process than before"
     fi
-    api GET "/imports/$hid"
-    expect "pkg the apply that waited is marked stopped when the unit starts, to be resumed, with nothing of it applied" \
+    for _ in $(seq 30); do
+        api GET "/imports/$hid"
+        case $(json_field status) in queued | applying) sleep 1 ;; *) break ;; esac
+    done
+    expect "pkg the apply that waited is applied when the unit starts, by the second process, with nobody asking again" \
         "$status $(job_said) $([ "$(unit_pid hirdir-worker.service)" != "$worker_pid" ] && echo new)" \
-        '200 ["stopped", 0, 0, "the server stopped while it was being applied"] new'
-    apply_job "/imports/$hid/apply"
-    expect "pkg asked for again, it is applied by the second process, from its first row" \
-        "$status $(job_said)" '202 ["applied", 1, 1, ""]'
+        '200 ["applied", 1, 1, ""] new'
     api GET /tags
     expect "pkg and its tag is there" "$status $(json 'sum(t["label"] == "pkgtest-worker-2" for t in d)')" "200 1"
     api GET /about/load

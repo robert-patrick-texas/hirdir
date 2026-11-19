@@ -114,7 +114,7 @@ test("an apply is followed, left and come back to, and one that stopped is resum
   const many = await preview(request, asIvy, `contacts-${suffix}-many.csv`, range(MANY));
   const few = await preview(request, asIvy, `contacts-${suffix}-few.csv`, [MANY + 1, MANY + 2]);
   const first = await apply(request, asIvy, many);
-  expect(["applying", "queued"]).toContain(first.status);
+  expect(first.status, "an apply waits to be taken up by the background work").toBe("queued");
   const second = await apply(request, asIvy, few);
   expect(second.status, "the small file waits behind the large one").toBe("queued");
   await disable(request, await signedIn(request, account), ivy);
