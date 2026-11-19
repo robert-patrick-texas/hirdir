@@ -59,7 +59,7 @@ const others = Array.from({ length: 11 }, (_, n) => host(`vm-${String(n + 2).pad
 const container = host("ctr-dns1");
 const orphan = host("vm-orphan");
 
-const made: { server?: string } = {};
+const made: { server?: string; cluster?: string } = {};
 
 async function records(request: APIRequestContext, account: Account): Promise<void> {
   if (made.server !== undefined) return;
@@ -111,11 +111,13 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
   });
   // A machine that names no host, to be looked at.
   await make(request, headers, "/items", { catalog_entry_hid: vm, hostname: orphan });
-  await make(request, headers, "/device-groups", {
-    type: "cluster",
-    name: cluster,
-    location_hid: roomHid,
-  });
+  made.cluster = (
+    await make(request, headers, "/device-groups", {
+      type: "cluster",
+      name: cluster,
+      location_hid: roomHid,
+    })
+  ).hid;
   for (const [index, name] of others.entries()) {
     const vmHid = (
       await make(request, headers, "/items", {
@@ -329,10 +331,15 @@ test("twelve virtual machines are moved to a cluster by one bulk edit", async ({
   await expect(region(page, "What runs on it (12)")).toBeVisible();
   await openItem(page, server);
   await expect(page.getByTestId("hosted")).toHaveCount(0);
-  // A machine has the cluster's room as from its host.
+  // A machine has the cluster's room, as from the cluster: a group, whose page it links to.
   await openItem(page, app);
   await expect(page.getByTestId("runs-on").getByRole("link", { name: cluster })).toBeVisible();
-  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "host");
+  const place = page.getByTestId("location");
+  await expect(place).toHaveAttribute("data-source", "device_group");
+  await expect(place.getByRole("link", { name: `the group ${cluster}` })).toHaveAttribute(
+    "href",
+    new RegExp(`/groups/${made.cluster}$`),
+  );
 
   await expectClean(page, seen);
 });

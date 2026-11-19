@@ -620,7 +620,7 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
           </Fact>
         )}
         <Fact label="Operator" change={mayChange && "operator_hid"}>
-          <Operator effective={item.effective.operator_hid} testId="operator" host={item.host} />
+          <Operator effective={item.effective.operator_hid} testId="operator" />
         </Fact>
         <Fact
           label="Location"
@@ -643,7 +643,7 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
               >
                 {effectiveLabel(location)}
               </Link>
-              <FromAbove effective={location} host={item.host} />
+              <FromAbove effective={location} />
             </span>
           )}
         </Fact>
@@ -681,7 +681,7 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
               </Link>
               , when that place is made active
             </span>
-            <FromAbove effective={planned} host={item.host} />
+            <FromAbove effective={planned} />
           </Fact>
         )}
         {/* 0.9.5: the standing among the first facts, with Change to a move (P-189). */}
@@ -1499,9 +1499,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
     ...(item.operator_hid
       ? {}
       : {
-          operator_hid: (
-            <OperatorNote effective={item.effective.operator_hid} what="item" host={item.host} />
-          ),
+          operator_hid: <OperatorNote effective={item.effective.operator_hid} what="item" />,
         }),
     ...(isFromAbove(item.effective.owner_hid)
       ? {
@@ -1517,24 +1515,14 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
     ...(isFromAbove(item.effective.location_hid)
       ? {
           location_hid: (
-            <PlaceNote
-              kind="location"
-              effective={item.effective.location_hid}
-              what="item"
-              host={item.host}
-            />
+            <PlaceNote kind="location" effective={item.effective.location_hid} what="item" />
           ),
         }
       : {}),
     ...(isFromAbove(item.effective.planned_location_hid)
       ? {
           planned_location_hid: (
-            <PlaceNote
-              kind="planned"
-              effective={item.effective.planned_location_hid}
-              what="item"
-              host={item.host}
-            />
+            <PlaceNote kind="planned" effective={item.effective.planned_location_hid} what="item" />
           ),
         }
       : {}),

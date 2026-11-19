@@ -15,9 +15,6 @@ export type HostRef = Schemas["HostRef"];
 export type ReviewReason = Schemas["ReviewReason"];
 export type HostedItem = Schemas["HostedItem"];
 
-/** What an item runs on as far as a link to it goes: an item, or a group. */
-export type HostLink = { item_hid: string | null; group_hid: string | null } | null;
-
 /** The kinds of model whose items run on a host. */
 export const HOSTED_KINDS: readonly string[] = ["virtual_machine", "virtual_context", "container"];
 
@@ -45,17 +42,6 @@ export function hostPath(host: { item_hid: string | null; group_hid: string | nu
   return host.group_hid
     ? `/groups/${encodeURIComponent(host.group_hid)}`
     : `/items/${encodeURIComponent(host.item_hid ?? "")}`;
-}
-
-/**
- * The page of the record a value had from what an item runs on came from: the stack or
- * the cluster it runs on, where that is the record, and otherwise an item, the host or
- * an item above it. The answer says no more of the record than its HID.
- */
-export function hostSourcePath(hid: string, host: HostLink): string {
-  return host?.group_hid === hid
-    ? `/groups/${encodeURIComponent(hid)}`
-    : `/items/${encodeURIComponent(hid)}`;
 }
 
 /** Which record a host is, in a word: "a cluster", "a stack", "an item". */

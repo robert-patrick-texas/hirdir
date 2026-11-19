@@ -9,7 +9,6 @@
 
 import type { Schemas } from "../api/client";
 import { all, any, type FilterNode, itemsPath } from "./filter";
-import { type HostLink, hostSourcePath } from "./hosting";
 import { isLevel, placePath } from "./places";
 
 export type Operator = Schemas["OperatorOut"];
@@ -140,7 +139,7 @@ export interface OperatorSource {
 
 const SOURCE_WORDS: Readonly<Record<string, string>> = {
   parent_item: "the item",
-  // 0.9.8: what it runs on, an item or a stack or a cluster (P-246).
+  // 0.9.8: an item it runs on, or an item above that: a group it runs on is a group (P-246).
   host: "the host",
   device_group: "the group",
   location: "the location",
@@ -155,21 +154,18 @@ const SOURCE_WORDS: Readonly<Record<string, string>> = {
  */
 export function operatorSource(
   effective: Pick<OperatorInForce, "source" | "source_hid" | "source_label">,
-  host: HostLink = null,
 ): OperatorSource | null {
   const { source, source_hid: hid, source_label: label } = effective;
   const what = SOURCE_WORDS[source];
   if (!hid || what === undefined) return null;
   const path =
-    source === "parent_item"
+    source === "parent_item" || source === "host"
       ? `/items/${encodeURIComponent(hid)}`
-      : source === "host"
-        ? hostSourcePath(hid, host)
-        : source === "device_group"
-          ? `/groups/${encodeURIComponent(hid)}`
-          : isLevel(source)
-            ? placePath(source, hid)
-            : null;
+      : source === "device_group"
+        ? `/groups/${encodeURIComponent(hid)}`
+        : isLevel(source)
+          ? placePath(source, hid)
+          : null;
   if (path === null) return null;
   return { text: label ? `${what} ${label}` : what, path };
 }
@@ -178,10 +174,10 @@ export function operatorSource(
  * What a cell of a grid says of an operator in force beyond its label: the person behind
  * it, or that it is open, and where it came from when it is inherited. Blank for none.
  */
-export function operatorHint(effective: OperatorInForce, host: HostLink = null): string {
+export function operatorHint(effective: OperatorInForce): string {
   const mark = markOf(effective);
   if (!mark) return "";
-  const from = operatorSource(effective, host);
+  const from = operatorSource(effective);
   return [markTitle(mark), from ? `Inherited from ${from.text}` : ""].filter(Boolean).join(" · ");
 }
 
