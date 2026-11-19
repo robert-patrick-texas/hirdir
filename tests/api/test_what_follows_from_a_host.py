@@ -389,3 +389,81 @@ def test_a_group_that_something_runs_on_is_not_deleted(
             ],
         }
     ]
+
+
+# --- a replacement hands over what runs on the item that left (P-247) ----------------
+
+
+def _replace(make: Maker, old: dict[str, Any], expect: int = 201, **body: Any) -> dict[str, Any]:
+    now = _get(make, old)
+    return make.post(
+        f"/items/{old['hid']}/replace",
+        {"row_version": now["row_version"], "reason": "rma", **body},
+        expect,
+    )
+
+
+def _hosts(db: Session, *found: dict[str, Any]) -> list[tuple[str | None, str | None]]:
+    db.expire_all()
+    return [
+        (one.host_item_hid, one.observed_host_hid)
+        for one in (db.get_one(Item, item["hid"]) for item in found)
+    ]
+
+
+def test_a_chassis_replaced_hands_its_virtual_contexts_to_the_new_one(
+    make: Maker, db: Session
+) -> None:
+    made = _virtual(make)
+    _host(db, made["app"], made["esx"], seen=made["esx"])
+    _host(db, made["web"], made["esx"])
+    # One retired keeps the host it was retired on.
+    _host(db, made["dns"], made["esx"])
+    dns = _get(make, made["dns"])
+    make.post(f"/items/{dns['hid']}/retire", {"row_version": dns["row_version"]}, 200)
+
+    replacement = _replace(make, made["esx"], new_item_hid=made["other"]["hid"])
+
+    new, old = made["other"]["hid"], made["esx"]["hid"]
+    # What was seen is what was seen: it is not handed over.
+    assert _hosts(db, made["app"], made["web"], made["dns"]) == [
+        (new, old),
+        (new, None),
+        (old, None),
+    ]
+    assert _cause(make, made["app"], "update", "replacing") == [replacement["hid"]]
+    assert _cause(make, made["web"], "update", "replacing") == [replacement["hid"]]
+    assert _cause(make, made["dns"], "update", "replacing") == []
+
+
+def test_what_runs_on_the_item_that_left_stays_where_the_request_says(
+    make: Maker, db: Session
+) -> None:
+    made = _virtual(make)
+    _host(db, made["app"], made["esx"])
+
+    _replace(make, made["esx"], new_item_hid=made["other"]["hid"], hand_over_hosted=False)
+
+    assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
+    assert _cause(make, made["app"], "update", "replacing") == []
+
+
+def test_a_replacement_that_may_not_host_what_is_handed_over_is_refused_whole(
+    make: Maker, db: Session
+) -> None:
+    made = _virtual(make)
+    _host(db, made["app"], made["esx"])
+    storage = make.entry(make.vendor("Example Software"), "LIC-1", kind="software")
+    licence = make.item(catalog_entry_hid=storage["hid"], name="site2-licence-01")
+
+    refused = _replace(make, made["esx"], 422, new_item_hid=licence["hid"])
+
+    assert "hand_over_hosted" in {entry["field"] for entry in refused["errors"]}
+    assert "1 item runs on site2-esx-01" in refused["detail"]
+    assert "of the kind software" in refused["detail"]
+    assert _get(make, made["esx"])["replacements"] == []
+    assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
+    # Left where it is, the replacement is made.
+    _replace(make, made["esx"], new_item_hid=licence["hid"], hand_over_hosted=False)
+    # And where nothing runs on the item that leaves, the box asks nothing.
+    _replace(make, made["web"], new_item_hid=licence["hid"])

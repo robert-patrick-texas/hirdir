@@ -537,9 +537,9 @@ them.
   that and `host_observed_at` cleared by an `update` of its own whose `changes` hold
   `deleted_with`, the deleted item's HID, as the master seen on a stack is cleared.
 - **A replacement** by `POST /items/{hid}/replace` hands what runs on the item that
-  leaves to the item that comes: each item that names it as `host_item_hid`, retired or
-  not, names the new one, by an `update` of its own whose `changes` hold `replacing`, the
-  HID of the replacement, as `new`. `hand_over_hosted` false leaves each where it is;
+  leaves to the item that comes: each item not retired that names it as `host_item_hid`
+  names the new one, by an `update` of its own whose `changes` hold `replacing`, the HID
+  of the replacement, as `new`; one retired keeps the host it was retired on. `hand_over_hosted` false leaves each where it is;
   left out, it is true. Where something is to be handed over and the item that comes may
   not be a host, being of a kind that hosts nothing, retired, or out of the team's hands,
   the replacement is refused, a `422` on `hand_over_hosted` that says why and how many

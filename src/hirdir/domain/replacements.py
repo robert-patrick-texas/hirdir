@@ -14,7 +14,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
-from hirdir.db.models import Item, ItemReplacement
+from hirdir.db.models import CatalogEntry, Item, ItemReplacement
 from hirdir.domain import audit, choices, circuit_records, groups, items, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
@@ -22,6 +22,8 @@ from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVer
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
 MAX_REFERENCE = 200
+# The kinds of model an item that hosts others may be of; one of no model may too (P-246).
+HOST_KINDS = ("hardware", "virtual_machine")
 
 
 def latest_first() -> list[Any]:
@@ -139,6 +141,71 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
         )
 
 
+def why_not_a_host(db: Session, item: Item, running: list[Item]) -> str | None:
+    """Say why an item may not be the host of what runs on another, or None where it may.
+
+    A host is an item of the kind `hardware` or `virtual_machine`, or of no model, that is
+    not retired and has not left the team's hands, and is not one of what is to run on
+    it (P-246). The rules of naming a host are kept with the host fields; this is the one
+    question a replacement asks of them, kept here until the two are joined.
+    """
+    name = items.shown_name(item)
+    if item.record_status == "retired":
+        return f"{name} is retired"
+    state = next(
+        (
+            one.lifecycle_state
+            for one in (item, *items.lines_above(db, [item])[item.hid])
+            if one.lifecycle_state
+        ),
+        None,
+    )
+    if state in items.OUT_OF_HANDS:
+        return f"{name} is {state}, and hosts nothing"
+    entry = db.get(CatalogEntry, item.catalog_entry_hid) if item.catalog_entry_hid else None
+    if entry is not None and entry.kind not in HOST_KINDS:
+        return f"{name} is of the kind {entry.kind}; a host is hardware or a virtual machine"
+    if item.hid in {one.hid for one in running} or item.host_item_hid in {
+        one.hid for one in running
+    }:
+        return f"{name} runs on the item it would replace, and would run on itself"
+    return None
+
+
+def _hand_over_hosted(
+    db: Session, context: AuditContext, old: Item, new: Item, replacement_hid: str
+) -> None:
+    """Give what runs on the item that leaves the item that comes as its host (P-247),
+    each by a change of its own that names the replacement. What was seen to run on
+    the old item is left as it is: that is what was seen."""
+    running = list(
+        db.scalars(
+            select(Item)
+            .where(Item.host_item_hid == old.hid, Item.record_status != "retired")
+            .order_by(Item.hid)
+        )
+    )
+    if not running:
+        return
+    why = why_not_a_host(db, new, running)
+    if why is not None:
+        count = len(running)
+        what = "1 item runs" if count == 1 else f"{count} items run"
+        raise Invalid(
+            f"{what} on {items.shown_name(old)}, and {why}",
+            {
+                "hand_over_hosted": f"{what} on the item that leaves, and the item that comes "
+                "may not be their host: give hand_over_hosted false to leave them where "
+                "they are"
+            },
+        )
+    for one in running:
+        replacing = audit.because(
+            context, "replacing", None, replacement_hid, of=(items.RECORD_TYPE, one.hid)
+        )
+        records.apply(db, replacing, items.RECORD_TYPE, one, None, {"host_item_hid": new.hid})
+
+
 def replace(
     db: Session,
     context: AuditContext,
@@ -164,8 +231,9 @@ def replace(
     member of a stack, the new one gives up its own name, addresses and place as a
     member that joins a stack does, and `disposition` and `expected_online` are its own
     from the change. `old_item` is what the old item is to have, as the end of a
-    membership gives it, once its memberships have ended. All of it is one change: a
-    refusal of any part leaves nothing done.
+    membership gives it, once its memberships have ended. With `hand_over_hosted`, what
+    runs on the old item runs on the new one from then on (P-247). All of it is one
+    change: a refusal of any part leaves nothing done.
     """
     dialect.hold_other_writers(db)
     old = items.get_item(db, old_hid)
@@ -225,6 +293,9 @@ def replace(
     _take_over(db, context, old, new, day)
     # And the circuits it was connected to, on the same sides (P-147).
     circuit_records.hand_over(db, context, old.hid, new.hid)
+    # And what runs on it, unless the request says otherwise (P-247).
+    if hand_over_hosted:
+        _hand_over_hosted(db, context, old, new, replacement.hid)
     # Then what the request names of each item, by that item's rules, each change saying
     # the replacement it came from (P-242).
     replacing = audit.because(context, "replacing", None, replacement.hid)
