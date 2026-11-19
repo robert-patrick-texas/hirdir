@@ -22,6 +22,12 @@ from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVer
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
 MAX_REFERENCE = 200
+# What a refusal of a day to come says at `replaced_on`, in words a person reads in the
+# form: what a replacement changes of either item is done with the request.
+ON_THE_DAY = (
+    "what a replacement changes of either item is done on the day it is entered: a day "
+    "that has come, today or before"
+)
 
 
 def latest_first() -> list[Any]:
@@ -164,11 +170,10 @@ def _hand_over_hosted(
         count = len(running)
         what = "1 item runs" if count == 1 else f"{count} items run"
         raise Invalid(
-            "what runs on the item that leaves is handed over on the day it is replaced",
-            {
-                "replaced_on": f"{what} on the item that leaves: with hand_over_hosted, a day "
-                "that has come, today or before; or give hand_over_hosted false"
-            },
+            f"{what} on {items.shown_name(old)}, and what runs on the item that leaves is "
+            "handed over on the day the replacement is entered, unless hand_over_hosted is "
+            "false",
+            {"replaced_on": ON_THE_DAY},
         )
     why = hosting.why_no_host(db, new, running)
     if why is not None:
@@ -177,9 +182,8 @@ def _hand_over_hosted(
         raise Invalid(
             f"{what} on {items.shown_name(old)}, and {why}",
             {
-                "hand_over_hosted": f"{what} on the item that leaves, and the item that comes "
-                "may not be their host: give hand_over_hosted false to leave them where "
-                "they are"
+                "hand_over_hosted": f"the item that comes may not be their host: {why}. "
+                "Leave them where they are, or choose another item"
             },
         )
     for one in running:
@@ -255,8 +259,9 @@ def replace(
             if given
         ]
         raise Invalid(
-            "what a replacement changes of either item is done with the request",
-            {"replaced_on": f"with {', '.join(named)}, a day that has come: today or before"},
+            "what a replacement changes of either item is done with the request, and "
+            f"{', '.join(named)} is given with a day to come",
+            {"replaced_on": ON_THE_DAY},
         )
     if new_item is not None:
         new = items.create_item(db, context, dict(new_item))

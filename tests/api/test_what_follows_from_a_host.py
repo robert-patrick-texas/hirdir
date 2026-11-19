@@ -497,8 +497,12 @@ def test_a_replacement_on_a_day_to_come_hands_nothing_over(make: Maker, db: Sess
 
     refused = _replace(make, made["esx"], 422, new_item_hid=made["other"]["hid"], replaced_on=ahead)
 
-    assert set(errors(refused)) == {"replaced_on"}
-    assert "hand_over_hosted" in errors(refused)["replaced_on"]
+    # Said at the field in words a person reads, and to the API's reader in the detail.
+    assert errors(refused) == {
+        "replaced_on": "what a replacement changes of either item is done on the day it is "
+        "entered: a day that has come, today or before"
+    }
+    assert "unless hand_over_hosted is false" in refused["detail"]
     assert _get(make, made["esx"])["replacements"] == []
     assert _hosts(db, made["app"]) == [(made["esx"]["hid"], None)]
     # Left where it is, the replacement is recorded for its day.

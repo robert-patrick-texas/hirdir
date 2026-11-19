@@ -621,11 +621,17 @@ them.
   of the replacement, as `new`; one retired keeps the host it was retired on. `hand_over_hosted` false leaves each where it is;
   left out, it is true. Where something is to be handed over and the item that comes may
   not be a host, being of a kind that hosts nothing, retired, or out of the team's hands,
-  the replacement is refused, a `422` on `hand_over_hosted` that says why and how many
-  run on the item that leaves, and nothing of it is done. The hand-over is done with the
-  request, as all that a replacement changes of either item is: with a `replaced_on` to
-  come, where something runs on the item that leaves and `hand_over_hosted` is not false,
-  the replacement is refused, a `422` on `replaced_on` that names `hand_over_hosted`.
+  the replacement is refused, a `422` on `hand_over_hosted`, whose words at the field say
+  that the item that comes may not be their host, why, and to leave them where they are
+  or choose another item, and whose `detail` says how many run on the item that leaves;
+  nothing of it is done. The hand-over is done with the request, as all that a
+  replacement changes of either item is: with a `replaced_on` to come, where something
+  runs on the item that leaves and `hand_over_hosted` is not false, the replacement is
+  refused, a `422` on `replaced_on` that says, as the refusal of `old_item` with a day to
+  come does, that what a replacement changes of either item is done on the day it is
+  entered, a day that has come, today or before; its `detail` names `hand_over_hosted`,
+  and that of `old_item` the fields given. The words at a field are for a person, and the
+  field beside them for the API's reader.
   `observed_host_hid` of what runs on it is left as it is: it is what was seen.
 - **Two requests at once.** Retiring an item and naming it as a host each take the one
   writer's place before they look, so the second sees what the first stored: a host
