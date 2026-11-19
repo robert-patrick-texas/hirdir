@@ -4,6 +4,7 @@ import { knownAbove, ownerSource } from "./descent";
 import {
   bulkHost,
   type HostRef,
+  hostClearedHint,
   hostedRows,
   hostFields,
   hostHint,
@@ -185,6 +186,40 @@ describe("the one field of a form for an item or a group", () => {
     };
     const built = buildPatch(specs, record, { ...formOf(specs, record), catalog_entry_hid: "sw" });
     expect(built.body).toEqual({ row_version: 4, catalog_entry_hid: "sw", host_hid: null });
+  });
+
+  it("clears what it was seen on with the host, and says so beneath the model first", () => {
+    const kinds: Record<string, string> = { vm: "virtual_machine", sw: "hardware" };
+    const facts = {
+      kindOf: (hid: string) => kinds[hid],
+      host: server,
+      observed: { hid: "srv-1", label: "site2-esx-01" },
+    };
+    const specs = [
+      { name: "catalog_entry_hid", label: "Catalog entry", kind: "entry" as const },
+      ...hostSpecs(facts),
+    ];
+    const record = {
+      row_version: 4,
+      catalog_entry_hid: "vm",
+      host_hid: "item:srv-1",
+      observed_host_hid: "srv-1",
+      host_observed_at: "2026-11-18T09:30:00Z",
+    };
+    const values = { ...formOf(specs, record), catalog_entry_hid: "sw" };
+    const built = buildPatch(specs, record, values);
+    expect(sentHost(built.body)).toEqual({
+      row_version: 4,
+      catalog_entry_hid: "sw",
+      host_item_hid: null,
+      host_group_hid: null,
+      observed_host_hid: null,
+      host_observed_at: null,
+    });
+    expect(hostClearedHint(facts, values)).toMatch(/saving clears what the item runs on/);
+    expect(hostClearedHint(facts, { catalog_entry_hid: "vm" })).toBeUndefined();
+    // An item that names no host and was seen on none is told nothing.
+    expect(hostClearedHint({ kindOf: facts.kindOf }, values)).toBeUndefined();
   });
 
   it("puts a refusal of either field of the server at the one field", () => {

@@ -102,6 +102,8 @@ export interface FieldSpec {
    * change after: the moment an item was seen, filled with now as the item is chosen.
    */
   fills?: (value: FormValue) => FormValues;
+  /** 0.9.8: what more is said beneath the field, given what the form holds now. */
+  hintFrom?: (values: FormValues) => string | undefined;
 }
 
 export type FormValue = string | boolean | string[];

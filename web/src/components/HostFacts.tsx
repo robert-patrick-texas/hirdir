@@ -25,9 +25,9 @@ export function ReviewMark() {
   return <span className="badge badge-plain review-mark">To be looked at</span>;
 }
 
-/** Whether an item's page says what it runs on: one of such a kind, or one that names a host. */
+/** Whether an item's page says what it runs on: one of a kind that runs on a host. */
 export function showsHost(item: Item): boolean {
-  return runsOnHost(item.catalog?.kind) || item.host !== null || item.observed_host !== null;
+  return runsOnHost(item.catalog?.kind);
 }
 
 export function HostFacts({ item, change }: HostFactsProps) {

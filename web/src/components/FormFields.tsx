@@ -89,7 +89,9 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
   return specs.map((spec) => {
     const { name, label, kind } = spec;
     const value = values[name];
-    const hint = hintOf(spec, value, hints?.[name]);
+    const extra = spec.hintFrom?.(values);
+    const said = hintOf(spec, value, hints?.[name]);
+    const hint = extra ? [said, extra].filter(Boolean).join(" ") : said;
     const shared = {
       label,
       name,

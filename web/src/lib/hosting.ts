@@ -276,6 +276,8 @@ export function hostSpecs(facts: HostFormFacts): FieldSpec[] {
       exclude,
       hint: "The item it was seen to run on, which may differ from its host.",
       when: hosted,
+      // A model of a kind that runs on no host takes what was seen with the host.
+      clearedWhenNotAsked: true,
       fills: (value) => ({ host_observed_at: value === "" ? "" : localMoment(new Date()) }),
     },
     {
@@ -284,6 +286,20 @@ export function hostSpecs(facts: HostFormFacts): FieldSpec[] {
       kind: "moment",
       hint: "When it was seen there: now, as the item is chosen.",
       when: (values) => hosted(values) && values.observed_host_hid !== "",
+      clearedWhenNotAsked: true,
     },
   ];
+}
+
+/**
+ * What the form says beneath the model of an item that names a host or was seen on one,
+ * while the model chosen is of a kind that runs on none: that saving clears both. Blank
+ * otherwise.
+ */
+export function hostClearedHint(facts: HostFormFacts, values: FormValues): string | undefined {
+  if (!facts.host && !facts.observed) return undefined;
+  const entry = values.catalog_entry_hid;
+  const kind = typeof entry === "string" && entry !== "" ? facts.kindOf(entry) : null;
+  if (runsOnHost(kind)) return undefined;
+  return "A model of this kind runs on no host: saving clears what the item runs on and what it was seen on.";
 }
