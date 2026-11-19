@@ -3,8 +3,9 @@
 A place that was a draft has been made active. Every item and device group with a plan
 of its own for a location thereby in use is moved: its location becomes the planned
 one, and the plan is cleared. What has its plan from above, from the group it is in or
-from the item it is in, and a location of its own, gives that location up: it goes
-with what it is in, and is where that is from now on. Each is a change of one record,
+from the item it is in or from what it runs on (P-246), and a location of its own,
+gives that location up: it goes with what it is in, or runs on, and is where that is
+from now on. Each is a change of one record,
 with an entry of its own in the audit trail under the request that opened the place,
 all in one transaction. A retired record is left where it is.
 
@@ -16,11 +17,11 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import DeviceGroup, DeviceGroupMember, Item
-from hirdir.domain import descent, geography, groups, items, records
+from hirdir.domain import descent, geography, groups, hosting, items, records
 from hirdir.domain.audit import AuditContext
 
 MODELS: tuple[tuple[Any, str], ...] = ((Item, "item"), (DeviceGroup, "device_group"))
@@ -97,6 +98,42 @@ def _within(db: Session, model: Any, parent: Any, hids: list[str], depth: int) -
     return found
 
 
+def _beneath_and_hosted(
+    db: Session, tops: dict[str, Item], in_groups: list[str]
+) -> dict[str, Item]:
+    """Return the items that may go with some items and groups: those items, what is
+    installed in them, what runs on them or on the groups (P-246), and so on down, as the
+    walk of what an item has from above goes up."""
+    found = dict(tops)
+    level: list[Item] = []
+    for start in range(0, len(in_groups), 500):
+        level += db.scalars(
+            select(Item).where(
+                Item.host_group_hid.in_(in_groups[start : start + 500]),
+                Item.record_status != "retired",
+            )
+        )
+    level = [item for item in level if item.hid not in found]
+    found.update((item.hid, item) for item in level)
+    frontier = [*tops, *(item.hid for item in level)]
+    for _ in range(hosting.MAX_LINE * (items.MAX_DEPTH + 1)):
+        if not frontier:
+            break
+        below: list[Item] = []
+        for start in range(0, len(frontier), 500):
+            piece = frontier[start : start + 500]
+            below += db.scalars(
+                select(Item).where(
+                    or_(Item.parent_item_hid.in_(piece), Item.host_item_hid.in_(piece)),
+                    Item.record_status != "retired",
+                )
+            )
+        fresh = {item.hid: item for item in below if item.hid not in found}
+        found.update(fresh)
+        frontier = list(fresh)
+    return found
+
+
 def _plan(db: Session, ready: list[str]) -> _Plan:
     """Return what moving into some locations would do."""
     plan = _Plan()
@@ -147,8 +184,7 @@ def _plan(db: Session, ready: list[str]) -> _Plan:
             )
         )
     tops = {item.hid: item for item in (*members, *plan.arriving["item"])}
-    beneath = _within(db, Item, Item.parent_item_hid, list(tops), items.MAX_DEPTH)
-    candidates = {item.hid: item for item in (*tops.values(), *beneath)}
+    candidates = _beneath_and_hosted(db, tops, in_groups)
     unplanned = [item for item in candidates.values() if item.planned_location_hid is None]
     going = descent.of_items(
         db, unplanned, items.lines_above(db, unplanned), "planned_location_hid"

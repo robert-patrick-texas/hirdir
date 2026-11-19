@@ -21014,7 +21014,7 @@
         "properties": {
           "from_item": {
             "$ref": "#/components/schemas/ItemCount",
-            "description": "The minor items that have it from the item above."
+            "description": "The items that have it from an item above them: the one they are installed in, or the one they run on (P-246)."
           },
           "groups": {
             "items": {

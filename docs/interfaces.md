@@ -197,8 +197,10 @@ from that place, `places_beneath`, the places beneath it that have it from there
 `exceptions`, the items beneath it that have another operator; `groups`, each group given
 it as its own, with `type`, `items`, `groups_beneath` and `exceptions`, the items under it,
 at any depth of nesting, that have another; `own`, the items given it as
-their own, and `from_item`, the minor items that have it from the item they are in; and
-`totals`. Every count has `filter`, the filter of the item list that lists those items,
+their own, and `from_item`, the items that have it from an item above them, the one they
+are installed in or the one they run on (P-246), by `effective.operator_hid.source:in:parent_item,host`;
+and `totals`, which the parts add up to. The column `from_item` of `GET
+/reports/summary?by=operator` counts the same. Every count has `filter`, the filter of the item list that lists those items,
 by `effective.operator_hid`, `effective.operator_hid.source` and
 `effective.operator_hid.source_hid`. It takes `include_drafts` and `include_archived` as
 the item list does, and lists at most 20 places and 20 groups beneath each, with how many
@@ -274,10 +276,20 @@ the rules, and this says how the API carries them.
   (`parent_item_hid`); a host that is not there, is retired, has left the team's
   hands, is of a kind that hosts nothing, is the item itself or runs on it, or makes a
   line of hosts longer than three; a group that is not a stack or a cluster, or is
-  retired; an item seen that is the item itself; a moment seen more than a day ahead;
-  and a moment given with no item seen. `PATCH /catalog-entries/{hid}` that makes a
-  model a kind that runs on nothing, while an item of it names a host, is refused on
-  `kind`.
+  retired; an item seen that is the item itself, or an item seen given to an item of a
+  kind that runs on nothing (one that holds one from before keeps it until it is
+  changed); a moment seen more than a day ahead; and a moment given with no item seen.
+  A request that makes an item's model a kind that runs on nothing clears its host and
+  the item seen in the same request, `host_item_hid`, `host_group_hid` and
+  `observed_host_hid` each `null`. `PATCH /catalog-entries/{hid}` that makes a model a
+  kind that runs on nothing, while an item of it that is not retired names a host, is
+  refused on `kind`. A refusal by a file or a bulk edit names the file's columns,
+  `host`, `host_group`, `observed_host` and `parent`, where the API names its fields.
+- **A machine entered as installed in its server**, as one was before 0.9.8 and as
+  migration 0014 leaves it, is marked `no_host`, and naming its host alone is refused,
+  saying that the parent is cleared with it. It is put right in one change: `PATCH
+  /items/{hid}` with `host_item_hid` and `parent_item_hid` `null`, or a file of items
+  with `host` and `parent` `!clear` on its row.
 - **The answer.** An item answers the four fields, and `host`, what it runs on, with
   `item_hid` or `group_hid`, its `name`, a group's `type`, an item's `pid` and its own
   `lifecycle_state`, and its `record_status`; `observed_host`, the item seen, as an item
@@ -313,7 +325,9 @@ the rules, and this says how the API carries them.
   `observed_host_hid`, `host.name`, the name of the item or the group it runs on,
   `observed_host.name`, `host_observed_at`, `host_differs`, `hosted_count`, and
   `review`, which holds each reason: `review:eq:no_host`, and `review:empty:false` for
-  every item with one. `effective.location_hid`, `location`, `site`, `region`,
+  every item with one. A filter and a sort by `serial_number` see only a serial number
+  of the item's own: a virtual context that shows its switch's is not found by it, and
+  is found by what it runs on, `host.name`. `effective.location_hid`, `location`, `site`, `region`,
   `effective.owner_hid`, `effective.operator_hid` and `effective.planned_location_hid`
   answer through the host as the record does, and so do the geography tree and the
   summary, which count what runs on a host where its host is and with its host's owner

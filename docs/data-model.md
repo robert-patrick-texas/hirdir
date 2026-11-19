@@ -303,7 +303,9 @@ its host.
   enter: what a tool reads from it is the chassis's. Where its `serial_number` is
   blank and it runs on an item, `effective.serial_number` is that item's, with the
   source `host`; the list and the page show it as from its host. It is not stored,
-  not unique to the context and not what a row of a file is matched by. A virtual
+  not unique to the context and not what a row of a file is matched by, and a filter
+  or a sort of the item list by `serial_number` sees only the item's own: the context
+  is found by its host, `host.name`. A virtual
   machine and a container show none but their own.
 - **Counting.** Each is a major item of a kind in `count_kinds` from the start: a
   component, a managed node of its own, and its support weight, by the rules of
@@ -399,7 +401,7 @@ not moved. A location is not retired while items or groups are planned for it.
 A device group has a planned location in the same way, and is moved in by the same
 change, with its own entry in the audit trail. What says nothing of its own goes with
 what it is in: a minor item with its item, a member with its group, a group with the
-group it is nested in. Such a record with no location of its own needs no change when
+group it is nested in, what runs on a host with its host (P-246). Such a record with no location of its own needs no change when
 the place opens: it is where the record above it is. One that has a location of its
 own, the store room it was put in, and its plan from above gives that location up in
 the same change, with an entry of its own in its history, and is thereafter where the
