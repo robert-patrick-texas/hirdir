@@ -232,8 +232,18 @@ def clear_inventory(db: Session, context: AuditContext, backup: str) -> dict[str
     removed = counts(db)
     # A catalog entry may name another as its successor, an item may be in another, a
     # group, a region and a location within another, so no order empties those tables.
+    # And an item may run on a group, which a group's master that was seen names an
+    # item against: neither of the two tables can go first while one names the other.
     db.execute(update(CatalogEntry).values(successor_hid=None))
-    db.execute(update(Item).values(parent_item_hid=None))
+    db.execute(
+        update(Item).values(
+            parent_item_hid=None,
+            host_item_hid=None,
+            host_group_hid=None,
+            observed_host_hid=None,
+            host_observed_at=None,
+        )
+    )
     db.execute(update(DeviceGroup).values(parent_group_hid=None))
     db.execute(update(Region).values(parent_region_hid=None))
     db.execute(update(Location).values(parent_location_hid=None))

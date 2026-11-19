@@ -158,6 +158,13 @@ def _with_structure(config: Config) -> None:
         replacements.replace(
             db, context, second.hid, second.row_version, reason="rma", new_item={"name": "new"}
         )
+        # And what runs on another record (P-246): a machine on the stack, seen on a
+        # member of it, and a container in the machine. The columns are set as they are
+        # held: what a reset must clear is the references, whatever kinds the items are.
+        machine = items.create_item(db, context, {"name": "site2-vm-01"})
+        container = items.create_item(db, context, {"name": "site2-ctr-01"})
+        machine.host_group_hid, machine.observed_host_hid = stack.hid, first.hid
+        container.host_item_hid = machine.hid
         db.commit()
 
 
@@ -167,7 +174,7 @@ def test_reset_clears_the_records_that_refer_to_one_another(
 ) -> None:
     _with_structure(installed)
     assert [held(installed, model) for model in STRUCTURE] == [2, 1, 3, 2, 1]
-    assert held(installed, Item) == 4
+    assert held(installed, Item) == 6
 
     result = runner.invoke(app, ["admin", "reset", "--yes", *arguments])
 
