@@ -507,6 +507,15 @@ def _checked(
         values.update(
             hosting.checked(db, fields, values, item, settings.time_zone(db), looked_again)
         )
+    if "serial_number" in values or "catalog_entry_hid" in values:
+        # The number a virtual context holds is its switch's and not its own: it is kept
+        # as given, and neither makes it unique nor finds it (P-251).
+        serial = final("serial_number")
+        model = final("catalog_entry_hid")
+        kind = hosting.kinds_of(db, {model}).get(model or "")
+        values["serial_key"] = (
+            records.key(serial) if serial and kind != hosting.VIRTUAL_CONTEXT else None
+        )
 
     if item is not None and item.record_status == "retired" and "record_status" in values:
         _check_still_there(db, final("location_hid"))
