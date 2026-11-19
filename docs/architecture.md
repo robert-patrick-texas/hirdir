@@ -372,6 +372,90 @@ compared with what was kept, and the check says which report and which request h
 differed, which none should. It is audited and leaves the kept answers good, since it
 changes no record. `src/hirdir/io/kept.py` keeps them.
 
+## The server's own measures
+
+The server measures its own load and, past a ceiling, answers at once that it is busy,
+where a request would have joined a queue and timed out (P-262, P-265). What is
+measured, what is refused, the settings and the route that shows it all are under
+[The server's own measures](interfaces.md#the-servers-own-measures) on the interfaces
+page. This is how it is built, and why so.
+
+- **Where it is measured.** `Gateway` in `app.py` is the outermost layer of the
+  application: it sees every request from its arrival to the last byte of its answer,
+  whatever answered it, and tells the meter when each arrives and ends, with its
+  status. The meter is kept on the application's state, where `bind` puts everything of
+  one installation, so an application has one for each installation it is bound to.
+- **In memory, and nothing stored.** Ten minutes in steps of five seconds are 120 small
+  records, and beside them are the times of the answers of the API over the last
+  `busy_over_seconds`, 20,000 at the most, for the median. Nothing is written to the
+  disk or to the database. Measuring a request is a few additions under a lock that is
+  held for arithmetic only, and a server that starts, starts empty. More than that, a
+  history kept over days, waits until there is a use for it (P-266).
+- **The rules read no clock.** `domain/load.py` holds the steps, the two measures and
+  whether the server is busy, and is given the time and the processor time the process
+  has used by whoever asks. `io/measures.py` reads them for the server,
+  `time.monotonic()` and `time.process_time()`, which counts every thread of the
+  process, and reads what the host says of its memory, its disk and its load. So the
+  tests of the rules move the time themselves and wait for nothing.
+- **Why the median.** One long export among quick answers is not a busy server, and an
+  average would say that it is. Under the load measured for P-261 every request took
+  twenty times as long as it does alone, and the tables that stood counting took 20 to
+  30 seconds: there the median moves, and five seconds of it over half a minute is well
+  past a slow moment and well before the minute at which a proxy gives up.
+- **Why the requests in flight count.** A server from which nothing comes back answers
+  nothing, and a measure of answers alone would read it as idle. The time each request
+  in flight has waited so far is in the median with the answers, so that server is
+  busy for as long as it is so.
+- **Why five requests.** The median of two or three requests is one request. With
+  fewer than five answered and in flight, how long requests take is not read at all,
+  and the processor alone says whether the server is busy.
+- **The processor.** The process is one, and Python uses one processor at a time in it,
+  so the share of one processor it used is how near the server is to all it can do.
+  It is read over the same `busy_over_seconds`, and a server that started later than
+  that used nothing before it started: the work of starting is not a sustained load.
+  Nothing samples it by the clock. Whatever next asks, a request or About, brings the
+  steps up to date, and the processor time used since the last look is spread evenly
+  over the time since.
+- **Decided on the event loop.** A request that is refused must cost next to nothing,
+  or refusing would be load of its own. The meter says from memory whether the server
+  is busy, which it works out once a second at the most; only while it is busy is the
+  route of the request looked for, to learn whether it is one that waits; and the
+  answer is made there, in `Gateway`, before the request waits for a thread of the pool
+  or for the database, and before who sent it is looked at. With both ceilings at 0
+  the meter answers without reading anything.
+- **Two steps.** What costs most and can wait goes first, the reports, the exports, the
+  previews of imports and the pages of lists: a list can be asked for again, and each
+  one refused is the most relief. Only a server still busy `busy_over_seconds` later
+  refuses every read.
+- **What is never refused, and why.** A sign-in and every change that is stored: the
+  work a person did is not thrown back at them while a list can wait (P-262). The
+  health routes, so that what watches the service does not take a busy server for a
+  dead one. About and `GET /about/load`, which are how a person sees why. The page
+  itself and its files, which cost the server a read of the disk, so that the page can
+  say in words that the server is busy. And `GET /settings`, so that an Admin who set
+  the ceiling too low reaches it to set it again.
+- **Which route is which.** `api/busy.py` reads it from what a route declares: a `GET`
+  that answers a page of a list, or is under `/reports`, costs most; any other `GET`
+  reads; and whatever takes the audit context stores a change, as every route that
+  writes does. A list or an export asked for with `POST` takes no audit context, and a
+  preview takes one and can wait all the same: those few are named. A test fails for a
+  route that is none of these, so a new route is decided when it is written.
+- **The settings.** The three settings of the ceiling are read into the meter when the
+  application is bound to its database, and again when one of them is saved, once the
+  change is stored. No request reads the database to learn them. Where the database
+  cannot be read when the server starts, the ceiling is what it is unless set: a
+  server is never without one for that.
+- **In the tests.** The processor time of a test's process is the test's own, so an
+  application inside the test process starts with no ceiling, and a test that wants
+  one gives the meter one or saves a setting. The acceptance scenarios start a server
+  as it is released, with its ceiling. Measured at 0.9.10 on the build host with other
+  work beside it: of their 54 servers none answered busy, and the one that worked
+  hardest, that of S13, held 78% of one processor over its busiest half minute, the
+  next 53%.
+
+The ceiling is later what says that an installation has outgrown one process: the
+trigger to put a second behind a load balancer, which waits for PostgreSQL (P-262).
+
 ## Package
 
 `make deb` builds `hirdir_<version>_amd64.deb` in a clean Ubuntu 26.04 container with
