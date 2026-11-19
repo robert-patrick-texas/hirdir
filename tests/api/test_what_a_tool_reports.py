@@ -245,9 +245,12 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
         for one in make.audit(record_type="registration", record_hid=marked["hid"])
         if one["action"] == "update"
     ]
+    # It names the import, and is the import's, as the events of its rows are.
     assert {entry["field"]: entry["new"] for entry in event["changes"]} == {
-        "status": "not_reported"
+        "status": "not_reported",
+        "import": job["hid"],
     }
+    assert event["via"] == "import"
     [started] = make.audit(record_type="import_job", record_hid=job["hid"], action="apply_started")
     assert event["request_id"] == started["request_id"]
     [applied] = make.audit(record_type="import_job", record_hid=job["hid"], action="apply")
@@ -324,6 +327,9 @@ def test_an_import_that_stops_partway_and_is_resumed_marks_once_at_its_end(
     assert marked["status"] == "not_reported"
     events = make.audit(record_type="registration", record_hid=marked["hid"], action="update")
     assert len(events) == 1
+    # It names the job, whichever request resumed it.
+    assert {"field": "import", "old": None, "new": ended["hid"]} in events[0]["changes"]
+    assert events[0]["via"] == "import"
 
 
 def test_an_item_retired_meanwhile_is_not_marked(make: Maker, files: Files) -> None:

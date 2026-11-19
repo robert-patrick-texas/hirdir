@@ -399,7 +399,7 @@ def not_named(db: Session, system_hid: str, named: set[str]) -> list[tuple[Regis
             Registration.status == REGISTERED,
             Item.record_status != "retired",
         )
-    ).tuples()
+    )
     left = [(one, item) for one, item in found if item.hid not in named]
     return sorted(left, key=lambda pair: (records.key(_item_name(pair[1])), pair[1].hid))
 

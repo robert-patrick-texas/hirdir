@@ -1176,8 +1176,9 @@ page says the rules, and this says how a file carries them.
   without `system`, a `422` on `complete`. Once the apply has worked the last batch, with
   no row rejected, left out or stale, each item that is registered with the system with
   the status `registered`, is not retired, and that no row of the file named, is given
-  the status `not_reported`, each by an `update` of its registration with the request ID
-  of the apply; the job's `not_reported` is then how many were marked, and the `apply`
+  the status `not_reported`, each by an `update` of its registration that is the
+  import's, `via` `import` as the events of its rows are, with the request ID of the
+  apply, or of its resumption, and an entry `import` whose `new` is the job's HID; the job's `not_reported` is then how many were marked, and the `apply`
   event of the job holds it. A file with a row that was not applied marks nothing, and its
   `not_reported` is 0. An apply that stops and is resumed marks once, at its end. The
   preview counts in `not_reported` how many the apply would mark, none where a row is

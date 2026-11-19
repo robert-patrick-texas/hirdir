@@ -963,7 +963,11 @@ def _mark_not_reported(
             )
         )
     )
-    return systems.mark_not_reported(db, context, job.system_hid, {hid for hid in named if hid})
+    # Each change is the import's, as the changes of its rows are, and names the job.
+    by_the_import = audit.because(replace(context, via="import"), "import", None, job.hid)
+    return systems.mark_not_reported(
+        db, by_the_import, job.system_hid, {hid for hid in named if hid}
+    )
 
 
 def _complete(db: Session, hid: str, context: AuditContext) -> None:
