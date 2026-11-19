@@ -241,6 +241,11 @@ test("the server's page lists what runs on it, and what runs on that beneath it"
   await openItem(page, server);
   const hosted = region(page, "What runs on it (12)");
   await expect(hosted).toBeVisible();
+  // The way to the list of them is there before the list has come.
+  await expect(hosted.getByTestId("hosted-in-list")).toHaveAttribute(
+    "href",
+    new RegExp(`host_item_hid%3Aeq%3A${made.server}`),
+  );
   const list = hosted.getByTestId("hosted-list");
   await expect(list.locator("tbody tr")).toHaveCount(13, { timeout: 15_000 });
   const vm = list.locator("tbody tr", { hasText: others[0] ?? "" });
@@ -301,8 +306,10 @@ test("twelve virtual machines are moved to a cluster by one bulk edit", async ({
   await records(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
-  // The task, from the list of what runs on the server, counted in the report.
-  await page.goto(`./items?filter=${encodeURIComponent(`host.name:eq:${server}`)}`);
+  // The task, from the server's page, counted in the report: a press on the way to the
+  // list of what runs on it, and on from there.
+  await openItem(page, server);
+  await page.getByTestId("hosted-in-list").click();
   await expect(page.getByTestId("grid-total")).toHaveText("12 items");
   await page.getByRole("button", { name: "Select all that match" }).click();
   await page.getByRole("button", { name: "Bulk edit" }).click();

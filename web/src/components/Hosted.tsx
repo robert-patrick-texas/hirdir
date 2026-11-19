@@ -10,7 +10,7 @@ import { managementText } from "../lib/addresses";
 import { effectiveText } from "../lib/effective";
 import { itemName, plural } from "../lib/format";
 import { useLoad } from "../lib/hooks";
-import { hostedRows } from "../lib/hosting";
+import { hostedListPath, hostedRows } from "../lib/hosting";
 import { CATALOG_KINDS, optionLabel } from "../lib/options";
 import { Problem } from "./Problem";
 
@@ -36,6 +36,13 @@ export function WhatRunsOnIt({ of, hid, count, version }: WhatRunsOnItProps) {
   return (
     <section aria-labelledby="hosted" data-testid="hosted">
       <h2 id="hosted">What runs on it ({count.toLocaleString("en-US")})</h2>
+      {/* There from the start: the list to tick them in and give them another host. */}
+      <p>
+        <Link to={hostedListPath(of, hid)} data-testid="hosted-in-list">
+          What runs on it in the item list
+        </Link>
+        <span className="muted">, to tick and change together, as to give them another host</span>
+      </p>
       <Problem error={hosted.error} />
       {hosted.loading && !hosted.data && (
         <p role="status" className="muted loading-late">

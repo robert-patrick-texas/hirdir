@@ -6,7 +6,7 @@
 // names an item or a group into the two fields the server takes.
 
 import type { Schemas } from "../api/client";
-import { all, any, type FilterNode } from "./filter";
+import { all, any, type FilterNode, itemsPath } from "./filter";
 import { formatTime, itemName } from "./format";
 import { groupTypeLabel } from "./groups";
 import { type FieldSpec, type FormValues, localMoment, type Option } from "./patch";
@@ -193,6 +193,11 @@ export function hostItemSearch(text: FilterNode | null): FilterNode | null {
       { field: "catalog_entry_hid", op: "empty", value: true },
     ),
   );
+}
+
+/** The item list of what names a record as its host, to tick and change together. */
+export function hostedListPath(of: "item" | "group", hid: string): string {
+  return itemsPath(`${of === "item" ? "host_item_hid" : "host_group_hid"}:eq:${hid}`);
 }
 
 /**
