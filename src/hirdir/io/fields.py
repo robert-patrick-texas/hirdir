@@ -367,17 +367,24 @@ def _through_hosts(field: str, live: Any = None) -> Any:
 
 # The top of an item's own line: the one whose host it has the rest of its walk from.
 _TOP: ColumnElement[Any] = func.coalesce(*(one.hid for one in reversed(_LINE)))
+_RUNS_ON_SOMETHING: ColumnElement[bool] = or_(
+    _top_host(_LINE, "host_item_hid").is_not(None),
+    _top_host(_LINE, "host_group_hid").is_not(None),
+)
 
 
 def _from_hosts(field: str, live: Any = None, column: str = "value") -> ColumnElement[Any]:
     """Return what an item has in a field through what the top of its line runs on."""
     through = _through_hosts(field, live)
-    return (
+    found = (
         select(getattr(through.c, column))
         .where(through.c.item_hid == _TOP)
         .correlate(*_LINE)
         .scalar_subquery()
     )
+    # Looked up only for an item whose line runs on something: the others, nearly all
+    # of an inventory, pay two columns they have read already.
+    return case((_RUNS_ON_SOMETHING, found), else_=None)
 
 
 def _walk(field: str, live: Any = None) -> list[ColumnElement[Any]]:
@@ -883,6 +890,146 @@ def _registered(held: ColumnElement[bool], model: Any) -> dict[str, Field]:
     }
 
 
+# --- what an item runs on, and what is to be looked at (P-246, P-249) -------------------
+
+_RUNS_ON: Any = aliased(Item, name="runs_on_item")
+_RUNS_ON_GROUP: Any = aliased(DeviceGroup, name="runs_on_group")
+_SEEN_ON: Any = aliased(Item, name="seen_on_item")
+_GONE_HOST: Any = aliased(Item, name="gone_host")
+_GONE_ABOVE: tuple[Any, ...] = tuple(
+    aliased(Item, name=f"gone_host_above_{level}") for level in range(MAX_DEPTH)
+)
+_GONE_GROUP: Any = aliased(DeviceGroup, name="gone_group")
+_HOSTED_BY: Any = aliased(Item, name="hosted_by")
+_SEEN_MEMBER: Any = aliased(DeviceGroupMember, name="seen_member")
+
+
+def _named_item(item: Any, column: Any) -> ColumnElement[Any]:
+    """Return the name an item named by a column is shown by: its name, or else its
+    hostname, its serial number or its asset tag."""
+    return (
+        select(func.coalesce(item.name, item.hostname, item.serial_number, item.asset_tag))
+        .where(item.hid == column)
+        .correlate(Item)
+        .scalar_subquery()
+    )
+
+
+# The name of what an item runs on: the item, or the stack or the cluster.
+HOST_NAME: ColumnElement[Any] = func.coalesce(
+    _named_item(_RUNS_ON, Item.host_item_hid),
+    select(_RUNS_ON_GROUP.name)
+    .where(_RUNS_ON_GROUP.hid == Item.host_group_hid)
+    .correlate(Item)
+    .scalar_subquery(),
+)
+# The item it was seen on is neither the host named nor a current member of the stack or
+# the cluster named: no fault, and unknown where either is not known.
+HOST_DIFFERS: ColumnElement[Any] = case(
+    (Item.observed_host_hid.is_(None), None),
+    (Item.host_item_hid.is_not(None), Item.observed_host_hid != Item.host_item_hid),
+    (
+        Item.host_group_hid.is_not(None),
+        ~select(_SEEN_MEMBER.hid)
+        .where(
+            _SEEN_MEMBER.group_hid == Item.host_group_hid,
+            _SEEN_MEMBER.item_hid == Item.observed_host_hid,
+            _SEEN_MEMBER.left_on.is_(None),
+        )
+        .correlate(Item)
+        .exists(),
+    ),
+    else_=None,
+)
+# How many items that are not retired name it as their host.
+HOSTED_COUNT: ColumnElement[Any] = (
+    select(func.count())
+    .select_from(_HOSTED_BY)
+    .where(_HOSTED_BY.host_item_hid == Item.hid, _HOSTED_BY.record_status != "retired")
+    .correlate(Item)
+    .scalar_subquery()
+)
+
+
+def _review_reasons() -> dict[str, ColumnElement[bool]]:
+    """Return, for each reason an item is to be looked at, the test that it has it, as
+    `hirdir.domain.hosting.reviews` works them out. A retired item has none."""
+    live = Item.record_status != "retired"
+    gone_line: Any = select(_GONE_HOST.hid).select_from(_GONE_HOST)
+    below = _GONE_HOST
+    for upper in _GONE_ABOVE:
+        gone_line = gone_line.outerjoin(upper, upper.hid == below.parent_item_hid)
+        below = upper
+    # The state in force of the host: its own, or that of the nearest item above it.
+    state = func.coalesce(*(one.lifecycle_state for one in (_GONE_HOST, *_GONE_ABOVE)))
+    host_gone = or_(
+        gone_line.where(
+            _GONE_HOST.hid == Item.host_item_hid,
+            or_(_GONE_HOST.record_status == "retired", state.in_(hosting.OUT_OF_HANDS)),
+        )
+        .correlate(Item)
+        .exists(),
+        select(_GONE_GROUP.hid)
+        .where(_GONE_GROUP.hid == Item.host_group_hid, _GONE_GROUP.record_status == "retired")
+        .correlate(Item)
+        .exists(),
+    )
+    no_host = and_(
+        CatalogEntry.kind.in_(hosting.HOSTED_KINDS),
+        Item.host_item_hid.is_(None),
+        Item.host_group_hid.is_(None),
+    )
+    not_reported = (
+        select(Registration.hid)
+        .where(
+            Registration.item_hid == Item.hid,
+            Registration.status == hosting.NOT_REPORTED_STATUS,
+        )
+        .correlate(Item)
+        .exists()
+    )
+    return {
+        hosting.NO_HOST: and_(live, no_host),
+        hosting.HOST_GONE: and_(live, host_gone),
+        hosting.NOT_REPORTED: and_(live, not_reported),
+    }
+
+
+REVIEW_REASONS: Mapping[str, ColumnElement[bool]] = _review_reasons()
+# The reasons, as a table of three rows, which a filter of `review` tests one by one.
+_REASONS: Any = union_all(
+    *(select(literal(reason).label("reason")) for reason in hosting.REASONS)
+).subquery("review_reason")
+
+
+def _among_reasons(condition: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Return the test that one of the reasons an item has meets a condition."""
+    has = or_(*(and_(_REASONS.c.reason == reason, test) for reason, test in REVIEW_REASONS.items()))
+    return select(_REASONS.c.reason).where(condition, has).exists()
+
+
+# Sorted by its first reason, in the order the record lists them.
+_FIRST_REASON: ColumnElement[Any] = case(
+    *((test, literal(reason)) for reason, test in REVIEW_REASONS.items()), else_=None
+)
+
+
+def _hosting_fields() -> dict[str, Field]:
+    """Return the fields of the item list of what an item runs on (P-246) and of what it
+    is to be looked at for (P-249)."""
+    return {
+        **_columns(Item, "reference", "host_item_hid", "host_group_hid", "observed_host_hid"),
+        "host_observed_at": Field("timestamp", Item.host_observed_at),
+        "host.name": Field("text", HOST_NAME),
+        "observed_host.name": Field("text", _named_item(_SEEN_ON, Item.observed_host_hid)),
+        "host_differs": Field("boolean", HOST_DIFFERS),
+        "hosted_count": Field("integer", HOSTED_COUNT),
+        "review": Field(
+            "choice", _REASONS.c.reason, among=_among_reasons, ordered_by=_FIRST_REASON
+        ),
+    }
+
+
 ITEMS = Listing(
     model=Item,
     fields={
@@ -1068,6 +1215,7 @@ ITEMS = Listing(
         **_registered(
             or_(Registration.item_hid == Item.hid, Registration.group_hid.in_(_ONE_DEVICE)), Item
         ),
+        **_hosting_fields(),
     },
     joined=lambda query: (
         _with_items_above(query)
