@@ -119,7 +119,9 @@ function ReviewReasons() {
     );
     return Object.fromEntries(REVIEW_ORDER.map((reason, at) => [reason, totals[at]?.total ?? 0]));
   });
-  const parts = counted.data ? reviewReasonParts(counted.data) : [];
+  // Until they are counted the line says how many, and why once it knows.
+  if (!counted.data) return null;
+  const parts = reviewReasonParts(counted.data);
   if (parts.length === 0) return <>.</>;
   return (
     <span data-testid="home-review-reasons">

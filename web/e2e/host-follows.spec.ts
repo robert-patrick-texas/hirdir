@@ -462,14 +462,14 @@ test("a tool's report: three machines, then a file of two that is everything it 
   ).items[0]?.hid;
   made.hids[third] = thirdHid ?? "";
   await expect(linkTo(marks, third, hidOf(third))).toBeVisible();
-  // Left and come back to, the preview says how many, and no sentence ends in a colon
-  // with nothing after it.
+  // Left and come back to, the preview names them again, from the job itself.
   const there = page.url();
   await page.goto("./import");
   await page.goto(there);
   await expect(marks.locator("p")).toHaveText(
-    `1 item registered with ${system} is not named by the file, and will be marked as not reported once it is applied whole.`,
+    `1 item registered with ${system} is not named by the file, and will be marked as not reported once it is applied whole:`,
   );
+  await expect(linkTo(marks, third, hidOf(third))).toBeVisible();
   await page.getByRole("button", { name: "Apply 2 rows" }).click();
   await whenApplied(page, 2);
   await expect(marks.locator("p")).toHaveText(
@@ -555,7 +555,8 @@ test("the first page counts what is to be looked at, as a link to the item list,
   const line = page.getByTestId("home-review");
   await expect(line).toBeVisible({ timeout: 20_000 });
   expect(Number(await line.getAttribute("data-count"))).toBeGreaterThan(0);
-  await expect(line).toContainText("to be looked at:");
+  // The reasons are counted after the line: on a busy host that takes a while.
+  await expect(line).toContainText("to be looked at:", { timeout: 20_000 });
   await line.getByRole("link").first().click();
   await expect(page.getByLabel("Filter", { exact: true })).toHaveValue("review:empty:false");
   await expect(page.getByTestId("grid-items")).toBeVisible();
