@@ -68,6 +68,12 @@ class Problem(Model):
         description="On a 404 for an item or a device group that an Admin deleted: when, "
         "by whom and why. Left out of every other problem.",
     )
+    depends_on: list[ProblemRecord] | None = Field(
+        default=None,
+        description="On a 409 for a record that others stand on, as a stack or a cluster "
+        "that items run on is refused retirement: those records, each as `existing` names "
+        "one (P-247). Left out of every other problem.",
+    )
 
 
 class GroupRef(Model):

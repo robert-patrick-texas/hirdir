@@ -11513,7 +11513,7 @@
             "type": "string"
           },
           "record_type": {
-            "description": "Its kind, as the audit trail names it: `contract` for a coverage under it, `purchase_line`, `item` for an item installed in it, `item_replacement`, `circuit`, `reference_file`, or `device_group` for a group nested in it.",
+            "description": "Its kind, as the audit trail names it: `contract` for a coverage under it, `purchase_line`, `item` for an item installed in it or that runs on it, `item_replacement`, `circuit`, `reference_file`, or `device_group` for a group nested in it.",
             "title": "Record Type",
             "type": "string"
           }
@@ -14415,7 +14415,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -14590,6 +14591,33 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "HostedRetired": {
+        "additionalProperties": false,
+        "description": "An item retired with the host it runs on, which the request named (P-247).",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "host_hid": {
+            "description": "The item it runs on, which went first: one named, or one that went with one named.",
+            "title": "Host Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name.",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "host_hid"
+        ],
+        "title": "HostedRetired",
+        "type": "object"
+      },
       "ImportCreated": {
         "additionalProperties": false,
         "description": "The records an import made, a page of them, and those it made for a row.",
@@ -14678,6 +14706,18 @@
             ],
             "title": "Applied By Name"
           },
+          "complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With a system: the file is everything that system reports, so that each item registered with it that no row names is marked `not_reported` once the file is applied whole.",
+            "title": "Complete"
+          },
           "created": {
             "description": "Rows that create a record, as the preview found.",
             "title": "Created",
@@ -14761,6 +14801,11 @@
             "title": "Mode",
             "type": "string"
           },
+          "not_reported": {
+            "description": "How many items that marks: as the preview found, and once applied, how many it marked. None is marked where a row was rejected, left out or stale.",
+            "title": "Not Reported",
+            "type": "integer"
+          },
           "rejected": {
             "description": "Rows that cannot be applied, as the preview found.",
             "title": "Rejected",
@@ -14813,6 +14858,28 @@
             "title": "Status",
             "type": "string"
           },
+          "system": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SystemRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "system_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An import of items: the external system the file was read from, by whose identifier, `external_id`, its rows are matched first (P-248).",
+            "title": "System Hid"
+          },
           "unchanged": {
             "description": "Rows that find their record as the row has it.",
             "title": "Unchanged",
@@ -14841,6 +14908,10 @@
           "applied",
           "stale",
           "skip_rejected",
+          "system_hid",
+          "system",
+          "complete",
+          "not_reported",
           "failure",
           "applied_at",
           "applied_by",
@@ -14859,6 +14930,14 @@
           "job": {
             "$ref": "#/components/schemas/ImportJobOut"
           },
+          "not_reported_first": {
+            "description": "Of a `complete` import that is not applied yet: the first ten items it would mark `not_reported`, by label (P-248). Empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/RecordLabel"
+            },
+            "title": "Not Reported First",
+            "type": "array"
+          },
           "rows": {
             "description": "The first hundred rows. `GET /imports/{hid}/rows` pages through all.",
             "items": {
@@ -14870,7 +14949,8 @@
         },
         "required": [
           "job",
-          "rows"
+          "rows",
+          "not_reported_first"
         ],
         "title": "ImportPreview",
         "type": "object"
@@ -23390,6 +23470,21 @@
             ],
             "description": "On a 404 for an item or a device group that an Admin deleted: when, by whom and why. Left out of every other problem."
           },
+          "depends_on": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProblemRecord"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a 409 for a record that others stand on, as a stack or a cluster that items run on is refused retirement: those records, each as `existing` names one (P-247). Left out of every other problem.",
+            "title": "Depends On"
+          },
           "detail": {
             "default": "",
             "title": "Detail",
@@ -25748,7 +25843,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -25851,7 +25947,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -25925,7 +26022,8 @@
                 "enum": [
                   "registered",
                   "pending",
-                  "removed"
+                  "removed",
+                  "not_reported"
                 ],
                 "type": "string"
               },
@@ -25978,7 +26076,8 @@
             "enum": [
               "registered",
               "pending",
-              "removed"
+              "removed",
+              "not_reported"
             ],
             "title": "Status",
             "type": "string"
@@ -26330,6 +26429,12 @@
             ],
             "description": "Given, whether the item that comes is expected online, as the rule of its lifecycle state allows. Left out, it stays as it is.",
             "title": "Expected Online"
+          },
+          "hand_over_hosted": {
+            "default": true,
+            "description": "Whether what runs on the item that leaves, each item that names it as `host_item_hid`, is given the item that comes as its host, each by a change that names the replacement (P-247). Left out, true. Where something is handed over, the item that comes must be one that may be a host.",
+            "title": "Hand Over Hosted",
+            "type": "boolean"
           },
           "new_item": {
             "anyOf": [
@@ -27052,6 +27157,12 @@
         "additionalProperties": false,
         "description": "Items or device groups to retire at once, as a person ticked them.",
         "properties": {
+          "dry_run": {
+            "default": false,
+            "description": "Answer what it would do, `hosted` among it, and change nothing (P-247).",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
           "hids": {
             "description": "Each is retired as its own retire route does. One named twice counts once.",
             "items": {
@@ -27074,6 +27185,14 @@
         "additionalProperties": false,
         "description": "A record the rules did not let be retired.",
         "properties": {
+          "depends_on": {
+            "description": "Where what runs on it is why, a stack or a cluster that items name as their host: those items (P-247). Empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/Dependent"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
           "detail": {
             "description": "Why.",
             "title": "Detail",
@@ -27092,14 +27211,15 @@
         "required": [
           "hid",
           "label",
-          "detail"
+          "detail",
+          "depends_on"
         ],
         "title": "RetireRefused",
         "type": "object"
       },
       "RetiredMany": {
         "additionalProperties": false,
-        "description": "What a request that retires several did with each record it named.",
+        "description": "What a request that retires several did, or with `dry_run` would do, with each.",
         "properties": {
           "already": {
             "description": "What was retired before it: not refused.",
@@ -27107,6 +27227,18 @@
               "$ref": "#/components/schemas/RecordLabel"
             },
             "title": "Already",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "hosted": {
+            "description": "The items not named that are retired with those named, because they run on one of them or on what runs on one, each once (P-247). Empty for groups.",
+            "items": {
+              "$ref": "#/components/schemas/HostedRetired"
+            },
+            "title": "Hosted",
             "type": "array"
           },
           "missing": {
@@ -27134,10 +27266,12 @@
           }
         },
         "required": [
+          "dry_run",
           "retired",
           "already",
           "refused",
-          "missing"
+          "missing",
+          "hosted"
         ],
         "title": "RetiredMany",
         "type": "object"
@@ -37330,7 +37464,7 @@
     },
     "/api/v1/device-groups/retire": {
       "post": {
-        "description": "Retire several device groups at once, each as its own retire route does, with an\naudit event each (P-228). One retired already is counted, not refused.",
+        "description": "Retire several device groups at once, each as its own retire route does, with an\naudit event each (P-228). One retired already is counted, not refused. A stack or a\ncluster that items run on is refused, with those items in `depends_on` (P-247).\nWith `dry_run` nothing is changed, and the answer is the same.",
         "operationId": "retire_groups_api_v1_device_groups_retire_post",
         "parameters": [
           {
@@ -37766,7 +37900,7 @@
     },
     "/api/v1/device-groups/{hid}/retire": {
       "post": {
-        "description": "Retire a device group. Its record is kept, and its current memberships end today.",
+        "description": "Retire a device group. Its record is kept, and its current memberships end today.\n\nA stack or a cluster that items run on is refused, a `409` that names them in\n`depends_on` (P-247).",
         "operationId": "retire_group_api_v1_device_groups__hid__retire_post",
         "parameters": [
           {
@@ -37818,6 +37952,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Items run on it: each is in `depends_on`, to be given another host or retired first."
           },
           "422": {
             "content": {
@@ -38585,6 +38729,37 @@
                 }
               ],
               "title": "File Name"
+            }
+          },
+          {
+            "description": "A file of items: the external system it was read from, by its HID or its name. Its rows are then matched first by `external_id`, that system's identifier of each (P-248).",
+            "in": "query",
+            "name": "system",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A file of items: the external system it was read from, by its HID or its name. Its rows are then matched first by `external_id`, that system's identifier of each (P-248).",
+              "title": "System"
+            }
+          },
+          {
+            "description": "With `system`: the file is everything that system reports, so that each item registered with it that no row names is marked `not_reported` once the file is applied whole.",
+            "in": "query",
+            "name": "complete",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "With `system`: the file is everything that system reports, so that each item registered with it that no row names is marked `not_reported` once the file is applied whole.",
+              "title": "Complete",
+              "type": "boolean"
             }
           },
           {
@@ -39572,7 +39747,7 @@
     },
     "/api/v1/items/retire": {
       "post": {
-        "description": "Retire several items at once, each as its own retire route does, with an audit\nevent each (P-228). One retired already is counted, not refused.",
+        "description": "Retire several items at once, each as its own retire route does, with an audit\nevent each (P-228). One retired already is counted, not refused.\n\nWhat runs on each, and on that, is retired with it, and named in `hosted` (P-247).\nWith `dry_run` nothing is changed, and the answer is the same.",
         "operationId": "retire_items_api_v1_items_retire_post",
         "parameters": [
           {
@@ -40159,7 +40334,7 @@
     },
     "/api/v1/items/{hid}/retire": {
       "post": {
-        "description": "Retire an item. Its record and history are kept.",
+        "description": "Retire an item. Its record and history are kept. What runs on it, and on that, is\nretired with it, each by an event that names in `retired_with` the host (P-247).",
         "operationId": "retire_item_api_v1_items__hid__retire_post",
         "parameters": [
           {

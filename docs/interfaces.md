@@ -493,6 +493,63 @@ A change of the item that was under way at the same moment, its joining a group 
 contract covering it, either is stored first, and the deletion then sees it and is
 refused, or comes second and is refused as a change of a record that is not there.
 
+### What follows from a host
+
+What runs on a host goes with it when the host's record ends, and is handed to the item
+that takes its place (P-247): "What follows from a host" under `items` on the
+[data model](data-model.md#items) page says the rules, and this says how the API carries
+them.
+
+- **Retiring an item** by `POST /items/{hid}/retire` retires, in the same change, each
+  item that names it as `host_item_hid` and is not retired, and each that runs on one of
+  those, every one as its own retire does: its memberships and its coverage end. Each has
+  its own `retire` event, whose `changes` hold `retired_with`, the HID of the item it ran
+  on, as `new`; the events share the request ID. The answer is the item as before.
+  Bringing an item back with `PATCH` brings back nothing that went with it. Retiring a
+  member of a cluster leaves what runs on the cluster as it is: that names the cluster.
+- **`POST /items/retire`** takes `dry_run`, false unless given, and answers it, with
+  `hosted`: each item that is retired with those named, or would be, as `{hid, label,
+  host_hid}`, `host_hid` the item it runs on. An item that is named, and runs on another
+  that is named, is counted once, in `retired`. With `dry_run` nothing is changed and the
+  answer is the same: it is what the web shows before it asks. `POST
+  /device-groups/retire` takes `dry_run` too, and its `hosted` is empty.
+
+```json
+{ "dry_run": true,
+  "retired": [ { "hid": "0193a1f4-...", "label": "site2-esx-01" } ],
+  "already": [], "refused": [], "missing": [],
+  "hosted": [ { "hid": "0193a1f5-...", "label": "site2-vm-app01",
+                "host_hid": "0193a1f4-..." } ] }
+```
+
+- **A stack or a cluster that something runs on is not retired.** `POST
+  /device-groups/{hid}/retire` is refused, a `409` whose `depends_on` lists each item
+  not retired that names the group as `host_group_hid`, as `existing` names a record:
+  `record_type` `item`, its `hid` and its `label`. Each is given another host, by `PATCH`
+  or a bulk edit, or is retired, first. `POST /device-groups/retire` counts such a group
+  among `refused`, with why in `detail` and the same items in `depends_on`, which is
+  empty for every other refusal. No file retires a record, so a file has nothing of it
+  to refuse.
+- **Deleting** (P-227) an item or a group that an item names as its host, retired or
+  not, is refused, naming each such item in `depends_on` as `item`; an item that runs on
+  one deleted by the same request, and is deleted itself, does not stand in its way, and
+  goes first. Each item that was seen on a deleted item, `observed_host_hid`, has both
+  that and `host_observed_at` cleared by an `update` of its own whose `changes` hold
+  `deleted_with`, the deleted item's HID, as the master seen on a stack is cleared.
+- **A replacement** by `POST /items/{hid}/replace` hands what runs on the item that
+  leaves to the item that comes: each item that names it as `host_item_hid`, retired or
+  not, names the new one, by an `update` of its own whose `changes` hold `replacing`, the
+  HID of the replacement, as `new`. `hand_over_hosted` false leaves each where it is;
+  left out, it is true. Where something is to be handed over and the item that comes may
+  not be a host, being of a kind that hosts nothing, retired, or out of the team's hands,
+  the replacement is refused, a `422` on `hand_over_hosted` that says why and how many
+  run on the item that leaves, and nothing of it is done. `observed_host_hid` of what
+  runs on it is left as it is: it is what was seen.
+- **Two requests at once.** Retiring an item and naming it as a host each take the one
+  writer's place before they look, so the second sees what the first stored: a host
+  retired first is refused as the host of a change that comes after, and an item given
+  the host first is retired with it.
+
 ## Filter grammar
 
 One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
@@ -786,7 +843,7 @@ contacts of vendors, and the support weight of a place.
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status`, `tags` | |
 | `owner_members` | `owner`, `contact`, `role`, `priority` | |
 | `networks` | `label`, `kind` | |
-| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `operator`, `location`, `planned_location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `purchase_line`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, `covered`, `covered_until`, `contract_count` and `contracts`, the numbers of the contracts that cover it today, `out_of_service_contracts`, the numbers of those that still count it while it is out of service, `purchase_line_mismatch`, and a `_source` for each of the fourteen fields that inherit, `do_not_renew_source` among them |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `operator`, `location`, `planned_location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `purchase_line`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew`, `record_status`, `tags`, and `external_id` with `system` (see [What a tool reports](#what-a-tool-reports)) | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, `covered`, `covered_until`, `contract_count` and `contracts`, the numbers of the contracts that cover it today, `out_of_service_contracts`, the numbers of those that still count it while it is out of service, `purchase_line_mismatch`, and a `_source` for each of the fourteen fields that inherit, `do_not_renew_source` among them |
 | `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | `family` |
 | `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `operator`, `location`, `planned_location`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
 | `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at`, and `drop_identity`, `disposition` and `expected_online`, which an export writes only when they are asked for by name, and then blank (P-217) | |
@@ -1006,6 +1063,52 @@ the second file names the first set by their HIDs, corrects them and brings them
 or an Admin deletes the first set before the second file is applied, which then makes
 every record anew: a record that was deleted is found by no file, and its serial number
 and asset tag are free.
+
+### What a tool reports
+
+A file of items may be what an external system reports: a monitoring system, a
+hypervisor's manager, a discovery tool (P-248). "What a tool reports" under
+`external_systems` on the [data model](data-model.md#external_systems-and-registrations)
+page says the rules, and this says how a file carries them.
+
+- **`system`**, on `POST /imports/preview` beside `entity` and `mode`, names the external
+  system the file was read from, by its HID or its name; one that is not there, or is
+  retired, is refused, a `422` on `system`. Only a file of `items` takes it. The job
+  answers `system_hid`, `system`, as a registration names it, `complete` and
+  `not_reported`.
+- **`external_id`** is a column of the items file: that system's identifier of the row's
+  item. A row that gives one is matched first by it, before the vendor, PID and serial
+  number, the asset tag and the name: the item registered with the system under that
+  identifier, whatever its status, its name or its host is now. Where none is, the row is
+  matched as any row, and the item it finds or makes is registered with the system under
+  the identifier in the same change, or its registration given the identifier where it
+  had none. Two errors reject the row, each on `external_id`: two items registered with
+  the system under the identifier, and an item the row finds by another rule that is
+  registered with the system under another identifier. A row matched or registered so
+  makes its registration `registered`, with `confirmed_at` the moment it is applied, and
+  says so in its `changes` only where the identifier is new to the item: a file loaded a
+  second time is `unchanged` in each such row, and still confirms each registration. A
+  row with no `external_id` is matched as any row and registers nothing. A file that
+  gives `external_id` in a row and names no `system` is refused before the preview, a
+  `422` on `external_id`. An export writes the column only where it is asked for by name,
+  and then blank: it has no system to read it from.
+- **`complete`**, true, says the file is everything the system reports. It is refused
+  without `system`, a `422` on `complete`. Once the apply has worked the last batch, with
+  no row rejected, left out or stale, each item that is registered with the system with
+  the status `registered`, is not retired, and that no row of the file named, is given
+  the status `not_reported`, each by an `update` of its registration with the request ID
+  of the apply; the job's `not_reported` is then how many were marked, and the `apply`
+  event of the job holds it. A file with a row that was not applied marks nothing, and its
+  `not_reported` is 0. An apply that stops and is resumed marks once, at its end. The
+  preview counts in `not_reported` how many the apply would mark, none where a row is
+  rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, the
+  item's; once applied, `not_reported_first` is empty. `pending` and `removed`
+  registrations, and those of device groups, are left as they are.
+- **The status `not_reported`** is a status of a registration as any other: a person
+  sets it back to `registered`, or to `removed`, by `PATCH /registrations/{hid}`, and the
+  next file of the system that names the item makes it `registered` again.
+- **The CLI.** `hirdir import items.csv --entity items --system "Example vCenter"
+  --complete` sends both, and prints how many the file marks, with the first of them.
 
 ## Reports
 
@@ -1961,6 +2064,7 @@ hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply         # waits for the end, saying how far it has got
 hirdir import items.csv --entity items --apply --skip-rejected
 hirdir import items.csv --entity items --apply --no-wait   # leaves it to the server
+hirdir import vms.csv --entity items --system "Example vCenter" --complete   # what the tool reports, and no more
 hirdir imports show <hid> --wait                       # how far an apply has got, until it ends
 hirdir imports apply <hid>                             # a stored preview, or one that stopped, resumed
 hirdir imports created <hid>                           # the records it made, and what each is now

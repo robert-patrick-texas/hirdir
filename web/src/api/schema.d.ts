@@ -3376,7 +3376,9 @@ export interface paths {
   "/api/v1/device-groups/retire": {
     /**
      * Retire several device groups at once, each as its own retire route does, with an
-     * audit event each (P-228). One retired already is counted, not refused.
+     * audit event each (P-228). One retired already is counted, not refused. A stack or a
+     * cluster that items run on is refused, with those items in `depends_on` (P-247).
+     * With `dry_run` nothing is changed, and the answer is the same.
      */
     post: {
       parameters: {
@@ -3611,7 +3613,12 @@ export interface paths {
     };
   };
   "/api/v1/device-groups/{hid}/retire": {
-    /** Retire a device group. Its record is kept, and its current memberships end today. */
+    /**
+     * Retire a device group. Its record is kept, and its current memberships end today.
+     *
+     * A stack or a cluster that items run on is refused, a `409` that names them in
+     * `depends_on` (P-247).
+     */
     post: {
       parameters: {
         query?: never;
@@ -3633,6 +3640,12 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["DeviceGroupOut"];
+          };
+        };
+        /** Items run on it: each is in `depends_on`, to be given another host or retired first. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
           };
         };
         /** Validation Error */
@@ -3968,6 +3981,10 @@ export interface paths {
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
+          /** A file of items: the external system it was read from, by its HID or its name. Its rows are then matched first by `external_id`, that system's identifier of each (P-248). */
+          system?: string | null;
+          /** With `system`: the file is everything that system reports, so that each item registered with it that no row names is marked `not_reported` once the file is applied whole. */
+          complete?: boolean;
         };
         path?: never;
         header?: {
@@ -4415,6 +4432,9 @@ export interface paths {
     /**
      * Retire several items at once, each as its own retire route does, with an audit
      * event each (P-228). One retired already is counted, not refused.
+     *
+     * What runs on each, and on that, is retired with it, and named in `hosted` (P-247).
+     * With `dry_run` nothing is changed, and the answer is the same.
      */
     post: {
       parameters: {
@@ -4717,7 +4737,10 @@ export interface paths {
     };
   };
   "/api/v1/items/{hid}/retire": {
-    /** Retire an item. Its record and history are kept. */
+    /**
+     * Retire an item. Its record and history are kept. What runs on it, and on that, is
+     * retired with it, each by an event that names in `retired_with` the host (P-247).
+     */
     post: {
       parameters: {
         query?: never;
@@ -10281,7 +10304,7 @@ export interface components {
       hid: string;
       /** What it is known by: a contract by its number, a purchase line as RITM0012345/2, a replacement by its two items, a circuit by its enterprise circuit ID or its name, a reference by its title, an item or a group as `label` above. */
       label: string;
-      /** Its kind, as the audit trail names it: `contract` for a coverage under it, `purchase_line`, `item` for an item installed in it, `item_replacement`, `circuit`, `reference_file`, or `device_group` for a group nested in it. */
+      /** Its kind, as the audit trail names it: `contract` for a coverage under it, `purchase_line`, `item` for an item installed in it or that runs on it, `item_replacement`, `circuit`, `reference_file`, or `device_group` for a group nested in it. */
       record_type: string;
     };
     /** What taking a reference off a record did. */
@@ -10716,7 +10739,7 @@ export interface components {
       group: components["schemas"]["DeviceGroupRef"];
       /** The registration. */
       hid: string;
-      status: "registered" | "pending" | "removed";
+      status: "registered" | "pending" | "removed" | "not_reported";
       system: components["schemas"]["SystemRef"];
       system_hid: string;
     };
@@ -10753,6 +10776,14 @@ export interface components {
       reasons: string[];
       value: "good" | "degraded" | "failed" | "unknown";
     };
+    /** An item retired with the host it runs on, which the request named (P-247). */
+    HostedRetired: {
+      hid: string;
+      /** The item it runs on, which went first: one named, or one that went with one named. */
+      host_hid: string;
+      /** What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name. */
+      label: string;
+    };
     /** The records an import made, a page of them, and those it made for a row. */
     ImportCreated: {
       /** Whole, on every page: the vendors and catalog entries made only because a row named them, that no row of the import described. */
@@ -10772,6 +10803,8 @@ export interface components {
       /** Who last asked for it to be applied. */
       applied_by: string | null;
       applied_by_name: string | null;
+      /** With a system: the file is everything that system reports, so that each item registered with it that no row names is marked `not_reported` once the file is applied whole. */
+      complete: boolean | null;
       /** Rows that create a record, as the preview found. */
       created: number;
       created_at: string;
@@ -10784,6 +10817,8 @@ export interface components {
       file_sha256: string | null;
       hid: string;
       mode: "create" | "upsert" | "update";
+      /** How many items that marks: as the preview found, and once applied, how many it marked. None is marked where a row was rejected, left out or stale. */
+      not_reported: number;
       /** Rows that cannot be applied, as the preview found. */
       rejected: number;
       row_count: number;
@@ -10796,6 +10831,9 @@ export interface components {
       stale: number;
       /** `queued` and `applying` while it is applied in the background, `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied. */
       status: "previewed" | "queued" | "applying" | "applied" | "stopped" | "failed";
+      system: components["schemas"]["SystemRef"] | null;
+      /** An import of items: the external system the file was read from, by whose identifier, `external_id`, its rows are matched first (P-248). */
+      system_hid: string | null;
       /** Rows that find their record as the row has it. */
       unchanged: number;
       /** Rows that change a record, as the preview found. */
@@ -10804,6 +10842,8 @@ export interface components {
     /** A preview: the job with its counts, and the first of its rows. */
     ImportPreview: {
       job: components["schemas"]["ImportJobOut"];
+      /** Of a `complete` import that is not applied yet: the first ten items it would mark `not_reported`, by label (P-248). Empty otherwise. */
+      not_reported_first: components["schemas"]["RecordLabel"][];
       /** The first hundred rows. `GET /imports/{hid}/rows` pages through all. */
       rows: components["schemas"]["ImportRowOut"][];
     };
@@ -12205,6 +12245,8 @@ export interface components {
     Problem: {
       /** On a 404 for an item or a device group that an Admin deleted: when, by whom and why. Left out of every other problem. */
       deleted?: components["schemas"]["ProblemDeleted"] | null;
+      /** On a 409 for a record that others stand on, as a stack or a cluster that items run on is refused retirement: those records, each as `existing` names one (P-247). Left out of every other problem. */
+      depends_on?: components["schemas"]["ProblemRecord"][] | null;
       detail?: string;
       errors?: components["schemas"]["ProblemField"][];
       /** On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem. */
@@ -12575,7 +12617,7 @@ export interface components {
       external_id?: string | null;
       group_hid?: string | null;
       item_hid?: string | null;
-      status?: "registered" | "pending" | "removed";
+      status?: "registered" | "pending" | "removed" | "not_reported";
       system_hid: string;
     };
     /** An item or a device group as one external system knows it. */
@@ -12589,7 +12631,7 @@ export interface components {
       item: components["schemas"]["ItemRef"] | null;
       item_hid: string | null;
       row_version: number;
-      status: "registered" | "pending" | "removed";
+      status: "registered" | "pending" | "removed" | "not_reported";
       system: components["schemas"]["SystemRef"];
       system_hid: string;
       updated_at: string;
@@ -12599,7 +12641,7 @@ export interface components {
       confirmed_at?: string | null;
       external_id?: string | null;
       row_version: number;
-      status?: "registered" | "pending" | "removed" | null;
+      status?: "registered" | "pending" | "removed" | "not_reported" | null;
     };
     /** One registration of an item or a group, as shown on that record. */
     RegistrationRef: {
@@ -12607,7 +12649,7 @@ export interface components {
       external_id: string | null;
       /** The registration. */
       hid: string;
-      status: "registered" | "pending" | "removed";
+      status: "registered" | "pending" | "removed" | "not_reported";
       system: components["schemas"]["SystemRef"];
       system_hid: string;
     };
@@ -12701,6 +12743,8 @@ export interface components {
       drop_identity?: boolean;
       /** Given, whether the item that comes is expected online, as the rule of its lifecycle state allows. Left out, it stays as it is. */
       expected_online?: boolean | null;
+      /** Whether what runs on the item that leaves, each item that names it as `host_item_hid`, is given the item that comes as its host, each by a change that names the replacement (P-247). Left out, true. Where something is handed over, the item that comes must be one that may be a host. */
+      hand_over_hosted?: boolean;
       /** Or the fields of a new item, created by this request. */
       new_item?: components["schemas"]["ItemCreate"] | null;
       /** An item that exists and takes the place. */
@@ -12830,21 +12874,28 @@ export interface components {
     };
     /** Items or device groups to retire at once, as a person ticked them. */
     RetireMany: {
+      /** Answer what it would do, `hosted` among it, and change nothing (P-247). */
+      dry_run?: boolean;
       /** Each is retired as its own retire route does. One named twice counts once. */
       hids: string[];
     };
     /** A record the rules did not let be retired. */
     RetireRefused: {
+      /** Where what runs on it is why, a stack or a cluster that items name as their host: those items (P-247). Empty otherwise. */
+      depends_on: components["schemas"]["Dependent"][];
       /** Why. */
       detail: string;
       hid: string;
       /** What it is known by: an item by its name, host name, serial number or asset tag, the first it has, and a device group by its name. */
       label: string;
     };
-    /** What a request that retires several did with each record it named. */
+    /** What a request that retires several did, or with `dry_run` would do, with each. */
     RetiredMany: {
       /** What was retired before it: not refused. */
       already: components["schemas"]["RecordLabel"][];
+      dry_run: boolean;
+      /** The items not named that are retired with those named, because they run on one of them or on what runs on one, each once (P-247). Empty for groups. */
+      hosted: components["schemas"]["HostedRetired"][];
       /** Each HID that names no such record. */
       missing: string[];
       refused: components["schemas"]["RetireRefused"][];

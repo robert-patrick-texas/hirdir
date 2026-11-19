@@ -28,9 +28,11 @@ def problem(
     headers: Mapping[str, str] | None = None,
     existing: errors.Existing | None = None,
     deleted: errors.Deleted | None = None,
+    depends_on: list[errors.Existing] | None = None,
 ) -> JSONResponse:
     """Build a problem response. `existing` is the record that has the value already,
-    and `deleted` the deletion of a record that is asked for and is not there."""
+    `deleted` the deletion of a record that is asked for and is not there, and
+    `depends_on` the records that stand on the one a change was refused for."""
     body: dict[str, object] = {
         "type": "about:blank",
         "title": title,
@@ -44,6 +46,11 @@ def problem(
             "record_type": existing.record_type,
             "label": existing.label,
         }
+    if depends_on:
+        body["depends_on"] = [
+            {"hid": one.hid, "record_type": one.record_type, "label": one.label}
+            for one in depends_on
+        ]
     if deleted is not None:
         body["deleted"] = {
             "at": deleted.at.isoformat().replace("+00:00", "Z"),
@@ -82,7 +89,14 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(errors.Conflict)
     async def _conflict(_: Request, error: errors.Conflict) -> JSONResponse:
         title = "Stale version" if isinstance(error, errors.StaleVersion) else "Conflict"
-        return problem(409, title, str(error), error.fields, existing=error.existing)
+        return problem(
+            409,
+            title,
+            str(error),
+            error.fields,
+            existing=error.existing,
+            depends_on=error.depends_on,
+        )
 
     @app.exception_handler(StaleDataError)
     async def _stale(_: Request, error: StaleDataError) -> JSONResponse:

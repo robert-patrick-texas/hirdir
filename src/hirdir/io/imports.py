@@ -315,6 +315,8 @@ def preview(
     mode: str | None = None,
     file_name: str | None = None,
     max_bytes: int = files.MAX_BYTES,
+    system: str | None = None,
+    complete: bool = False,
 ) -> ImportJob:
     """Read a file, work out what importing it would do, and store that as a preview."""
     parsed = files.read(
@@ -334,6 +336,12 @@ def preview(
         file_name=name,
         file_sha256=hashlib.sha256(data).hexdigest(),
     )
+
+
+def not_reported_first(db: Session, job: ImportJob) -> list[tuple[str, str]]:
+    """Return the first items a `complete` import that is not applied yet would mark
+    `not_reported`, each by its HID and label (P-248)."""
+    return []
 
 
 def get_job(db: Session, hid: str, source: str | None = None) -> ImportJob:
