@@ -264,6 +264,33 @@ export function parentAsHostBody(item: {
   };
 }
 
+/**
+ * What a page says once an item was given a host by one press, by what the server
+ * answered and not by what was sent: a member of a stack sent is made the stack, and is
+ * then what the item was seen on (P-252).
+ */
+export function hostMadeText(
+  answer: {
+    name?: string | null;
+    hostname?: string | null;
+    serial_number?: string | null;
+    asset_tag?: string | null;
+    host: HostRef | null;
+    observed_host: { hid: string; name: string | null } | null;
+  },
+  sent: string,
+): string {
+  const whose = itemName(answer);
+  const host = answer.host;
+  if (!host) return `${whose} names no host.`;
+  const said = `${host.name} is now the host of ${whose}`;
+  const seen = answer.observed_host;
+  if (host.item_hid !== sent && seen?.hid === sent) {
+    return `${said}, ${hostWhat(host)}; it was seen on ${seen.name ?? "the item named"}, a member of it.`;
+  }
+  return `${said}.`;
+}
+
 /** Whether an item of a model of this kind is a virtual context. */
 export function isContext(kind: string | null | undefined): boolean {
   return kind === "virtual_context";

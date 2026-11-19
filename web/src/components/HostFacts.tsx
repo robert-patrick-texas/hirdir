@@ -11,7 +11,7 @@ import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { itemName } from "../lib/format";
 import { useAction } from "../lib/hooks";
-import { hostPath, hostWhat, parentAsHostBody, runsOnHost } from "../lib/hosting";
+import { hostMadeText, hostPath, hostWhat, parentAsHostBody, runsOnHost } from "../lib/hosting";
 import { Problem } from "./Problem";
 import { Time } from "./Time";
 
@@ -52,7 +52,7 @@ function InstalledIn({
         body: parentAsHostBody(item),
       }),
     );
-    if (result.ok) onChanged?.(`${name} is now the host of ${itemName(item)}.`);
+    if (result.ok) onChanged?.(hostMadeText(result.value, item.parent_item_hid ?? ""));
   }
   return (
     <div className="review-line" data-testid="installed-in">
@@ -108,7 +108,7 @@ function SerialOf({
         body: { row_version: item.row_version, host_item_hid: of.hid },
       }),
     );
-    if (result.ok) onChanged?.(`${of.label} is now the host of ${itemName(item)}.`);
+    if (result.ok) onChanged?.(hostMadeText(result.value, of.hid));
   }
   return (
     <div className="review-line" data-testid="serial-of">
