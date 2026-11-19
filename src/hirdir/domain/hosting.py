@@ -24,13 +24,15 @@ from hirdir.db.models import (
     Item,
     Registration,
 )
-from hirdir.domain import geography, health
+from hirdir.domain import geography, health, records
 from hirdir.domain.errors import Invalid
 
 # The kinds of model that run on a host, and the kinds that may host one: an item of no
 # model may host as well (P-246).
 HOSTED_KINDS = ("virtual_machine", "virtual_context", "container")
 HOST_KINDS = ("hardware", "virtual_machine")
+# The kind whose serial number is its host's (P-251).
+VIRTUAL_CONTEXT = "virtual_context"
 # The groups that may be a host: the two that are one device.
 HOST_GROUPS = ("stack", "cluster")
 # How many records a line of hosts holds at most: a container in a virtual machine on a
@@ -231,11 +233,27 @@ def reviews(
     is read, in the order of `REASONS`. A retired item has none."""
     marks: dict[str, list[Mark]] = {item.hid: [] for item in found}
     live = [item for item in found if item.record_status != "retired"]
+    # A context that holds a serial number that one item that may host has: the reason
+    # names that item, which a person may make its host (P-251).
+    waiting = [
+        item
+        for item in live
+        if item.host_item_hid is None
+        and item.host_group_hid is None
+        and item.serial_number
+        and kinds.get(item.catalog_entry_hid or "") == VIRTUAL_CONTEXT
+    ]
+    by_serial = _hosts_by_serial(db, waiting)
     for item in live:
         kind = kinds.get(item.catalog_entry_hid or "")
         if item.host_item_hid is None and item.host_group_hid is None:
             if runs_on_a_host(kind):
-                marks[item.hid].append(Mark(NO_HOST))
+                named = by_serial.get(item.hid)
+                marks[item.hid].append(
+                    Mark(NO_HOST)
+                    if named is None
+                    else Mark(NO_HOST, "item", named.hid, shown_name(named))
+                )
         elif gone(item, hosts):
             if item.host_item_hid is not None:
                 host = hosts.items[item.host_item_hid]
@@ -256,6 +274,37 @@ def reviews(
         for item_hid, system_hid, name in rows:
             marks[item_hid or ""].append(Mark(NOT_REPORTED, "external_system", system_hid, name))
     return marks
+
+
+def _hosts_by_serial(db: Session, found: Sequence[Item]) -> dict[str, Item]:
+    """Return, for each of the contexts, the one item that may be a host and has its
+    serial number, where exactly one has it: read for all of them at once, and not at
+    all where none holds a serial number."""
+    keys = {item.hid: records.key(item.serial_number or "") for item in found}
+    if not keys:
+        return {}
+    having: dict[str, list[Item]] = {}
+    wanted = sorted(set(keys.values()))
+    for start in range(0, len(wanted), 500):
+        rows = db.scalars(
+            select(Item).where(
+                Item.serial_key.in_(wanted[start : start + 500]),
+                Item.record_status != "retired",
+            )
+        )
+        for one in rows:
+            having.setdefault(one.serial_key or "", []).append(one)
+    kinds = kinds_of(db, {one.catalog_entry_hid for listed in having.values() for one in listed})
+    named: dict[str, Item] = {}
+    for hid, key in keys.items():
+        hosts = [
+            one
+            for one in having.get(key, [])
+            if one.hid != hid and may_host(kinds.get(one.catalog_entry_hid or ""))
+        ]
+        if len(hosts) == 1:
+            named[hid] = hosts[0]
+    return named
 
 
 def _line_above(db: Session, host: Item) -> list[str]:
@@ -383,6 +432,14 @@ def checked(
             return values[name]
         return getattr(item, name) if item is not None else None
 
+    kinds: dict[str, str | None] = {}
+
+    def kind_of() -> str | None:
+        entry = final("catalog_entry_hid")
+        if entry not in kinds:
+            kinds[entry] = kinds_of(db, {entry}).get(entry or "")
+        return kinds[entry]
+
     out: dict[str, Any] = {}
     for name in ("host_item_hid", "host_group_hid", "observed_host_hid"):
         if name in fields:
@@ -392,6 +449,33 @@ def checked(
             "an item runs on one host",
             {"host_group_hid": "an item runs on an item or on a group, not both"},
         )
+    # A serial number given for a virtual context names its host (P-251).
+    from_serial = None
+    serial = values.get("serial_number") if "serial_number" in fields else None
+    if serial and kind_of() == VIRTUAL_CONTEXT:
+        from_serial = host_by_serial(db, serial, item)
+        if from_serial is not None:
+            named_item, named_group = out.get("host_item_hid"), out.get("host_group_hid")
+            if named_group or (named_item and named_item != from_serial.hid):
+                other = (
+                    db.get(DeviceGroup, named_group) if named_group else db.get(Item, named_item)
+                )
+                called = (
+                    other.name
+                    if isinstance(other, DeviceGroup)
+                    else shown_name(other)
+                    if other is not None
+                    else named_group or named_item
+                )
+                raise Invalid(
+                    "the serial number names another host",
+                    {
+                        "serial_number": f"{serial} is the serial number of "
+                        f"{shown_name(from_serial)}, and the request names {called} as the "
+                        "host: name one of them"
+                    },
+                )
+            out["host_item_hid"] = from_serial.hid
     # Naming the one clears the other: what it runs on is one record.
     if out.get("host_item_hid") and "host_group_hid" not in fields:
         out["host_group_hid"] = None
@@ -439,9 +523,23 @@ def checked(
         # Checked against other records, so nobody else may be changing them meanwhile.
         dialect.hold_other_writers(db)
         if "host_item_hid" in changed:
-            _check_host_item(db, changed["host_item_hid"], item)
+            try:
+                _check_host_item(db, changed["host_item_hid"], item)
+            except Invalid as refused:
+                if from_serial is None or "host_item_hid" in fields:
+                    raise
+                # The host was named by the serial number: the refusal is said there.
+                said = refused.fields.get("host_item_hid", str(refused))
+                raise Invalid(str(refused), {"serial_number": said}) from None
         if "host_group_hid" in changed:
             _check_host_group(db, changed["host_group_hid"], item)
+    if (
+        (final("host_item_hid") or final("host_group_hid"))
+        and final("serial_number")
+        and kind_of() == VIRTUAL_CONTEXT
+    ):
+        # A context that has a host holds no serial number: it shows its host's.
+        out["serial_number"], out["serial_key"] = None, None
     seen = out.get("observed_host_hid")
     if seen and (item is None or seen != item.observed_host_hid):
         # What was seen is for the kinds that run on a host too. One that an item holds
@@ -475,6 +573,27 @@ def in_file_words(text: str) -> str:
     for api, file in FILE_WORDS:
         text = text.replace(api, file)
     return text
+
+
+def host_by_serial(db: Session, serial: str, item: Item | None = None) -> Item | None:
+    """Return the one item that may be a host and has this serial number of its own, by
+    the key the unique rule compares, not retired, or None where none has it. Two that
+    have it are refused: never a guess (P-251)."""
+    query = select(Item).where(
+        Item.serial_key == records.key(serial), Item.record_status != "retired"
+    )
+    if item is not None:
+        query = query.where(Item.hid != item.hid)
+    found = list(db.scalars(query.order_by(Item.hid).limit(20)))
+    kinds = kinds_of(db, {one.catalog_entry_hid for one in found})
+    hosts = [one for one in found if may_host(kinds.get(one.catalog_entry_hid or ""))]
+    if len(hosts) > 1:
+        names = ", ".join(shown_name(one) for one in hosts[:5])
+        raise Invalid(
+            "more than one item has the serial number",
+            {"serial_number": f"{names} each have the serial number {serial}: name the host"},
+        )
+    return hosts[0] if hosts else None
 
 
 def _observation(

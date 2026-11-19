@@ -339,6 +339,19 @@ the rules, and this says how the API carries them.
   answer through the host as the record does, and so do the geography tree and the
   summary, which count what runs on a host where its host is and with its host's owner
   and operator.
+- **The serial number of a virtual context** (P-251) given in `serial_number`, by
+  `POST /items`, `PATCH /items/{hid}`, a file or a bulk edit, names its host where one
+  item that may host, not retired, has it as its own: that item is the host from the
+  change, as `host_item_hid` would make it, and the serial number is not stored. A
+  request that names another host too is a `422` on `serial_number` naming both, and so
+  is one that two such items have, naming them. Where none has it the context keeps it
+  and is `no_host`, whose `about` is the item that has it once exactly one does; nothing
+  joins them by itself. A context that is given a host by any way has its own
+  `serial_number` cleared in the same change. In a file a row of a virtual context is
+  not found by vendor, PID and serial number, but by `external_id` with `system`, its
+  HID, its asset tag, or its name or host name; so a tool's list of the contexts of one
+  chassis, each with the chassis's serial number, finds each context by its name and
+  hosts it on the chassis, and the chassis's own row still finds the chassis.
 - **The items file** has `host`, the item it runs on, named as `parent` names one;
   `host_group`, a stack or a cluster by its name; `observed_host`, named as `host` is;
   and `host_observed_at`. A row may name a host that an earlier or a later row of the

@@ -299,14 +299,28 @@ its host.
   An override is the item's own value, as everywhere. Nothing of its standing comes
   from its host: its lifecycle state, disposition and intent are its own, and a blank
   state is blank.
-- **A virtual context shows its host's serial number.** It has none of its own to
-  enter: what a tool reads from it is the chassis's. Where its `serial_number` is
-  blank and it runs on an item, `effective.serial_number` is that item's, with the
-  source `host`; the list and the page show it as from its host. It is not stored,
-  not unique to the context and not what a row of a file is matched by, and a filter
-  or a sort of the item list by `serial_number` sees only the item's own: the context
-  is found by its host, `host.name`. A virtual
-  machine and a container show none but their own.
+- **A virtual context shows its host's serial number, and the serial number given
+  for it names its host** (P-251). It has none of its own: what a tool reads from it
+  is the chassis's. A `serial_number` given for an item of the kind `virtual_context`,
+  through the API, a file or a bulk edit, is looked up among the items that may be a
+  host, not retired, whose own serial number it is, compared as the unique rule
+  compares it. Where one item has it, that item is the context's host from that
+  change, held to every rule of naming a host, and the serial number is not stored; a
+  request that names another host as well is refused on `serial_number`, naming both,
+  and so is a serial number that more than one such item has, naming them, never a
+  guess. Where no item has it, the context keeps it as given, its own column, until
+  its host is known, and is marked `no_host`; once one item that may host has that
+  serial number, the reason names it in its `about`, for a person to make it the host.
+  Nothing joins the two by itself when the switch is entered: the next report that
+  names the context, or a person, does. A context that is given a host, by whatever
+  way, holds no serial number from then on: what it held is cleared in the same
+  change, audited with it, and it shows its host's, so that a context moved to another
+  switch shows that switch's. `effective.serial_number` is its host's, with the source
+  `host`; the list and the page show it as from its host. It is not unique to the
+  context and not what a row of a file is matched by (see "Identity and matching"),
+  and a filter or a sort of the item list by `serial_number` sees only an item's own:
+  the context is found by its host, `host.name`. A virtual machine and a container
+  keep a serial number of their own, where they have one, and show none but that.
 - **Counting.** Each is a major item of a kind in `count_kinds` from the start: a
   component, a managed node of its own, and its support weight, by the rules of
   "Counting and weight". It is counted where it is, which is where its host is.
@@ -1963,7 +1977,10 @@ first rule that applies decides, and no later rule is tried:
    gives a serial number and `purchase_line` and no vendor or PID is of the line's
    model, and its serial number finds the item of that model, or else the item on that
    line with that serial number, of whatever model 0.6.0 let onto it; where that finds
-   none, the rules that follow are tried, as for any row with no model.
+   none, the rules that follow are tried, as for any row with no model. A row of a
+   model of the kind `virtual_context` is never matched by this rule: its serial
+   number names its host (P-251), and the row is matched by the rules that follow as
+   a row that gives no serial number is.
 3. `asset_tag` is given: the item with that tag.
 4. Neither serial number nor asset tag is given: the one item, not retired, that has
    that name or that host name, whether or not it has a serial number of its own. A
