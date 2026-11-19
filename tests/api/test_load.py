@@ -71,6 +71,14 @@ def clock(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> Clock:
     return held
 
 
+def said(answer: Any) -> str:
+    """Return what an answer says of the health of the server and of what it refuses."""
+    return answer.headers["x-hirdir-health"]
+
+
+GOOD = "good; refusing=nothing"
+
+
 def meter_of(client: TestClient) -> load.Meter:
     app: Any = client.app
     return app.state.load
@@ -93,7 +101,7 @@ def put(client: TestClient, admin: dict, key: str, value: Any, expect: int = 200
     return answer.json()
 
 
-# --- what each route is to a busy server ---------------------------------------------
+# --- what each route is ---------------------------------------------------------------
 
 
 def test_no_route_is_left_as_what_nobody_decided() -> None:
@@ -107,11 +115,13 @@ def test_no_route_is_left_as_what_nobody_decided() -> None:
     # Every name in the lists is a route that is there, with the method it is listed for.
     posts = {route.path for route in routes if "POST" in busy.methods_of(route)}
     gets = {route.path for route in routes if "GET" in busy.methods_of(route)}
-    assert posts >= busy.COSTLY_POSTS
+    assert posts >= busy.LONG_POSTS
+    assert posts >= busy.READ_POSTS
+    assert busy.LONG_POSTS.isdisjoint(busy.READ_POSTS)
     assert gets >= busy.AUDITED_READS
-    assert gets >= busy.ALWAYS_ROUTES
-    for prefix in busy.ALWAYS:
-        assert any(route.path.startswith(prefix) for route in routes), prefix
+    assert gets >= busy.APART_ROUTES
+    for under in (busy.ALWAYS, busy.APART_UNDER, busy.REPORTS):
+        assert any(route.path.startswith(under) for route in routes), under
 
 
 def test_every_route_of_the_contract_is_among_those_that_are_decided(
@@ -140,30 +150,27 @@ def test_what_each_route_is_by_what_it_declares() -> None:
         for route in busy.routes_of(ROUTERS)
         for method in busy.methods_of(route)
     }
-    costly = {where for where, kind in kinds.items() if kind == load.COSTLY}
-    # The pages of lists, by what they answer, however they are asked for.
+    # Long by nature: the reports, the exports and the previews, and nothing else.
+    assert {where for where, kind in kinds.items() if kind == load.LONG} == {
+        *(where for where in kinds if where[0] == "GET" and where[1].startswith("/reports/")),
+        ("POST", "/reports/capacity/try"),
+        ("POST", "/exports"),
+        ("POST", "/imports/preview"),
+        ("POST", "/items/bulk-update"),
+        ("POST", "/kept-answers/check"),
+    }
+    assert kinds[("GET", "/reports/summary")] == kinds[("GET", "/reports/duplicates")] == load.LONG
+    # Every other read, the pages of lists among them, however they are asked for.
     for where in (
         ("GET", "/items"),
         ("POST", "/items/query"),
+        ("POST", "/circuit-groups/query"),
         ("GET", "/items/{hid}/children"),
         ("GET", "/audit-events"),
         ("GET", "/users"),
         ("GET", "/imports"),
         ("GET", "/imports/{hid}/rows"),
         ("GET", "/contracts/{hid}/coverage"),
-        ("POST", "/circuit-groups/query"),
-        # The reports, the exports and the previews.
-        ("GET", "/reports/summary"),
-        ("GET", "/reports/capacity"),
-        ("POST", "/reports/capacity/try"),
-        ("GET", "/reports/duplicates"),
-        ("POST", "/exports"),
-        ("POST", "/imports/preview"),
-        ("POST", "/items/bulk-update"),
-        ("POST", "/kept-answers/check"),
-    ):
-        assert where in costly, where
-    for where in (
         ("GET", "/items/{hid}"),
         ("GET", "/items/{hid}/hosted"),
         ("GET", "/tags"),
@@ -176,16 +183,14 @@ def test_what_each_route_is_by_what_it_declares() -> None:
         ("GET", "/reference-files/{hid}/content"),
     ):
         assert kinds[where] == load.READ, where
+    assert {where for where, kind in kinds.items() if kind == load.READ and where[0] != "GET"} == {
+        ("POST", path) for path in busy.READ_POSTS
+    }
+    # A sign-in and every change that is stored: never refused, and in the measure.
     for where in (
         ("POST", "/auth/sign-in"),
         ("GET", "/auth/me"),
         ("POST", "/auth/sign-out-everywhere"),
-        ("GET", "/health/live"),
-        ("GET", "/health/ready"),
-        ("GET", "/about"),
-        ("GET", "/about/load"),
-        ("GET", "/openapi.json"),
-        ("GET", "/settings"),
         ("PUT", "/settings/{key}"),
         ("POST", "/items"),
         ("PATCH", "/items/{hid}"),
@@ -198,50 +203,67 @@ def test_what_each_route_is_by_what_it_declares() -> None:
         ("POST", "/renewals/alert/seen"),
     ):
         assert kinds[where] == load.KEPT, where
-    # Nothing but a GET and the POSTs that are named is ever turned away.
-    assert {where for where in costly if where[0] != "GET"} == {
-        ("POST", path) for path in busy.COSTLY_POSTS
+    # What stands apart, all of it: never refused, and in no measure.
+    assert {where for where, kind in kinds.items() if kind == load.APART} == {
+        ("GET", "/health/live"),
+        ("GET", "/health/ready"),
+        ("GET", "/about"),
+        ("GET", "/about/load"),
+        ("GET", "/openapi.json"),
+        ("GET", "/settings"),
     }
-    assert {method for (method, _), kind in kinds.items() if kind == load.READ} == {"GET"}
 
 
 def test_a_request_is_what_the_route_that_answers_it_is() -> None:
     kinds = busy.Kinds(ROUTERS, API_PREFIX)
-    assert kinds.of("GET", f"{API}/items") == load.COSTLY
+    assert kinds.of("GET", f"{API}/items") == load.READ
     assert kinds.of("GET", f"{API}/items/{NOWHERE}") == load.READ
     assert kinds.of("PATCH", f"{API}/items/{NOWHERE}") == load.KEPT
     # A path of one route to one method and of another to another.
-    assert kinds.of("POST", f"{API}/items/query") == load.COSTLY
-    assert kinds.of("GET", f"{API}/items/query") == load.READ
+    assert kinds.of("POST", f"{API}/items/bulk-update") == load.LONG
+    assert kinds.of("GET", f"{API}/items/bulk-update") == load.READ
+    assert kinds.of("POST", f"{API}/items/query") == load.READ
     assert kinds.of("POST", f"{API}/items/retire") == load.KEPT
-    assert kinds.of("GET", f"{API}/items/{NOWHERE}/children") == load.COSTLY
-    assert kinds.of("GET", f"{API}/about/load") == load.KEPT
+    assert kinds.of("GET", f"{API}/reports/coverage") == load.LONG
+    assert kinds.of("GET", f"{API}/about/load") == load.APART
+    assert kinds.of("PUT", f"{API}/settings/busy_cpu_percent") == load.KEPT
     # What no route answers is left to the router, which says so at once.
-    assert kinds.of("GET", f"{API}/nothing/here") == load.KEPT
-    assert kinds.of("DELETE", f"{API}/items") == load.KEPT
+    assert kinds.of("GET", f"{API}/nothing/here") == load.APART
+    assert kinds.of("DELETE", f"{API}/items") == load.APART
 
 
-# --- what a busy server refuses ------------------------------------------------------
+def test_what_a_request_is_is_remembered_and_what_is_remembered_has_an_end() -> None:
+    kinds = busy.Kinds(ROUTERS, API_PREFIX)
+    for number in range(busy.MOST_REMEMBERED + 10):
+        assert kinds.of("GET", f"{API}/items/{number}") == load.READ
+    assert len(kinds._found) <= busy.MOST_REMEMBERED
+    assert kinds.of("GET", f"{API}/items/0") == load.READ
+    assert kinds.of("GET", f"{API}/reports/summary") == load.LONG
 
-COSTLY = (
-    ("GET", "/items"),
-    ("POST", "/items/query"),
-    ("GET", f"/items/{NOWHERE}/children"),
-    ("GET", "/audit-events"),
+
+# --- what a server refuses, by its health ---------------------------------------------
+
+LONG = (
     ("GET", "/reports/summary"),
+    ("GET", "/reports/duplicates"),
     ("POST", "/reports/capacity/try"),
     ("POST", "/exports"),
     ("POST", "/imports/preview"),
     ("POST", "/items/bulk-update"),
+    ("POST", "/kept-answers/check"),
 )
 READS = (
+    ("GET", "/items"),
+    ("POST", "/items/query"),
+    ("GET", f"/items/{NOWHERE}/children"),
+    ("GET", "/audit-events"),
     ("GET", "/tags"),
     ("GET", "/choices"),
     ("GET", f"/items/{NOWHERE}"),
     ("GET", "/geography/tree"),
     ("GET", "/renewals/alert"),
 )
-KEPT = (
+NEVER = (
     ("GET", "/auth/me"),
     ("GET", "/health/live"),
     ("GET", "/health/ready"),
@@ -257,6 +279,39 @@ KEPT = (
 )
 
 
+@pytest.fixture
+def tags_take(clock: Clock, monkeypatch: pytest.MonkeyPatch) -> dict[str, float]:
+    """Have the list of the tags take as long as a test says, by the clock of the
+    measures: `tags_take["seconds"]`, a quarter of a second unless said."""
+    from hirdir.domain import tags
+
+    listed = tags.list_tags
+    takes = {"seconds": 0.25}
+
+    def slow(db: Session) -> Any:
+        clock.now += takes["seconds"]
+        return listed(db)
+
+    monkeypatch.setattr(tags, "list_tags", slow)
+    return takes
+
+
+def reads(
+    client: TestClient, headers: dict, clock: Clock, takes: dict[str, float], seconds: float
+) -> list[int]:
+    """Have twenty reads of the tags take so long each, then let a second pass, so that
+    the measures are read again. Return how each was answered."""
+    takes["seconds"] = seconds
+    answers = [client.get(f"{API}/tags", headers=headers).status_code for _ in range(20)]
+    takes["seconds"] = 0.0
+    clock.now += 1.0
+    return answers
+
+
+# The measure of time alone, of thirds of a tenth of a second, over half a minute.
+QUICK_TO_TIRE = Ceiling(response_ms=300, cpu_percent=0, over_seconds=30)
+
+
 def refused(client: TestClient, headers: dict, asked: tuple[tuple[str, str], ...]) -> set:
     """Return which of the requests asked are answered as busy. What a request is
     answered otherwise does not matter here: found or not, well formed or not."""
@@ -267,34 +322,87 @@ def refused(client: TestClient, headers: dict, asked: tuple[tuple[str, str], ...
     }
 
 
-def test_each_kind_of_request_at_each_step(client: TestClient, admin: dict, clock: Clock) -> None:
-    everything = (*COSTLY, *READS, *KEPT)
-    assert measured(client, admin)["state"] == "ok"
+def test_what_is_refused_at_each_word_of_the_health(
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
+) -> None:
+    """Nothing is refused until orange; at orange what is long by nature; at red every
+    read as well. And never a sign-in, a change, health, About, the settings."""
+    everything = (*LONG, *READS, *NEVER)
+    tags_take["seconds"] = 0.0
+    meter_of(client).hold(QUICK_TO_TIRE)
+
+    def now() -> tuple[str, list[str], str]:
+        said = measured(client, admin)
+        return said["health"], said["because"], said["refusing"]
+
+    assert now() == ("good", [], "nothing")
     assert refused(client, admin, everything) == set()
-    # Past the ceiling: what costs most and can wait is refused, and nothing else.
-    clock.busy()
-    assert measured(client, admin)["state"] == "busy"
-    assert refused(client, admin, everything) == set(COSTLY)
-    # Still so a further ten seconds later: every read is.
-    clock.busy()
-    assert measured(client, admin)["state"] == "very_busy"
-    assert refused(client, admin, everything) == {*COSTLY, *READS}
-    # Under the ceiling again, everything is answered again.
-    clock.idle()
-    assert measured(client, admin)["state"] == "ok"
+    # Yellow: reads of 150 ms against thirds of 100. Nothing is refused.
+    clock.now += 31
+    assert set(reads(client, admin, clock, tags_take, 0.15)) == {200}
+    assert now() == ("slow", ["response_ms"], "nothing")
     assert refused(client, admin, everything) == set()
-    # And busy anew begins at the first step.
-    clock.busy()
-    assert refused(client, admin, everything) == set(COSTLY)
+    # Orange: what is long by nature is refused, and the lists go on.
+    clock.now += 31
+    assert set(reads(client, admin, clock, tags_take, 0.25)) == {200}
+    assert now() == ("very_slow", ["response_ms"], "long")
+    assert refused(client, admin, everything) == set(LONG)
+    # Red: every read is refused as well.
+    clock.now += 31
+    assert set(reads(client, admin, clock, tags_take, 0.5)) == {200}
+    assert now() == ("busy", ["response_ms"], "reads")
+    assert refused(client, admin, everything) == {*LONG, *READS}
+    answer = client.get(f"{API}/items", headers=admin)
+    assert answer.status_code == 503
+    assert said(answer) == "busy; refusing=reads"
+    assert answer.json()["busy"] == {
+        "health": "busy",
+        "because": ["response_ms"],
+        "refusing": "reads",
+        "retry_after": 5,
+    }
+    # The slow reads are out of the measure half a minute after they came. It was red
+    # a moment ago: the reads come back, and what is long does not yet.
+    clock.now += 29
+    assert now() == ("very_slow", ["response_ms"], "long")
+    assert refused(client, admin, everything) == set(LONG)
+    # Half a minute after it was last red, everything is answered again.
+    clock.now += 2
+    assert now() == ("good", [], "nothing")
+    assert refused(client, admin, everything) == set()
 
 
-def test_a_very_busy_server_still_signs_in_stores_a_change_and_serves_the_page(
+def test_the_processor_refuses_what_is_long_and_never_the_reads(
     client: TestClient, admin: dict, clock: Clock
 ) -> None:
+    everything = (*LONG, *READS, *NEVER)
+    assert refused(client, admin, everything) == set()
+    # Past its ceiling the health is orange at the least.
     clock.busy()
-    assert measured(client, admin)["state"] == "busy"
-    clock.busy()
-    assert measured(client, admin)["state"] == "very_busy"
+    said = measured(client, admin)
+    assert (said["health"], said["because"], said["refusing"]) == (
+        "very_slow",
+        ["cpu_percent"],
+        "long",
+    )
+    assert refused(client, admin, everything) == set(LONG)
+    # However long it lasts, the processor alone never refuses a read.
+    for _ in range(6):
+        clock.busy()
+        assert measured(client, admin)["health"] == "very_slow"
+    assert refused(client, admin, everything) == set(LONG)
+    # Under the ceiling again, everything is answered again, at once.
+    clock.idle()
+    assert measured(client, admin)["refusing"] == "nothing"
+    assert refused(client, admin, everything) == set()
+
+
+def test_a_busy_server_still_signs_in_stores_a_change_and_serves_the_page(
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
+) -> None:
+    meter_of(client).hold(QUICK_TO_TIRE)
+    reads(client, admin, clock, tags_take, 0.5)
+    assert measured(client, admin)["refusing"] == "reads"
     ivy = sign_in(client, "ivy", "inventory-code")
     made = client.post(f"{API}/tags", json={"label": "kept"}, headers=ivy)
     assert made.status_code == 201, made.text
@@ -317,9 +425,11 @@ def test_a_very_busy_server_still_signs_in_stores_a_change_and_serves_the_page(
     assert client.get(f"{API}/tags", headers=ivy).status_code == 200
 
 
-def test_the_answer_of_a_busy_server(client: TestClient, admin: dict, clock: Clock) -> None:
+def test_the_answer_to_a_request_that_is_refused(
+    client: TestClient, admin: dict, clock: Clock
+) -> None:
     clock.busy()
-    answer = client.get(f"{API}/items", headers=admin)
+    answer = client.get(f"{API}/reports/summary", headers=admin)
     assert answer.status_code == 503
     assert answer.headers["content-type"] == "application/problem+json"
     assert answer.headers["retry-after"] == "5"
@@ -329,20 +439,21 @@ def test_the_answer_of_a_busy_server(client: TestClient, admin: dict, clock: Clo
         "status": 503,
         "detail": "the server is busy and this request was not answered; try again shortly",
         "errors": [],
-        "busy": {"state": "busy", "because": ["cpu_percent"], "retry_after": 5},
+        "busy": {
+            "health": "very_slow",
+            "because": ["cpu_percent"],
+            "refusing": "long",
+            "retry_after": 5,
+        },
     }
     # It carries what every answer carries, and is no more kept than any other.
     assert answer.headers["x-request-id"]
+    assert said(answer) == "very_slow; refusing=long"
     assert answer.headers["cache-control"] == "no-store"
     assert answer.headers["x-content-type-options"] == "nosniff"
     assert "set-cookie" not in answer.headers
-    clock.busy()
-    answer = client.get(f"{API}/tags", headers=admin)
-    assert answer.json()["busy"] == {
-        "state": "very_busy",
-        "because": ["cpu_percent"],
-        "retry_after": 5,
-    }
+    # A page of a list is answered while the health is orange.
+    assert client.get(f"{API}/items", headers=admin).status_code == 200
 
 
 def test_a_refusal_is_given_before_who_asks_is_looked_at(client: TestClient, clock: Clock) -> None:
@@ -352,13 +463,14 @@ def test_a_refusal_is_given_before_who_asks_is_looked_at(client: TestClient, clo
     def note(_connection: object, _cursor: object, statement: str, *_more: object) -> None:
         statements.append(statement)
 
-    assert client.get(f"{API}/items").status_code == 401
+    assert client.get(f"{API}/reports/summary").status_code == 401
     clock.busy()
     app: Any = client.app
     event.listen(app.state.engine, "before_cursor_execute", note)
     try:
-        assert client.get(f"{API}/items").status_code == 503
-        assert client.get(f"{API}/items", headers={"Authorization": "Bearer x"}).status_code == 503
+        assert client.get(f"{API}/reports/summary").status_code == 503
+        anyone = {"Authorization": "Bearer x"}
+        assert client.get(f"{API}/reports/summary", headers=anyone).status_code == 503
     finally:
         event.remove(app.state.engine, "before_cursor_execute", note)
     assert statements == []
@@ -376,7 +488,7 @@ def test_a_body_that_is_refused_is_read_and_the_answer_given(
         headers={**inventory, "Content-Type": "text/csv"},
     )
     assert answer.status_code == 503
-    assert answer.json()["busy"]["state"] == "busy"
+    assert answer.json()["busy"]["refusing"] == "long"
     # Nothing of it was kept.
     clock.idle()
     assert client.get(f"{API}/imports", headers=inventory).json()["total"] == 0
@@ -387,8 +499,8 @@ def test_a_request_under_a_prefix_is_what_its_route_is(
 ) -> None:
     under = {**admin, "X-Forwarded-Prefix": "/inventory"}
     clock.busy()
-    assert client.get(f"{API}/items", headers=under).status_code == 503
-    assert client.get(f"/inventory{API}/items", headers=under).status_code == 503
+    assert client.get(f"{API}/reports/summary", headers=under).status_code == 503
+    assert client.get(f"/inventory{API}/reports/summary", headers=under).status_code == 503
     assert client.get(f"{API}/tags", headers=under).status_code == 200
     assert client.get(f"{API}/about/load", headers=under).status_code == 200
 
@@ -399,7 +511,7 @@ def test_an_answer_of_busy_is_counted_and_is_in_no_time(
     clock.busy()
     before = measured(client, admin)["totals"]
     for _ in range(7):
-        assert client.get(f"{API}/items", headers=admin).status_code == 503
+        assert client.get(f"{API}/reports/summary", headers=admin).status_code == 503
     after = measured(client, admin)
     assert after["totals"]["busy"] == before["busy"] + 7 == 7
     assert after["points"]["busy"] == [0, 0, 7]
@@ -407,6 +519,7 @@ def test_an_answer_of_busy_is_counted_and_is_in_no_time(
     assert after["totals"]["requests"] == before["requests"] + 8
     assert after["totals"]["ok"] == before["ok"] + 1
     assert after["totals"]["failed"] == before["failed"] == 0
+    assert after["totals"]["bands"]["counts"] == [0, 0, 0, 0]
 
 
 def test_no_ceiling_refuses_nothing_however_busy(
@@ -416,11 +529,16 @@ def test_no_ceiling_refuses_nothing_however_busy(
     clock.busy()
     clock.busy()
     clock.busy()
-    assert refused(client, admin, (*COSTLY, *READS, *KEPT)) == set()
+    assert refused(client, admin, (*LONG, *READS, *NEVER)) == set()
     now = measured(client, admin)
-    assert (now["state"], now["because"]) == ("ok", [])
+    assert (now["health"], now["because"], now["refusing"]) == ("good", [], "nothing")
     assert now["measures"]["cpu_percent"] == 90.0
-    assert now["ceiling"] == {"response_ms": 0, "cpu_percent": 0, "over_seconds": 30}
+    assert now["ceiling"] == {
+        "response_ms": 0,
+        "cpu_percent": 0,
+        "over_seconds": 30,
+        "fewest_requests": 20,
+    }
 
 
 def test_the_tests_of_this_process_start_with_no_ceiling(client: TestClient) -> None:
@@ -448,6 +566,9 @@ def test_every_request_is_counted_by_how_it_was_answered(
     assert now["not_accepted"] - start["not_accepted"] == 4
     assert (now["failed"], now["busy"]) == (0, 0)
     assert now["requests"] == now["ok"] + now["not_accepted"]
+    # The reads and the changes of the API are in the bands of time, however they were
+    # answered: not the measures themselves, what no route answers, or the page.
+    assert now["bands"]["counts"] == [5, 0, 0, 0]
 
 
 def test_a_request_that_fails_is_counted_as_failed(
@@ -466,49 +587,196 @@ def test_a_request_that_fails_is_counted_as_failed(
 
 
 def test_the_time_of_an_answer_is_to_its_last_byte(
-    client: TestClient, admin: dict, clock: Clock, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
 ) -> None:
-    from hirdir.domain import tags
-
-    listed = tags.list_tags
-
-    def slow(db: Session) -> Any:
-        # The answer takes a quarter of a second of the clock to work out.
-        clock.now += 0.25
-        return listed(db)
-
-    monkeypatch.setattr(tags, "list_tags", slow)
     assert client.get(f"{API}/tags", headers=admin).status_code == 200
     now = measured(client, admin)
-    assert now["totals"]["response_ms"]["high"] == 250.0
-    assert now["points"]["high_ms"] == [250.0]
+    assert now["totals"]["response_ms"] == {
+        "low": 250.0,
+        "average": 250.0,
+        "high": 250.0,
+        "p50": 250.0,
+        "p95": 250.0,
+        "p99": 250.0,
+    }
+    assert (now["points"]["high_ms"], now["points"]["p95_ms"]) == ([250.0], [250.0])
 
 
-def test_how_long_requests_take_is_read_of_the_requests_of_the_api(
-    client: TestClient, admin: dict, clock: Clock, monkeypatch: pytest.MonkeyPatch
+def test_one_slow_page_is_the_colour_and_twenty_requests_are_load(
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
 ) -> None:
-    from hirdir.domain import tags
-
-    listed = tags.list_tags
-
-    def slow(db: Session) -> Any:
-        clock.now += 2.0
-        return listed(db)
-
-    meter_of(client).hold(Ceiling(response_ms=1000, cpu_percent=0, over_seconds=30))
-    monkeypatch.setattr(tags, "list_tags", slow)
-    # Four slow answers are not five: there is no measure yet.
-    for _ in range(4):
-        assert client.get(f"{API}/tags", headers=admin).status_code == 200
-    assert client.get(f"{API}/items", headers=admin).status_code == 200
-    for _ in range(3):
-        assert client.get(f"{API}/tags", headers=admin).status_code == 200
-    # Seven slow ones among the reads of sign-in and of the list: the median is theirs.
+    meter_of(client).hold(Ceiling(response_ms=300, cpu_percent=0, over_seconds=300))
+    tags_take["seconds"] = 0.5
+    # One slow page on a quiet server: the mark is red, and nothing is refused.
+    assert client.get(f"{API}/tags", headers=admin).status_code == 200
     clock.now += 1.0
     now = measured(client, admin)
-    assert now["measures"]["response_ms"] == 2000.0
-    assert (now["state"], now["because"]) == ("busy", ["response_ms"])
-    assert client.get(f"{API}/items", headers=admin).status_code == 503
+    assert (now["measures"]["response_ms"], now["measures"]["requests"]) == (500.0, 1)
+    assert (now["health"], now["because"], now["refusing"]) == ("busy", ["response_ms"], "nothing")
+    # About and the settings, asked for as often as one likes, are in no measure.
+    for _ in range(30):
+        measured(client, admin)
+        assert client.get(f"{API}/settings", headers=admin).status_code == 200
+    assert measured(client, admin)["measures"]["requests"] == 1
+    # Nineteen of them are red still, and too few to be load: a report and a page of a
+    # list are answered, and said to be answered by a server that is slow.
+    for _ in range(18):
+        assert client.get(f"{API}/tags", headers=admin).status_code == 200
+    clock.now += 1.0
+    report = client.get(f"{API}/reports/summary", headers=admin)
+    assert (report.status_code, said(report)) == (200, "busy; refusing=nothing")
+    now = measured(client, admin)
+    assert now["measures"]["requests"] == 19 < now["ceiling"]["fewest_requests"]
+    assert (now["health"], now["refusing"]) == ("busy", "nothing")
+    # A twentieth read, a quick one, and it is load: the slowest of twenty is the measure.
+    assert client.get(f"{API}/choices", headers=admin).status_code == 200
+    clock.now += 1.0
+    now = measured(client, admin)
+    assert (now["measures"]["response_ms"], now["measures"]["requests"]) == (500.0, 20)
+    assert (now["health"], now["because"], now["refusing"]) == ("busy", ["response_ms"], "reads")
+    assert now["totals"]["response_ms"]["p50"] == now["totals"]["response_ms"]["p95"] == 500.0
+    # A third and two thirds of the ceiling, and the ceiling; all nineteen are past it.
+    assert now["totals"]["bands"] == {
+        "bounds_ms": [100.0, 200.0, 300.0],
+        "counts": [1, 0, 0, 19],
+    }
+    # A report and a page of a list are refused, and a change is stored.
+    assert client.get(f"{API}/reports/summary", headers=admin).status_code == 503
+    refusal = client.get(f"{API}/items", headers=admin)
+    assert (refusal.status_code, said(refusal)) == (503, "busy; refusing=reads")
+    assert client.post(f"{API}/tags", json={"label": "a"}, headers=admin).status_code == 201
+
+
+# --- the health of the server on every answer ----------------------------------------
+
+
+def test_every_answer_of_the_api_carries_the_health_and_the_page_carries_none(
+    client: TestClient, admin: dict, viewer: dict
+) -> None:
+    well = client.get(f"{API}/tags", headers=viewer)
+    assert (well.status_code, said(well)) == (200, GOOD)
+    for answer, status in (
+        (client.get(f"{API}/tags"), 401),
+        (client.post(f"{API}/tags", json={"label": "b"}, headers=viewer), 403),
+        (client.get(f"{API}/items/{NOWHERE}", headers=viewer), 404),
+        (client.get(f"{API}/no-such-route"), 404),
+        (client.post(f"{API}/tags", json={}, headers=admin), 422),
+        (client.get(f"{API}/health/live"), 200),
+        (client.get(f"{API}/about/load", headers=viewer), 200),
+    ):
+        assert answer.status_code == status
+        assert said(answer) == GOOD, status
+    # The page itself and its files say nothing of it.
+    for path in ("/", "/items", "/assets/no-such-file.js", "/favicon.ico"):
+        assert "x-hirdir-health" not in client.get(path).headers, path
+
+
+def test_the_health_on_an_answer_is_each_of_its_four_words(
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
+) -> None:
+    meter_of(client).hold(Ceiling(response_ms=3000, cpu_percent=0, over_seconds=300))
+
+    def after_reads_of(seconds: float) -> tuple[list[int], int, str, dict[str, Any]]:
+        """Have twenty reads take so long each, and return how they were answered, how
+        the next read is and what it says, with what the measures say."""
+        answers = reads(client, admin, clock, tags_take, seconds)
+        answer = client.get(f"{API}/choices", headers=admin)
+        return answers, answer.status_code, said(answer), measured(client, admin)
+
+    answers, status, health, now = after_reads_of(0.5)
+    assert (set(answers), status, health) == ({200}, 200, GOOD)
+    assert (now["health"], now["measures"]["response_ms"]) == ("good", 500.0)
+    answers, status, health, now = after_reads_of(1.5)
+    assert (set(answers), status, health) == ({200}, 200, "slow; refusing=nothing")
+    assert (now["health"], now["refusing"]) == ("slow", "nothing")
+    answers, status, health, now = after_reads_of(2.5)
+    assert (set(answers), status, health) == ({200}, 200, "very_slow; refusing=long")
+    assert (now["health"], now["refusing"]) == ("very_slow", "long")
+    refusal = client.get(f"{API}/reports/summary", headers=admin)
+    assert (refusal.status_code, said(refusal)) == (503, "very_slow; refusing=long")
+    # Red: of sixty and more the measure is the fourth slowest, so the fifth read that
+    # would take three and a half seconds is refused, and every read after it.
+    answers, status, health, now = after_reads_of(3.5)
+    assert answers == [200] * 4 + [503] * 16
+    assert (status, health) == (503, "busy; refusing=reads")
+    assert (now["health"], now["refusing"]) == ("busy", "reads")
+    assert now["measures"]["response_ms"] == 3500.0
+    assert now["totals"]["bands"] == {
+        "bounds_ms": [1000.0, 2000.0, 3000.0],
+        "counts": [23, 20, 20, 4],
+    }
+
+
+def test_the_health_is_very_slow_where_the_processor_is_past_its_ceiling(
+    client: TestClient, admin: dict, clock: Clock
+) -> None:
+    assert said(client.get(f"{API}/tags", headers=admin)) == GOOD
+    clock.busy()
+    answer = client.get(f"{API}/tags", headers=admin)
+    assert (answer.status_code, said(answer)) == (200, "very_slow; refusing=long")
+    now = measured(client, admin)
+    # A request or two in the measure: the processor refuses what is long whatever the count.
+    assert (now["health"], now["because"], now["refusing"]) == (
+        "very_slow",
+        ["cpu_percent"],
+        "long",
+    )
+    assert now["measures"]["requests"] < now["ceiling"]["fewest_requests"]
+    clock.idle()
+    assert said(client.get(f"{API}/tags", headers=admin)) == GOOD
+
+
+def test_with_no_ceiling_the_health_is_said_all_the_same(
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
+) -> None:
+    meter_of(client).hold(Ceiling(response_ms=0, cpu_percent=0, over_seconds=300))
+    reads(client, admin, clock, tags_take, 1.5)
+    assert said(client.get(f"{API}/choices", headers=admin)) == "slow; refusing=nothing"
+    assert set(reads(client, admin, clock, tags_take, 4.0)) == {200}
+    # Red past three seconds, with more than twenty requests, and nothing is refused.
+    for path in ("/reports/summary", "/items"):
+        answer = client.get(API + path, headers=admin)
+        assert (answer.status_code, said(answer)) == (200, "busy; refusing=nothing"), path
+    now = measured(client, admin)
+    assert (now["health"], now["because"], now["refusing"]) == (
+        "busy",
+        ["response_ms"],
+        "nothing",
+    )
+    assert now["measures"]["requests"] > now["ceiling"]["fewest_requests"]
+    assert now["totals"]["bands"]["bounds_ms"] == [1000.0, 2000.0, 3000.0]
+
+
+def test_the_header_is_one_of_twelve_values_made_once() -> None:
+    from hirdir.app import HEALTH_SAID
+
+    assert len(HEALTH_SAID) == len(set(HEALTH_SAID.values())) == 12
+    for (health, refusing), value in HEALTH_SAID.items():
+        assert value == f"{health}; refusing={refusing}"
+        # Read by splitting at the first semicolon and at the equals sign.
+        word, _, rest = value.partition("; ")
+        assert (word, rest.partition("=")) == (health, ("refusing", "=", refusing))
+
+
+def test_the_health_costs_a_request_nothing_it_is_read_from_memory(
+    client: TestClient, admin: dict, clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    meter = meter_of(client)
+    read = []
+    reads = meter._read
+
+    def counting(now: float) -> load.Reading:
+        read.append(now)
+        return reads(now)
+
+    monkeypatch.setattr(meter, "_read", counting)
+    for _ in range(50):
+        assert said(client.get(f"{API}/tags", headers=admin)) == GOOD
+    # Fifty answers within one second of the clock: worked out once, and given fifty times.
+    assert len(read) == 1
+    clock.now += 1.0
+    assert client.get(f"{API}/tags", headers=admin).status_code == 200
+    assert len(read) == 2
 
 
 def test_a_share_of_the_processor_past_100_is_shown_as_it_is(
@@ -519,10 +787,173 @@ def test_a_share_of_the_processor_past_100_is_shown_as_it_is(
     clock.now, clock.cpu = 10.0, 20.0
     now = measured(client, admin)
     assert now["measures"]["cpu_percent"] == 200.0
-    assert (now["state"], now["because"]) == ("busy", ["cpu_percent"])
+    assert (now["health"], now["because"], now["refusing"]) == (
+        "very_slow",
+        ["cpu_percent"],
+        "long",
+    )
     assert now["points"]["cpu_percent"][:2] == [200.0, 200.0]
     assert now["totals"]["cpu_percent"] == {"low": 200.0, "average": 200.0, "high": 200.0}
     assert now["ceiling"]["cpu_percent"] == 150
+
+
+# --- the slowest requests, and who met what ------------------------------------------
+
+
+def test_a_slow_request_is_listed_by_its_route_and_never_by_its_path(
+    client: TestClient, admin: dict, viewer: dict, clock: Clock, tags_take: dict[str, float]
+) -> None:
+    slow = client.get(f"{API}/tags", params={"q": "a-word-of-a-search"}, headers=viewer)
+    assert slow.status_code == 200
+    missing = client.get(f"{API}/items/{NOWHERE}", headers=admin)
+    assert missing.status_code == 404
+    answer = client.get(f"{API}/about/load", headers=admin)
+    first, second = answer.json()["slowest"]
+    assert first == {
+        "at": "2027-03-02T14:00:00Z",
+        "method": "GET",
+        # The route as its pattern: not the path as it was asked, and not the query.
+        "route": f"{API}/tags",
+        "ms": 250.0,
+        "status": 200,
+        "request_id": slow.headers["x-request-id"],
+        "who": {"kind": "person", "hid": hid_of(client, admin, "vic"), "username": "vic"},
+    }
+    assert (second["route"], second["status"], second["who"]["username"]) == (
+        f"{API}/items/{{hid}}",
+        404,
+        "ada",
+    )
+    assert second["request_id"] == missing.headers["x-request-id"]
+    assert NOWHERE not in answer.text
+    assert "a-word-of-a-search" not in answer.text
+
+
+def hid_of(client: TestClient, admin: dict, username: str) -> str:
+    users = client.get(f"{API}/users", headers=admin).json()["items"]
+    return next(user["hid"] for user in users if user["username"] == username)
+
+
+def test_what_is_long_by_nature_is_listed_apart_and_about_in_neither_list(
+    client: TestClient, admin: dict, clock: Clock
+) -> None:
+    assert client.get(f"{API}/reports/summary", headers=admin).status_code == 200
+    assert client.get(f"{API}/tags", headers=admin).status_code == 200
+    for _ in range(3):
+        measured(client, admin)
+    now = measured(client, admin)
+    assert [(one["route"], one["who"]["username"]) for one in now["slowest_long"]] == [
+        (f"{API}/reports/summary", "ada")
+    ]
+    assert [one["route"] for one in now["slowest"]] == [f"{API}/tags"]
+
+
+def test_who_asked_and_what_each_met(
+    client: TestClient,
+    admin: dict,
+    inventory: dict,
+    viewer: dict,
+    clock: Clock,
+    tags_take: dict[str, float],
+) -> None:
+    meter_of(client).hold(Ceiling(response_ms=3000, cpu_percent=0, over_seconds=30))
+    tags_take["seconds"] = 0.0
+    # The viewer meets one read in each band, the last of them past the ceiling.
+    for seconds in (0.5, 1.5, 2.5, 3.5):
+        tags_take["seconds"] = seconds
+        assert client.get(f"{API}/tags", headers=viewer).status_code == 200
+    tags_take["seconds"] = 0.0
+    # The Inventory user: two quick reads, and a change that is refused them: a 403.
+    for _ in range(2):
+        assert client.get(f"{API}/tags", headers=inventory).status_code == 200
+    assert (
+        client.put(
+            f"{API}/settings/currency", json={"row_version": 0, "value": "EUR"}, headers=inventory
+        ).status_code
+        == 403
+    )
+    # A sign-in that fails, and a token that does not hold: nobody is named for them.
+    wrong = client.post(f"{API}/auth/sign-in", json={"username": "ada", "access_code": "no"})
+    assert wrong.status_code == 401
+    assert (
+        client.get(f"{API}/tags", headers={"Authorization": "Bearer nonsense"}).status_code == 401
+    )
+    measured(client, admin)
+    now = measured(client, admin)
+    assert [(one["username"], one["kind"]) for one in now["people"]] == [
+        # Whoever had it worst first: the viewer met a read past the ceiling. The other
+        # two met nothing slow, and are listed by name.
+        ("vic", "person"),
+        ("ada", "person"),
+        ("ivy", "person"),
+        (None, "unnamed"),
+    ]
+    vic, ada, ivy, unnamed = now["people"]
+    assert (vic["requests"], vic["bands"], vic["slowest_ms"]) == (4, [1, 1, 1, 1], 3500.0)
+    assert (vic["busy"], vic["failed"]) == (0, 0)
+    assert vic["hid"] == hid_of(client, admin, "vic")
+    assert (ivy["requests"], ivy["bands"], ivy["slowest_ms"]) == (3, [3, 0, 0, 0], 0.0)
+    # The Admin has only read the measures, which are in none of the bands.
+    assert (ada["requests"], ada["bands"], ada["slowest_ms"]) == (1, [0, 0, 0, 0], None)
+    assert (unnamed["hid"], unnamed["requests"], unnamed["bands"]) == (None, 2, [2, 0, 0, 0])
+    assert vic["last_at"] == "2027-03-02T14:00:04.500000Z"
+
+
+def test_a_service_token_is_listed_as_the_service_account_it_is_of(
+    client: TestClient, admin: dict, clock: Clock
+) -> None:
+    made = client.post(
+        f"{API}/users",
+        headers=admin,
+        json={"username": "collector", "is_service_account": True, "role": "viewer"},
+    )
+    assert made.status_code == 201, made.text
+    account = made.json()["user"]["hid"]
+    token = client.post(
+        f"{API}/users/{account}/service-tokens", headers=admin, json={"name": "nightly"}
+    )
+    assert token.status_code == 201, token.text
+    service = {"Authorization": f"Bearer {token.json()['secret']}"}
+    assert client.get(f"{API}/tags", headers=service).status_code == 200
+    now = measured(client, admin)
+    row = next(one for one in now["people"] if one["username"] == "collector")
+    assert (row["kind"], row["hid"], row["requests"]) == ("service", account, 1)
+    listed = next(one for one in now["slowest"] if one["who"]["username"] == "collector")
+    assert listed["who"] == {"kind": "service", "hid": account, "username": "collector"}
+
+
+def test_a_request_that_is_refused_is_counted_for_who_asked_where_that_is_known(
+    client: TestClient, admin: dict, viewer: dict, clock: Clock
+) -> None:
+    # The Admin has asked of this server of late, and is remembered; the viewer has not.
+    assert client.get(f"{API}/tags", headers=admin).status_code == 200
+    clock.busy()
+    statements: list[str] = []
+
+    def note(_connection: object, _cursor: object, statement: str, *_more: object) -> None:
+        statements.append(statement)
+
+    app: Any = client.app
+    event.listen(app.state.engine, "before_cursor_execute", note)
+    try:
+        for headers in (admin, admin, viewer, {"Authorization": "Bearer nonsense"}, {}):
+            assert client.get(f"{API}/reports/summary", headers=headers).status_code == 503
+    finally:
+        event.remove(app.state.engine, "before_cursor_execute", note)
+    # Who asked was learnt without the database.
+    assert statements == []
+    now = measured(client, admin)
+    by_name = {one["username"]: one for one in now["people"]}
+    assert (by_name["ada"]["busy"], by_name["ada"]["requests"]) == (2, 3)
+    # The viewer's token holds, and nobody has seen its account: it is not named.
+    assert "vic" not in by_name
+    assert (by_name[None]["busy"], by_name[None]["requests"]) == (3, 3)
+    assert now["totals"]["busy"] == 5
+    # Once the viewer has asked, what is refused them is counted for them.
+    assert client.get(f"{API}/tags", headers=viewer).status_code == 200
+    assert client.get(f"{API}/reports/summary", headers=viewer).status_code == 503
+    by_name = {one["username"]: one for one in measured(client, admin)["people"]}
+    assert (by_name["vic"]["busy"], by_name["vic"]["requests"]) == (1, 2)
 
 
 # --- the ways out of the gateway -----------------------------------------------------
@@ -571,9 +1002,12 @@ class Wire:
         return self.sent[0]["status"] if self.sent else None
 
 
+KINDS = busy.Kinds(ROUTERS, API_PREFIX)
+
+
 def through(inner: ASGIApp, wire: Wire) -> None:
     """Send one request through the gateway to an application, to its end."""
-    gateway = Gateway(inner, trusted_proxies=(), limits=lambda: (100, 100))
+    gateway = Gateway(inner, trusted_proxies=(), limits=lambda: (100, 100), kinds=KINDS)
     asyncio.run(gateway(wire.scope, wire.receive, wire.send))
 
 
@@ -602,12 +1036,48 @@ async def _begin(send: Send, status: int = 200) -> None:
 
 def test_an_answer_that_is_sent_to_its_last_byte_is_counted_once(ticking: Clock) -> None:
     async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        # As the check of the sign-in leaves who asks.
+        scope["state"]["who"] = load.Who("hid-ada", "ada")
         await _begin(send, 201)
         await send({"type": "http.response.body", "body": b"{}"})
 
     meter = a_meter()
-    through(inner, Wire(meter))
+    wire = Wire(meter, path=f"{API}/items/{NOWHERE}")
+    through(inner, wire)
     assert counted(meter, ticking) == (1, 0, 0, 0)
+    # What is kept of it is its route, and who asked where the application left that.
+    (slow,) = meter.picture(*ticking()).slowest
+    assert (slow.method, slow.route, slow.status, slow.who) == (
+        "GET",
+        f"{API}/items/{{hid}}",
+        201,
+        load.Who("hid-ada", "ada"),
+    )
+    assert slow.request_id == wire.scope["state"]["request_id"]
+    # It is a read of the API: in the bands of time, and with the health on it.
+    assert meter.picture(*ticking()).bands == (1, 0, 0, 0)
+    assert (b"x-hirdir-health", GOOD.encode()) in wire.sent[0]["headers"]
+
+
+def test_a_report_that_takes_long_is_in_no_measure_of_time(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        # A report takes nine seconds, and a read of the tags a hundredth of one.
+        ticking.now += 9.0 if scope["path"].endswith("/reports/summary") else 0.0078125
+        await _begin(send)
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    meter = load.Meter(0.0, 0.0, started_at=STARTED, ceiling=Ceiling(over_seconds=300))
+    for _ in range(20):
+        through(inner, Wire(meter))
+    for _ in range(5):
+        wire = Wire(meter, path=f"{API}/reports/summary")
+        through(inner, wire)
+        assert (b"x-hirdir-health", GOOD.encode()) in wire.sent[0]["headers"]
+    picture = meter.picture(*ticking())
+    assert (picture.requests, sum(picture.bands)) == (25, 20)
+    assert picture.response_ms.high == 9000.0
+    assert picture.percentiles == load.Percentiles(p50=7.8125, p95=7.8125, p99=7.8125)
+    assert (picture.reading.response_ms, picture.reading.health) == (7.8125, load.GOOD)
 
 
 def test_a_streamed_answer_is_timed_to_its_last_byte_and_no_further(ticking: Clock) -> None:
@@ -633,8 +1103,12 @@ def test_a_file_the_server_sends_whole_is_an_answer_sent(ticking: Clock) -> None
         await send({"type": "http.response.pathsend", "path": "/nowhere"})
 
     meter = a_meter()
-    through(inner, Wire(meter, path="/assets/app.js"))
+    wire = Wire(meter, path="/assets/app.js")
+    through(inner, wire)
     assert counted(meter, ticking) == (1, 0, 0, 0)
+    # A file of the page is in no measure of time, and says nothing of the health.
+    assert meter.picture(*ticking()).bands == (0, 0, 0, 0)
+    assert not [name for name, _ in wire.sent[0]["headers"] if name == b"x-hirdir-health"]
 
 
 def test_an_answer_cut_short_after_it_began_is_counted_as_failed(ticking: Clock) -> None:
@@ -772,8 +1246,8 @@ def test_the_time_of_an_upload_is_the_server_s_part_of_it(ticking: Clock) -> Non
 def test_requests_whose_body_never_comes_hold_nothing_busy_and_end_when_given_up(
     ticking: Clock,
 ) -> None:
-    """Five senders give the headers of a sign-in and no body. They are in flight for
-    as long as they hold on, and the server is not busy for them."""
+    """Twenty senders give the headers of a sign-in and no body. They are in flight
+    for as long as they hold on, and the server is not busy for them."""
 
     async def inner(scope: Scope, receive: Receive, send: Send) -> None:
         await receive()
@@ -782,10 +1256,10 @@ def test_requests_whose_body_never_comes_hold_nothing_busy_and_end_when_given_up
     meter = load.Meter(0.0, 0.0, started_at=STARTED, ceiling=Ceiling())
 
     async def an_hour() -> None:
-        gateway = Gateway(inner, trusted_proxies=(), limits=lambda: (100, 100))
+        gateway = Gateway(inner, trusted_proxies=(), limits=lambda: (100, 100), kinds=KINDS)
         wires = [
             Wire(meter, method="POST", path=f"{API}/auth/sign-in", length=40, pieces=())
-            for _ in range(5)
+            for _ in range(20)
         ]
         held = [
             asyncio.ensure_future(gateway(wire.scope, wire.receive, wire.send)) for wire in wires
@@ -794,16 +1268,16 @@ def test_requests_whose_body_never_comes_hold_nothing_busy_and_end_when_given_up
         for _ in range(720):
             ticking.now += 5
             picture = meter.picture(*ticking())
-            assert picture.reading.state == load.OK
-            assert (picture.in_flight, picture.oldest_ms) == (5, None)
-            assert meter.reading(*ticking()).state == load.OK
+            assert picture.reading.health == load.GOOD
+            assert (picture.in_flight, picture.oldest_ms) == (20, None)
+            assert meter.reading(*ticking()).refusing == load.NOTHING
         for one in held:
             one.cancel()
         await asyncio.gather(*held, return_exceptions=True)
 
     asyncio.run(an_hour())
     assert ticking.now == 3600
-    assert counted(meter, ticking) == (0, 0, 5, 0)
+    assert counted(meter, ticking) == (0, 0, 20, 0)
 
 
 def test_a_request_that_declares_no_body_is_whole_when_it_arrives(ticking: Clock) -> None:
@@ -829,7 +1303,7 @@ def test_the_settings_of_the_ceiling_are_listed_with_what_they_are_unless_set(
 ) -> None:
     listed = {one["key"]: one for one in client.get(f"{API}/settings", headers=viewer).json()}
     assert [(listed[key]["value"], listed[key]["is_default"]) for key in load.SETTINGS] == [
-        (5000, True),
+        (3000, True),
         (95, True),
         (30, True),
     ]
@@ -846,7 +1320,7 @@ def test_the_settings_of_the_ceiling_are_listed_with_what_they_are_unless_set(
         listed["busy_fewest_requests"]["value"],
         listed["busy_fewest_requests"]["decision"],
     ) == (
-        5,
+        20,
         "P-265",
     )
     assert listed["busy_retry_seconds"]["value"] == 5
@@ -864,7 +1338,7 @@ def test_a_setting_of_the_ceiling_holds_from_the_moment_it_is_saved(
     # One of them saved, and the ceiling is what the three say: the others as they are
     # unless set.
     put(client, admin, "busy_cpu_percent", 60)
-    assert meter.ceiling == Ceiling(response_ms=5000, cpu_percent=60, over_seconds=30)
+    assert meter.ceiling == Ceiling(response_ms=3000, cpu_percent=60, over_seconds=30)
     put(client, admin, "busy_response_ms", 2500)
     put(client, admin, "busy_over_seconds", 45)
     assert meter.ceiling == Ceiling(response_ms=2500, cpu_percent=60, over_seconds=45)
@@ -872,6 +1346,7 @@ def test_a_setting_of_the_ceiling_holds_from_the_moment_it_is_saved(
         "response_ms": 2500,
         "cpu_percent": 60,
         "over_seconds": 45,
+        "fewest_requests": 20,
     }
     # Returned to what it is unless set.
     put(client, admin, "busy_cpu_percent", None)
@@ -939,12 +1414,12 @@ def test_a_server_starts_with_the_ceiling_its_settings_have(
 ) -> None:
     # Unless set, a server has a ceiling: it is on for every server that is started.
     app = application(config, built)
-    assert app.state.load.ceiling == Ceiling(response_ms=5000, cpu_percent=95, over_seconds=30)
+    assert app.state.load.ceiling == Ceiling(response_ms=3000, cpu_percent=95, over_seconds=30)
     settings.set_setting(db, audit.SYSTEM, "busy_cpu_percent", 0, 80)
     settings.set_setting(db, audit.SYSTEM, "busy_over_seconds", 0, 20)
     db.commit()
     app = application(config, built)
-    assert app.state.load.ceiling == Ceiling(response_ms=5000, cpu_percent=80, over_seconds=20)
+    assert app.state.load.ceiling == Ceiling(response_ms=3000, cpu_percent=80, over_seconds=20)
     app.state.engine.dispose()
 
 
@@ -1015,6 +1490,13 @@ def test_the_measures_are_read_by_everyone_signed_in(
     nia = sign_in(client, "nia", "nia-code")
     assert client.get(f"{API}/about/load", headers=nia).status_code == 200
     assert client.get(f"{API}/about", headers=nia).status_code == 200
+    # Each of them reads the slowest requests and who met what, the others by name:
+    # every signed-in person is one of the team's own.
+    for headers in (admin, inventory, viewer, nia):
+        now = measured(client, headers)
+        assert {one["who"]["username"] for one in now["slowest"]} >= {"ada", None}
+        assert [one["username"] for one in now["people"]][-1] is None
+        assert {one["username"] for one in now["people"]} == {"ada", "ivy", "vic", "nia", None}
     # And by nobody who is not.
     answer = client.get(f"{API}/about/load")
     assert answer.status_code == 401
@@ -1022,13 +1504,14 @@ def test_the_measures_are_read_by_everyone_signed_in(
 
 
 def test_the_shape_of_the_measures(client: TestClient, viewer: dict) -> None:
-    for _ in range(5):
+    for _ in range(25):
         client.get(f"{API}/tags", headers=viewer)
     answer = client.get(f"{API}/about/load", headers=viewer)
     now = answer.json()
     assert set(now) == {
-        "state",
+        "health",
         "because",
+        "refusing",
         "ceiling",
         "measures",
         "window_seconds",
@@ -1041,11 +1524,17 @@ def test_the_shape_of_the_measures(client: TestClient, viewer: dict) -> None:
         "host",
         "worker",
         "points",
+        "slowest",
+        "slowest_long",
+        "people",
     }
-    assert (now["state"], now["because"]) == ("ok", [])
-    assert set(now["ceiling"]) == {"response_ms", "cpu_percent", "over_seconds"}
-    assert set(now["measures"]) == {"response_ms", "cpu_percent"}
+    assert (now["health"], now["because"], now["refusing"]) == ("good", [], "nothing")
+    assert said(answer) == GOOD
+    assert set(now["ceiling"]) == {"response_ms", "cpu_percent", "over_seconds", "fewest_requests"}
+    assert now["ceiling"]["fewest_requests"] == 20
+    assert set(now["measures"]) == {"response_ms", "requests", "cpu_percent"}
     assert now["measures"]["response_ms"] > 0
+    assert now["measures"]["requests"] == 26
     assert now["measures"]["cpu_percent"] >= 0
     assert (now["window_seconds"], now["step_seconds"]) == (600, 5)
     started = datetime.fromisoformat(now["started_at"])
@@ -1058,12 +1547,21 @@ def test_the_shape_of_the_measures(client: TestClient, viewer: dict) -> None:
         "failed",
         "busy",
         "response_ms",
+        "bands",
         "cpu_percent",
     }
-    assert totals["requests"] == totals["ok"] >= 6
-    for spread in (totals["response_ms"], totals["cpu_percent"]):
-        assert set(spread) == {"low", "average", "high"}
-        assert 0 <= spread["low"] <= spread["average"] <= spread["high"]
+    assert totals["requests"] == totals["ok"] >= 26
+    times = totals["response_ms"]
+    assert set(times) == {"low", "average", "high", "p50", "p95", "p99"}
+    assert 0 <= times["low"] <= times["p50"] <= times["p95"] <= times["p99"] <= times["high"]
+    assert times["low"] <= times["average"] <= times["high"]
+    assert set(totals["cpu_percent"]) == {"low", "average", "high"}
+    assert 0 <= totals["cpu_percent"]["low"] <= totals["cpu_percent"]["high"]
+    assert set(totals["bands"]) == {"bounds_ms", "counts"}
+    assert totals["bands"]["bounds_ms"] == [1000.0, 2000.0, 3000.0]
+    # The sign-in and the twenty-five reads are in the bands, and the measure of time.
+    assert len(totals["bands"]["counts"]) == 4
+    assert sum(totals["bands"]["counts"]) == 26
     # The request that asks is not among those in flight.
     assert now["in_flight"] == {"count": 0, "oldest_ms": None}
     assert now["process"]["memory_bytes"] > 1_000_000
@@ -1084,14 +1582,59 @@ def test_the_shape_of_the_measures(client: TestClient, viewer: dict) -> None:
     # The routes of a test are worked by a thread of the process itself (P-267).
     assert now["worker"] == "in_process"
     points = now["points"]
-    assert set(points) == {"at", "requests", "average_ms", "high_ms", "cpu_percent", "busy"}
+    assert set(points) == {
+        "at",
+        "requests",
+        "average_ms",
+        "high_ms",
+        "p50_ms",
+        "p95_ms",
+        "cpu_percent",
+        "busy",
+    }
     assert datetime.fromisoformat(points["at"]) == started
     steps = len(points["requests"])
     assert 1 <= steps <= 120
-    for name in ("average_ms", "high_ms", "cpu_percent", "busy"):
+    for name in ("average_ms", "high_ms", "p50_ms", "p95_ms", "cpu_percent", "busy"):
         assert len(points[name]) == steps, name
     assert sum(points["requests"]) == totals["requests"]
     assert sum(points["busy"]) == totals["busy"] == 0
+    # The slowest of the measure, the slowest first, ten at the most.
+    assert len(now["slowest"]) == 10
+    assert now["slowest_long"] == []
+    times = [one["ms"] for one in now["slowest"]]
+    assert times == sorted(times, reverse=True)
+    for one in now["slowest"]:
+        assert set(one) == {"at", "method", "route", "ms", "status", "request_id", "who"}
+        assert set(one["who"]) == {"kind", "hid", "username"}
+        assert one["route"] in (f"{API}/tags", f"{API}/auth/sign-in")
+        assert started <= datetime.fromisoformat(one["at"]) <= datetime.fromisoformat(now["at"])
+    # Who asked: the viewer, and the sign-in, which nothing names an account for.
+    vic, unnamed = now["people"]
+    assert set(vic) == {
+        "kind",
+        "hid",
+        "username",
+        "requests",
+        "bands",
+        "slowest_ms",
+        "busy",
+        "failed",
+        "last_at",
+    }
+    assert (vic["kind"], vic["username"], vic["requests"], vic["bands"]) == (
+        "person",
+        "vic",
+        25,
+        [25, 0, 0, 0],
+    )
+    assert (unnamed["kind"], unnamed["hid"], unnamed["username"], unnamed["requests"]) == (
+        "unnamed",
+        None,
+        None,
+        1,
+    )
+    assert sum(one["requests"] for one in now["people"]) == totals["requests"]
 
 
 def test_ten_minutes_of_measures_are_a_few_kilobytes(
@@ -1107,7 +1650,7 @@ def test_ten_minutes_of_measures_are_a_few_kilobytes(
     assert len(now["points"]["requests"]) == 120
     assert now["points"]["at"] == "2027-03-02T14:00:50Z"
     assert now["totals"]["requests"] == 120
-    assert len(answer.content) < 6000
+    assert len(answer.content) < 10_000
     # Every time and every share is to a tenth.
     assert now["points"]["cpu_percent"][5] == 24.7
     assert now["totals"]["cpu_percent"]["average"] == 24.7
