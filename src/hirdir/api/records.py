@@ -4599,7 +4599,8 @@ class ImportJobOut(Model):
     file_name: str | None
     file_sha256: str | None
     status: Literal["previewed", "queued", "applying", "applied", "stopped", "failed"] = Field(
-        description="`queued` and `applying` while it is applied in the background, "
+        description="`queued` once an apply is asked for, until the background work takes "
+        "it up, in the order asked; `applying` while that work applies it; "
         "`applied` once every row is worked, `stopped` when it stopped partway, to be "
         "resumed. `failed` is a job of a release before 0.7.0 that was not applied."
     )

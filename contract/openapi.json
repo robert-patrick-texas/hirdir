@@ -15036,7 +15036,7 @@
             "type": "integer"
           },
           "status": {
-            "description": "`queued` and `applying` while it is applied in the background, `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied.",
+            "description": "`queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied.",
             "enum": [
               "previewed",
               "queued",
@@ -40041,7 +40041,7 @@
     },
     "/api/v1/imports/{hid}/apply": {
       "post": {
-        "description": "Apply a preview in the background, or resume one that stopped.\n\nThe answer is at once: the job, `applying`, or `queued` while another is applied.\nAnybody with the Inventory role may apply it, whoever made it. The rows are applied\n50 at a time; a row whose record changed since the preview is left out as `stale`,\nand the rest go on. `GET /imports/{hid}` says how far it has got.",
+        "description": "Apply a preview in the background, or resume one that stopped.\n\nThe answer is at once: the job, `queued`. It is `applying` once the background\nwork has taken it up, which is within a second where no other job is ahead.\nAnybody with the Inventory role may apply it, whoever made it. The rows are applied\n50 at a time; a row whose record changed since the preview is left out as `stale`,\nand the rest go on. `GET /imports/{hid}` says how far it has got.",
         "operationId": "apply_import_api_v1_imports__hid__apply_post",
         "parameters": [
           {
@@ -40656,7 +40656,7 @@
     },
     "/api/v1/items/bulk-update/{hid}/apply": {
       "post": {
-        "description": "Apply a previewed bulk edit in the background, or resume one that stopped.\n\nThe answer is at once: the job, `applying`, or `queued` while another is applied.\nAnybody with the Inventory role may apply it, whoever made it. An item that has been\nchanged since the preview, by anybody, is left as it is and its row is `stale`;\nthe rest are changed. `GET /imports/{hid}` says how far it has got.",
+        "description": "Apply a previewed bulk edit in the background, or resume one that stopped.\n\nThe answer is at once: the job, `queued`. It is `applying` once the background\nwork has taken it up, which is within a second where no other job is ahead.\nAnybody with the Inventory role may apply it, whoever made it. An item that has been\nchanged since the preview, by anybody, is left as it is and its row is `stale`;\nthe rest are changed. `GET /imports/{hid}` says how far it has got.",
         "operationId": "apply_bulk_update_api_v1_items_bulk_update__hid__apply_post",
         "parameters": [
           {

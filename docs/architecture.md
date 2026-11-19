@@ -234,10 +234,13 @@ upload, by its extension and by its first bytes.
   another is answered `503` with `Retry-After`, and nothing of it was done. Reading is
   never held up.
 - **Applying in the background.** `POST /imports/{hid}/apply`, and the apply of a bulk
-  edit, store the job as `applying`, or `queued` behind another, and answer `202` at
-  once. The server applies nothing. A worker in the second process, `hirdir admin
-  work`, a thread with its own database session (`io/background.py`), applies one job
-  at a time: the one applying, then the queued ones in the order they were asked for.
+  edit, store the job as `queued` and answer `202` at once. The server applies
+  nothing. A worker in the second process, `hirdir admin work`, a thread with its own
+  database session (`io/background.py`), applies one job at a time: the one applying,
+  then the queued ones in the order they were asked for. It takes a job up by making
+  it `applying`, in a transaction of its own, before the first batch: the process that
+  takes a piece of work is the one that owns it (P-263), and `applying` is said of a
+  job only by the process that applies it.
   It finds its work by looking in the database every second, one read of an index, so
   an apply begins within a second of being asked for; nothing is sent from the one
   process to the other, since a signal that went astray would leave a job waiting
@@ -262,12 +265,13 @@ upload, by its extension and by its first bytes.
   traceback. When the process that applies stops, on `SIGTERM` or `SIGINT`, the worker
   stops after the batch it is in, at most a minute later, and the job is `stopped`;
   when it starts, before the worker does anything, a job still `applying` is marked
-  `stopped`. That is a job that a stop cut short, and also one that was asked for while
-  no process was there to apply it, which the row of a job does not tell apart: the
-  server takes the request and stores it whether the second process runs or not, and
-  the job then waits as `applying`, with nothing of it applied, until that process
-  starts and marks it `stopped`. A stopped job is resumed by asking for it to be
-  applied again, from the first row that was not applied. There is one worker for one
+  `stopped`, since only a stop that cut it short leaves one so. A job that was asked
+  for while no process was there to apply it is another thing, and its row says so:
+  the server takes the request and stores it whether the second process runs or not,
+  the job waits as `queued`, with nothing of it applied, and is applied when that
+  process starts. A stopped job is resumed by asking for it to be applied again, which
+  stores it `queued` once more, from the first row that was not applied. There is one
+  worker for one
   database: two on one database would each take the jobs, and each would take for
   stopped what the other is applying. The process that applies holds a lock on
   `worker.lock` in the state directory for as long as it runs, as the server holds one
@@ -708,8 +712,8 @@ itself is done once.
   `in_process`. Every harness that starts a server as a process starts what the
   package starts: `hirdir admin serve`, and `hirdir admin work` beside it once the
   server answers, and waits for that process to say that it is at work before a
-  scenario begins, so that an apply asked for in a scenario's first moment is not
-  taken for one that a stop cut short. The acceptance scenarios
+  scenario begins, so that what that process does as it starts, the record of a week
+  that has none, is done before anything is asked. The acceptance scenarios
   (`tests/acceptance/conftest.py`) and `make browser` do so; the package test has the
   two units. Each stops the second process with the server.
 - **Only what a change can reach, while working.** `make test-changed` keeps a record,
@@ -856,7 +860,7 @@ Docker and installs with apt, as an operator does.
 |---|---|
 | `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx; and, where the new version has the unit of the background work, both units are enabled and running once the upgrade is done, also from a release that had no such unit. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below. An upgrade that stops leaves both units stopped, and going back to a release that has no unit of the background work leaves no process, no unit and no link of it |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left as it was asked and marked `stopped` when the unit starts, and applied when it is asked for again; `hirdir admin reset` refusing while the second process alone runs; a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`

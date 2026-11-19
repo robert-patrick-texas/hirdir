@@ -376,11 +376,11 @@ When it has started, the second process says `hirdir: the background work of
 
 **While the second process is not running** the server answers as always: every page,
 every list, every change. What is asked of the background waits. An import or a bulk
-edit that is applied then is taken, shown as `applying`, and nothing of it is applied;
-when the process starts it marks that job `stopped`, as it does one that a stop cut
-short, and Apply on the job, or the same `POST`, has it applied from its first row. A
-job that was being applied when the process stopped is `stopped` in the same way, and
-is resumed from the first row it had not applied; nothing is applied twice. The record
+edit that is applied then is taken and shown as waiting to be applied, `queued`, and
+nothing of it is applied; when the process starts it applies it, and the others that
+waited, in the order they were asked for. A job that was being applied when the
+process stopped is `stopped`, with the reason, and Apply on the job, or the same
+`POST`, resumes it from the first row it had not applied; nothing is applied twice. The record
 of a week that was missed is made when the process next starts. systemd starts the
 process again by itself, three seconds after it fails.
 
@@ -1834,16 +1834,22 @@ starts and each night, now at five minutes after midnight: they are kept in the
 memory of the process that answers, so that process works them out.
 
 **An apply begins within a second.** The second process looks for work every second.
-An apply that is asked for while it is not running, in the seconds of a restart of
-`hirdir-worker` for instance, is taken by the server, shown as `applying`, and marked
-`stopped` when the process starts, with the reason that the server stopped while it was
-being applied; Apply once more has it applied. The server was never in that position
-with itself, since the thread that applied started before the first request was
-answered.
+The server stores an apply that is asked for as `queued`, and the second process makes
+it `applying` as it takes it up. So an apply that is asked for while that process is
+not running, in the seconds of a restart of `hirdir-worker` for instance, waits as
+`queued` and is applied when the process starts. A job that was being applied when
+that process stopped is `stopped`, and its reason now reads `the background work
+stopped while it was being applied; apply it again to resume`, where it named the
+server.
 
 <!-- load: settings and About -->
 
-For a script that reads the API: nothing is changed by what is above.
+For a script that reads the API: `POST /api/v1/imports/<HID>/apply`, and the apply
+of a bulk edit, answer `202` with the job `queued`, always, where the job could be
+`applying` in that answer. A script that waits for `GET /api/v1/imports/<HID>` to say
+`applied` or `stopped`, as [From 0.6.1 to 0.7.0](#from-061-to-070) had it, needs no
+change; one that took `queued` to mean that another job is ahead takes it now to mean
+that the job waits to be taken up. `hirdir import --apply` waits as before.
 
 `hirdir admin serve --work` is the one process that does both, for development.
 
