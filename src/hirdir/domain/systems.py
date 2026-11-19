@@ -336,9 +336,33 @@ def reported(
 ) -> Registration:
     """Record that a system reports an item now, under an identifier (P-248): its
     registration is made where it has none, and is `registered`, with the identifier
-    and confirmed at this moment."""
+    and confirmed at this moment.
+
+    However the item was found, by its HID, by the identifier or by any other rule, an
+    identifier that another item is registered under, and an item the system knows under
+    another identifier, are refused on `external_id`: never a guess.
+    """
     now = clock.now()
+    given = external_id.strip()
+    others = [one for one in registered_as(db, system_hid, given) if one.item_hid != item_hid]
+    if others:
+        other = db.get_one(Item, others[0].item_hid)
+        raise Invalid(
+            f"{_item_name(other)} is registered as {given}",
+            {
+                "external_id": f"another item, {_item_name(other)}, is registered with the "
+                "system under this"
+            },
+        )
     known = find_registration(db, system_hid, "item_hid", item_hid)
+    if known is not None and known.external_id and known.external_id != given:
+        raise Invalid(
+            f"the system knows this item as {known.external_id}",
+            {
+                "external_id": "the item this row finds is registered with the system as "
+                f"{known.external_id}"
+            },
+        )
     if known is None:
         return create_registration(
             db,

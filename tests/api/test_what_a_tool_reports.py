@@ -141,6 +141,42 @@ def test_an_identifier_two_items_have_and_an_item_known_otherwise_are_errors_on_
     assert "vm-203" in second["reasons"][0]["message"]
 
 
+def test_a_row_that_names_its_item_by_hid_is_held_to_the_identifier_as_any_row(
+    make: Maker, files: Files
+) -> None:
+    system = _system(make)
+    same, other, known = (_vm(make, f"site2-vm-app0{number}") for number in (1, 2, 3))
+    _register(make, system, same, "vm-101")
+    _register(make, system, other, "vm-103")
+    _register(make, system, known, "vm-104")
+    text = "\n".join(
+        [
+            "hid,external_id,description",
+            f"{same['hid']},vm-101,the same item",
+            # Another item's identifier, given to this one by its HID.
+            f"{known['hid']},vm-103,",
+            # An item the system knows under another identifier.
+            f"{other['hid']},vm-199,",
+        ]
+    )
+
+    preview = files.preview("items", text + "\n", system=SYSTEM)
+
+    first, second, third = preview["rows"]
+    assert first["outcome"] == "update"
+    assert second["outcome"] == third["outcome"] == "rejected"
+    assert {reason["field"] for reason in second["reasons"]} == {"external_id"}
+    assert "site2-vm-app02" in second["reasons"][0]["message"]
+    assert {reason["field"] for reason in third["reasons"]} == {"external_id"}
+    assert "vm-103" in third["reasons"][0]["message"]
+    files.apply(preview, skip_rejected="true")
+    assert _registration(make, system, known)["external_id"] == "vm-104"
+    assert _registration(make, system, other)["external_id"] == "vm-103"
+    # The identifier stays one item's: a row that gives it finds that one.
+    again = files.preview("items", _csv("vm-103,site2-vm-app02,"), system=SYSTEM)
+    assert [row["outcome"] for row in again["rows"]] == ["unchanged"]
+
+
 def test_what_a_file_read_from_a_system_needs(make: Maker, files: Files) -> None:
     _system(make)
     retired = _system(make, "Example Discovery")

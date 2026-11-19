@@ -1161,9 +1161,10 @@ page says the rules, and this says how a file carries them.
   identifier, whatever its status, its name or its host is now. Where none is, the row is
   matched as any row, and the item it finds or makes is registered with the system under
   the identifier in the same change, or its registration given the identifier where it
-  had none. Two errors reject the row, each on `external_id`: two items registered with
-  the system under the identifier, and an item the row finds by another rule that is
-  registered with the system under another identifier. A row matched or registered so
+  had none. Two errors reject the row, each on `external_id`, however the row found its
+  item, by its `hid`, by the identifier or by any other rule: an identifier that another
+  item is registered with the system under, and an item that the system knows under
+  another identifier. A row matched or registered so
   makes its registration `registered`, with `confirmed_at` the moment it is applied, and
   says so in its `changes` only where the identifier is new to the item: a file loaded a
   second time is `unchanged` in each such row, and still confirms each registration. A
