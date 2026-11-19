@@ -3,13 +3,16 @@
 // The host is a link, an item or a stack or a cluster, said to be which. An item that
 // names none says so, as to be looked at (P-249), with the way to name one; one whose
 // host is gone says that, with the host still a link. That the host seen differs from
-// the one named is no fault, and is said in a plain word.
+// the one named is no fault, and is said in a plain word. One entered, before 0.9.8, as
+// installed in its server says so, with one press that makes that server its host.
 
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type { Schemas } from "../api";
+import { api, type Schemas } from "../api";
 import { itemName } from "../lib/format";
-import { hostPath, hostWhat, runsOnHost } from "../lib/hosting";
+import { useAction } from "../lib/hooks";
+import { hostPath, hostWhat, parentAsHostBody, runsOnHost } from "../lib/hosting";
+import { Problem } from "./Problem";
 import { Time } from "./Time";
 
 type Item = Schemas["ItemOut"];
@@ -18,6 +21,55 @@ interface HostFactsProps {
   item: Item;
   /** The way to name or change its host: a link to the field of the form of details. */
   change?: ReactNode;
+  /** Whether the person may change the item: Make <parent> its host is offered then. */
+  mayChange?: boolean;
+  /** Said at the top of the page when the item was changed, which is read again. */
+  onChanged?: (text: string) => void;
+}
+
+/**
+ * An item of a kind that runs on a host, entered as installed in another, as a virtual
+ * machine was in its server before 0.9.8: it says so, and one press makes that item its
+ * host, taking it out of its parent in the same request, which is the one the server takes.
+ */
+function InstalledIn({
+  item,
+  mayChange,
+  onChanged,
+}: {
+  item: Item;
+  mayChange: boolean;
+  onChanged: ((text: string) => void) | undefined;
+}) {
+  const action = useAction();
+  const parent = item.parent;
+  if (!parent) return null;
+  const name = itemName(parent);
+  async function make() {
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/items/{hid}", {
+        path: { hid: item.hid },
+        body: parentAsHostBody(item),
+      }),
+    );
+    if (result.ok) onChanged?.(`${name} is now the host of ${itemName(item)}.`);
+  }
+  return (
+    <div className="review-line" data-testid="installed-in">
+      {" "}
+      It is entered as installed in{" "}
+      <Link to={`/items/${encodeURIComponent(parent.hid)}`}>{name}</Link>.
+      {mayChange && (
+        <>
+          {" "}
+          <button type="button" onClick={make} disabled={action.busy}>
+            Make {name} its host
+          </button>
+        </>
+      )}
+      <Problem error={action.error} />
+    </div>
+  );
 }
 
 /** The mark of a reason to look at an item: a word, not the colour of a fault. */
@@ -25,12 +77,12 @@ export function ReviewMark() {
   return <span className="badge badge-plain review-mark">To be looked at</span>;
 }
 
-/** Whether an item's page says what it runs on: one of such a kind, or one that names a host. */
+/** Whether an item's page says what it runs on: one of a kind that runs on a host. */
 export function showsHost(item: Item): boolean {
-  return runsOnHost(item.catalog?.kind) || item.host !== null || item.observed_host !== null;
+  return runsOnHost(item.catalog?.kind);
 }
 
-export function HostFacts({ item, change }: HostFactsProps) {
+export function HostFacts({ item, change, mayChange = false, onChanged }: HostFactsProps) {
   if (!showsHost(item)) return null;
   const { host } = item;
   const gone = item.review.some((reason) => reason.reason === "host_gone");
@@ -64,12 +116,16 @@ export function HostFacts({ item, change }: HostFactsProps) {
             {none && (
               <>
                 {" "}
-                <ReviewMark /> Name the one it runs on under Host in Details.
+                <ReviewMark /> {item.parent ? "" : "Name the one it runs on under Host in Details."}
               </>
             )}
           </span>
         )}
-        {change}
+        {!host && item.parent ? (
+          <InstalledIn item={item} mayChange={mayChange} onChanged={onChanged} />
+        ) : (
+          change
+        )}
       </dd>
       {item.observed_host && (
         <>

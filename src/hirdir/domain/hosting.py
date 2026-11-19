@@ -425,7 +425,10 @@ def checked(
                 )
             raise Invalid(
                 "an item that is installed in another runs on nothing",
-                {host_field: "this item is installed in another; take it out first"},
+                {
+                    host_field: "this item is installed in another; send parent_item_hid as "
+                    f"null with {host_field}, which takes it out and names its host in one change"
+                },
             )
     changed = {
         name: out[name]
@@ -439,8 +442,39 @@ def checked(
             _check_host_item(db, changed["host_item_hid"], item)
         if "host_group_hid" in changed:
             _check_host_group(db, changed["host_group_hid"], item)
+    seen = out.get("observed_host_hid")
+    if seen and (item is None or seen != item.observed_host_hid):
+        # What was seen is for the kinds that run on a host too. One that an item holds
+        # from before stays until it is changed.
+        kind = kinds_of(db, {final("catalog_entry_hid")}).get(final("catalog_entry_hid") or "")
+        if not runs_on_a_host(kind):
+            said = f"an item of the kind {kind}" if kind else "an item of no model"
+            raise Invalid(
+                "the item runs on nothing",
+                {
+                    "observed_host_hid": f"{said} is seen on nothing; only a virtual machine, "
+                    "a virtual context or a container is seen on a host"
+                },
+            )
     out.update(_observation(db, fields, item, looked_again, zone))
     return out
+
+
+# How a file and a bulk edit name the fields that the rules above name as the API does.
+FILE_WORDS = (
+    ("parent_item_hid as null", "parent as !clear"),
+    ("host_item_hid", "host"),
+    ("host_group_hid", "host_group"),
+    ("observed_host_hid", "observed_host"),
+    ("parent_item_hid", "parent"),
+)
+
+
+def in_file_words(text: str) -> str:
+    """Return what a refusal of the rules of a host says, in the words of a file."""
+    for api, file in FILE_WORDS:
+        text = text.replace(api, file)
+    return text
 
 
 def _observation(
@@ -502,11 +536,12 @@ def hosting(db: Session, column: Any, hid: str) -> list[Item]:
 
 
 def model_hosts(db: Session, entry_hid: str) -> Item | None:
-    """Return an item of a model that names a host, if there is one."""
+    """Return an item of a model that is not retired and names a host, if there is one."""
     return db.scalar(
         select(Item)
         .where(
             Item.catalog_entry_hid == entry_hid,
+            Item.record_status != "retired",
             or_(Item.host_item_hid.is_not(None), Item.host_group_hid.is_not(None)),
         )
         .limit(1)

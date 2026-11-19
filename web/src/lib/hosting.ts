@@ -230,6 +230,28 @@ export function seenAt(at: string | null | undefined): string {
   return at ? formatTime(at) : "";
 }
 
+/**
+ * The change that makes the item an item is entered as installed in its host (P-246): the
+ * host named, and the parent and the position cleared in the same request.
+ */
+export function parentAsHostBody(item: {
+  row_version: number;
+  parent_item_hid: string | null;
+  position: string | null;
+}): {
+  row_version: number;
+  host_item_hid: string | null;
+  parent_item_hid: null;
+  position?: null;
+} {
+  return {
+    row_version: item.row_version,
+    host_item_hid: item.parent_item_hid,
+    parent_item_hid: null,
+    ...(item.position ? { position: null } : {}),
+  };
+}
+
 // --- the fields of an item's form -------------------------------------------------------
 
 /** What the fields of what an item runs on need of the form they stand in. */
@@ -276,6 +298,8 @@ export function hostSpecs(facts: HostFormFacts): FieldSpec[] {
       exclude,
       hint: "The item it was seen to run on, which may differ from its host.",
       when: hosted,
+      // A model of a kind that runs on no host takes what was seen with the host.
+      clearedWhenNotAsked: true,
       fills: (value) => ({ host_observed_at: value === "" ? "" : localMoment(new Date()) }),
     },
     {
@@ -284,6 +308,20 @@ export function hostSpecs(facts: HostFormFacts): FieldSpec[] {
       kind: "moment",
       hint: "When it was seen there: now, as the item is chosen.",
       when: (values) => hosted(values) && values.observed_host_hid !== "",
+      clearedWhenNotAsked: true,
     },
   ];
+}
+
+/**
+ * What the form says beneath the model of an item that names a host or was seen on one,
+ * while the model chosen is of a kind that runs on none: that saving clears both. Blank
+ * otherwise.
+ */
+export function hostClearedHint(facts: HostFormFacts, values: FormValues): string | undefined {
+  if (!facts.host && !facts.observed) return undefined;
+  const entry = values.catalog_entry_hid;
+  const kind = typeof entry === "string" && entry !== "" ? facts.kindOf(entry) : null;
+  if (runsOnHost(kind)) return undefined;
+  return "A model of this kind runs on no host: saving clears what the item runs on and what it was seen on.";
 }

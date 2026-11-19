@@ -10564,6 +10564,17 @@ export interface components {
       /** The HID of the record. */
       value: string | null;
     };
+    /** The owner in force, and the name of what it came from. */
+    EffectiveOwner: {
+      /** What people call the record. */
+      label: string | null;
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source_hid: string | null;
+      /** The name of the item or the group it came from. Null for its own. */
+      source_label?: string | null;
+      /** The HID of the record. */
+      value: string | null;
+    };
     /** The operator of what is at a place and has none from elsewhere, and its level. */
     EffectivePlaceOperator: {
       overrides_hid: string | null;
@@ -10572,15 +10583,6 @@ export interface components {
       source_hid: string | null;
       source_path: string | null;
       value: components["schemas"]["OperatorRef"] | null;
-    };
-    /** A record in force, and where it came from. */
-    EffectiveReference: {
-      /** What people call the record. */
-      label: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
-      source_hid: string | null;
-      /** The HID of the record. */
-      value: string | null;
     };
     /** The shipping address in force, and the level it came from. */
     EffectiveShipAddress: {
@@ -10769,7 +10771,7 @@ export interface components {
     GroupEffective: {
       location_hid: components["schemas"]["EffectiveLocation"];
       operator_hid: components["schemas"]["EffectiveOperator"];
-      owner_hid: components["schemas"]["EffectiveReference"];
+      owner_hid: components["schemas"]["EffectiveOwner"];
       planned_location_hid: components["schemas"]["EffectiveLocation"];
     };
     /** A user group. */
@@ -11066,7 +11068,7 @@ export interface components {
       location_hid: components["schemas"]["EffectiveLocation"];
       /** The operator in force: its own, that of the item above it, of a group it is a member of, or of the place it is at. */
       operator_hid: components["schemas"]["EffectiveOperator"];
-      owner_hid: components["schemas"]["EffectiveReference"];
+      owner_hid: components["schemas"]["EffectiveOwner"];
       /** Where it is going, by its own plan or by that of what it is in. */
       planned_location_hid: components["schemas"]["EffectiveLocation"];
       /** Its own serial number; for a virtual context with none, that of the item it runs on, with the source `host` (P-246). Shown, and never matched by. */
@@ -11867,7 +11869,7 @@ export interface components {
     };
     /** What an operator is on, and how: what the page of an operator draws. */
     OperatorAssignments: {
-      /** The minor items that have it from the item above. */
+      /** The items that have it from an item above them: the one they are installed in, or the one they run on (P-246). */
       from_item: components["schemas"]["ItemCount"];
       groups: components["schemas"]["OperatorGroup"][];
       operator_hid: string;
@@ -12998,6 +13000,8 @@ export interface components {
       outcome: "decides" | "passed_over" | "nothing" | "retired" | "raises";
       /** Of a device group: its place among the record's groups. */
       rank: number | null;
+      /** What the record is to the one before it in the walk: `member`, a group it is a current member of; `host`, what it runs on, an item or a stack or a cluster (P-246); `parent`, the item it is installed in, or the group it is nested in. Null for its own and for a catalog entry, a setting and a place. */
+      reached_by?: "member" | "host" | "parent" | null;
       /** Of a device group: its type. */
       type: string | null;
       value: string | boolean | null;

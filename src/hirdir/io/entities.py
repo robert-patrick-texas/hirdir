@@ -2268,7 +2268,26 @@ class Items(Entity):
             return standing
         return {name: value for name, value in standing.items() if name not in named}
 
+    # The fields whose refusals name other fields, as the API names them (P-246).
+    _HOST_WORDS = frozenset({*hosting.FIELDS, "parent_item_hid"})
+
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        try:
+            return self._write(run, record, values)
+        except Invalid as refused:
+            if not set(refused.fields) & self._HOST_WORDS:
+                raise
+            # A refusal of what an item runs on names the columns of the file, which a
+            # bulk edit sets too, and not the API's fields.
+            raise Invalid(
+                hosting.in_file_words(str(refused)),
+                {
+                    name: hosting.in_file_words(text) if name in self._HOST_WORDS else text
+                    for name, text in refused.fields.items()
+                },
+            ) from None
+
+    def _write(self, run: Run, record: Any | None, values: Mapping[str, Any]) -> Any:
         db, context = run.db, run.context
         given = {**_plain_fields(values, self._direct), **_status(values, record)}
         before = (

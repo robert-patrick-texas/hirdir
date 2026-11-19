@@ -13039,6 +13039,86 @@
         "title": "EffectiveOperator",
         "type": "object"
       },
+      "EffectiveOwner": {
+        "additionalProperties": false,
+        "description": "The owner in force, and the name of what it came from.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What people call the record.",
+            "title": "Label"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "host",
+              "device_group",
+              "location",
+              "site",
+              "region",
+              "agreement",
+              "vendor",
+              "port",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the item or the group it came from. Null for its own.",
+            "title": "Source Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The HID of the record.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "source",
+          "source_hid"
+        ],
+        "title": "EffectiveOwner",
+        "type": "object"
+      },
       "EffectivePlaceOperator": {
         "additionalProperties": false,
         "description": "The operator of what is at a place and has none from elsewhere, and its level.",
@@ -13118,74 +13198,6 @@
           "overrides_path"
         ],
         "title": "EffectivePlaceOperator",
-        "type": "object"
-      },
-      "EffectiveReference": {
-        "additionalProperties": false,
-        "description": "A record in force, and where it came from.",
-        "properties": {
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "What people call the record.",
-            "title": "Label"
-          },
-          "source": {
-            "enum": [
-              "own",
-              "catalog",
-              "parent_item",
-              "host",
-              "device_group",
-              "location",
-              "site",
-              "region",
-              "agreement",
-              "vendor",
-              "port",
-              "setting",
-              "none"
-            ],
-            "title": "Source",
-            "type": "string"
-          },
-          "source_hid": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Hid"
-          },
-          "value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The HID of the record.",
-            "title": "Value"
-          }
-        },
-        "required": [
-          "value",
-          "label",
-          "source",
-          "source_hid"
-        ],
-        "title": "EffectiveReference",
         "type": "object"
       },
       "EffectiveShipAddress": {
@@ -14260,7 +14272,7 @@
             "$ref": "#/components/schemas/EffectiveOperator"
           },
           "owner_hid": {
-            "$ref": "#/components/schemas/EffectiveReference"
+            "$ref": "#/components/schemas/EffectiveOwner"
           },
           "planned_location_hid": {
             "$ref": "#/components/schemas/EffectiveLocation"
@@ -15919,7 +15931,7 @@
             "description": "The operator in force: its own, that of the item above it, of a group it is a member of, or of the place it is at."
           },
           "owner_hid": {
-            "$ref": "#/components/schemas/EffectiveReference"
+            "$ref": "#/components/schemas/EffectiveOwner"
           },
           "planned_location_hid": {
             "$ref": "#/components/schemas/EffectiveLocation",
@@ -21041,7 +21053,7 @@
         "properties": {
           "from_item": {
             "$ref": "#/components/schemas/ItemCount",
-            "description": "The minor items that have it from the item above."
+            "description": "The items that have it from an item above them: the one they are installed in, or the one they run on (P-246)."
           },
           "groups": {
             "items": {
@@ -27481,6 +27493,23 @@
             ],
             "description": "Of a device group: its place among the record's groups.",
             "title": "Rank"
+          },
+          "reached_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "member",
+                  "host",
+                  "parent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the record is to the one before it in the walk: `member`, a group it is a current member of; `host`, what it runs on, an item or a stack or a cluster (P-246); `parent`, the item it is installed in, or the group it is nested in. Null for its own and for a catalog entry, a setting and a place.",
+            "title": "Reached By"
           },
           "type": {
             "anyOf": [

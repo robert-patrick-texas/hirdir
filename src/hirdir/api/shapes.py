@@ -214,6 +214,11 @@ def _keyed(prefix: str, found: dict[str, Effective]) -> dict[str, Effective]:
     return {f"{prefix}:{hid}": one for hid, one in found.items()}
 
 
+def _label_of(found: Effective, holders: dict[str, str]) -> str | None:
+    """Return the name of what a value in force came from, null for the record's own."""
+    return holders.get(found.source_hid or "") if found.source != "own" else None
+
+
 def _place_in_force(
     found: Effective, places: dict[str, shapes.LocationRef], holders: dict[str, str]
 ) -> shapes.EffectiveLocation:
@@ -945,7 +950,11 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     )
     where = descent.of_items(db, items, lines, "location_hid")
     going = descent.of_items(db, items, lines, "planned_location_hid")
-    holders = _holders(db, {**looked_after, **_keyed("w", where), **_keyed("g", going)}, above)
+    holders = _holders(
+        db,
+        {**looked_after, **_keyed("w", where), **_keyed("g", going), **_keyed("o", owned)},
+        above,
+    )
     places = location_refs(
         db,
         {item.location_hid for item in items}
@@ -1074,11 +1083,12 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 effective=shapes.ItemEffective(
                     serial_number=on_hosts.serial(item),
                     operator_hid=marks.in_force(looked_after[item.hid], holders),
-                    owner_hid=shapes.EffectiveReference(
+                    owner_hid=shapes.EffectiveOwner(
                         value=effective["owner_hid"].value,
                         label=owner_in_force.label if owner_in_force is not None else None,
                         source=effective["owner_hid"].source,
                         source_hid=effective["owner_hid"].source_hid,
+                        source_label=_label_of(effective["owner_hid"], holders),
                     ),
                     location_hid=_place_in_force(where[item.hid], places, holders),
                     planned_location_hid=_place_in_force(going[item.hid], places, holders),
@@ -1289,7 +1299,11 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     )
     where = descent.of_groups(db, found, "location_hid")
     going = descent.of_groups(db, found, "planned_location_hid")
-    holders = _holders(db, {**looked_after, **_keyed("w", where), **_keyed("g", going)}, {})
+    holders = _holders(
+        db,
+        {**looked_after, **_keyed("w", where), **_keyed("g", going), **_keyed("o", owned)},
+        {},
+    )
     places = location_refs(
         db,
         {group.location_hid for group in found}
@@ -1322,11 +1336,12 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 planned_location=places.get(group.planned_location_hid or ""),
                 operator=marks.ref(group.operator_hid),
                 effective=shapes.GroupEffective(
-                    owner_hid=shapes.EffectiveReference(
+                    owner_hid=shapes.EffectiveOwner(
                         value=owned[group.hid].value,
                         label=owner_in_force.label if owner_in_force is not None else None,
                         source=owned[group.hid].source,
                         source_hid=owned[group.hid].source_hid,
+                        source_label=_label_of(owned[group.hid], holders),
                     ),
                     operator_hid=marks.in_force(looked_after[group.hid], holders),
                     location_hid=_place_in_force(where[group.hid], places, holders),
@@ -2384,6 +2399,7 @@ def resolution_out(hid: str, walks: list[resolution.Walk]) -> shapes.Resolution:
                         value=_walk_value(walk.field, step.value),
                         label=step.label,
                         outcome=step.outcome,
+                        reached_by=step.reached_by,
                     )
                     for step in walk.steps
                 ],

@@ -25,6 +25,8 @@ interface Sourced {
   value: unknown;
   source: string;
   source_hid: string | null;
+  /** 0.9.8: the name of the item or the group it came from, as the server sends it (P-246). */
+  source_label?: string | null;
 }
 
 /** A record that a value may have come from, as the page knows it: by its name. */
@@ -64,10 +66,10 @@ export function locationHint(effective: PlaceInForce | null | undefined): string
 }
 
 /**
- * The item or the group an owner in force came from. The server sends no name with an
- * owner: the record is named from what the page knows, the item it is in and the groups
- * it is a member of, and is linked by its HID all the same when it is none of those.
- * Null for an owner of the record's own, and for none.
+ * The item or the group an owner in force came from, by the name the server sends with
+ * it since 0.9.8; where it sends none, by what the page knows, the item it is in, the
+ * groups it is a member of and what it runs on, and linked by its HID all the same when
+ * it is none of those. Null for an owner of the record's own, and for none.
  */
 export function ownerSource(
   effective: Sourced | null | undefined,
@@ -75,7 +77,7 @@ export function ownerSource(
 ): SourceRecord | null {
   if (!effective || !isFromAbove(effective) || !effective.source_hid) return null;
   const hid = effective.source_hid;
-  const name = known.find((one) => one.hid === hid)?.name;
+  const name = effective.source_label || known.find((one) => one.hid === hid)?.name;
   if (effective.source === "parent_item") {
     return {
       text: name ? `the item ${name}` : "the item it is in",

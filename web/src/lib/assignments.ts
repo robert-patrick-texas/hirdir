@@ -136,7 +136,7 @@ export function groupNodes(assignments: Assignments, view: View = {}): TreeNode[
   }));
 }
 
-/** The boxes of the items given it as their own, and of the minor items that have it from them. */
+/** The boxes of the items given it as their own, and of the items that have it from an item above them. */
 export function ownNodes(assignments: Assignments, view: View = {}): TreeNode[] {
   return [
     {
@@ -146,7 +146,8 @@ export function ownNodes(assignments: Assignments, view: View = {}): TreeNode[] 
     },
     {
       key: "from_item",
-      title: "Minor items, from the item they are in",
+      // 0.9.8: and what runs on an item, from the item it runs on (P-246).
+      title: "From the item they are installed in or run on",
       counts: [itemCount("from_item", assignments.from_item, "item", "items", view)],
     },
   ];

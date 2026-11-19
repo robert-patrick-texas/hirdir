@@ -21,6 +21,9 @@ from hirdir.io import fields, listing
 
 # The most places or groups listed beneath one box; the rest are counted.
 MOST_BENEATH = 20
+# How an item has an operator from an item above it: the one it is installed in, or the
+# one it runs on, or one above those (P-246). A report by operator says the same.
+FROM_AN_ITEM = ("parent_item", "host")
 
 
 @dataclass
@@ -173,7 +176,8 @@ def operated(
         places=places,
         groups=groups,
         own=counted(_all(mine, _condition(source, "eq", "own"))),
-        from_item=counted(_all(mine, _condition(source, "eq", "parent_item"))),
+        # From an item above it: the one it is installed in, or the one it runs on (P-246).
+        from_item=counted(_all(mine, _condition(source, "in", list(FROM_AN_ITEM)))),
         totals=counted(mine),
     )
 

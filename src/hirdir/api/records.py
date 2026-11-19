@@ -1346,6 +1346,15 @@ class EffectiveLocation(EffectiveReference):
     region: str | None = Field(description="The name of the region its site is in.")
 
 
+class EffectiveOwner(EffectiveReference):
+    """The owner in force, and the name of what it came from."""
+
+    source_label: str | None = Field(
+        default=None,
+        description="The name of the item or the group it came from. Null for its own.",
+    )
+
+
 class EffectiveOperator(EffectiveReference):
     """The operator in force: the label, who is behind it, and where it came from."""
 
@@ -1387,6 +1396,15 @@ class ResolutionStep(Model):
     value: WalkValue
     label: str | None = Field(description="What the value is called: a path, a label.")
     outcome: ResolutionOutcome
+    reached_by: Literal["member", "host", "parent"] | None = Field(
+        default=None,
+        description=(
+            "What the record is to the one before it in the walk: `member`, a group it is "
+            "a current member of; `host`, what it runs on, an item or a stack or a cluster "
+            "(P-246); `parent`, the item it is installed in, or the group it is nested in. "
+            "Null for its own and for a catalog entry, a setting and a place."
+        ),
+    )
 
 
 class ResolutionField(Model):
@@ -1471,7 +1489,7 @@ class ItemEffective(Model):
     from its catalog entry, and for a minor item the owner, the location and the
     standing of the item it is in."""
 
-    owner_hid: EffectiveReference
+    owner_hid: EffectiveOwner
     planned_location_hid: EffectiveLocation = Field(
         description="Where it is going, by its own plan or by that of what it is in."
     )
@@ -2079,7 +2097,7 @@ ManagedAs = Literal["one", "members", "members_and_cluster"]
 class GroupEffective(Model):
     """What a device group has in force of what it may have from the group it is in."""
 
-    owner_hid: EffectiveReference
+    owner_hid: EffectiveOwner
     operator_hid: EffectiveOperator
     location_hid: EffectiveLocation
     planned_location_hid: EffectiveLocation
@@ -4842,5 +4860,8 @@ class OperatorAssignments(Model):
     places: list[OperatorPlace]
     groups: list[OperatorGroup]
     own: ItemCount = Field(description="The items given it as their own.")
-    from_item: ItemCount = Field(description="The minor items that have it from the item above.")
+    from_item: ItemCount = Field(
+        description="The items that have it from an item above them: the one they are "
+        "installed in, or the one they run on (P-246)."
+    )
     totals: ItemCount = Field(description="Every item it is in force for.")

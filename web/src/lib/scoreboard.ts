@@ -357,7 +357,8 @@ export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
 /** How an item has its operator, for each count of the split that has a list of its own. */
 const SOURCES: Readonly<Record<string, Condition>> = {
   own: { field: "effective.operator_hid.source", op: "eq", value: "own" },
-  from_item: { field: "effective.operator_hid.source", op: "eq", value: "parent_item" },
+  // 0.9.8: from an item above it, the one it is installed in or the one it runs on (P-246).
+  from_item: { field: "effective.operator_hid.source", op: "in", value: ["parent_item", "host"] },
   from_group: { field: "effective.operator_hid.source", op: "eq", value: "device_group" },
   from_place: {
     field: "effective.operator_hid.source",

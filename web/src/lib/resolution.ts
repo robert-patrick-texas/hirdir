@@ -65,6 +65,9 @@ export function stepKind(step: ResolutionStep): string {
       return "Its own";
     case "device_group": {
       const type = step.type ? groupTypeLabel(step.type).toLowerCase() : "group";
+      // 0.9.8: a stack or a cluster that the item, or its host, runs on (P-246).
+      if (step.reached_by === "host")
+        return `${type.charAt(0).toUpperCase()}${type.slice(1)} it runs on`;
       return step.rank === null
         ? `Group it is in · ${type}`
         : `Group · ${type} · ranked ${ordinal(step.rank)}`;

@@ -58,8 +58,10 @@ const app = host("vm-app01");
 const others = Array.from({ length: 11 }, (_, n) => host(`vm-${String(n + 2).padStart(2, "0")}`));
 const container = host("ctr-dns1");
 const orphan = host("vm-orphan");
+const legacy = host("vm-legacy");
+const second = host("esx-02");
 
-const made: { server?: string; cluster?: string } = {};
+const made: { server?: string; second?: string; cluster?: string } = {};
 
 async function records(request: APIRequestContext, account: Account): Promise<void> {
   if (made.server !== undefined) return;
@@ -108,6 +110,20 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
     hostname: gone,
     location_hid: roomHid,
     lifecycle_state: "Released",
+  });
+  // A machine entered, as before 0.9.8, as installed in its server, a second one.
+  made.second = (
+    await make(request, headers, "/items", {
+      catalog_entry_hid: box,
+      hostname: second,
+      location_hid: roomHid,
+      lifecycle_state: "Prod",
+    })
+  ).hid;
+  await make(request, headers, "/items", {
+    catalog_entry_hid: vm,
+    hostname: legacy,
+    parent_item_hid: made.second,
   });
   // A machine that names no host, to be looked at.
   await make(request, headers, "/items", { catalog_entry_hid: vm, hostname: orphan });
@@ -226,6 +242,35 @@ test("a virtual machine entered with no host is marked, and given a server as it
   await expectClean(page, seen, ["422 PATCH"]);
 });
 
+test("a machine entered as installed in its server is made to run on it in one press", async ({
+  page,
+  request,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  // A minor item, so the list is asked for minor items too.
+  await page.goto(`./items?filter=${encodeURIComponent(`hostname:eq:${legacy}`)}&minor=1`);
+  await page.getByTestId("grid-items").getByRole("link", { name: legacy, exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: legacy })).toBeVisible();
+  const runsOn = page.getByTestId("runs-on");
+  await expect(runsOn).toHaveAttribute("data-review", "no_host");
+  const installed = runsOn.getByTestId("installed-in");
+  await expect(installed.getByRole("link", { name: second, exact: true })).toHaveAttribute(
+    "href",
+    new RegExp(`/items/${made.second}$`),
+  );
+  await installed.getByRole("button", { name: `Make ${second} its host` }).click();
+  await expect(runsOn.getByTestId("host-link")).toHaveText(second);
+  await expect(runsOn).not.toHaveAttribute("data-review", /./);
+  await expect(page.getByTestId("installed-in")).toHaveCount(0);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "host");
+
+  await expectClean(page, seen);
+});
+
 test("the server's page lists what runs on it, and what runs on that beneath it", async ({
   page,
   request,
@@ -275,6 +320,7 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
   await records(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`./items?filter=${encodeURIComponent(`host.name:eq:${server}`)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("12 items");
   await page.getByText("Columns", { exact: true }).click();
@@ -283,6 +329,22 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
   await columns.getByLabel("To be looked at", { exact: true }).check();
   await page.getByText("Columns", { exact: true }).click();
   const grid = page.getByTestId("grid-items");
+  // Turned on, the two stand after the place: the columns the owner asked to see in a
+  // window 1280 pixels wide are still all in view (P-193).
+  for (const column of [
+    "name",
+    "catalog.pid",
+    "serial_number",
+    "lifecycle_state",
+    "health",
+    "site",
+    "location.name",
+  ]) {
+    await expect(
+      grid.locator(`[role="columnheader"][col-id="${column}"]`),
+      `${column} is in view at 1280`,
+    ).toBeInViewport({ ratio: 1 });
+  }
   const row = grid.locator("[row-id]", { hasText: app });
   await expect(
     row.locator('[col-id="host.name"]').getByRole("link", { name: server }),

@@ -18,6 +18,7 @@ import {
   shareText,
   siteCondition,
   sitesCsv,
+  splitPath,
   toCsv,
   underOpenLabels,
 } from "./scoreboard";
@@ -295,5 +296,13 @@ describe("the tables as files", () => {
     expect(text.trimEnd().split("\r\n")[1]).toBe(
       `${SITE},Americas > Central > Site-2,4,4,5,5.50,NE1 3 (4.50); nobody 1 (1.00)`,
     );
+  });
+});
+
+describe("the cell of what an operator has from an item (P-246)", () => {
+  it("opens the items that have it from the item they are installed in or run on", () => {
+    const view = { filter: "", includeArchived: false, includeDrafts: false };
+    const path = splitPath(view, "op-1", "from_item") ?? "";
+    expect(decodeURIComponent(path)).toContain("effective.operator_hid.source:in:parent_item,host");
   });
 });

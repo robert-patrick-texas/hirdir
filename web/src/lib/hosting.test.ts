@@ -4,6 +4,7 @@ import { knownAbove, ownerSource } from "./descent";
 import {
   bulkHost,
   type HostRef,
+  hostClearedHint,
   hostedRows,
   hostFields,
   hostHint,
@@ -13,6 +14,7 @@ import {
   hostValue,
   hostWhat,
   mayHost,
+  parentAsHostBody,
   reviewsText,
   runsOnHost,
   sentHost,
@@ -105,6 +107,23 @@ describe("a host as a link", () => {
     });
   });
 
+  it("names the record an owner came from by the label the server sends", () => {
+    // A container two levels down: the server above holds it, which the item does not name.
+    const known = knownAbove({ parent: null, groups: [], host: server });
+    expect(
+      ownerSource(
+        { value: "own-1", source: "host", source_hid: "srv-0", source_label: "site2-esx-00" },
+        known,
+      ),
+    ).toEqual({ text: "the host site2-esx-00", path: "/items/srv-0" });
+    expect(
+      ownerSource(
+        { value: "own-1", source: "device_group", source_hid: "cl-9", source_label: "site2-c9" },
+        [],
+      ),
+    ).toEqual({ text: "the group site2-c9", path: "/groups/cl-9" });
+  });
+
   it("says a value from a cluster it runs on is from the group, a link to the group", () => {
     // A container in a virtual machine on a cluster: the cluster holds it, a group.
     expect(
@@ -187,6 +206,40 @@ describe("the one field of a form for an item or a group", () => {
     expect(built.body).toEqual({ row_version: 4, catalog_entry_hid: "sw", host_hid: null });
   });
 
+  it("clears what it was seen on with the host, and says so beneath the model first", () => {
+    const kinds: Record<string, string> = { vm: "virtual_machine", sw: "hardware" };
+    const facts = {
+      kindOf: (hid: string) => kinds[hid],
+      host: server,
+      observed: { hid: "srv-1", label: "site2-esx-01" },
+    };
+    const specs = [
+      { name: "catalog_entry_hid", label: "Catalog entry", kind: "entry" as const },
+      ...hostSpecs(facts),
+    ];
+    const record = {
+      row_version: 4,
+      catalog_entry_hid: "vm",
+      host_hid: "item:srv-1",
+      observed_host_hid: "srv-1",
+      host_observed_at: "2026-11-18T09:30:00Z",
+    };
+    const values = { ...formOf(specs, record), catalog_entry_hid: "sw" };
+    const built = buildPatch(specs, record, values);
+    expect(sentHost(built.body)).toEqual({
+      row_version: 4,
+      catalog_entry_hid: "sw",
+      host_item_hid: null,
+      host_group_hid: null,
+      observed_host_hid: null,
+      host_observed_at: null,
+    });
+    expect(hostClearedHint(facts, values)).toMatch(/saving clears what the item runs on/);
+    expect(hostClearedHint(facts, { catalog_entry_hid: "vm" })).toBeUndefined();
+    // An item that names no host and was seen on none is told nothing.
+    expect(hostClearedHint({ kindOf: facts.kindOf }, values)).toBeUndefined();
+  });
+
   it("puts a refusal of either field of the server at the one field", () => {
     const specs = hostSpecs({ kindOf: () => "virtual_machine" });
     expect(atFields(specs, { host_group_hid: "is retired", name: "x" })).toEqual({
@@ -214,6 +267,19 @@ describe("the one field of a form for an item or a group", () => {
     expect(localMoment("2026-11-18T09:30:41.5Z")).toBe(
       localMoment(new Date("2026-11-18T09:30:00Z")),
     );
+  });
+});
+
+describe("a machine entered as installed in its server", () => {
+  it("is made to run on it, out of its parent, in one request", () => {
+    expect(parentAsHostBody({ row_version: 2, parent_item_hid: "srv-1", position: null })).toEqual({
+      row_version: 2,
+      host_item_hid: "srv-1",
+      parent_item_hid: null,
+    });
+    expect(
+      parentAsHostBody({ row_version: 2, parent_item_hid: "srv-1", position: "Bay 3" }),
+    ).toHaveProperty("position", null);
   });
 });
 

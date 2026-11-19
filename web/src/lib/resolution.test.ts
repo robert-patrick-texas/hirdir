@@ -224,6 +224,13 @@ describe("the walk of a value, as boxes", () => {
       "Group it is in · controller domain",
     );
     expect(stepKind(step({ level: "catalog" }))).toBe("Catalog entry");
+    // 0.9.8: a cluster the item, or its host, runs on is not a group it is in (P-246).
+    expect(
+      stepKind(step({ level: "device_group", type: "cluster", rank: 1, reached_by: "host" })),
+    ).toBe("Cluster it runs on");
+    expect(
+      stepKind(step({ level: "device_group", type: "cluster", rank: 1, reached_by: "member" })),
+    ).toBe("Group · cluster · ranked 1st");
   });
 
   it("leads each record to its page, and the page itself and a setting to none", () => {

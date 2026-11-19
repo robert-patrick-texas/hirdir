@@ -42,7 +42,14 @@ import {
 import { formatMac, formatValue, itemName } from "../lib/format";
 import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { HOST_FIELD, hostPath, hostSpecs, hostValue, sentHost } from "../lib/hosting";
+import {
+  HOST_FIELD,
+  hostClearedHint,
+  hostPath,
+  hostSpecs,
+  hostValue,
+  sentHost,
+} from "../lib/hosting";
 import {
   DISPOSITIONS,
   dispositionsIn,
@@ -528,6 +535,8 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
         {/* 0.9.8: what it runs on and what it was seen on, where it is of such a kind (P-250). */}
         <HostFacts
           item={item}
+          mayChange={mayChange}
+          onChanged={onChanged}
           change={
             mayChange && (
               <ChangeLink
@@ -1332,6 +1341,16 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   const tags = useTags();
   const specs = useMemo<FieldSpec[]>(() => {
     const { catalog, owner } = item;
+    // 0.9.8: what the fields of what it runs on need of the form (P-250).
+    const hosting = {
+      kindOf: (hid: string) =>
+        hid === catalog?.hid ? catalog.kind : (entrySeen(hid)?.kind ?? undefined),
+      host: item.host,
+      observed: item.observed_host
+        ? { hid: item.observed_host.hid, label: pickLabel(item.observed_host) }
+        : null,
+      self: item.hid,
+    };
     // The owners to choose from, the item's own among them as the item names it, also
     // when the list no longer brings it. One outside the team says so, with its reason.
     const offered = withCurrent(
@@ -1347,6 +1366,8 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         blank: "No catalog entry",
         options: catalog ? [{ value: catalog.hid, label: entryLabel(catalog) }] : [],
         heading: "Identity",
+        // 0.9.8: a model of a kind that runs on no host clears what it runs on (P-250).
+        hintFrom: (values) => hostClearedHint(hosting, values),
       },
       { name: "serial_number", label: "Serial number", kind: "text", maxLength: 100 },
       { name: "asset_tag", label: "Asset tag", kind: "text", maxLength: 100 },
@@ -1368,17 +1389,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       },
       { name: "quantity", label: "Quantity", kind: "integer", hint: "Seats or licences" },
       // 0.9.8: what it runs on, where its model is of a kind that does (P-250).
-      ...(item.is_major
-        ? hostSpecs({
-            kindOf: (hid) =>
-              hid === catalog?.hid ? catalog.kind : (entrySeen(hid)?.kind ?? undefined),
-            host: item.host,
-            observed: item.observed_host
-              ? { hid: item.observed_host.hid, label: pickLabel(item.observed_host) }
-              : null,
-            self: item.hid,
-          })
-        : []),
+      ...(item.is_major ? hostSpecs(hosting) : []),
       {
         name: "owner_hid",
         label: "Owner",
