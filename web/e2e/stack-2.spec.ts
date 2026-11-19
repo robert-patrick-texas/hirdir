@@ -63,6 +63,9 @@ const spareAddress = (index: number) => `${net}::${index + 10}`;
 const standalone = host("lab-sw1");
 const standaloneSerial = serial("LAB");
 const standaloneAddress = `${net}::5`;
+/** A switch that has nothing to be known by but its host name. */
+const hostAlone = host("solo-sw2");
+const virtual = label("vm-app-06");
 
 const made: { site?: string; room?: string; depot?: string; entry?: string } = {};
 
@@ -129,6 +132,23 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
     role: "management",
     is_primary: true,
   });
+  // A switch known by its host name alone, and a virtual machine, which runs on a host.
+  await make(request, headers, "/items", {
+    catalog_entry_hid: entry,
+    hostname: hostAlone,
+    lifecycle_state: "Prod",
+    disposition: "Production",
+    expected_online: true,
+  });
+  const vmEntry = (
+    await make(request, headers, "/catalog-entries", {
+      vendor_hid: vendor,
+      pid: `VM-${id}`,
+      model_name: label("Virtual Server"),
+      kind: "virtual_machine",
+    })
+  ).hid;
+  await make(request, headers, "/items", { catalog_entry_hid: vmEntry, name: virtual });
   made.entry = entry;
 }
 
@@ -513,5 +533,50 @@ test("a switch that stands alone is made a stack from its page with a spare: the
   await expect(page.getByRole("region", { name: "Addresses" })).toContainText(
     `There is no address on ${standaloneSerial}.`,
   );
+  await expectClean(page, seen);
+});
+
+test("a switch known by its host name alone is not offered Make it a stack, nor Join with the box, until it is named; a virtual machine is offered neither (P-243)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItem(page, hostAlone);
+  const fact = page.getByTestId("stack-member");
+  await expect(fact.getByRole("button", { name: "Make it a stack" })).toHaveCount(0);
+  await expect(fact.getByTestId("make-stack-host-alone")).toContainText(
+    `${hostAlone} is known by its host name alone, which the stack takes`,
+  );
+
+  // Join a stack with the box ticked would leave it nothing: the form says so, and waits.
+  await fact.getByRole("button", { name: "Join a stack" }).click();
+  const form = page.getByRole("region", { name: "Join a stack" });
+  await form.getByLabel("Stack", { exact: true }).fill(firstStack);
+  await form
+    .getByRole("list", { name: "Stacks that match" })
+    .getByRole("button", { name: firstStack })
+    .click();
+  await expect(form.getByTestId("known-by-host")).toBeVisible();
+  const join = form.getByRole("button", { name: "Join the stack" });
+  await expect(join).toBeDisabled();
+  await form.getByLabel("It takes the stack's name and place").uncheck();
+  await expect(join).toBeEnabled();
+  await form.getByLabel("It takes the stack's name and place").check();
+  // Give it a name goes to its Name, in Details.
+  await form.getByTestId("known-by-host").getByRole("button", { name: "Give it a name" }).click();
+  await expect(
+    page.getByRole("region", { name: "Details" }).getByLabel("Name", { exact: true }),
+  ).toBeFocused();
+  await form.getByRole("button", { name: "Cancel" }).click();
+
+  // A virtual machine runs on a host, and is offered neither.
+  await openItem(page, virtual);
+  await expect(page.getByRole("button", { name: "Join a stack" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Make it a stack" })).toHaveCount(0);
+  await expect(page.getByTestId("stack-member")).toHaveCount(0);
   await expectClean(page, seen);
 });

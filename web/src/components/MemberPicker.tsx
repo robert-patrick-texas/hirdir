@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 import type { Schemas } from "../api";
 import { itemName } from "../lib/format";
@@ -12,7 +12,14 @@ import {
 import { dispositionsIn, intentChoices, type Rule } from "../lib/lifecycle";
 import { MAJOR_ONLY, memberOffer, SPARES } from "../lib/pick";
 import { nextSort, type SortColumns, type SortState, sortRows } from "../lib/sort";
-import { dropsText, type Joining, joinStanding, offeredPosition } from "../lib/stacks";
+import {
+  dropsText,
+  hostAloneText,
+  type Joining,
+  joinStanding,
+  knownByHostAlone,
+  offeredPosition,
+} from "../lib/stacks";
 import type { SortControl } from "../lib/useSorting";
 import { CheckField, SelectField } from "./Field";
 import { ItemPicker } from "./ItemPicker";
@@ -258,6 +265,10 @@ export function MemberPicker(props: MemberPickerProps) {
 /** What of an item chosen for a stack the box needs, and what it is offered from the start. */
 export function joining(item: Item, rules: readonly Rule[]): Partial<PendingMember> {
   const has: Joining = {
+    name: item.name,
+    asset_tag: item.asset_tag,
+    serial_number: item.serial_number,
+    catalog_entry_hid: item.catalog_entry_hid,
     hostname: item.hostname,
     fqdn: item.fqdn,
     addresses: item.addresses,
@@ -279,6 +290,11 @@ interface JoinBoxProps {
   rules: readonly Rule[];
   onChange: (change: Partial<PendingMember>) => void;
   disabled?: boolean;
+  /**
+   * 0.9.8: where an item known by its host name alone is given another name, as a jump to
+   * that field on its own page; left out, a link to its page (P-243).
+   */
+  fix?: ReactNode;
 }
 
 /**
@@ -287,7 +303,7 @@ interface JoinBoxProps {
  * switch, read from the switch as it was chosen; and for a spare, the disposition and the
  * intent it is given, as the rule of its state allows. Unticked, nothing of it is sent.
  */
-export function JoinBox({ row, rules, onChange, disabled }: JoinBoxProps) {
+export function JoinBox({ row, rules, onChange, disabled, fix }: JoinBoxProps) {
   const has = row.joining ?? {};
   const state = has.lifecycle_state;
   const kept = has.disposition ?? null;
@@ -311,6 +327,12 @@ export function JoinBox({ row, rules, onChange, disabled }: JoinBoxProps) {
           ? dropsText(row.name, has)
           : `${row.name} keeps its own name, addresses and place: nothing of it is changed.`}
       </p>
+      {drop && knownByHostAlone(has) && (
+        <p className="warning" role="status" data-testid="known-by-host">
+          {hostAloneText(row.name)}{" "}
+          {fix ?? <Link to={`/items/${encodeURIComponent(row.item_hid)}`}>Its page</Link>}
+        </p>
+      )}
       {drop && spare && (
         <div className="fields">
           <SelectField

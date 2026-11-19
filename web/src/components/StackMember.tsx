@@ -11,9 +11,17 @@ import { itemName } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { buildMembers, type PendingMember } from "../lib/groups";
 import { useAction, useLoad } from "../lib/hooks";
+import { runsOnHost } from "../lib/hosting";
 import { useRules } from "../lib/lists";
 import { fieldErrors } from "../lib/problems";
-import { joinedText, MEMBER_FIELDS, refusedRows, stackOf } from "../lib/stacks";
+import {
+  hostAloneText,
+  joinedText,
+  knownByHostAlone,
+  MEMBER_FIELDS,
+  refusedRows,
+  stackOf,
+} from "../lib/stacks";
 import { TextField } from "./Field";
 import { MakeStack } from "./MakeStack";
 import { JoinBox, joining } from "./MemberPicker";
@@ -29,10 +37,15 @@ function groupPath(hid: string): string {
   return `/groups/${encodeURIComponent(hid)}`;
 }
 
-/** Whether an item that is in no stack may join one: a major item, in hand, not retired. */
+/**
+ * Whether an item that is in no stack may join one: a major item, in hand, not retired;
+ * 0.9.8: and not of a kind that runs on a host, a virtual machine, a virtual context or a
+ * container, which is no member of a stack (P-243, P-250).
+ */
 export function mayJoin(item: Item): boolean {
   return (
     item.is_major &&
+    !runsOnHost(item.catalog?.kind) &&
     item.record_status !== "retired" &&
     !JOINS_NONE.includes(item.lifecycle_state ?? "") &&
     stackOf(item.groups) === undefined
@@ -45,13 +58,18 @@ interface StackFactsProps {
   mayChange: boolean;
   /** Said at the top of the page when the item has joined, which is read again. */
   onChanged: (text: string) => void;
+  /**
+   * 0.9.8: a jump to the item's Name in its Details, for an item known by its host name
+   * alone, which a stack would take (P-243).
+   */
+  nameFix?: ReactNode;
 }
 
 /**
  * Among the first facts: Member 2 of the stack, as a link, with the stack's host name,
  * FQDN and addresses; or, for an item in no stack that may be in one, Join a stack.
  */
-export function StackFacts({ item, mayChange, onChanged }: StackFactsProps) {
+export function StackFacts({ item, mayChange, onChanged, nameFix }: StackFactsProps) {
   const stack = stackOf(item.groups);
   if (stack)
     return <MemberFacts groupHid={stack.group_hid} name={stack.name} position={stack.position} />;
@@ -60,7 +78,7 @@ export function StackFacts({ item, mayChange, onChanged }: StackFactsProps) {
     <>
       <dt>Stack</dt>
       <dd data-testid="stack-member">
-        <NoStack item={item} onJoined={onChanged} />
+        <NoStack item={item} onJoined={onChanged} nameFix={nameFix} />
       </dd>
     </>
   );
@@ -70,17 +88,35 @@ export function StackFacts({ item, mayChange, onChanged }: StackFactsProps) {
  * An item in no stack: Join a stack, and 0.9.8 beside it Make it a stack (P-243). One of
  * the two forms is open at a time.
  */
-function NoStack({ item, onJoined }: { item: Item; onJoined: (text: string) => void }) {
+function NoStack({
+  item,
+  onJoined,
+  nameFix,
+}: {
+  item: Item;
+  onJoined: (text: string) => void;
+  nameFix: ReactNode;
+}) {
   const [making, setMaking] = useState(false);
-  if (making) return <MakeStack item={item} onCancel={() => setMaking(false)} />;
+  // 0.9.8: a stack takes the host name of the switch it is made of: one known by that
+  // alone is given another name first, and Make it a stack is not offered (P-243).
+  const hostAlone = knownByHostAlone(item);
+  if (making && !hostAlone) return <MakeStack item={item} onCancel={() => setMaking(false)} />;
   return (
     <JoinStack
       item={item}
       onJoined={onJoined}
+      nameFix={nameFix}
       beside={
-        <button type="button" onClick={() => setMaking(true)}>
-          Make it a stack
-        </button>
+        hostAlone ? (
+          <span className="hint" data-testid="make-stack-host-alone">
+            Make it a stack: {hostAloneText(itemName(item))} {nameFix}
+          </span>
+        ) : (
+          <button type="button" onClick={() => setMaking(true)}>
+            Make it a stack
+          </button>
+        )
       }
     />
   );
@@ -189,11 +225,14 @@ function JoinStack({
   item,
   onJoined,
   beside,
+  nameFix,
 }: {
   item: Item;
   onJoined: (text: string) => void;
   /** What stands beside Join a stack while its form is closed. */
   beside?: ReactNode;
+  /** Where the item is given another name than its host name (P-243). */
+  nameFix?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [stack, setStack] = useState<Offer | null>(null);
@@ -222,6 +261,7 @@ function JoinStack({
   const refused = fieldErrors(action.error, fields).shown;
   const answered = refusedRows([row], refused, action.error?.existing ?? null);
   const holder = answered.holders[item.hid];
+  const hostAlone = knownByHostAlone(item);
 
   async function join(event: FormEvent) {
     event.preventDefault();
@@ -317,11 +357,17 @@ function JoinStack({
               rules={rules.data ?? []}
               onChange={(changed) => setChange((was) => ({ ...was, ...changed }))}
               disabled={action.busy}
+              fix={nameFix}
             />
           </>
         )}
         <p className="actions">
-          <button type="submit" className="primary" disabled={action.busy || stack === null}>
+          <button
+            type="submit"
+            className="primary"
+            // 0.9.8: not while the box would leave it with nothing to know it by (P-243).
+            disabled={action.busy || stack === null || (row.drop === true && hostAlone)}
+          >
             Join the stack
           </button>
           <button type="button" onClick={close} disabled={action.busy}>

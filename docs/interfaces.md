@@ -2580,7 +2580,16 @@ What 0.9.6 changes:
   a spare. Make the stack sends `POST /items/{hid}/make-stack`, the name left out when
   blank; a refusal of the name, of the item or of a member is said beside it, by its row
   for a member. Afterwards the stack's page is shown, which says at the top that the
-  stack was made of the item, member 1, and how many more members it has. No other page
+  stack was made of the item, member 1, and how many more members it has. An item known
+  by its host name alone, with no name, no asset tag and no serial number with a model,
+  would be left with nothing to know it by once a stack takes that host name, which the
+  server refuses: Make it a stack is not offered for it, and in its place the fact says
+  so, with Give it a name, which goes to Name in its Details; the box of a member that
+  joins says the same under it while it is ticked, and Join the stack waits until it is
+  unticked or the item is named, while New group, Add members and More members say it
+  beside the member's row and send nothing. An item of a kind that runs on a host, a
+  virtual machine, a virtual context or a container, is offered neither Join a stack nor
+  Make it a stack. No other page
   reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
   each replacement.
 
