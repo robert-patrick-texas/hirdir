@@ -350,10 +350,13 @@ def show(
         ("hid", found["hid"]),
         ("name", found["name"] or found["hostname"]),
         ("model", f"{model['vendor']} {model['pid']}" if model else None),
-        *((name, found[name]) for name in ("serial_number", "asset_tag", "mac_address", "fqdn")),
+        # A virtual context with none shows its host's (P-246).
+        ("serial_number", _in_force(found, "serial_number")),
+        *((name, found[name]) for name in ("asset_tag", "mac_address", "fqdn")),
         ("in", _named(found["parent"]) if found["parent"] else None),
         ("position", found["position"]),
         ("minor_items", found["minor_items"] or None),
+        *_hosting_lines(found, zone),
         *((name, _in_force(found, name)) for name in FROM_ABOVE),
         ("state_reason", found["state_reason"]),
         ("condition", found["condition"]),
@@ -382,7 +385,7 @@ def show(
             why = " ".join(part for part in (other["reason"], other["reference"]) if part)
             lines.append((name, f"{_named(other)} on {other['replaced_on']} ({why})"))
     for name, effective in found["effective"].items():
-        shown = ("owner_hid", "operator_hid", "location_hid", *FROM_ABOVE)
+        shown = ("owner_hid", "operator_hid", "location_hid", "serial_number", *FROM_ABOVE)
         if name not in shown and effective["value"] is not None:
             # A weight raised to the minimum says what it was (P-155).
             raised = effective.get("raised_from")
@@ -399,6 +402,77 @@ def show(
             typer.echo(
                 f"{name + ':':<21}{str(value).lower() if isinstance(value, bool) else value}"
             )
+
+
+def _host_named(host: dict[str, Any]) -> str:
+    """Return what an item runs on as one line: an item, or a stack or a cluster."""
+    kind = host["type"] or "item"
+    gone = ", retired" if host["record_status"] == "retired" else ""
+    return f"{host['name']} ({kind}{gone})"
+
+
+# What each reason to look at an item says (P-249).
+REVIEW_WORDS = {
+    "no_host": "it runs on a host, and names none",
+    "host_gone": "what it runs on is retired, or has left the team's hands",
+    "not_reported": "a system it is registered with reports it no more",
+}
+
+
+def _hosting_lines(found: dict[str, Any], zone: str) -> list[tuple[str, Any]]:
+    """Return what an item runs on, what it was seen on, how many run on it, and why it
+    is to be looked at (P-246, P-249)."""
+    lines: list[tuple[str, Any]] = []
+    if found["host"]:
+        lines.append(("runs_on", _host_named(found["host"])))
+    if found["observed_host"]:
+        seen = _named(found["observed_host"])
+        if found["host_observed_at"]:
+            seen += f", {clock.shown(datetime.fromisoformat(found['host_observed_at']), zone)}"
+        if found["host_differs"]:
+            seen += ", not what it runs on"
+        lines.append(("seen_on", seen))
+    lines.append(("runs_on_it", found["hosted_count"] or None))
+    for mark in found["review"]:
+        about = f": {mark['about']['label']}" if mark["about"] else ""
+        lines.append(("to_review", f"{REVIEW_WORDS[mark['reason']]}{about}"))
+    return lines
+
+
+@items.command("hosted")
+def hosted(
+    item: Annotated[str, typer.Argument(help="An HID, serial number, asset tag or name.")],
+    retired: Annotated[bool, typer.Option("--retired", help="List the retired ones too.")] = False,
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """List what runs on an item, and beneath each what runs on that (P-246)."""
+    target = client.load_target(url, token)
+    found = find_item(target, item)
+    query = "?include_retired=true" if retired else ""
+    listed = client.call(target, "GET", f"/items/{found['hid']}/hosted{query}")
+    if format_ == "json":
+        typer.echo(json.dumps(listed, indent=2))
+        return
+    if not listed["items"]:
+        typer.echo(f"nothing runs on {_shown_name(found)}")
+        return
+    rows = [["name", "kind", "state", "address", "hid"]]
+    for one in listed["items"]:
+        shown = one["item"]
+        model = shown["catalog"]
+        address = shown["addresses"][0]["address"] if shown["addresses"] else ""
+        rows.append(
+            [
+                "  " * (one["depth"] - 1) + _shown_name(shown),
+                model["kind"] if model else "",
+                shown["lifecycle_state"] or "",
+                address,
+                shown["hid"],
+            ]
+        )
+    _table(rows)
 
 
 @items.command("transition")

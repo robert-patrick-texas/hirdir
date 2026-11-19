@@ -147,6 +147,9 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
         "purchase_line_mismatch": False,
         "registrations": [],
         "group_registrations": [],
+        # Nothing runs on it, and hardware is to be looked at for nothing (P-246, P-249).
+        "hosted_count": 0,
+        "review": [],
         # Connected to no circuit (P-147).
         "circuits": [],
     }
@@ -164,6 +167,8 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
     # But the flag not to renew, which a model always says, false unless said (D-182).
     flag = effective.pop("do_not_renew")
     assert (flag["value"], flag["source"], flag["source_hid"]) == (False, "catalog", entry["hid"])
+    # And the serial number shown, which is its own (P-246).
+    assert effective.pop("serial_number")["source"] == "own"
     assert all(value["source"] == "none" for value in effective.values())
 
 
