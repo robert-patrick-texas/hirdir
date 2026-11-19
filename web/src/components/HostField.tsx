@@ -63,8 +63,19 @@ async function findHosts(
       signal,
     }),
   ]);
+  // 0.9.8: the stack of a member found by its own name is offered beside it (P-252).
+  const named = new Set(groupPage.items.map((group) => group.hid));
+  const stacks: Array<{ hid: string; name: string; type: string }> = [];
+  for (const item of itemPage?.items ?? []) {
+    for (const group of item.groups) {
+      if (group.type !== "stack" || named.has(group.group_hid)) continue;
+      named.add(group.group_hid);
+      stacks.push({ hid: group.group_hid, name: group.name, type: group.type });
+    }
+  }
   sawHosts([
     ...groupPage.items.map((group) => ({ value: `group:${group.hid}`, name: group.name })),
+    ...stacks.map((group) => ({ value: `group:${group.hid}`, name: group.name })),
     ...(itemPage?.items ?? []).map((item) => ({ value: `item:${item.hid}`, name: itemName(item) })),
   ]);
   const options = [
@@ -72,6 +83,7 @@ async function findHosts(
       ...hostGroupOption(group),
       draft: group.record_status === "draft",
     })),
+    ...stacks.map((group) => hostGroupOption(group)),
     ...(itemPage?.items ?? [])
       .filter((item) => !exclude.includes(item.hid))
       .map((item) => ({ ...hostItemOption(item), draft: item.record_status === "draft" })),

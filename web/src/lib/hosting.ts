@@ -118,8 +118,20 @@ export function hostItemOption(item: {
   serial_number?: string | null;
   asset_tag?: string | null;
   catalog?: { pid: string } | null;
+  groups?: ReadonlyArray<{ type: string; name: string; position: number | null }>;
 }): Option {
   const pid = item.catalog?.pid ? ` · ${item.catalog.pid}` : "";
+  // 0.9.8: a current member of a stack is no host: named, it names its stack, and is what
+  // the item was seen on (P-252). Its line says so, as the picker of members says where
+  // a candidate stands (P-221).
+  const stack = item.groups?.find((group) => group.type === "stack");
+  if (stack) {
+    const position = stack.position === null ? "" : `, position ${stack.position}`;
+    return {
+      value: `item:${item.hid}`,
+      label: `${itemName(item)}${pid} · in the stack ${stack.name}${position}: names the stack ${stack.name} as the host`,
+    };
+  }
   return { value: `item:${item.hid}`, label: `${itemName(item)}${pid} · an item` };
 }
 
@@ -249,6 +261,46 @@ export function parentAsHostBody(item: {
     host_item_hid: item.parent_item_hid,
     parent_item_hid: null,
     ...(item.position ? { position: null } : {}),
+  };
+}
+
+/** Whether an item of a model of this kind is a virtual context. */
+export function isContext(kind: string | null | undefined): boolean {
+  return kind === "virtual_context";
+}
+
+/** What the form needs to say of the serial number of a virtual context (P-251). */
+export interface ContextSerialFacts {
+  kindOf: (entryHid: string) => string | null | undefined;
+  /** What the form held of the host when it was filled, and the host's serial number then. */
+  hostThen?: string;
+  hostSerial?: string | null;
+}
+
+/**
+ * The serial number of a virtual context in an item's form (P-251): with a host chosen it
+ * is not typed but shown, its host's; with none it may be typed, and says beneath it that
+ * it is its switch's and names its host.
+ */
+export function contextSerial(facts: ContextSerialFacts): Pick<FieldSpec, "shownAs" | "hintFrom"> {
+  const context = (values: FormValues) => {
+    const entry = values.catalog_entry_hid;
+    return typeof entry === "string" && entry !== "" && isContext(facts.kindOf(entry));
+  };
+  return {
+    shownAs: (values) => {
+      if (!context(values)) return undefined;
+      const host = values[HOST_FIELD];
+      if (typeof host !== "string" || host === "") return undefined;
+      if (host === facts.hostThen && facts.hostSerial) {
+        return `${facts.hostSerial}, the serial number of its host: a virtual context has none of its own.`;
+      }
+      return "Its host's, shown once it is saved: a virtual context has no serial number of its own.";
+    },
+    hintFrom: (values) =>
+      context(values)
+        ? "A virtual context has none of its own: this is its switch's, and names its host. Where one item has it, the context runs on that item; where none has, it is held until its switch is known."
+        : undefined,
   };
 }
 

@@ -43,6 +43,7 @@ import { formatMac, formatValue, itemName } from "../lib/format";
 import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
+  contextSerial,
   HOST_FIELD,
   hostClearedHint,
   hostPath,
@@ -1369,7 +1370,24 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         // 0.9.8: a model of a kind that runs on no host clears what it runs on (P-250).
         hintFrom: (values) => hostClearedHint(hosting, values),
       },
-      { name: "serial_number", label: "Serial number", kind: "text", maxLength: 100 },
+      {
+        name: "serial_number",
+        label: "Serial number",
+        kind: "text",
+        maxLength: 100,
+        // 0.9.8: a virtual context's is its host's, or names its host (P-251).
+        ...(item.is_major
+          ? contextSerial({
+              kindOf: hosting.kindOf,
+              hostThen: hostValue(item),
+              hostSerial:
+                item.effective.serial_number.source === "host" &&
+                typeof item.effective.serial_number.value === "string"
+                  ? item.effective.serial_number.value
+                  : null,
+            })
+          : {}),
+      },
       { name: "asset_tag", label: "Asset tag", kind: "text", maxLength: 100 },
       {
         name: "name",

@@ -61,8 +61,9 @@ function grouped(options: readonly Option[]): ReactNode {
 export function FormFields(props: FormFieldsProps) {
   const groups: Array<{ heading: string; specs: FieldSpec[] }> = [];
   for (const spec of props.specs) {
-    // A field the form does not ask for, given what it holds now, is not shown.
-    if (!asked(spec, props.values)) continue;
+    // A field the form does not ask for, given what it holds now, is not shown; one that is
+    // shown as text, to be read, is (P-251).
+    if (!asked(spec, props.values) && spec.shownAs?.(props.values) === undefined) continue;
     const last = groups.at(-1);
     if (!last || spec.heading !== undefined)
       groups.push({ heading: spec.heading ?? "", specs: [spec] });
@@ -88,6 +89,15 @@ export function FormFields(props: FormFieldsProps) {
 function inputs({ specs, values, onChange, errors, hints, disabled }: FormFieldsProps): ReactNode {
   return specs.map((spec) => {
     const { name, label, kind } = spec;
+    const shown = spec.shownAs?.(values);
+    if (shown !== undefined) {
+      return (
+        <div className="field" key={name} data-field={name} data-testid={`shown-${name}`}>
+          <span className="field-label">{label}</span>
+          <p className="field-value">{shown}</p>
+        </div>
+      );
+    }
     const value = values[name];
     const extra = spec.hintFrom?.(values);
     const said = hintOf(spec, value, hints?.[name]);

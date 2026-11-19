@@ -151,6 +151,7 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
       choices: REVIEW_STATUSES,
       hide: true,
     },
+    { id: "tags", header: "Tags", kind: "tags", value: (entry) => entry.tags.join(", ") },
     {
       id: "record_status",
       header: "Record status",
@@ -159,7 +160,6 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
       choices: RECORD_STATUSES,
       hide: true,
     },
-    { id: "tags", header: "Tags", kind: "tags", value: (entry) => entry.tags.join(", ") },
     {
       id: "updated_at",
       header: "Changed",

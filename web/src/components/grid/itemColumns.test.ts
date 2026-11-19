@@ -655,7 +655,9 @@ describe("the location, the site and the region in the item grid", () => {
     // since 0.9.6 the stack of a member among them (P-220).
     const width = shown.slice(0, 8).reduce((sum, one) => sum + (one.width ?? 200), 0);
     expect(shown[1]?.id).toBe("stack");
-    expect(shown[7]?.id).toBe("location.name");
+    // 0.9.8: Location, then Site, from the smallest outward (P-253).
+    expect(shown[6]?.id).toBe("location.name");
+    expect(shown[7]?.id).toBe("site");
     expect(width).toBeLessThanOrEqual(1250);
   });
 
@@ -663,12 +665,18 @@ describe("the location, the site and the region in the item grid", () => {
     const ids = COLUMNS.map((one) => one.id);
     expect(ids.slice(0, 2)).toEqual(["name", "hostname"]);
     expect(ids.indexOf("parent")).toBeLessThan(ids.indexOf("lifecycle_state"));
-    expect(ids.indexOf("planned_location")).toBe(ids.indexOf("location.name") + 1);
-    // 0.9.8: Runs on and To be looked at, turned on, stand after the places and before the
-    // operator, past the columns the owner asked to see at 1280 pixels (P-250).
-    expect(ids.slice(ids.indexOf("region") + 1, ids.indexOf("operator.label"))).toEqual([
+    // 0.9.8: the places from the smallest outward, then Runs on and To be looked at, then
+    // the people, Operator and Owner (P-253, P-250).
+    const from = ids.indexOf("location.name");
+    expect(ids.slice(from, from + 8)).toEqual([
+      "location.name",
+      "site",
+      "region",
+      "planned_location",
       "host.name",
       "review",
+      "operator.label",
+      "owner.label",
     ]);
     // Every column of the list is still there, once.
     expect(new Set(ids).size).toBe(ids.length);
@@ -957,8 +965,9 @@ describe("the columns a reader starts with", () => {
       "serial_number",
       "lifecycle_state",
       "health",
-      "site",
+      // 0.9.8: the place from the smallest outward (P-253).
       "location.name",
+      "site",
       "operator.label",
       "owner.label",
       "catalog.vendor",

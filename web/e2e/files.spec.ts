@@ -60,8 +60,9 @@ const SHOWN = [
   "serial_number",
   "lifecycle_state",
   "health",
-  "site",
+  // 0.9.8: the place from the smallest outward (P-253).
   "location",
+  "site",
   "operator",
   "owner",
   "vendor",

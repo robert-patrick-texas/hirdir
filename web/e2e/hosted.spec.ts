@@ -60,8 +60,25 @@ const container = host("ctr-dns1");
 const orphan = host("vm-orphan");
 const legacy = host("vm-legacy");
 const second = host("esx-02");
+// 0.9.8: a stack of two switches, and what runs on one (P-252).
+const stack = host("stk-1");
+const switches = [host("sw-01"), host("sw-02")];
+const onStack = host("ctr-app");
+// 0.9.8: a virtual context reported before its switch, which has its serial number (P-251).
+const vdcPid = `VDC-${id}`;
+const context = host("n7k-01-vdc2");
+const chassis = host("n7k-01");
+const chassisSerial = `N7K${id.slice(-6).toUpperCase()}`;
 
-const made: { server?: string; second?: string; cluster?: string } = {};
+const made: {
+  server?: string;
+  second?: string;
+  cluster?: string;
+  stack?: string;
+  vdc?: string;
+  box?: string;
+  ctrPid?: string;
+} = {};
 
 async function records(request: APIRequestContext, account: Account): Promise<void> {
   if (made.server !== undefined) return;
@@ -127,6 +144,49 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
   });
   // A machine that names no host, to be looked at.
   await make(request, headers, "/items", { catalog_entry_hid: vm, hostname: orphan });
+  // A stack of two switches.
+  const members: string[] = [];
+  for (const name of switches) {
+    members.push(
+      (
+        await make(request, headers, "/items", {
+          catalog_entry_hid: box,
+          hostname: name,
+          location_hid: roomHid,
+          lifecycle_state: "Prod",
+        })
+      ).hid,
+    );
+  }
+  made.stack = (
+    await make(request, headers, "/device-groups", {
+      type: "stack",
+      name: stack,
+      location_hid: roomHid,
+      members: members.map((hid, index) => ({
+        item_hid: hid,
+        role: "member",
+        position: index + 1,
+      })),
+    })
+  ).hid;
+  // A model of virtual contexts, and one context reported with its switch's serial number.
+  const vdc = (
+    await make(request, headers, "/catalog-entries", {
+      vendor_hid: vendor,
+      pid: vdcPid,
+      kind: "virtual_context",
+    })
+  ).hid;
+  made.vdc = (
+    await make(request, headers, "/items", {
+      catalog_entry_hid: vdc,
+      hostname: context,
+      serial_number: chassisSerial,
+    })
+  ).hid;
+  made.box = box;
+  made.ctrPid = `CTR-${id}`;
   made.cluster = (
     await make(request, headers, "/device-groups", {
       type: "cluster",
@@ -337,8 +397,8 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
     "serial_number",
     "lifecycle_state",
     "health",
-    "site",
     "location.name",
+    "site",
   ]) {
     await expect(
       grid.locator(`[role="columnheader"][col-id="${column}"]`),
@@ -351,7 +411,7 @@ test("the item list shows Runs on and To be looked at, and finds the items of a 
   ).toHaveAttribute("href", new RegExp(`/items/${made.server}$`));
   // What names no host is found by its reason, and says it in words.
   await page.goto(
-    `./items?filter=${encodeURIComponent(`hostname:prefix:${id} review:eq:no_host`)}`,
+    `./items?filter=${encodeURIComponent(`hostname:prefix:${id}-vm review:eq:no_host`)}`,
   );
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   await expect(
@@ -401,6 +461,97 @@ test("twelve virtual machines are moved to a cluster by one bulk edit", async ({
   await expect(place.getByRole("link", { name: `the group ${cluster}` })).toHaveAttribute(
     "href",
     new RegExp(`/groups/${made.cluster}$`),
+  );
+
+  await expectClean(page, seen);
+});
+
+test("a container given a member of a stack as its host runs on the stack, and was seen on the member (P-252)", async ({
+  page,
+  request,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = region(page, "New item");
+  await choose(
+    form,
+    "Catalog entry",
+    made.ctrPid ?? "",
+    made.ctrPid ?? "",
+    "Catalog entries that match",
+  );
+  await form.getByLabel("Hostname").fill(onStack);
+  // The member says it is in the stack, and that it names the stack; the stack is offered beside it.
+  const member = switches[1] ?? "";
+  await form.getByLabel("Host", { exact: true }).fill(member);
+  const offers = form.getByRole("list", { name: "Hosts that match" });
+  await expect(offers.getByRole("button", { name: `${stack} · a stack` })).toBeVisible();
+  const line = offers.getByRole("button", { name: new RegExp(`^${member} ·`) });
+  await expect(line).toContainText(`in the stack ${stack}, position 2: names the stack ${stack}`);
+  await line.click();
+  await form.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: onStack })).toBeVisible();
+  // The answer says the stack is the host, and the member what it was seen on.
+  const runsOn = page.getByTestId("runs-on");
+  await expect(runsOn.getByTestId("host-link")).toHaveText(stack);
+  await expect(runsOn.getByTestId("host-link")).toHaveAttribute(
+    "href",
+    new RegExp(`/groups/${made.stack}$`),
+  );
+  await expect(page.getByTestId("seen-on")).toContainText(member);
+  await expect(page.getByTestId("host-differs")).toHaveCount(0);
+
+  await expectClean(page, seen);
+});
+
+test("a virtual context reported before its switch is joined to it in one press, and shows its serial number as its host's (P-251)", async ({
+  page,
+  request,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const headers = await session(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItem(page, context);
+  const runsOn = page.getByTestId("runs-on");
+  await expect(runsOn).toHaveAttribute("data-review", "no_host");
+  // No item has its serial number yet.
+  await expect(page.getByTestId("serial-of")).toHaveCount(0);
+
+  // The switch is entered, and the context's page says it has that serial number.
+  const switchHid = (
+    await make(request, headers, "/items", {
+      catalog_entry_hid: made.box,
+      hostname: chassis,
+      serial_number: chassisSerial,
+      lifecycle_state: "Prod",
+    })
+  ).hid;
+  await page.reload();
+  const of = page.getByTestId("serial-of");
+  await expect(of).toContainText(`${chassisSerial} is the serial number of ${chassis}`);
+  await expect(of.getByRole("link", { name: chassis })).toHaveAttribute(
+    "href",
+    new RegExp(`/items/${switchHid}$`),
+  );
+  await of.getByRole("button", { name: "Make it its host" }).click();
+  await expect(runsOn.getByTestId("host-link")).toHaveText(chassis);
+  await expect(page.getByTestId("serial-from-host")).toContainText(chassisSerial);
+  // It holds none of its own now.
+  const now = (await (await request.get(`./api/v1/items/${made.vdc}`, { headers })).json()) as {
+    serial_number: string | null;
+  };
+  expect(now.serial_number).toBeNull();
+  // Its form shows the host's, not a box to type in.
+  await expect(region(page, "Details").getByTestId("shown-serial_number")).toContainText(
+    `${chassisSerial}, the serial number of its host`,
   );
 
   await expectClean(page, seen);
