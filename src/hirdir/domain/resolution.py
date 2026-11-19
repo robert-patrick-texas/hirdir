@@ -185,12 +185,13 @@ def _host_group_step(
     db: Session, name: str, group: DeviceGroup, gone: set[str], names: _Names
 ) -> Step:
     """Return the step of a stack or a cluster that something runs on: it answers as a
-    group does, with its own value or that of the group it is nested in (P-246)."""
+    group does, with its own value or that of the group it is nested in, and is a group's
+    step (P-246)."""
     if group.record_status == descent.RETIRED:
         # A retired group passes nothing down.
         own = getattr(group, name)
         return Step(
-            level="host",
+            level="device_group",
             hid=group.hid,
             name=group.name,
             value=own,
@@ -202,7 +203,7 @@ def _host_group_step(
     own = getattr(group, name)
     if found.value is None and own is not None and own in gone:
         return Step(
-            level="host",
+            level="device_group",
             hid=group.hid,
             name=group.name,
             value=own,
@@ -214,7 +215,7 @@ def _host_group_step(
     if found.value is not None and found.source_hid != group.hid:
         via = db.get(DeviceGroup, found.source_hid)
     return Step(
-        level="host",
+        level="device_group",
         hid=group.hid,
         name=group.name,
         value=found.value,

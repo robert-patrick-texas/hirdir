@@ -320,21 +320,20 @@ _THROUGH: dict[tuple[str, bool], Any] = {}
 def _through_hosts(field: str, live: Any = None) -> Any:
     """Return, as a table, each item that runs on a host with what it has from it in a
     field: `value`, `holder_hid`, the record that holds it, and `source`, `host` where
-    that is an item of the line of hosts or the group it runs on itself, and
-    `device_group` where it is a group of one of those items or a group the group it runs
-    on is nested in, as `hirdir.domain.descent.of_items` says."""
+    that is an item of the line of hosts, and `device_group` where it is a group: one of
+    those items is a member of, the stack or the cluster it runs on, or one that is
+    nested in, as `hirdir.domain.descent.of_items` says."""
     cached = (field, live is not None)
     if cached in _THROUGH:
         return _THROUGH[cached]
     steps: list[tuple[ColumnElement[Any], ColumnElement[Any], ColumnElement[Any]]] = []
     for hop, line in enumerate(_HOPS):
         group = _HOST_GROUPS[hop]
-        holder = _host_group_value(field, group, live, "holder_hid")
         steps.append(
             (
                 _host_group_value(field, group, live, "value"),
-                holder,
-                case((holder == group.hid, literal("host")), else_=literal(descent.SOURCE_GROUP)),
+                _host_group_value(field, group, live, "holder_hid"),
+                literal(descent.SOURCE_GROUP),
             )
         )
         for one in line:

@@ -288,11 +288,7 @@ def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -
     its_groups = _by_hid(
         db,
         DeviceGroup,
-        {
-            one.source_hid
-            for one in found.values()
-            if one.source in (operators.SOURCE_GROUP, inheritance.HOST)
-        },
+        {one.source_hid for one in found.values() if one.source == operators.SOURCE_GROUP},
     )
     named.update((hid, group.name) for hid, group in its_groups.items())
     atlas = geography.Atlas(db)

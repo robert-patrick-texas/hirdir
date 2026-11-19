@@ -53,8 +53,6 @@ class Effective:
 
 
 NOTHING = Effective(None, "none", None)
-# The source of what runs on a host has from what it runs on (P-246).
-HOST: Source = "host"
 
 
 STANDING = ("lifecycle_state", "disposition", "expected_online")
