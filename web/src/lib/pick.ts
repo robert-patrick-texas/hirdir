@@ -153,6 +153,8 @@ export interface PickableEntry {
   model_name?: string | null;
   vendor: { hid: string; name: string };
   record_status?: string;
+  /** 0.9.8: its kind, which says whether an item of it runs on a host (P-246). */
+  kind?: string;
 }
 
 // The most words of what was typed that are looked for.

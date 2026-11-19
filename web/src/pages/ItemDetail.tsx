@@ -10,6 +10,8 @@ import { ItemCoverage } from "../components/Coverage";
 import { FromAbove, InheritedFrom, OwnerNote, PlaceNote } from "../components/Descent";
 import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
+import { WhatRunsOnIt } from "../components/Hosted";
+import { HostFacts } from "../components/HostFacts";
 import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
 import { LinkList } from "../components/Links";
 import { MinorLine } from "../components/MinorLine";
@@ -40,6 +42,7 @@ import {
 import { formatMac, formatValue, itemName } from "../lib/format";
 import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { HOST_FIELD, hostPath, hostSpecs, hostValue, sentHost } from "../lib/hosting";
 import {
   DISPOSITIONS,
   dispositionsIn,
@@ -65,7 +68,7 @@ import {
 } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
-import { entryLabel } from "../lib/pick";
+import { entryLabel, entrySeen, pickLabel } from "../lib/pick";
 import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { itemRetiredText } from "../lib/removal";
@@ -213,6 +216,13 @@ export function ItemDetail() {
             onChanged={changed}
           />
           <Memberships item={record} />
+          {/* 0.9.8: what runs on it, and on those (P-250). */}
+          <WhatRunsOnIt
+            of="item"
+            hid={record.hid}
+            count={record.hosted_count}
+            version={String(record.row_version)}
+          />
           {/* 0.8.0: the circuits it is connected to, each with its side (P-147). */}
           <ConnectedCircuits circuits={record.circuits} whose={itemName(record)} />
           {/*
@@ -432,11 +442,14 @@ function ChangeLink({
   field,
   label,
   within = 'section[aria-labelledby="details"]',
+  text,
 }: {
   field: string;
   label: string;
   /** The form the field is in: the form of details, or that of a move (P-189). */
   within?: string;
+  /** What it says, where Change would not: "Name its host". */
+  text?: string;
 }) {
   function go() {
     const until = performance.now() + CHANGE_WAIT;
@@ -462,7 +475,11 @@ function ChangeLink({
   }
   return (
     <button type="button" className="change-link" data-change={field} onClick={go}>
-      Change<span className="visually-hidden"> the {label.toLowerCase()}</span>
+      {text ?? (
+        <>
+          Change<span className="visually-hidden"> the {label.toLowerCase()}</span>
+        </>
+      )}
     </button>
   );
 }
@@ -492,6 +509,9 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
   const locationInherited = isFromAbove(location);
   const planned = item.effective.planned_location_hid;
   const standing = standingOf(item);
+  const serial = item.effective.serial_number;
+  const serialFromHost =
+    serial.source === "host" && typeof serial.value === "string" ? serial.value : "";
   return (
     <section aria-labelledby="identity">
       <h2 id="identity">Identity</h2>
@@ -499,10 +519,39 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
         <Fact label="Name">{item.name}</Fact>
         {/* 0.9.6: the stack it is a member of, with the stack's names, or Join a stack (P-222). */}
         <StackFacts item={item} mayChange={mayChange} onChanged={onChanged} />
+        {/* 0.9.8: what it runs on and what it was seen on, where it is of such a kind (P-250). */}
+        <HostFacts
+          item={item}
+          change={
+            mayChange && (
+              <ChangeLink
+                field={HOST_FIELD}
+                label="Host"
+                {...(item.host ? {} : { text: "Name its host" })}
+              />
+            )
+          }
+        />
         <Fact label="Hostname">{item.hostname}</Fact>
         <Fact label="FQDN">{item.fqdn}</Fact>
         <Fact label="Serial number">
-          {item.serial_number && <span className="mono">{item.serial_number}</span>}
+          {item.serial_number ? (
+            <span className="mono">{item.serial_number}</span>
+          ) : (
+            // 0.9.8: a virtual context shows the serial number of its host (P-246).
+            serialFromHost && (
+              <span data-testid="serial-from-host" data-source="host">
+                <span className="mono">{serialFromHost}</span>
+                <InheritedFrom
+                  from={
+                    item.host
+                      ? { text: `the host ${item.host.name}`, path: hostPath(item.host) }
+                      : null
+                  }
+                />
+              </span>
+            )
+          )}
         </Fact>
         <Fact label="Asset tag">{item.asset_tag}</Fact>
         <Fact label="MAC address">
@@ -571,7 +620,7 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
           </Fact>
         )}
         <Fact label="Operator" change={mayChange && "operator_hid"}>
-          <Operator effective={item.effective.operator_hid} testId="operator" />
+          <Operator effective={item.effective.operator_hid} testId="operator" host={item.host} />
         </Fact>
         <Fact
           label="Location"
@@ -594,7 +643,7 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
               >
                 {effectiveLabel(location)}
               </Link>
-              <FromAbove effective={location} />
+              <FromAbove effective={location} host={item.host} />
             </span>
           )}
         </Fact>
@@ -632,7 +681,7 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
               </Link>
               , when that place is made active
             </span>
-            <FromAbove effective={planned} />
+            <FromAbove effective={planned} host={item.host} />
           </Fact>
         )}
         {/* 0.9.5: the standing among the first facts, with Change to a move (P-189). */}
@@ -882,8 +931,8 @@ function ValuesInForce({ item }: { item: Item }) {
       >
         <p className="hint" id="walks-intro">
           The records it looks at in their order, its own first, then its own groups, the item it is
-          in and that item's groups, and for the operator where it is. The first that holds a value
-          decides, and those after it are passed over.
+          in and that item's groups, or what it runs on and that one's groups, and for the operator
+          where it is. The first that holds a value decides, and those after it are passed over.
         </p>
       </WhyEachValue>
     </section>
@@ -1312,6 +1361,18 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         hint: "In any common notation",
       },
       { name: "quantity", label: "Quantity", kind: "integer", hint: "Seats or licences" },
+      // 0.9.8: what it runs on, where its model is of a kind that does (P-250).
+      ...(item.is_major
+        ? hostSpecs({
+            kindOf: (hid) =>
+              hid === catalog?.hid ? catalog.kind : (entrySeen(hid)?.kind ?? undefined),
+            host: item.host,
+            observed: item.observed_host
+              ? { hid: item.observed_host.hid, label: pickLabel(item.observed_host) }
+              : null,
+            self: item.hid,
+          })
+        : []),
       {
         name: "owner_hid",
         label: "Owner",
@@ -1437,7 +1498,11 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   const notes = {
     ...(item.operator_hid
       ? {}
-      : { operator_hid: <OperatorNote effective={item.effective.operator_hid} what="item" /> }),
+      : {
+          operator_hid: (
+            <OperatorNote effective={item.effective.operator_hid} what="item" host={item.host} />
+          ),
+        }),
     ...(isFromAbove(item.effective.owner_hid)
       ? {
           owner_hid: (
@@ -1452,14 +1517,24 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
     ...(isFromAbove(item.effective.location_hid)
       ? {
           location_hid: (
-            <PlaceNote kind="location" effective={item.effective.location_hid} what="item" />
+            <PlaceNote
+              kind="location"
+              effective={item.effective.location_hid}
+              what="item"
+              host={item.host}
+            />
           ),
         }
       : {}),
     ...(isFromAbove(item.effective.planned_location_hid)
       ? {
           planned_location_hid: (
-            <PlaceNote kind="planned" effective={item.effective.planned_location_hid} what="item" />
+            <PlaceNote
+              kind="planned"
+              effective={item.effective.planned_location_hid}
+              what="item"
+              host={item.host}
+            />
           ),
         }
       : {}),
@@ -1472,13 +1547,17 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       <Problem error={owners.error ?? tags.error} />
       {!ready && <p role="status">Loading…</p>}
       {ready && (
-        <EditForm<Item, Schemas["ItemPatch"]>
+        <EditForm<Item & { [HOST_FIELD]: string }, Schemas["ItemPatch"]>
           specs={specs}
-          record={item}
+          // 0.9.8: what it runs on as one field, an item or a group (P-250).
+          record={{ ...item, [HOST_FIELD]: hostValue(item) }}
           hints={hints}
           notes={notes}
           save={(body) =>
-            api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body })
+            api.request("patch", "/api/v1/items/{hid}", {
+              path: { hid: item.hid },
+              body: sentHost(body),
+            })
           }
           onSaved={onSaved}
           onReload={onReload}

@@ -6,6 +6,7 @@
 
 import type { Schemas } from "../api/client";
 import { itemsPath } from "./filter";
+import { type HostLink, hostSourcePath } from "./hosting";
 import { operatorSource } from "./operators";
 
 /** A location in force, or a planned one: the value is its HID, the label its path. */
@@ -31,6 +32,10 @@ interface Sourced {
 export interface Named {
   hid: string;
   name: string | null;
+  /** 0.9.8: what the record runs on, which a value may come from (P-246). */
+  host?: boolean;
+  /** Of what it runs on: a stack or a cluster, not an item. */
+  group?: boolean;
 }
 
 /** True for a value that the record has from the record above it. */
@@ -47,18 +52,24 @@ export function isFromAbove(effective: Sourced | null | undefined): boolean {
  * The item or the group a location in force came from, by the name the server sends
  * with it. Null for a location of the record's own, and for none.
  */
-export function placeSource(effective: PlaceInForce | null | undefined): SourceRecord | null {
+export function placeSource(
+  effective: PlaceInForce | null | undefined,
+  host: HostLink = null,
+): SourceRecord | null {
   if (!effective || !isFromAbove(effective)) return null;
-  return operatorSource(effective);
+  return operatorSource(effective, host);
 }
 
 /**
  * What more there is to say of a location in force than its name: its whole path, and
  * the item or the group it came from when it is not the record's own. Blank for none.
  */
-export function locationHint(effective: PlaceInForce | null | undefined): string {
+export function locationHint(
+  effective: PlaceInForce | null | undefined,
+  host: HostLink = null,
+): string {
   if (!effective || effective.value === null) return "";
-  const from = placeSource(effective);
+  const from = placeSource(effective, host);
   const inherited = isFromAbove(effective) ? `Inherited${from ? ` from ${from.text}` : ""}` : "";
   return [effective.label ?? "", inherited].filter(Boolean).join(" · ");
 }
@@ -88,17 +99,35 @@ export function ownerSource(
       path: `/groups/${encodeURIComponent(hid)}`,
     };
   }
+  // 0.9.8: from what it runs on, or from an item above that (P-246).
+  if (effective.source === "host") {
+    const host = known.find((one) => one.host);
+    const group = host?.hid === hid && host.group === true;
+    return {
+      text: name ? `the host ${name}` : "what it runs on",
+      path: hostSourcePath(hid, group ? { item_hid: null, group_hid: hid } : null),
+    };
+  }
   return null;
 }
 
-/** The records above an item that the item itself names: its parent, and its groups. */
+/**
+ * The records above an item that the item itself names: its parent, its groups, and 0.9.8
+ * what it runs on (P-246).
+ */
 export function knownAbove(item: {
   parent: Named | null;
   groups: ReadonlyArray<{ group_hid: string; name: string }>;
+  host?: { item_hid: string | null; group_hid: string | null; name: string } | null;
 }): Named[] {
+  const host = item.host;
+  const hostHid = host ? (host.group_hid ?? host.item_hid) : null;
   return [
     ...(item.parent ? [{ hid: item.parent.hid, name: item.parent.name }] : []),
     ...item.groups.map((member) => ({ hid: member.group_hid, name: member.name })),
+    ...(host && hostHid
+      ? [{ hid: hostHid, name: host.name, host: true, group: host.group_hid !== null }]
+      : []),
   ];
 }
 
@@ -111,9 +140,12 @@ export function inheritedHint(from: SourceRecord | null): string {
 export function aboveItem(item: {
   parent_item_hid: string | null;
   groups: readonly unknown[];
+  host?: unknown;
 }): string {
   if (item.parent_item_hid) return "the item it is in";
-  return item.groups.length > 0 ? "its group" : "";
+  if (item.groups.length > 0) return "its group";
+  // 0.9.8: what it runs on (P-246).
+  return item.host ? "what it runs on" : "";
 }
 
 /** What stands above a device group, in words: blank for one that is nested in none. */

@@ -33,7 +33,16 @@ export type FieldKind =
   /** An operator, found by its label or by the person behind it. What the form holds is its HID. */
   | "operator"
   /** 0.9.6: a catalog entry, found by its PID, model name or vendor (P-200). Its HID. */
-  | "entry";
+  | "entry"
+  /**
+   * 0.9.8: what an item runs on, an item or a stack or a cluster, found by its name
+   * (P-250). What the form holds is `item:<hid>` or `group:<hid>`.
+   */
+  | "host"
+  /** 0.9.8: an item, found by its name, serial number or asset tag. Its HID. */
+  | "item"
+  /** 0.9.8: a moment, a day and a time of day where the person is. Sent with its zone. */
+  | "moment";
 
 export interface Option {
   value: string;
@@ -83,6 +92,16 @@ export interface FieldSpec {
    * refuse beside one.
    */
   clearedWhenNotAsked?: boolean;
+  /**
+   * 0.9.8: the fields of the request this one is sent as, where they are not its name:
+   * a refusal of any of them is shown beside it (P-250).
+   */
+  aliases?: readonly string[];
+  /**
+   * 0.9.8: what else the form fills when this field is changed, which the person may
+   * change after: the moment an item was seen, filled with now as the item is chosen.
+   */
+  fills?: (value: FormValue) => FormValues;
 }
 
 export type FormValue = string | boolean | string[];
@@ -121,9 +140,54 @@ function list(value: unknown): string[] {
   return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
 }
 
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** A moment as a box for a day and a time takes it, where the person is: to the minute. */
+export function localMoment(at: string | Date | null | undefined): string {
+  if (at === null || at === undefined || at === "") return "";
+  const moment = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(moment.getTime())) return "";
+  const day = `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}`;
+  return `${day}T${pad(moment.getHours())}:${pad(moment.getMinutes())}`;
+}
+
+/** What a form holds once a field is changed: the field, and what it fills. */
+export function changedValues(
+  specs: readonly FieldSpec[],
+  values: FormValues,
+  name: string,
+  value: FormValue,
+): FormValues {
+  const fills = specs.find((spec) => spec.name === name)?.fills;
+  return { ...values, [name]: value, ...(fills ? fills(value) : {}) };
+}
+
+/** The names of the request a form's fields are sent as: their own, and their aliases. */
+export function sentNames(specs: readonly FieldSpec[]): string[] {
+  return specs.flatMap((spec) => [spec.name, ...(spec.aliases ?? [])]);
+}
+
+/** A refusal by the names of the request, put at the fields that are sent as them. */
+export function atFields(
+  specs: readonly FieldSpec[],
+  shown: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const at: Record<string, string> = {};
+  for (const [name, message] of Object.entries(shown)) {
+    const spec = specs.find((one) => one.name === name || one.aliases?.includes(name));
+    const field = spec?.name ?? name;
+    at[field] = at[field] === undefined ? message : `${at[field]}; ${message}`;
+  }
+  return at;
+}
+
 /** The value a form field starts with, for a record or for nothing. */
 function initial(spec: FieldSpec, stored: unknown): FormValue {
   switch (spec.kind) {
+    case "moment":
+      return typeof stored === "string" ? localMoment(stored) : "";
     case "boolean":
       return stored === true;
     case "tristate":
@@ -198,6 +262,14 @@ export function read(spec: FieldSpec, value: FormValue | undefined): Read {
   if (spec.kind === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(typed)) {
     return { error: "A date, as YYYY-MM-DD." };
   }
+  if (spec.kind === "moment") {
+    const shaped = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(typed);
+    const moment = shaped ? new Date(typed) : null;
+    if (moment === null || Number.isNaN(moment.getTime())) {
+      return { error: "A day and a time of day." };
+    }
+    return { value: moment.toISOString() };
+  }
   return { value: typed };
 }
 
@@ -212,6 +284,12 @@ function unchanged(spec: FieldSpec, stored: unknown, wanted: unknown): boolean {
     case "decimal":
       if (typeof stored === "string" && typeof wanted === "string") {
         return canonicalDecimal(stored) === canonicalDecimal(wanted);
+      }
+      break;
+    case "moment":
+      // To the minute, as the box shows it.
+      if (typeof stored === "string" && typeof wanted === "string") {
+        return localMoment(stored) === localMoment(wanted);
       }
       break;
     default:

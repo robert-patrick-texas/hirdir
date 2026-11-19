@@ -16,11 +16,13 @@ import {
   bulkRows,
   CATALOG_ENTRY,
   type EntryRef,
+  HOST,
   LIFECYCLE_STATE,
 } from "../lib/bulk";
 import { plural } from "../lib/format";
 import { CONDITION_LIST, OBSERVED_CHOICES } from "../lib/health";
 import { toApiError } from "../lib/hooks";
+import { hostSeen } from "../lib/hosting";
 import { Keys, withKey } from "../lib/idempotency";
 import { useOwnerOptions, useTags } from "../lib/lists";
 import { choiceOptions, SETTABLE_STATUSES } from "../lib/options";
@@ -76,6 +78,15 @@ function bulkFields(
       // 0.9.6: searched for, not a list of every model (P-200).
       kind: "entry",
       blank: "None chosen yet",
+    },
+    {
+      // 0.9.8: another host for the rows ticked, searched for as in an item's form (P-250).
+      name: HOST,
+      label: "Host",
+      kind: "host",
+      blank: "None chosen yet",
+      clearable: true,
+      hint: "What each item runs on: an item, or a stack or a cluster. Only an item of a kind that runs on a host takes one; another is rejected. Cleared, an item names no host and is marked to be looked at.",
     },
     {
       name: "owner",
@@ -207,6 +218,17 @@ function entryRefs(lines: readonly BulkLine[]): Record<string, EntryRef> {
   return refs;
 }
 
+/** The names of the stacks and clusters a host line names, as the search noted them. */
+function hostNames(lines: readonly BulkLine[]): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const line of lines) {
+    if (line.name !== HOST || typeof line.value !== "string") continue;
+    const name = hostSeen(line.value);
+    if (name) names[line.value] = name;
+  }
+  return names;
+}
+
 interface BulkEditProps {
   /** The rows to change: the ones selected, or all that the filter keeps. */
   rows: Chosen;
@@ -248,12 +270,23 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
     { lines, reason, addTags, removeTags },
     bulkRows(rows, view),
     entryRefs(lines),
+    hostNames(lines),
   );
-  const names = [...lines.map((line) => line.name), "vendor", "pid", "add_tags", "remove_tags"];
+  const names = [
+    ...lines.map((line) => line.name),
+    "vendor",
+    "pid",
+    "host_group",
+    "add_tags",
+    "remove_tags",
+  ];
   const refused = fieldErrors(error, names).shown;
   const said: Record<string, string> = { ...refused, ...found };
   const entryError = [said[CATALOG_ENTRY], refused.vendor, refused.pid].filter(Boolean).join("; ");
   if (entryError) said[CATALOG_ENTRY] = entryError;
+  // 0.9.8: a host is sent as `host` or `host_group`; either is refused at its line.
+  const hostError = [said[HOST], refused.host_group].filter(Boolean).join("; ");
+  if (hostError) said[HOST] = hostError;
   const unused = fields.filter((field) => !lines.some((line) => line.name === field.name));
 
   function forget(name: string) {

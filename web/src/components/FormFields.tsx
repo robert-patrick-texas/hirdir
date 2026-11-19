@@ -10,6 +10,7 @@ import {
 import { ContactField } from "./ContactField";
 import { EntryField } from "./EntryField";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
+import { HostField, ItemField } from "./HostField";
 import { LocationField } from "./LocationField";
 import { OperatorField } from "./OperatorField";
 import { PlannedLocationField } from "./PlannedLocationField";
@@ -173,6 +174,22 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             {...(spec.required === undefined ? {} : { required: spec.required })}
           />
         );
+      case "host":
+      case "item": {
+        // 0.9.8: what an item runs on, and what it was seen on (P-250).
+        const Picker = kind === "host" ? HostField : ItemField;
+        return (
+          <Picker
+            key={name}
+            {...shared}
+            value={text}
+            onChange={(next) => onChange(name, next)}
+            known={spec.options ?? []}
+            {...(spec.blank === undefined ? {} : { blank: spec.blank })}
+            {...(spec.exclude === undefined ? {} : { exclude: spec.exclude })}
+          />
+        );
+      }
       case "operator":
         return (
           <OperatorField
@@ -223,7 +240,7 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             key={name}
             {...shared}
             {...more}
-            type={kind === "date" ? "date" : "text"}
+            type={kind === "date" ? "date" : kind === "moment" ? "datetime-local" : "text"}
             {...(kind === "integer" ? { inputMode: "numeric" as const } : {})}
             {...(kind === "decimal" ? { inputMode: "decimal" as const } : {})}
             autoComplete="off"
