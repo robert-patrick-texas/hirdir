@@ -846,7 +846,8 @@ starts in a week that has no record of the capacity balance: one `create` of a
 `capacity_record` that the system makes, which every upgrade allows for, by name and at
 most once. Where there is a migration, each must have every column it had, as it was,
 and after them the columns that the migration is said to add and no other; the indexes,
-uniquenesses and foreign keys likewise; and every row must hold what it held in the
+uniquenesses and foreign keys likewise, but for those it is said to drop, which must be
+gone; and every row must hold what it held in the
 columns it had.
 
 **What one upgrade alone has** is kept apart from all of that, in
@@ -867,7 +868,8 @@ what it made. The third runs in the upgrade pass alone, last: it tries what is n
 what was carried over. What is meant to change is named, never implied: the fields of
 records, each by HID and field, which the comparison passes over; the rows of a table,
 by HID, which the comparison of its rows leaves out; the columns, indexes and foreign
-keys that the migration adds to a table, which must be there and no other; the columns
+keys that the migration adds to a table, which must be there and no other; the indexes,
+uniquenesses and foreign keys that it drops, which must be gone; the columns
 that it declares otherwise, each in its place, such as one that may now be blank; the
 columns that it drops, which must be gone, the rows then being compared in the columns
 that are left; tables that hold what a site made and are no part of the inventory, which the
@@ -1208,9 +1210,11 @@ locations and the operators that its rows refer to, and loaded a list, and migra
 the jobs that were applied, and created three tables, and migration `0010` has made
 the three tables of places anew and created seven tables, and all of that has to be
 undone.
-Where it creates none, as 0.4.1 and 0.9.3 create none, a trigger is put on
-`alembic_version` that refuses any change to it. Writing the new revision into that
-table is the last thing a migration does, so for migration `0006` the failure comes
+Where it creates none, as 0.4.1, 0.9.3 and 0.9.8 create none, a trigger is put on
+`alembic_version` that refuses to write the revision of the new version into it.
+Writing its revision into that table is the last thing a migration does, so where the
+upgrade runs several, every one of them is done by then. For migration `0006` the
+failure comes
 when the columns are added, the `device_groups` table is made anew, the clusters are
 marked, the conditions are loaded and the memberships of the items that are Released are
 ended, each with its audit event, and all of that has to be undone: the pass looks for
@@ -1218,7 +1222,11 @@ the rows of the members as they were, and for an audit trail with no event more.
 migration `0012` it comes when `users` has been made anew twice, contacts made and
 users given them, with their audit events, two columns dropped, `external_systems`
 made anew and a list loaded: the pass looks for `users`, `contacts` and
-`external_systems` with the columns and the rows they had. The
+`external_systems` with the columns and the rows they had. For the upgrade to 0.9.8 it
+comes when migration `0013` has made `item_replacements` anew with its new uniqueness
+and indexes, and migration `0014` has made `items` and `import_jobs` anew with their
+columns: the pass looks for the three with the columns, the keys and the rows they had.
+The
 trigger disturbs nothing else: the previous release serves with it in place, and the
 backup that the upgrade takes holds it. The file of a migration may ask for the trigger
 though the migration creates a table, for one that creates its tables before it changes

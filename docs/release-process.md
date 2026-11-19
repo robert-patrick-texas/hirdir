@@ -124,7 +124,8 @@ what the release is:
   change in what a site has. It names what is meant to change, so that the comparison
   leaves it out by name, and looks at it by itself after the upgrade. It names the
   columns, indexes and foreign keys that the migration adds to the tables of the
-  inventory, which must then be there, and no other. `migration-0006.sh` is the one to
+  inventory, which must then be there, and no other, and those it drops, which must
+  then be gone, as the two uniquenesses of `item_replacements` that `0013` drops. `migration-0006.sh` is the one to
   read first: for 0.4.1 it is the memberships of items that had left the team's hands,
   which the upgrade ends, each with an event in the audit trail. For 0.5.0 it is
   `migration-0007.sh`: the migration is to change no record and to write no event, so
@@ -211,7 +212,10 @@ in its way, as `owner_members` is for 0.5.0, `capacity_lines` for 0.6.0,
 `capacity_records` for 0.7.0 and `circuit_group_members` for 0.8.0. Where it creates
 none, as 0.4.1 creates none, a trigger refuses the new
 revision when the migration comes to write it down, which is the last thing a
-migration does, so everything else it does has been done and must be undone. Only a
+migration does, so everything else it does has been done and must be undone. It
+refuses the revision of the new version alone, so that in an upgrade that runs several
+migrations, as the upgrade to 0.9.8 runs `0013` and `0014`, the earlier ones are done
+by then too, and undone with the rest. Only a
 release with no migration at all has nothing that could fail: nothing writes a
 revision, so the trigger would never be asked. The pass then says so in a `SKIP` line,
 which stays in the summary of such a release, as it does for 0.4.2, and is read as
