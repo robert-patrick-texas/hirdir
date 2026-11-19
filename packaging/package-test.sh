@@ -639,8 +639,16 @@ wait_ready() {
 # and restarted with it. Nothing here names a release: what is asked of the second unit
 # is asked of a package that has it, and of an installation that has it.
 
-# ships_worker DEB: whether a package has the unit of the background work.
-ships_worker() { dpkg-deb -c "$1" | grep -q '/usr/lib/systemd/system/hirdir-worker\.service$'; }
+# ships_worker DEB: whether a package has the unit of the background work. The list of
+# its files is read to its end, and once for each package: a reader that stops at the
+# first match ends dpkg-deb with a broken pipe, which this script takes for a failure.
+declare -A worker_shipped=()
+ships_worker() {
+    if [ -z "${worker_shipped[$1]:-}" ]; then
+        worker_shipped[$1]=$(dpkg-deb -c "$1" | grep -c '/usr/lib/systemd/system/hirdir-worker\.service$' || true)
+    fi
+    [ "${worker_shipped[$1]}" -gt 0 ]
+}
 
 # Whether the installation in the container has it.
 has_worker() { inside test -e /usr/lib/systemd/system/hirdir-worker.service; }
