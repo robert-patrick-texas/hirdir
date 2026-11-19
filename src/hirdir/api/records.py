@@ -4831,5 +4831,8 @@ class OperatorAssignments(Model):
     places: list[OperatorPlace]
     groups: list[OperatorGroup]
     own: ItemCount = Field(description="The items given it as their own.")
-    from_item: ItemCount = Field(description="The minor items that have it from the item above.")
+    from_item: ItemCount = Field(
+        description="The items that have it from an item above them: the one they are "
+        "installed in, or the one they run on (P-246)."
+    )
     totals: ItemCount = Field(description="Every item it is in force for.")

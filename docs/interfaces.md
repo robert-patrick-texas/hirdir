@@ -197,8 +197,10 @@ from that place, `places_beneath`, the places beneath it that have it from there
 `exceptions`, the items beneath it that have another operator; `groups`, each group given
 it as its own, with `type`, `items`, `groups_beneath` and `exceptions`, the items under it,
 at any depth of nesting, that have another; `own`, the items given it as
-their own, and `from_item`, the minor items that have it from the item they are in; and
-`totals`. Every count has `filter`, the filter of the item list that lists those items,
+their own, and `from_item`, the items that have it from an item above them, the one they
+are installed in or the one they run on (P-246), by `effective.operator_hid.source:in:parent_item,host`;
+and `totals`, which the parts add up to. The column `from_item` of `GET
+/reports/summary?by=operator` counts the same. Every count has `filter`, the filter of the item list that lists those items,
 by `effective.operator_hid`, `effective.operator_hid.source` and
 `effective.operator_hid.source_hid`. It takes `include_drafts` and `include_archived` as
 the item list does, and lists at most 20 places and 20 groups beneath each, with how many

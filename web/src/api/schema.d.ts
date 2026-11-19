@@ -11863,7 +11863,7 @@ export interface components {
     };
     /** What an operator is on, and how: what the page of an operator draws. */
     OperatorAssignments: {
-      /** The minor items that have it from the item above. */
+      /** The items that have it from an item above them: the one they are installed in, or the one they run on (P-246). */
       from_item: components["schemas"]["ItemCount"];
       groups: components["schemas"]["OperatorGroup"][];
       operator_hid: string;
