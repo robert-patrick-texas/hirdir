@@ -1594,10 +1594,58 @@ upgrade says nothing of it.
   0. After the upgrade all of them are empty: no item has a host, and no import was
   read from a system.
 
-<!-- STAGE TWO: what a person sees of what runs on a host and of an import read from
-a system (P-246 to P-250), written when that code is merged. -->
+Every item of 0.9.7 answers with no host, nothing that runs on it, and nothing to be
+looked at, but for one case: **an item of a model of the kind `virtual_machine` is
+marked to be looked at, `no_host`**, because it names no host. That includes one that
+was entered as installed in its server, as a minor item of it. The counts are as they
+were: `count_kinds` gains `virtual_context` and `container`, which no model has yet.
 
 What is new, for the work of each day:
+
+- **What runs on another is an item that names its host.** A model may be of the kind
+  Virtual context or Container, beside Virtual machine. An item of those three kinds
+  names what it runs on, an item or a stack or a cluster, and what it was seen on. It
+  has its location, planned location, owner and operator from its host where it has
+  none of its own. Its page says Runs on, and the page of a host lists What runs on it.
+- **What runs on a stack runs on the stack.** A member of a stack named as a host
+  stands for its stack, and is kept as what the item was seen on. A switch that joins
+  a stack, or is made one, hands what runs on it to the stack.
+- **A virtual context shows its switch's serial number.** The serial number given for
+  one names its switch, which becomes its host, and is not kept on the context.
+- **Retiring a host retires what runs on it.** Retire lists them first and asks. A
+  stack or a cluster that something runs on is not retired until each is given
+  another host or retired. A replacement hands what runs on the item that left to the
+  item that came, unless its box is unticked.
+- **An import may be read from an external system.** The import of items has Read
+  from, a system, and its rows `external_id`, that system's identifier of each: a
+  thing renamed or moved in the tool is the same record. With This file is everything
+  it reports, an item the system no longer reports is marked Not reported, and is
+  neither retired nor changed otherwise. A file that only confirms what is there, as
+  a nightly file of a tool mostly does, writes one audit event for the import, not one
+  for each thing it confirms.
+- **What is to be looked at says so.** An item lists why it is to be looked at: no
+  host, a host that is gone, or not reported by a system. The item list filters by it,
+  and the first page counts them, each reason a link to the list.
+- **Like columns stand in one order on every list**: Location, Site, Region, Planned
+  location, then Operator, Owner. A field that must be filled says so in amber.
+
+What to do after the upgrade:
+
+- **Virtual machines entered before 0.9.8.** One of a model of the kind Virtual
+  machine is now on the first page's count of what is to be looked at: name its host.
+  One whose model was entered as hardware is not marked: give the model the kind
+  Virtual machine, or Virtual context or Container, and then name the host. A machine
+  entered as installed in its server is put
+  right in one change, which takes it out of the server and names the server as its
+  host: one press on its page, or a file of items with `host` and `parent` `!clear` on
+  its row.
+- **`count_kinds`.** An installation that never set it counts virtual contexts and
+  containers from now on. One that set it itself keeps what it set, and adds
+  `virtual_context` and `container` there, under Admin, Settings, where it wants them
+  counted.
+- **The columns of the lists.** A browser that kept a layout of a list, from the first
+  time its person sorted, filtered or moved a column, keeps the old order until Reset
+  layout and filters, under the list. Everyone else sees the new order.
 
 - **An item is replaced, and takes another's place, as often as that happens.** A spare
   that took a place goes back to the pool and takes another. A switch that comes back
@@ -1627,11 +1675,17 @@ of each. `POST /items/{hid}/replace` takes `drop_identity`, `disposition`,
 name its `condition`. A script that expected `409` for a replacement of an item that was
 replaced, or by one that took a place, now gets the replacement made. A row of a file of
 replacements is matched by its HID, or by its two items and its day, no longer by the
-item that left.
+item that left. An item answers `host_item_hid`, `host_group_hid`, `observed_host_hid`,
+`host_observed_at`, `host`, `observed_host`, `host_differs`, `hosted_count` and
+`review`; `GET /items/{hid}/hosted` and `GET /device-groups/{hid}/hosted` are new;
+`POST /items/retire` takes `dry_run` and answers `hosted`; and `POST /imports/preview`
+takes `system` and `complete`, the job answering both and `not_reported`. A script that
+retires an item that something runs on now retires that too.
 
 Going back to 0.9.7 is by the backup the upgrade took, as under
 [Going back to the release before](#going-back-to-the-release-before). Everything
-entered since is lost, including any second replacement of an item.
+entered since is lost, including any second replacement of an item and every host
+named.
 
 ### If the upgrade stops
 
