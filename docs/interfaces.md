@@ -622,8 +622,11 @@ them.
   left out, it is true. Where something is to be handed over and the item that comes may
   not be a host, being of a kind that hosts nothing, retired, or out of the team's hands,
   the replacement is refused, a `422` on `hand_over_hosted` that says why and how many
-  run on the item that leaves, and nothing of it is done. `observed_host_hid` of what
-  runs on it is left as it is: it is what was seen.
+  run on the item that leaves, and nothing of it is done. The hand-over is done with the
+  request, as all that a replacement changes of either item is: with a `replaced_on` to
+  come, where something runs on the item that leaves and `hand_over_hosted` is not false,
+  the replacement is refused, a `422` on `replaced_on` that names `hand_over_hosted`.
+  `observed_host_hid` of what runs on it is left as it is: it is what was seen.
 - **Two requests at once.** Retiring an item and naming it as a host each take the one
   writer's place before they look, so the second sees what the first stored: a host
   retired first is refused as the host of a change that comes after, and an item given
