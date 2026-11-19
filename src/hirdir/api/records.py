@@ -4616,6 +4616,11 @@ class ImportJobOut(Model):
         "rejected rows were left out by skip_rejected; `stale` where a row was left out "
         "because its record changed since the preview. Null where nothing holds it."
     )
+    not_reported_first: list[RecordLabel] = Field(
+        description="Of a `complete` import that is not applied yet: the first ten items it "
+        "would mark `not_reported`, by label, worked out when the job is read, so that the "
+        "page of a job that waits to be applied names them again (P-248). Empty otherwise."
+    )
     failure: str | None = Field(
         description="Why a stopped job stopped, or why a failed one was not applied."
     )

@@ -1161,7 +1161,12 @@ page says the rules, and this says how a file carries them.
 - **`external_id`** is a column of the items file: that system's identifier of the row's
   item. A row that gives one is matched first by it, before the vendor, PID and serial
   number, the asset tag and the name: the item registered with the system under that
-  identifier, whatever its status, its name or its host is now. Where none is, the row is
+  identifier, whatever its name or its host is now. Where that item is retired the row
+  is rejected, on `external_id`, naming it: the system reports an item that is retired
+  here, which is brought back first, or whose registration is removed so that the same
+  row makes a new record. Nothing of the retired item changes, its registration and
+  `confirmed_at` included, and a `complete` file marks nothing while such a row stands,
+  as with any rejected row. Where none is, the row is
   matched as any row, and the item it finds or makes is registered with the system under
   the identifier in the same change, or its registration given the identifier where it
   had none. Two errors reject the row, each on `external_id`, however the row found its
@@ -1175,7 +1180,12 @@ page says the rules, and this says how a file carries them.
   that gives the item an identifier it had not has `external_id` among them too. A row
   whose registration is `registered` already, under the same identifier, changes nothing
   but `confirmed_at`: a file loaded a second time is `unchanged` in each such row, and
-  still confirms each registration. A
+  still confirms each registration. Such a confirmation moves `confirmed_at` alone: it
+  writes no event of the registration and leaves its `row_version` and `updated_at` as
+  they are, so that a page that read it is not refused as stale for it; the `apply`
+  event of the job names the system in `system` and counts them in `confirmed`. A
+  registration that is made, or whose status or identifier changes, has its own
+  `update` or `create`, which holds `confirmed_at` too. A
   row with no `external_id` is matched as any row and registers nothing. A file that
   gives `external_id` in a row and names no `system` is refused before the preview, a
   `422` on `external_id`. An export writes the column only where it is asked for by name,
@@ -1194,7 +1204,9 @@ page says the rules, and this says how a file carries them.
   `null` where nothing holds it. The command line says the same after a preview and after
   an apply, one with stale rows among them. An apply that stops and is resumed marks once, at its end. The
   preview counts in `not_reported` how many the apply would mark, none where a row is
-  rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, the
+  rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, on the
+  job (`GET /imports/{hid}` and the list of jobs, worked out when the job is read) as on
+  the preview's answer, the
   item's; once applied, `not_reported_first` is empty. `pending` and `removed`
   registrations, and those of device groups, are left as they are.
   A `complete` file of no rows is refused before the preview, a `422` on `complete`:

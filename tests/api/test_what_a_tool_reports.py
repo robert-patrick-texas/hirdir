@@ -102,13 +102,22 @@ def test_a_row_no_registration_answers_is_matched_as_any_row_and_registers_its_i
     assert _registration(make, system, dns)["external_id"] == "vm-103"
 
     # Loaded again, nothing changes but when the system last agreed.
-    before = _registration(make, system, web)
+    before = [_registration(make, system, one) for one in (web, dns)]
+    events_before = make.audit(record_type="registration", limit=1000)
     again = files.preview("items", text, system=SYSTEM)
     assert counts(again["job"]) == (0, 0, 2, 0)
-    files.apply(again)
-    after = _registration(make, system, web)
-    assert after["row_version"] == before["row_version"] + 1
-    assert after["confirmed_at"] >= before["confirmed_at"]
+    job = files.apply(again)
+    after = [_registration(make, system, one) for one in (web, dns)]
+    # Each confirmation moves when the system last agreed, and nothing else: no version,
+    # and no event of its own. The import's event of its apply counts them.
+    for was, now in zip(before, after, strict=True):
+        assert now["row_version"] == was["row_version"]
+        assert now["updated_at"] == was["updated_at"]
+        assert now["confirmed_at"] > was["confirmed_at"]
+    assert make.audit(record_type="registration", limit=1000) == events_before
+    [applied] = make.audit(record_type="import_job", record_hid=job["hid"], action="apply")
+    told = {entry["field"]: entry["new"] for entry in applied["changes"]}
+    assert (told["system"], told["confirmed"]) == (system["hid"], 2)
     assert make.get("/items", limit=1)["total"] == 2
 
 
@@ -144,6 +153,60 @@ def test_an_identifier_two_items_have_and_an_item_known_otherwise_are_errors_on_
     assert "more than one item" in first["reasons"][0]["message"]
     assert {reason["field"] for reason in second["reasons"]} == {"external_id"}
     assert "vm-203" in second["reasons"][0]["message"]
+
+
+def test_a_row_the_system_reports_for_a_retired_item_is_rejected_and_changes_nothing(
+    make: Maker, files: Files
+) -> None:
+    system = _system(make)
+    app = _vm(make, "site2-vm-app01")
+    registration = _register(make, system, app, "vm-101")
+    now = make.get(f"/items/{app['hid']}")
+    make.post(f"/items/{app['hid']}/retire", {"row_version": now["row_version"]}, 200)
+    before = make.get(f"/items/{app['hid']}")
+    text = _csv("vm-101,site2-vm-app01-renamed,")
+
+    preview = files.preview("items", text, system=SYSTEM)
+
+    [row] = preview["rows"]
+    assert row["outcome"] == "rejected"
+    assert {reason["field"] for reason in row["reasons"]} == {"external_id"}
+    message = row["reasons"][0]["message"]
+    assert "site2-vm-app01, which is retired here" in message
+    assert "bring it back, or remove its registration" in message
+    files.apply(preview, skip_rejected="true")
+    assert make.get(f"/items/{app['hid']}") == before
+    kept = make.get(f"/registrations/{registration['hid']}")
+    assert (kept["row_version"], kept["confirmed_at"]) == (
+        registration["row_version"],
+        registration["confirmed_at"],
+    )
+
+    # Brought back, the same row changes it.
+    back = make.get(f"/items/{app['hid']}")
+    make.patch(
+        f"/items/{app['hid']}", {"row_version": back["row_version"], "record_status": "active"}
+    )
+    files.load("items", text, system=SYSTEM)
+    assert make.get(f"/items/{app['hid']}")["name"] == "site2-vm-app01-renamed"
+
+
+def test_a_retired_item_whose_registration_is_removed_leaves_the_row_a_new_record(
+    make: Maker, files: Files
+) -> None:
+    system = _system(make)
+    app = _vm(make, "site2-vm-app01")
+    registration = _register(make, system, app, "vm-101")
+    now = make.get(f"/items/{app['hid']}")
+    make.post(f"/items/{app['hid']}/retire", {"row_version": now["row_version"]}, 200)
+    make.delete(f"/registrations/{registration['hid']}")
+
+    files.load("items", _csv("vm-101,site2-vm-app01,"), system=SYSTEM)
+
+    made = make.get("/items", filter="name:eq:site2-vm-app01")["items"]
+    [new] = [one for one in made if one["hid"] != app["hid"]]
+    assert _registration(make, system, new)["external_id"] == "vm-101"
+    assert make.get(f"/items/{app['hid']}")["record_status"] == "retired"
 
 
 def test_a_row_that_names_its_item_by_hid_is_held_to_the_identifier_as_any_row(
@@ -234,7 +297,11 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
     preview = files.preview("items", text, system=SYSTEM, complete="true")
 
     assert (preview["job"]["complete"], preview["job"]["not_reported"]) == (True, 1)
-    assert preview["not_reported_first"] == [{"hid": made["db"]["hid"], "label": "site2-vm-db"}]
+    first = [{"hid": made["db"]["hid"], "label": "site2-vm-db"}]
+    assert preview["not_reported_first"] == first
+    # The job says the same when it is read again, while it waits to be applied.
+    assert make.get(f"/imports/{preview['job']['hid']}")["not_reported_first"] == first
+    assert preview["job"]["not_reported_first"] == first
     job = files.apply(preview)
     assert (job["status"], job["not_reported"]) == ("applied", 1)
     marked = _registration(make, system, made["db"])
@@ -263,14 +330,19 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
     assert make.get(f"/imports/{job['hid']}")["not_reported"] == 1
     # Once applied, the preview names none.
     shown = make.get(f"/imports/{job['hid']}")
-    assert shown["status"] == "applied"
+    assert (shown["status"], shown["not_reported_first"]) == ("applied", [])
 
     # The next file that names it makes it registered again.
     named_again = files.preview("items", _csv("vm-3,site2-vm-db,"), system=SYSTEM)
     assert counts(named_again["job"]) == (0, 1, 0, 0)
     assert changes(named_again["rows"][0]) == {"registration": ("not_reported", "registered")}
     files.apply(named_again)
-    assert _registration(make, system, made["db"])["status"] == "registered"
+    back = _registration(make, system, made["db"])
+    assert back["status"] == "registered"
+    # Brought back, it has an event of its own, which holds when it was confirmed too.
+    latest = make.audit(record_type="registration", record_hid=back["hid"], action="update")[0]
+    assert {entry["field"] for entry in latest["changes"]} == {"status", "confirmed_at"}
+    assert {entry["field"]: entry["new"] for entry in latest["changes"]}["status"] == "registered"
     # And a person sets it as any status.
     marked = _registration(make, system, made["web"])
     make.patch(
