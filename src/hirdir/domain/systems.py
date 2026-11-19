@@ -318,17 +318,17 @@ def registered_as(db: Session, system_hid: str, external_id: str) -> list[Regist
     )
 
 
-def external_ids(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, str | None]:
-    """Return the identifier a system knows each of the items by, where it knows it."""
+def of_system(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, Registration]:
+    """Return the registration of each of the items with a system, where it has one."""
     if not item_hids:
         return {}
-    found = db.execute(
-        select(Registration.item_hid, Registration.external_id).where(
+    found = db.scalars(
+        select(Registration).where(
             Registration.system_hid == system_hid,
             Registration.item_hid.in_(list(item_hids)),
         )
     )
-    return {item_hid: external_id for item_hid, external_id in found if item_hid}
+    return {one.item_hid: one for one in found if one.item_hid}
 
 
 def reported(

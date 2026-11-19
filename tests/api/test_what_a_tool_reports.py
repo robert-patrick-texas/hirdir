@@ -88,8 +88,13 @@ def test_a_row_no_registration_answers_is_matched_as_any_row_and_registers_its_i
 
     assert counts(preview["job"]) == (1, 1, 0, 0)
     first, second = preview["rows"]
-    assert (first["record_hid"], changes(first)) == (web["hid"], {"external_id": (None, "vm-102")})
+    # A registration made says so, in the file's own words.
+    assert (first["record_hid"], changes(first)) == (
+        web["hid"],
+        {"external_id": (None, "vm-102"), "registration": (None, "registered")},
+    )
     assert changes(second)["external_id"] == (None, "vm-103")
+    assert changes(second)["registration"] == (None, "registered")
     files.apply(preview)
     assert _registration(make, system, web)["external_id"] == "vm-102"
     made = make.get("/items", filter="name:eq:site2-ctr-dns1")["items"]
@@ -261,7 +266,10 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
     assert shown["status"] == "applied"
 
     # The next file that names it makes it registered again.
-    files.load("items", _csv("vm-3,site2-vm-db,"), system=SYSTEM)
+    named_again = files.preview("items", _csv("vm-3,site2-vm-db,"), system=SYSTEM)
+    assert counts(named_again["job"]) == (0, 1, 0, 0)
+    assert changes(named_again["rows"][0]) == {"registration": ("not_reported", "registered")}
+    files.apply(named_again)
     assert _registration(make, system, made["db"])["status"] == "registered"
     # And a person sets it as any status.
     marked = _registration(make, system, made["web"])

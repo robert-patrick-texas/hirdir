@@ -108,7 +108,8 @@ def _typed(which: Entity, values: dict[str, Any]) -> dict[str, Any]:
 def _differences(
     which: Entity, before: dict[str, Any] | None, after: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Return what a row changed, in the columns of the file."""
+    """Return what a row changed, in the columns of the file, and then what the entity
+    tells beside them: the status of a registration a row brings back or makes."""
     changes = []
     for column in which.settable:
         old = None if before is None else cells.plain(column, before[column.name])
@@ -117,6 +118,12 @@ def _differences(
             continue
         if old != new:
             changes.append(change(column.name, old, new))
+    for name in which.told:
+        if name not in after:
+            continue
+        old = None if before is None else before.get(name)
+        if old != after[name]:
+            changes.append(change(name, old, after[name]))
     return changes
 
 

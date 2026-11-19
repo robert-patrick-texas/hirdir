@@ -1165,9 +1165,14 @@ page says the rules, and this says how a file carries them.
   item, by its `hid`, by the identifier or by any other rule: an identifier that another
   item is registered with the system under, and an item that the system knows under
   another identifier. A row matched or registered so
-  makes its registration `registered`, with `confirmed_at` the moment it is applied, and
-  says so in its `changes` only where the identifier is new to the item: a file loaded a
-  second time is `unchanged` in each such row, and still confirms each registration. A
+  makes its registration `registered`, with `confirmed_at` the moment it is applied. A
+  row that makes the registration, or brings it back from `not_reported`, `removed` or
+  `pending`, is an `update` (or a `create` with its item), and its `changes` say so as
+  `registration`, the status it had, or `null` where it had none, to `registered`; one
+  that gives the item an identifier it had not has `external_id` among them too. A row
+  whose registration is `registered` already, under the same identifier, changes nothing
+  but `confirmed_at`: a file loaded a second time is `unchanged` in each such row, and
+  still confirms each registration. A
   row with no `external_id` is matched as any row and registers nothing. A file that
   gives `external_id` in a row and names no `system` is refused before the preview, a
   `422` on `external_id`. An export writes the column only where it is asked for by name,
