@@ -4678,9 +4678,9 @@ structure() {
         "$status $(json '[d["is_major"], d["depth"], d["position"], d["owner_hid"], d["lifecycle_state"]]')" \
         '201 [false, 1, "PS-A", null, null]'
     supply=$(json_field hid)
-    expect "S18 it shows the owner of its switch, with the source parent_item and the switch as the record it comes from" \
+    expect "S18 it shows the owner of its switch, with the source parent_item and the switch as the record it comes from, by its HID and its name" \
         "$(json 'd["effective"]["owner_hid"]')" \
-        "{\"label\": \"Package Test Team\", \"source\": \"parent_item\", \"source_hid\": \"$chassis\", \"value\": \"$owner\"}"
+        "{\"label\": \"Package Test Team\", \"source\": \"parent_item\", \"source_hid\": \"$chassis\", \"source_label\": \"pkgtest-chassis-01\", \"value\": \"$owner\"}"
     expect "S18 and the state of its switch, Assigned, in the same way" \
         "$(json 'd["effective"]["lifecycle_state"]')" \
         "{\"source\": \"parent_item\", \"source_hid\": \"$chassis\", \"value\": \"Assigned\"}"
@@ -5852,9 +5852,9 @@ client_cover() {
     wanted=$(json '"{} | {} | {} of {} | {} {}".format(d["totals"]["items"], d["totals"]["annual_support_cost"], d["totals"]["covered"], d["totals"]["covered"] + d["totals"]["uncovered"], len(d["contracts"]), len(d["models"]))')
     received=$(json 'd["totals"]["items"]')
     cli_run "$work/cli.portfolio" vendors portfolio Cisco
-    expect "S31 hirdir vendors portfolio prints for Cisco what GET /vendors/{hid}/portfolio answers: its items, their cost and how many of the major ones are covered, its agreement and a line for each of its contracts, a row for each of the four kinds and one for each model" \
-        "$code $(sed -n 's/^items: *//p' "$work/cli.portfolio") | $(sed -n 's/^annual_support_cost: *//p' "$work/cli.portfolio") | $(sed -n 's/^covered: *//p' "$work/cli.portfolio") | $(grep -c '^contract: ' "$work/cli.portfolio") $(sed -n '/^PID /,$p' "$work/cli.portfolio" | tail -n +2 | grep -c .) | $(grep -c '^agreement: *Cisco Enterprise Agreement, 2025-01-01 to 2027-12-31, 2 contracts$' "$work/cli.portfolio") $(grep -c -E '^(hardware|virtual_machine|software|service) ' "$work/cli.portfolio")" \
-        "0 $wanted | 1 4"
+    expect "S31 hirdir vendors portfolio prints for Cisco what GET /vendors/{hid}/portfolio answers: its items, their cost and how many of the major ones are covered, its agreement and a line for each of its contracts, a row for each of the six kinds and one for each model" \
+        "$code $(sed -n 's/^items: *//p' "$work/cli.portfolio") | $(sed -n 's/^annual_support_cost: *//p' "$work/cli.portfolio") | $(sed -n 's/^covered: *//p' "$work/cli.portfolio") | $(grep -c '^contract: ' "$work/cli.portfolio") $(sed -n '/^PID /,$p' "$work/cli.portfolio" | tail -n +2 | grep -c .) | $(grep -c '^agreement: *Cisco Enterprise Agreement, 2025-01-01 to 2027-12-31, 2 contracts$' "$work/cli.portfolio") $(grep -c -E '^(hardware|virtual_machine|virtual_context|container|software|service) ' "$work/cli.portfolio")" \
+        "0 $wanted | 1 6"
     cli_run "$work/cli-portfolio.csv" vendors portfolio Cisco --format csv
     made="$code $(table '[len(rows), [k in head for k in ("covered", "covered_until", "contracts")], [[r["covered"], r["covered_until"], r["contracts"]] for r in rows if r["asset_tag"] == "AT-000107"]]' "$work/cli-portfolio.csv")"
     cli_run /dev/null vendors portfolio Cisco --format json --output /tmp/cli-portfolio.json
@@ -5897,12 +5897,17 @@ client_cover() {
     expect "pkg hirdir report end-of-life, as json, is of the LDoS date and counts for each of the four dates what GET /reports/end-of-life counts; on a terminal it is a table of the four dates and one of the fiscal years; with --date end_of_sale --section past, as csv, it lists the $received items of the examples whose model is no longer sold, each with that date" \
         "$made | $code $(table '[head, len(rows), all(r["end_of_sale"] for r in rows)]' "$work/cli-eol.csv")" \
         "0 [\"ldos\", $wanted] | 0 DATE PAST PAST_COMPONENTS APPROACHING APPROACHING_COMPONENTS 4 1 | 0 [[\"name\", \"pid\", \"serial_number\", \"lifecycle_state\", \"site\", \"end_of_sale\"], $received, true]"
+    # The refreshes there are: the examples' one, and on an upgraded installation those
+    # that the inventory carried over has beside it.
+    api GET '/reports/replacements?filter=reason:eq:refresh&limit=1000'
+    received=$(json_field total)
+    wanted=$(json 'sorted(r["reference"] for r in d["items"])')
     cli_run "$work/cli.replacements" report replacements
-    made="$code $(matches '^2026-06-30 +site2-sw-floor-03 +site2-sw-access-07 +Refresh +CHG0031877$' "$work/cli.replacements") $(matches '^[0-9]+ replacements?: (.*, )?Refresh 1(,|$)' "$work/cli.replacements")"
+    made="$code $(matches '^2026-06-30 +site2-sw-floor-03 +site2-sw-access-07 +Refresh +CHG0031877$' "$work/cli.replacements") $(matches "^[0-9]+ replacements?: (.*, )?Refresh $received(,|\$)" "$work/cli.replacements")"
     cli_run "$work/cli-replacements.csv" report replacements --filter 'reason:eq:refresh' --format csv
-    expect "pkg hirdir report replacements lists the one replacement of the examples, the switch that left and the one that took its place, with the count of each reason beneath, one of them a refresh; with --filter, as csv, it is that row" \
-        "$made | $code $(table '[head, [r["reference"] for r in rows]]' "$work/cli-replacements.csv")" \
-        '0 1 1 | 0 [["replaced_on", "old_item", "new_item", "reason", "reference"], ["CHG0031877"]]'
+    expect "pkg hirdir report replacements lists the one replacement of the examples, the switch that left and the one that took its place, with the count of each reason beneath, $received of them a refresh, as GET /reports/replacements counts; with --filter, as csv, it is those rows, the examples' CHG0031877 among them" \
+        "$made | $code $(table '[head, sorted(r["reference"] for r in rows)]' "$work/cli-replacements.csv") $(contains "$wanted" '"CHG0031877"' && echo listed)" \
+        "0 1 1 | 0 [[\"replaced_on\", \"old_item\", \"new_item\", \"reason\", \"reference\"], $wanted] listed"
     api GET /reports/capacity
     wanted=$(json 'd')
     said=$(json '" ".join(d[v][k] for k in ("supply", "balance") for v in ("active", "with_drafts"))')
@@ -6394,9 +6399,9 @@ examples_cover() {
     made="$status $(json '[[k["kind"], k["items"] > 0] for k in d["kinds"]]') $(json '[a["name"] for a in d["agreements"]]') $(json 'sorted(c["number"] for c in d["contracts"])')"
     wanted=$(json 'd["totals"]["items"]')
     api POST /items/query "{\"filter\": $(json 'd["filter"]'), \"limit\": 1}"
-    expect "S31 GET $prefix/api/v1/vendors/{hid}/portfolio for Cisco has a row for each of the four kinds, of which the examples have hardware alone, the agreement with Cisco and the three Cisco contracts; the filter it gives lists on the item list as many items as its totals count ($wanted)" \
+    expect "S31 GET $prefix/api/v1/vendors/{hid}/portfolio for Cisco has a row for each of the six kinds, of which the examples have hardware alone, the agreement with Cisco and the three Cisco contracts; the filter it gives lists on the item list as many items as its totals count ($wanted)" \
         "$made $status $(json_field total)" \
-        "200 [[\"hardware\", true], [\"virtual_machine\", false], [\"software\", false], [\"service\", false]] [\"Cisco Enterprise Agreement\"] [\"CON-2025-0001\", \"CON-2025-0002\", \"CON-2026-0107\"] 200 $wanted"
+        "200 [[\"hardware\", true], [\"virtual_machine\", false], [\"virtual_context\", false], [\"container\", false], [\"software\", false], [\"service\", false]] [\"Cisco Enterprise Agreement\"] [\"CON-2025-0001\", \"CON-2025-0002\", \"CON-2026-0107\"] 200 $wanted"
     made=$(hid_of vendors 'name:eq:Example Reseller')
     api GET "/vendors/$made/portfolio"
     expect "pkg the portfolio of the reseller of the examples, which makes nothing, lists the contracts that were bought through it, by the reseller in force: the one that names it, and the two that have it from the Cisco agreement; and the capacity line that names it" \
@@ -6606,9 +6611,9 @@ cover_and_purchases() {
         done
     done
     api GET "/vendors/$maker/portfolio"
-    expect "S31 a second vendor is given two switches, a virtual machine, a software application and a service, each of a model with a support weight and an annual support cost: GET $prefix/api/v1/vendors/{hid}/portfolio lists the four kinds, each with its items, its cost and its weight, the totals of all five, and the four models" \
+    expect "S31 a second vendor is given two switches, a virtual machine, a software application and a service, each of a model with a support weight and an annual support cost: GET $prefix/api/v1/vendors/{hid}/portfolio lists the six kinds, each with its items, its cost and its weight, virtual contexts and containers with none, the totals of all five, and the four models" \
         "$made $status $(json '[[k["kind"], k["items"], k["annual_support_cost"], k["support_weight"]] for k in d["kinds"]]') $(json '[d["totals"][k] for k in ("items", "annual_support_cost", "support_weight")]') $(json '[m["pid"] for m in d["models"]]')" \
-        '201 201 201 201 201 201 201 201 201 201 200 [["hardware", 2, "2400.00", "2"], ["virtual_machine", 1, "300.00", "0.5"], ["software", 1, "9000.00", "2"], ["service", 1, "20000.00", "0.25"]] [5, "31700.00", "4.75"] ["PF-48P", "PF-NCM", "PF-SVC", "PF-VM"]'
+        '201 201 201 201 201 201 201 201 201 201 200 [["hardware", 2, "2400.00", "2"], ["virtual_machine", 1, "300.00", "0.5"], ["virtual_context", 0, "0.00", "0"], ["container", 0, "0.00", "0"], ["software", 1, "9000.00", "2"], ["service", 1, "20000.00", "0.25"]] [5, "31700.00", "4.75"] ["PF-48P", "PF-NCM", "PF-SVC", "PF-VM"]'
     api POST /exports "{\"entity\": \"items\", \"format\": \"csv\", \"filter\": $(json 'd["filter"]'), \"columns\": [\"pid\", \"kind\", \"serial_number\", \"annual_support_cost\", \"covered\"]}"
     expect "S31 and the filter that the portfolio gives exports its items: POST $prefix/api/v1/exports with it writes the five, each with its kind, its cost and whether it is covered" \
         "$status $(table '[head, sorted(r["kind"] for r in rows), sorted({r["covered"] for r in rows})]')" \
