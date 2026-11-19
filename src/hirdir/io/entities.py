@@ -568,6 +568,10 @@ class Entity:
     # changed: `mgmt_address` is the management address of one family or the other,
     # and each of those has a column of its own, which is the one that is told.
     restated: ClassVar[frozenset[str]] = frozenset()
+    # What `read_for` gives beside the columns, which is no column of the file and is
+    # still told as changed where a row changes it: the status of an item's registration
+    # with the system a file was read from (P-248).
+    told: ClassVar[tuple[str, ...]] = ()
 
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
@@ -1832,6 +1836,7 @@ class Items(Entity):
     }
     by_the_clock = frozenset({"observed_at", "host_observed_at"})
     restated = frozenset({"mgmt_address"})
+    told = ("registration",)
     renamed: ClassVar[Mapping[str, str]] = {
         "catalog_entry_hid": "pid",
         "owner_hid": "owner",
@@ -1893,7 +1898,10 @@ class Items(Entity):
                 {"external_id": "more than one item is registered with the system under this"},
             )
         if registered:
-            return run.db.get(Item, registered[0].item_hid)
+            item = run.db.get_one(Item, registered[0].item_hid)
+            # A retired record is not changed by what a tool reports (P-248).
+            systems.refuse_retired(item, given)
+            return item
         found = self._find(run, values)
         if found is not None:
             known = systems.find_registration(run.db, run.system_hid, "item_hid", found.hid)
@@ -2405,9 +2413,12 @@ class Items(Entity):
     def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
         rows = self.read(run.db, found)
         if run.system_hid is not None:
-            known = systems.external_ids(run.db, run.system_hid, [item.hid for item in found])
+            known = systems.of_system(run.db, run.system_hid, [item.hid for item in found])
             for item, row in zip(found, rows, strict=True):
-                row["external_id"] = known.get(item.hid)
+                registration = known.get(item.hid)
+                row["external_id"] = registration.external_id if registration else None
+                # So that a row that brings a registration back, or makes one, says so.
+                row["registration"] = registration.status if registration else None
         return rows
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:

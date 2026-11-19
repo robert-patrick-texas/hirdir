@@ -49,6 +49,8 @@ function job(more: Partial<Job> = {}): Job {
     system: null,
     complete: null,
     not_reported: 0,
+    not_reported_held: null,
+    not_reported_first: [],
     failure: null,
     created_at: "2026-11-13T21:31:18Z",
     applied_by: null,
@@ -171,6 +173,15 @@ describe("valueText and changeText", () => {
       "expected_online: true → false",
     );
     expect(changeText({ field: "tags", old: ["lab"], new: [] })).toBe("tags: lab → (blank)");
+  });
+
+  it("say a registration a row makes or brings back by its status (P-248)", () => {
+    expect(changeText({ field: "registration", old: "not_reported", new: "registered" })).toBe(
+      "registration with the system: Not reported → Registered",
+    );
+    expect(changeText({ field: "registration", old: null, new: "registered" })).toBe(
+      "registration with the system: not registered → Registered",
+    );
   });
 
   it("name the field of a reason, when it has one", () => {

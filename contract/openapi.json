@@ -14959,6 +14959,31 @@
             "title": "Not Reported",
             "type": "integer"
           },
+          "not_reported_first": {
+            "description": "Of a `complete` import that is not applied yet: the first ten items it would mark `not_reported`, by label, worked out when the job is read, so that the page of a job that waits to be applied names them again (P-248). Empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/RecordLabel"
+            },
+            "title": "Not Reported First",
+            "type": "array"
+          },
+          "not_reported_held": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rejected",
+                  "skipped",
+                  "stale"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a `complete` import: why it marks, or marked, nothing. `rejected` where a row is rejected, at the preview or when it was applied; `skipped` where rejected rows were left out by skip_rejected; `stale` where a row was left out because its record changed since the preview. Null where nothing holds it.",
+            "title": "Not Reported Held"
+          },
           "rejected": {
             "description": "Rows that cannot be applied, as the preview found.",
             "title": "Rejected",
@@ -15065,6 +15090,8 @@
           "system",
           "complete",
           "not_reported",
+          "not_reported_held",
+          "not_reported_first",
           "failure",
           "applied_at",
           "applied_by",

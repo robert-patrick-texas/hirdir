@@ -5,7 +5,9 @@
 // words, says how far an apply has got, and asks for the rows a page at a time.
 
 import type { Schemas } from "../api/client";
+import { optionLabel } from "./options";
 import type { Option } from "./patch";
+import { REGISTRATION_STATUSES } from "./systems";
 
 export type Job = Schemas["ImportJobOut"];
 export type PreviewRow = Schemas["ImportRowOut"];
@@ -102,6 +104,15 @@ export function valueText(value: unknown): string {
 
 /** One change of a row, as "field: old → new". */
 export function changeText(change: Schemas["RowChange"]): string {
+  // 0.9.8: a row of a file read from a system makes the item's registration with it, or
+  // brings it back, which is said by its status (P-248).
+  if (change.field === "registration") {
+    const status = (value: unknown) =>
+      typeof value === "string" && value !== ""
+        ? optionLabel(REGISTRATION_STATUSES, value)
+        : "not registered";
+    return `registration with the system: ${status(change.old)} → ${status(change.new)}`;
+  }
   return `${change.field}: ${valueText(change.old)} → ${valueText(change.new)}`;
 }
 

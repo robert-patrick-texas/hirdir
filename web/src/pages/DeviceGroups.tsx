@@ -2186,11 +2186,14 @@ function GroupStatus({ group, onChanged, onReload }: GroupStatusProps) {
               confirmDisabled={!hosted.ready || hosted.count > 0}
             >
               {hosted.shown}
-              <p>
-                {group.member_count > 0
-                  ? `The ${plural(group.member_count, "current membership")} of ${group.name} will end today.`
-                  : "The group has no current member."}
-              </p>
+              {/* Where something runs on it, it is not retired: only why is said (review). */}
+              {!(group.hosted_count > 0 && (!hosted.ready || hosted.count > 0)) && (
+                <p>
+                  {group.member_count > 0
+                    ? `The ${plural(group.member_count, "current membership")} of ${group.name} will end today.`
+                    : "The group has no current member."}
+                </p>
+              )}
             </ConfirmButton>
           </p>
         </>

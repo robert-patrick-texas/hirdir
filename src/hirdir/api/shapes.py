@@ -1494,9 +1494,12 @@ def job_out(db: Session, job: ImportJob) -> shapes.ImportJobOut:
         **{
             name: getattr(job, name)
             for name in shapes.ImportJobOut.model_fields
-            if not name.endswith("_by_name") and name != "system"
+            if not name.endswith("_by_name")
+            and name not in ("system", "not_reported_held", "not_reported_first")
         },
         system=_system_ref(system) if system is not None else None,
+        not_reported_held=imports.not_reported_held(job),
+        not_reported_first=_labelled(imports.not_reported_first(db, job)),
         created_by_name=maker.username if maker else None,
         applied_by_name=applier.username if applier else None,
     )

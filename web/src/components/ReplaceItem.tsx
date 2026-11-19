@@ -7,7 +7,7 @@
 // request does all of it, `POST /items/{hid}/replace`, or nothing: a refusal
 // is said beside its field, and nothing typed is lost.
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { itemName, today } from "../lib/format";
@@ -15,12 +15,13 @@ import type { PendingMember } from "../lib/groups";
 import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad } from "../lib/hooks";
 import { fewNames, handedOverText, handOverLabel, hostsNothingHint } from "../lib/hostFollows";
-import { mayHost } from "../lib/hosting";
+import { hostedListPath, mayHost } from "../lib/hosting";
 import { useChoices, useRules } from "../lib/lists";
 import { choiceLabel, choiceOptions } from "../lib/options";
 import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
 import { MAJOR_ONLY, memberOffer, pickLabel, SPARES } from "../lib/pick";
 import { fieldErrors } from "../lib/problems";
+import { newItemJoining, replaceWaits } from "../lib/replacing";
 import { type LeavingBody, replacedText, type SaidPart, stackOf } from "../lib/stacks";
 import { CheckField, SelectField, TextField } from "./Field";
 import { FormFields } from "./FormFields";
@@ -106,12 +107,40 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
     ...COMING_FIELDS,
   ];
   const shown = [...known, ...names, ...LEAVING];
-  const refused = fieldErrors(action.error, shown).shown;
+  // A refusal of a field is taken away once the person changes that field, or what it
+  // depends on: the item chosen, an item that exists or a new one, the day (review).
+  const [cleared, setCleared] = useState<ReadonlySet<string>>(() => new Set());
+  const refused = Object.fromEntries(
+    Object.entries(fieldErrors(action.error, shown).shown).filter(([field]) => !cleared.has(field)),
+  );
+  const fieldsRefused = Object.keys(action.error?.fields ?? {});
+  // Where every field it was about has changed, the refusal is said no more.
+  const outdated = fieldsRefused.length > 0 && fieldsRefused.every((field) => cleared.has(field));
+  const form = useRef<HTMLFormElement>(null);
+  const [refusals, setRefusals] = useState(0);
+  // After a refusal the first field refused has the focus, as in the form of an item.
+  useEffect(() => {
+    if (refusals === 0 || !form.current) return;
+    const input = form.current.querySelector<HTMLElement>('[aria-invalid="true"]');
+    if (input) input.focus();
+    else
+      form.current
+        .querySelector(".field-error, .alert-error")
+        ?.scrollIntoView({ block: "nearest" });
+  }, [refusals]);
+
+  function clear(...fields: string[]) {
+    setCleared((was) => {
+      if (fields.every((field) => was.has(field))) return was;
+      return new Set([...was, ...fields]);
+    });
+  }
+  /** What the item that comes is said to be by: chosen, or made, and what it is given. */
+  const COMING = ["new_item_hid", "hand_over_hosted", ...COMING_FIELDS];
   const name = itemName(item);
   const ruled = rules.data ?? [];
 
   // The one that comes, as the box of a member that joins a stack holds it.
-  const typedHostname = typeof values.hostname === "string" ? values.hostname.trim() : "";
   const coming: PendingMember | null =
     how === WITH_EXISTING
       ? chosen && {
@@ -127,13 +156,16 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
           name: "The new item",
           role: "member",
           position: "",
-          joining: typedHostname ? { hostname: typedHostname } : {},
+          // What it is known by, as typed, so that the box says whether the stack would
+          // leave it nothing (review).
+          joining: newItemJoining(values),
           drop: true,
           ...change,
         };
 
   function changeNew(field: string, value: FormValue) {
     setValues((was) => ({ ...was, [field]: value }));
+    clear(field, ...(field === "catalog_entry_hid" ? ["hand_over_hosted"] : []));
     setFound((was) => {
       const { [field]: _, ...rest } = was;
       return rest;
@@ -143,6 +175,7 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
   function choose(next: Item | null) {
     setChosen(next);
     setChange(null);
+    clear(...COMING);
     if (runsOnIt > 0 && next) {
       const kind = next.catalog?.kind ?? null;
       const hosts = mayHost(kind);
@@ -178,10 +211,14 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
     if (old) body.old_item = old;
     // Said only where something runs on it: left out, the server hands it over.
     if (runsOnIt > 0) body.hand_over_hosted = handOver;
+    setCleared(new Set());
     const result = await action.run(() =>
       api.request("post", "/api/v1/items/{hid}/replace", { path: { hid: item.hid }, body }),
     );
-    if (!result.ok) return;
+    if (!result.ok) {
+      setRefusals((count) => count + 1);
+      return;
+    }
     const made = result.value;
     const handed = handedOverText(runsOnIt, handOver, itemName(made.new_item));
     onReplaced([
@@ -199,7 +236,10 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
     ]);
   }
 
-  const ready = reason !== "" && (how === WITH_NEW || chosen !== null);
+  // In a stack, an item known by its host name alone that takes the stack's name is
+  // refused: the box says so beneath it, and Replace waits (P-243).
+  const waits = replaceWaits(stack !== null, coming);
+  const ready = reason !== "" && (how === WITH_NEW || chosen !== null) && !waits;
   const comingRefused = COMING_FIELDS.map((field) => refused[field]).filter(Boolean);
   return (
     <section className="panel replace-item" aria-labelledby={`replace-${item.hid}`}>
@@ -210,8 +250,8 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
         day of the replacement. Nothing of either changes by a rule: each has what this form says,
         in the same change.
       </p>
-      <form onSubmit={submit} className="stack" noValidate>
-        <Problem error={action.error} shown={shown} onReload={onReload} />
+      <form onSubmit={submit} className="stack" noValidate ref={form}>
+        <Problem error={outdated ? null : action.error} shown={shown} onReload={onReload} />
         <Problem error={choices.error ?? rules.error} />
         <div className="fields">
           <SelectField
@@ -221,6 +261,7 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
             onChange={(next) => {
               setHow(next === WITH_NEW ? WITH_NEW : WITH_EXISTING);
               setChange(null);
+              clear(...COMING, ...names);
             }}
           >
             <option value={WITH_EXISTING}>An item that is in the inventory</option>
@@ -277,7 +318,10 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
             <JoinBox
               row={coming}
               rules={ruled}
-              onChange={(changed) => setChange((was) => ({ ...was, ...changed }))}
+              onChange={(changed) => {
+                setChange((was) => ({ ...was, ...changed }));
+                clear(...COMING_FIELDS);
+              }}
               disabled={action.busy}
             />
             {comingRefused.length > 0 && (
@@ -292,7 +336,10 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
             label="Reason"
             name="reason"
             value={reason}
-            onChange={setReason}
+            onChange={(next) => {
+              setReason(next);
+              clear("reason");
+            }}
             required
             error={refused.reason}
           >
@@ -307,7 +354,10 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
             label="Reference"
             name="reference"
             value={reference}
-            onChange={setReference}
+            onChange={(next) => {
+              setReference(next);
+              clear("reference");
+            }}
             maxLength={200}
             autoComplete="off"
             error={refused.reference}
@@ -318,7 +368,11 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
             name="replaced_on"
             type="date"
             value={day}
-            onChange={setDay}
+            onChange={(next) => {
+              setDay(next);
+              // A day to come hands nothing over: the box is refused on the day.
+              clear("replaced_on", "hand_over_hosted");
+            }}
             error={refused.replaced_on}
             hint={`Left blank, today: ${today()}. What becomes of ${name} is done with a day that has come.`}
           />
@@ -332,6 +386,7 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
               onChange={(next) => {
                 setHandOver(next);
                 setHandHint("");
+                clear("hand_over_hosted");
               }}
               disabled={action.busy}
               error={refused.hand_over_hosted}
@@ -350,7 +405,10 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
           prefix="old_item"
           condition
           errors={refused}
-          onChange={setLeaving}
+          onChange={(next) => {
+            setLeaving(next);
+            clear(...LEAVING);
+          }}
           disabled={action.busy}
         />
         <p className="actions">
@@ -374,7 +432,21 @@ function HostedNames({ hid }: { hid: string }) {
   // What is handed over is what names it as its host; what runs on those stays on them.
   const rows = (hosted.data?.items ?? []).filter((row) => row.depth === 1);
   const few = fewNames(rows.map((row) => row.item.hid));
-  if (few.length === 0) return <Problem error={hosted.error} />;
+  // Where they are more, the item list of what names it as its host leads to them (review).
+  if (few.length === 0) {
+    return (
+      <>
+        <Problem error={hosted.error} />
+        {hosted.data && rows.length > 0 && (
+          <p className="hand-over-names" data-testid="hand-over-list">
+            <Link to={hostedListPath("item", hid)}>
+              The {rows.length.toLocaleString("en-US")} that run on it in the item list
+            </Link>
+          </p>
+        )}
+      </>
+    );
+  }
   return (
     <ul className="hand-over-names" data-testid="hand-over-names">
       {rows.map((row) => (

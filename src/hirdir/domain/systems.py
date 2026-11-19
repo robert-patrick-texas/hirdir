@@ -9,8 +9,9 @@ that is registered as one device is registered as the stack, and not as its memb
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from hirdir import clock, ids
 from hirdir.db import dialect
@@ -318,17 +319,32 @@ def registered_as(db: Session, system_hid: str, external_id: str) -> list[Regist
     )
 
 
-def external_ids(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, str | None]:
-    """Return the identifier a system knows each of the items by, where it knows it."""
+def of_system(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, Registration]:
+    """Return the registration of each of the items with a system, where it has one."""
     if not item_hids:
         return {}
-    found = db.execute(
-        select(Registration.item_hid, Registration.external_id).where(
+    found = db.scalars(
+        select(Registration).where(
             Registration.system_hid == system_hid,
             Registration.item_hid.in_(list(item_hids)),
         )
     )
-    return {item_hid: external_id for item_hid, external_id in found if item_hid}
+    return {one.item_hid: one for one in found if one.item_hid}
+
+
+def refuse_retired(item: Item, external_id: str) -> None:
+    """Refuse a row that a system reports for an item that is retired here (P-248): it is
+    brought back first, or its registration removed so that the row makes a new record.
+    Nothing of the retired item is changed, its registration included."""
+    if item.record_status == "retired":
+        name = _item_name(item)
+        raise Invalid(
+            f"the system reports {name}, which is retired here",
+            {
+                "external_id": f"the system reports {external_id} as {name}, which is retired "
+                "here: bring it back, or remove its registration so that a new record is made"
+            },
+        )
 
 
 def reported(
@@ -336,9 +352,34 @@ def reported(
 ) -> Registration:
     """Record that a system reports an item now, under an identifier (P-248): its
     registration is made where it has none, and is `registered`, with the identifier
-    and confirmed at this moment."""
+    and confirmed at this moment.
+
+    However the item was found, by its HID, by the identifier or by any other rule, an
+    identifier that another item is registered under, and an item the system knows under
+    another identifier, are refused on `external_id`: never a guess.
+    """
     now = clock.now()
+    given = external_id.strip()
+    refuse_retired(db.get_one(Item, item_hid), given)
+    others = [one for one in registered_as(db, system_hid, given) if one.item_hid != item_hid]
+    if others:
+        other = db.get_one(Item, others[0].item_hid)
+        raise Invalid(
+            f"{_item_name(other)} is registered as {given}",
+            {
+                "external_id": f"another item, {_item_name(other)}, is registered with the "
+                "system under this"
+            },
+        )
     known = find_registration(db, system_hid, "item_hid", item_hid)
+    if known is not None and known.external_id and known.external_id != given:
+        raise Invalid(
+            f"the system knows this item as {known.external_id}",
+            {
+                "external_id": "the item this row finds is registered with the system as "
+                f"{known.external_id}"
+            },
+        )
     if known is None:
         return create_registration(
             db,
@@ -351,6 +392,11 @@ def reported(
                 "confirmed_at": now,
             },
         )
+    if known.status == REGISTERED and known.external_id == given:
+        # Only confirmed: nothing a person edits has changed, so the registration keeps
+        # its version, and has no event of its own; the import's event counts it.
+        confirm(db, known, now)
+        return known
     return update_registration(
         db,
         context,
@@ -358,6 +404,16 @@ def reported(
         known.row_version,
         {"external_id": external_id, "status": REGISTERED, "confirmed_at": now},
     )
+
+
+def confirm(db: Session, registration: Registration, at: Any) -> None:
+    """Move when the other system last agreed, and nothing else: no version, no moment
+    of change and no event (P-248). It is how a file of the system that names the
+    registration as it is says so; what changes otherwise is audited as any change."""
+    db.execute(
+        update(Registration).where(Registration.hid == registration.hid).values(confirmed_at=at)
+    )
+    set_committed_value(registration, "confirmed_at", at)
 
 
 def _item_name(item: Item) -> str:
@@ -375,7 +431,7 @@ def not_named(db: Session, system_hid: str, named: set[str]) -> list[tuple[Regis
             Registration.status == REGISTERED,
             Item.record_status != "retired",
         )
-    ).tuples()
+    )
     left = [(one, item) for one, item in found if item.hid not in named]
     return sorted(left, key=lambda pair: (records.key(_item_name(pair[1])), pair[1].hid))
 

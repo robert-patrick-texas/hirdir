@@ -77,6 +77,9 @@ const onCluster = host("vm-c1");
 const onFourth = host("vm-d1");
 const onFifth = [host("vm-e1"), host("vm-e2"), host("vm-e3")];
 const reported = [host("vm-r1"), host("vm-r2"), host("vm-r3")];
+const onSeventh = Array.from({ length: 11 }, (_, n) =>
+  host(`vm-g${String(n + 1).padStart(2, "0")}`),
+);
 
 const made: { hids: Record<string, string>; viewer?: Account; done: boolean } = {
   hids: {},
@@ -101,6 +104,7 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
     });
   const server = await model(`SRV-${id}`);
   const vm = await model(vmPid, "virtual_machine");
+  made.hids[vmPid] = vm;
   const ctr = await model(`CTR-${id}`, "container");
   const software = await model(`LIC-${id}`, "software");
   const item = async (name: string, entry: string, more: Record<string, unknown> = {}) => {
@@ -111,7 +115,7 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
     });
     return made.hids[name] ?? "";
   };
-  for (const n of [1, 2, 3, 4, 5, 6]) await item(esx(n), server, { lifecycle_state: "Prod" });
+  for (const n of [1, 2, 3, 4, 5, 6, 7]) await item(esx(n), server, { lifecycle_state: "Prod" });
   await item(lic, software);
   await item(orphan, vm);
   for (const name of onFirst) await item(name, vm, { host_item_hid: hidOf(esx(1)) });
@@ -124,6 +128,8 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
   await item(onCluster, vm, { host_group_hid: hidOf(cluster) });
   await item(onFourth, vm, { host_item_hid: hidOf(esx(4)) });
   for (const name of onFifth) await item(name, vm, { host_item_hid: hidOf(esx(5)) });
+  // Eleven on the seventh: too many to name beneath the box of Replace.
+  for (const name of onSeventh) await item(name, vm, { host_item_hid: hidOf(esx(7)) });
   made.hids[system] = await make(request, headers, "/external-systems", {
     name: system,
     kind: "other",
@@ -203,9 +209,17 @@ test("Retire on a server names what runs on it, and on that, before it asks, and
   await expect(hosted.locator(`li[data-hid="${hidOf(container)}"]`)).toContainText(
     `on ${onFirst[0]}`,
   );
+  // A machine put on it after the question was read goes with it too, and is counted: the
+  // message says what the server retired, not what the question listed.
+  const late = host("vm-a3");
+  made.hids[late] = await make(request, await session(request, account), "/items", {
+    catalog_entry_hid: hidOf(vmPid),
+    hostname: late,
+    host_item_hid: hidOf(esx(1)),
+  });
   await dialog.getByRole("button", { name: "Retire item" }).click();
   await expect(page.locator(".alert-ok")).toHaveText(
-    "The item was retired, and with it 3 items that ran on it.",
+    "The item was retired, and with it 4 items that ran on it.",
   );
   // What ran on it is retired, its own page says.
   await page.goto(`./items/${hidOf(container)}`);
@@ -256,6 +270,9 @@ test("a cluster that something runs on is not retired, from its page or ticked, 
   );
   await expect(linkTo(hosted, onCluster, hidOf(onCluster))).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Retire group" })).toBeDisabled();
+  // Only why it is not retired is said: nothing of what a retirement would do.
+  await expect(dialog).not.toContainText("membership");
+  await expect(dialog).not.toContainText("no current member");
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
   // Where the page did not know, the server's refusal says the same, with the links.
@@ -336,8 +353,19 @@ test("Replace asks whether what runs on the item that leaves goes to the new one
   // Ticked all the same, the server refuses it, said beside the box.
   await box.check();
   await form.getByRole("button", { name: "Replace", exact: true }).click();
-  await expect(form.getByTestId("hand-over").locator(".field-error")).toBeVisible();
+  const refusedThere = form.getByTestId("hand-over").locator(".field-error");
+  await expect(refusedThere).toBeVisible();
   await expect(box).toBeChecked();
+  // The focus is on the field refused.
+  await expect(box).toBeFocused();
+  // A new item instead: the refusal is about the item chosen, and goes.
+  await form.getByLabel("What takes its place").selectOption({ label: "A new item, created now" });
+  await expect(refusedThere).toHaveCount(0);
+  await expect(form.locator(".alert-error")).toHaveCount(0);
+  await form
+    .getByLabel("What takes its place")
+    .selectOption({ label: "An item that is in the inventory" });
+  await expect(refusedThere).toHaveCount(0);
 
   await form.getByRole("button", { name: "Choose another" }).click();
   await choose(esx(6));
@@ -352,6 +380,20 @@ test("Replace asks whether what runs on the item that leaves goes to the new one
     const answer = await request.get(`./api/v1/items/${hidOf(name)}`, { headers });
     expect(((await answer.json()) as { host_item_hid: string }).host_item_hid).toBe(hidOf(esx(6)));
   }
+
+  // Eleven run on the seventh: no names beneath the box, and a link to them in the list.
+  await openItem(page, esx(7));
+  await page.getByRole("button", { name: "Replace this item" }).click();
+  const seventh = page.getByRole("region", { name: `Replace ${esx(7)}` });
+  await expect(seventh.getByLabel("The 11 things that run on it go to the new one")).toBeChecked();
+  await expect(seventh.getByTestId("hand-over-names")).toHaveCount(0);
+  const toList = seventh.getByTestId("hand-over-list").getByRole("link");
+  await expect(toList).toHaveText("The 11 that run on it in the item list");
+  await toList.click();
+  await expect(page.getByLabel("Filter", { exact: true })).toHaveValue(
+    `host_item_hid:eq:${hidOf(esx(7))}`,
+  );
+  await expect(page.getByTestId("grid-total")).toHaveText("11 items");
   await expectClean(page, seen, ["422 POST"]);
 });
 
@@ -420,6 +462,14 @@ test("a tool's report: three machines, then a file of two that is everything it 
   ).items[0]?.hid;
   made.hids[third] = thirdHid ?? "";
   await expect(linkTo(marks, third, hidOf(third))).toBeVisible();
+  // Left and come back to, the preview names them again, from the job itself.
+  const there = page.url();
+  await page.goto("./import");
+  await page.goto(there);
+  await expect(marks.locator("p")).toHaveText(
+    `1 item registered with ${system} is not named by the file, and will be marked as not reported once it is applied whole:`,
+  );
+  await expect(linkTo(marks, third, hidOf(third))).toBeVisible();
   await page.getByRole("button", { name: "Apply 2 rows" }).click();
   await whenApplied(page, 2);
   await expect(marks.locator("p")).toHaveText(
@@ -433,6 +483,12 @@ test("a tool's report: three machines, then a file of two that is everything it 
   // The third is not retired: it is found by the list as before.
   await openItem(page, third);
   await expect(page.getByRole("heading", { level: 2, name: "Retire", exact: true })).toBeVisible();
+  // A file that names it again would bring its registration back, which its row says in
+  // words; it is previewed only, so that it stays marked.
+  await importReport(page, `items-${id}-vcenter-3.csv`, [third], false);
+  await expect(page.getByTestId("preview-rows")).toContainText(
+    "registration with the system: Not reported → Registered",
+  );
   await expectClean(page, seen);
 });
 
@@ -499,10 +555,21 @@ test("the first page counts what is to be looked at, as a link to the item list,
   const line = page.getByTestId("home-review");
   await expect(line).toBeVisible({ timeout: 20_000 });
   expect(Number(await line.getAttribute("data-count"))).toBeGreaterThan(0);
-  await expect(line).toContainText("to be looked at: no host named, a host gone");
-  await line.getByRole("link").click();
+  // The reasons are counted after the line: on a busy host that takes a while.
+  await expect(line).toContainText("to be looked at:", { timeout: 20_000 });
+  await line.getByRole("link").first().click();
   await expect(page.getByLabel("Filter", { exact: true })).toHaveValue("review:empty:false");
   await expect(page.getByTestId("grid-items")).toBeVisible();
+  // Why, a link for each reason, to the list filtered by it, which says the reason in its
+  // filter with no column for it.
+  await page.goto("./");
+  const noHost = line.getByTestId("home-review-reasons").locator('[data-reason="no_host"]');
+  await expect(noHost.getByRole("link")).toHaveText(/^[\d,]+ names? no host$/, { timeout: 20_000 });
+  await noHost.getByRole("link").click();
+  await expect(page.getByLabel("Filter", { exact: true })).toHaveValue("review:eq:no_host");
+  await page.getByLabel("Filter", { exact: true }).fill(`review:eq:no_host hostname:eq:${orphan}`);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
 
   // Where the list counts none, the line is not there.
   await page.route(

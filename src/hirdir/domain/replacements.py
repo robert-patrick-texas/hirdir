@@ -143,11 +143,14 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
 
 
 def _hand_over_hosted(
-    db: Session, context: AuditContext, old: Item, new: Item, replacement_hid: str
+    db: Session, context: AuditContext, old: Item, new: Item, replacement_hid: str, day: date
 ) -> None:
     """Give what runs on the item that leaves the item that comes as its host (P-247),
     each by a change of its own that names the replacement. What was seen to run on
-    the old item is left as it is: that is what was seen."""
+    the old item is left as it is: that is what was seen.
+
+    It is done with the request, as all a replacement changes of either item is, so a
+    replacement on a day to come hands nothing over: it is refused on `replaced_on`."""
     running = list(
         db.scalars(
             select(Item)
@@ -157,6 +160,16 @@ def _hand_over_hosted(
     )
     if not running:
         return
+    if day > groups.today(db):
+        count = len(running)
+        what = "1 item runs" if count == 1 else f"{count} items run"
+        raise Invalid(
+            "what runs on the item that leaves is handed over on the day it is replaced",
+            {
+                "replaced_on": f"{what} on the item that leaves: with hand_over_hosted, a day "
+                "that has come, today or before; or give hand_over_hosted false"
+            },
+        )
     why = hosting.why_no_host(db, new, running)
     if why is not None:
         count = len(running)
@@ -276,7 +289,7 @@ def replace(
     circuit_records.hand_over(db, context, old.hid, new.hid)
     # And what runs on it, unless the request says otherwise (P-247).
     if hand_over_hosted:
-        _hand_over_hosted(db, context, old, new, replacement.hid)
+        _hand_over_hosted(db, context, old, new, replacement.hid, day)
     # Then what the request names of each item, by that item's rules, each change saying
     # the replacement it came from (P-242).
     replacing = audit.because(context, "replacing", None, replacement.hid)
