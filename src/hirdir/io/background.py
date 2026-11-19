@@ -11,11 +11,12 @@ the stop, and is marked so before anything else is done; when the server stops, 
 job being applied stops after the batch it is in, to be resumed.
 """
 
+import fcntl
 import logging
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -24,6 +25,9 @@ from hirdir.io import imports
 log = logging.getLogger("hirdir")
 # How long the worker waits for a signal before it looks for work by itself, in seconds.
 LOOK_EVERY = 5.0
+# The file in the state directory that the process of the background work holds a lock
+# on while it runs (P-267).
+WORKER_LOCK = "worker.lock"
 # How long the server waits at its stop for the batch being applied to be stored.
 STOP_WITHIN = 60.0
 
@@ -108,6 +112,29 @@ def running(state: Any) -> Generator[Worker]:
         yield worker
     finally:
         worker.stop()
+
+
+def worker_state(state: Any) -> Literal["running", "not_running", "in_process"]:
+    """Say whether the background work of an application's database is being done, and
+    where: by a thread of this process, by the process of its own (P-267), or by nothing.
+
+    The process of its own holds a lock on `worker.lock` in the state directory for as
+    long as it runs. Asking for that lock and being refused is how it is known to run:
+    nothing is read or written.
+    """
+    worker = getattr(state, "worker", None)
+    if isinstance(worker, Worker) and worker.running:
+        return "in_process"
+    try:
+        with (state.config.state_dir / WORKER_LOCK).open("rb") as held:
+            try:
+                fcntl.flock(held, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return "running"
+            fcntl.flock(held, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    return "not_running"
 
 
 def wake(state: Any) -> None:

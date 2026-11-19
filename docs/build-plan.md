@@ -130,10 +130,11 @@ is held. 0.9.9 follows it the same day with one fault mended, and changes nothin
 is held: coming back to the tab of a list whose columns hold the lists of choices,
 Items, Circuits, Catalog, External systems and Capacity, showed the page of a fault
 where the list had been, and now leaves the list as it was (P-264). 0.9.10 is to follow
-it, as the owner confirmed on 2026-11-19, with what the final checks of
+it, as the owner confirmed on 2026-11-19 ("Yes, start 0.9.10 now"), with what the final checks of
 0.9.8 asked for (P-261): the server's own measures of its last minutes and a ceiling
 past which it answers at once to wait (P-262), and a process of its own for the work
-that no person waits for (P-263). What the walk through hosts costs, what the first
+that no person waits for (P-263); what the ceiling measures, who reads the measures
+and what the second process is are P-265 to P-267. What the walk through hosts costs, what the first
 page asks at every sign-in, and what one process on one processor can carry, are
 notes for the timing of 1.0.0: the numbers are in P-261 and in
 [Architecture](architecture.md#testing).
