@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from hirdir import ids
+from hirdir import clock, ids
 from hirdir.db import dialect
 from hirdir.db.models import DeviceGroup, DeviceGroupMember, ExternalSystem, Item, Registration
 from hirdir.domain import audit, choices, health, records, settings
@@ -25,8 +25,10 @@ REGISTRATION_TYPE = "registration"
 # config_backup, access_control, sdn_controller, cloud_service, dns, discovery and other.
 KIND_LIST = "system_kind"
 OTHER = "other"
-STATUSES = ("registered", "pending", "removed")
-REGISTERED, REMOVED = STATUSES[0], STATUSES[2]
+# `not_reported` is given by an import that is everything its system reports, to what it
+# does not name (P-248); a person sets it back to either of the others as any status.
+STATUSES = ("registered", "pending", "removed", "not_reported")
+REGISTERED, REMOVED, NOT_REPORTED = STATUSES[0], STATUSES[2], STATUSES[3]
 FIELDS = ("name", "kind", "url", "notes", "record_status")
 REGISTRATION_FIELDS = (
     "system_hid",
@@ -294,6 +296,98 @@ def remove_registration(db: Session, context: AuditContext, hid: str) -> None:
     )
     db.delete(registration)
     db.flush()
+
+
+# --- what a tool reports (P-248) -------------------------------------------------------
+
+
+def registered_as(db: Session, system_hid: str, external_id: str) -> list[Registration]:
+    """Return the registrations of items with a system under an identifier: one, or none,
+    or more where a mistake gave two items one identifier."""
+    return list(
+        db.scalars(
+            select(Registration)
+            .where(
+                Registration.system_hid == system_hid,
+                Registration.item_hid.is_not(None),
+                Registration.external_id == external_id.strip(),
+            )
+            .order_by(Registration.hid)
+            .limit(2)
+        )
+    )
+
+
+def external_ids(db: Session, system_hid: str, item_hids: Sequence[str]) -> dict[str, str | None]:
+    """Return the identifier a system knows each of the items by, where it knows it."""
+    if not item_hids:
+        return {}
+    found = db.execute(
+        select(Registration.item_hid, Registration.external_id).where(
+            Registration.system_hid == system_hid,
+            Registration.item_hid.in_(list(item_hids)),
+        )
+    )
+    return {item_hid: external_id for item_hid, external_id in found if item_hid}
+
+
+def reported(
+    db: Session, context: AuditContext, system_hid: str, item_hid: str, external_id: str
+) -> Registration:
+    """Record that a system reports an item now, under an identifier (P-248): its
+    registration is made where it has none, and is `registered`, with the identifier
+    and confirmed at this moment."""
+    now = clock.now()
+    known = find_registration(db, system_hid, "item_hid", item_hid)
+    if known is None:
+        return create_registration(
+            db,
+            context,
+            {
+                "system_hid": system_hid,
+                "item_hid": item_hid,
+                "external_id": external_id,
+                "status": REGISTERED,
+                "confirmed_at": now,
+            },
+        )
+    return update_registration(
+        db,
+        context,
+        known.hid,
+        known.row_version,
+        {"external_id": external_id, "status": REGISTERED, "confirmed_at": now},
+    )
+
+
+def _item_name(item: Item) -> str:
+    return item.name or item.hostname or item.serial_number or item.asset_tag or item.hid
+
+
+def not_named(db: Session, system_hid: str, named: set[str]) -> list[tuple[Registration, Item]]:
+    """Return the items not retired that are `registered` with a system and that a file
+    of it did not name, with their registrations, by name (P-248)."""
+    found = db.execute(
+        select(Registration, Item)
+        .join(Item, Item.hid == Registration.item_hid)
+        .where(
+            Registration.system_hid == system_hid,
+            Registration.status == REGISTERED,
+            Item.record_status != "retired",
+        )
+    ).tuples()
+    left = [(one, item) for one, item in found if item.hid not in named]
+    return sorted(left, key=lambda pair: (records.key(_item_name(pair[1])), pair[1].hid))
+
+
+def mark_not_reported(db: Session, context: AuditContext, system_hid: str, named: set[str]) -> int:
+    """Give each item registered with a system that a file of everything it reports did
+    not name the status `not_reported`, each by a change of its own (P-248). Nothing else
+    of the item changes. Return how many were marked."""
+    left = not_named(db, system_hid, named)
+    for registration, _ in left:
+        records.apply(db, context, REGISTRATION_TYPE, registration, None, {"status": NOT_REPORTED})
+    return len(left)
 
 
 def of_groups_of_items(

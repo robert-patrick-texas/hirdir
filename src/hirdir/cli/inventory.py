@@ -811,6 +811,7 @@ def _finish(
             typer.echo(
                 f"preview: {_counts(job)}. Nothing was changed; --apply applies it.", err=True
             )
+            _say_not_reported(preview)
         if job["rejected"]:
             raise typer.Exit(client.EXIT_INVALID)
         return
@@ -827,6 +828,22 @@ def _finish(
     if not as_json and job["row_count"] <= len(preview["rows"]):
         _show_rows(preview["rows"], job["row_count"])
     _apply_job(target, apply_path.format(hid=job["hid"]), skip_rejected, as_json=as_json, wait=wait)
+
+
+def _say_not_reported(preview: dict[str, Any]) -> None:
+    """Say how many items a file that is everything its system reports would mark as
+    reported no more, with the first of them (P-248)."""
+    job = preview["job"]
+    if not job.get("complete"):
+        return
+    system = (job.get("system") or {}).get("name", "the system")
+    count = job["not_reported"]
+    if not count:
+        typer.echo(f"it marks nothing as not reported by {system}", err=True)
+        return
+    first = ", ".join(one["label"] for one in preview["not_reported_first"])
+    more = f" and {count - len(preview['not_reported_first'])} more" if count > 10 else ""
+    typer.echo(f"it marks {count} as not reported by {system}: {first}{more}", err=True)
 
 
 # --- an apply in the background (D-185) ---
@@ -908,9 +925,10 @@ def _ended(target: Target, job: dict[str, Any], *, as_json: bool) -> None:
     refused = job["rows_done"] - job["applied"] - job["stale"] - left_out
     if not job["stale"] and not refused:
         left = f", {job['rejected']} rejected and left out" if left_out else ""
+        marked = f", {job['not_reported']} marked not reported" if job.get("complete") else ""
         typer.echo(
             f"applied: {job['created']} created, {job['updated']} updated, "
-            f"{job['unchanged']} unchanged{left}",
+            f"{job['unchanged']} unchanged{left}{marked}",
             err=True,
         )
         return
@@ -1047,6 +1065,21 @@ def import_file(
     skip_rejected: Annotated[
         bool, typer.Option("--skip-rejected", help="Apply the rows that are not rejected.")
     ] = False,
+    system: Annotated[
+        str | None,
+        typer.Option(
+            help="A file of items: the external system it was read from, by its HID or "
+            "name, whose identifier of each row, external_id, finds its item first."
+        ),
+    ] = None,
+    complete: Annotated[
+        bool,
+        typer.Option(
+            "--complete",
+            help="With --system: the file is everything the system reports, and what it "
+            "does not name is marked not reported once it is applied whole.",
+        ),
+    ] = False,
     no_wait: NoWait = False,
     format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
     url: Url = None,
@@ -1066,7 +1099,13 @@ def import_file(
         target,
         "POST",
         "/imports/preview",
-        params={"entity": entity, "mode": mode, "file_name": file.name},
+        params={
+            "entity": entity,
+            "mode": mode,
+            "file_name": file.name,
+            "system": system,
+            "complete": "true" if complete else None,
+        },
         content=data,
         content_type=FILE_TYPES.get(file.suffix.lower(), "text/csv"),
         timeout=SLOW,
@@ -1259,12 +1298,17 @@ def _retire_many(path: str, find: Any, plural: str, metavar: str) -> Any:
             typer.echo(json.dumps(done, indent=2))
         else:
             _said(done["retired"], "retired")
+            # What ran on those, and went with them (P-247).
+            _said(done["hosted"], "retired with its host")
             _said(done["already"], "retired already")
             for one in done["refused"]:
-                typer.echo(f"refused: {one['label']}  {one['hid']}: {one['detail']}")
+                what = f" ({_depends(one)})" if one["depends_on"] else ""
+                typer.echo(f"refused: {one['label']}  {one['hid']}: {one['detail']}{what}")
             for hid in done["missing"]:
                 typer.echo(f"not found: {hid}")
         counts = [f"{len(done['retired'])} retired", f"{len(done['already'])} retired already"]
+        if done["hosted"]:
+            counts.insert(1, f"{len(done['hosted'])} with their hosts")
         counts += [f"{len(done['refused'])} refused", f"{len(done['missing'])} not found"]
         if done["refused"] or done["missing"]:
             raise client.fail(", ".join(counts), client.EXIT_INVALID)

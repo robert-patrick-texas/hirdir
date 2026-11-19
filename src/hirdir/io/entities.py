@@ -204,6 +204,9 @@ class Run:
         # account asked for (`hirdir admin load-examples`). None, as the worker of the
         # server has it, asks for the role of whoever asked, batch by batch.
         self.given_role: Role | None = None
+        # The external system a file of items was read from, whose identifier of each
+        # row, `external_id`, finds its item first (P-248). None for any other file.
+        self.system_hid: str | None = None
 
     def start_row(self, number: int = 0) -> None:
         """Begin a row: nothing noted yet, nothing to forget."""
@@ -599,6 +602,11 @@ class Entity:
         """Return the columns of each record, typed. With own, stored values and not
         the ones in force."""
         raise NotImplementedError
+
+    def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
+        """Return the columns of each record as a row of the run's file is compared with
+        them: what `read` gives, and what only the file's own system knows."""
+        return self.read(run.db, found)
 
     def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
         """Return the numbers of the rows, from 1, in the order they are to be worked.
@@ -1745,6 +1753,9 @@ class Items(Entity):
         NOT_RENEWED,
         STATUS,
         TAGS,
+        # The identifier of the item in the system the file was read from (P-248): read
+        # only with that system, and written by an export only where asked for by name.
+        Column("external_id", limit=200, listed=False),
         Column("model_name", settable=False),
         Column("kind", settable=False),
         Column("type", settable=False),
@@ -1812,7 +1823,16 @@ class Items(Entity):
         "reason": "state_reason",
     }
     not_in_bulk = frozenset(
-        {"serial_number", "asset_tag", "mac_address", "name", "hostname", "fqdn", *MGMT}
+        {
+            "serial_number",
+            "asset_tag",
+            "mac_address",
+            "name",
+            "hostname",
+            "fqdn",
+            "external_id",
+            *MGMT,
+        }
     )
     _direct = (
         *items.TEXTS,
@@ -1829,7 +1849,38 @@ class Items(Entity):
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         """Match a row to an item. The first rule that applies decides.
 
-        The order is on the data model page under "Identity and matching": the vendor,
+        A row of a file read from an external system that gives `external_id` is first
+        the item registered with that system under it, whatever it is called now
+        (P-248). Otherwise the order is on the data model page under "Identity and
+        matching". An item found so that the system knows under another identifier, and
+        an identifier two items have, are errors on the row, never a guess.
+        """
+        given = values.get("external_id")
+        if run.system_hid is None or not given:
+            return self._find(run, values)
+        registered = systems.registered_as(run.db, run.system_hid, given)
+        if len(registered) > 1:
+            raise Invalid(
+                f"more than one item is registered as {given}",
+                {"external_id": "more than one item is registered with the system under this"},
+            )
+        if registered:
+            return run.db.get(Item, registered[0].item_hid)
+        found = self._find(run, values)
+        if found is not None:
+            known = systems.find_registration(run.db, run.system_hid, "item_hid", found.hid)
+            if known is not None and known.external_id and known.external_id != given:
+                raise Invalid(
+                    f"the system knows this item as {known.external_id}",
+                    {
+                        "external_id": "the item this row finds is registered with the "
+                        f"system as {known.external_id}"
+                    },
+                )
+        return found
+
+    def _find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to an item by the rules of "Identity and matching": the vendor,
         PID and serial number; then the asset tag; then, for a row with neither a serial
         number nor an asset tag, the name or the host name, among the items that are
         not retired. More than one candidate is an error, never a guess.
@@ -2224,6 +2275,7 @@ class Items(Entity):
         if record is None:
             record = items.create_item(db, context, _new({**given, **standing}))
             _management(run, "item_hid", record.hid, values)
+            self._registered(run, record, values)
             return record
 
         state = standing.get("lifecycle_state", _MISSING)
@@ -2264,7 +2316,25 @@ class Items(Entity):
                 expected_online=standing.get("expected_online", UNSET),
             )
         _management(run, "item_hid", record.hid, values)
+        self._registered(run, record, values)
         return record
+
+    @staticmethod
+    def _registered(run: Run, record: Item, values: Mapping[str, Any]) -> None:
+        """Say that the file's system reports the item now, under the row's identifier:
+        its registration, made where it has none, is `registered` and confirmed at this
+        moment (P-248). A row with no identifier registers nothing."""
+        given = values.get("external_id")
+        if run.system_hid is not None and given:
+            systems.reported(run.db, run.context, run.system_hid, record.hid, given)
+
+    def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
+        rows = self.read(run.db, found)
+        if run.system_hid is not None:
+            known = systems.external_ids(run.db, run.system_hid, [item.hid for item in found])
+            for item, row in zip(found, rows, strict=True):
+                row["external_id"] = known.get(item.hid)
+        return rows
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         hids = [item.hid for item in found]
@@ -2344,6 +2414,8 @@ class Items(Entity):
                 **primaries.get(item.hid, NO_MGMT),
                 "record_status": item.record_status,
                 "tags": labels[item.hid],
+                # Known only to the system a file is read from: see `read_for`.
+                "external_id": None,
                 "model_name": entry.model_name if entry else None,
                 "kind": entry.kind if entry else None,
                 "type": entry.type if entry else None,
