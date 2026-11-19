@@ -518,7 +518,13 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
       <dl className="facts">
         <Fact label="Name">{item.name}</Fact>
         {/* 0.9.6: the stack it is a member of, with the stack's names, or Join a stack (P-222). */}
-        <StackFacts item={item} mayChange={mayChange} onChanged={onChanged} />
+        <StackFacts
+          item={item}
+          mayChange={mayChange}
+          onChanged={onChanged}
+          // 0.9.8: an item known by its host name alone is given a name first (P-243).
+          nameFix={mayChange && <ChangeLink field="name" label="Name" text="Give it a name" />}
+        />
         {/* 0.9.8: what it runs on and what it was seen on, where it is of such a kind (P-250). */}
         <HostFacts
           item={item}
