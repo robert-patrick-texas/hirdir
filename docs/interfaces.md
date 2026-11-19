@@ -2363,8 +2363,27 @@ hirdir admin load-examples                       # the examples, into an empty i
 hirdir admin check                               # schema version, integrity, settings
 hirdir admin config                              # a complete configuration file, every key at its default
 hirdir admin config --current --output config.toml.new   # with what the present file sets, set
-hirdir admin serve                               # what the service runs
+hirdir admin serve                               # the server: what hirdir.service runs
+hirdir admin work                                # the background work: what hirdir-worker.service runs
+hirdir admin serve --work                        # both in one process, for development
 ```
+
+`hirdir admin serve` answers requests and applies nothing. `hirdir admin work` is the
+second process of the service (P-267): it applies the imports and bulk edits that
+wait, looking in the database for them every second, and records the capacity balance
+of the week by the clock. It takes no option, listens on nothing and prints two lines,
+one when it is under way and one when it is stopped; on `SIGTERM` or `SIGINT` it stops
+after the batch it is applying, and leaves that job `stopped`, to be resumed. One runs
+on a state directory: it holds a lock on `worker.lock` there, and a second one stops,
+with status 1, saying `another process of the background work is running on
+/var/lib/hirdir: stop it first`. `hirdir admin serve --work` does the work of both in
+one process and holds both locks, as the server did before 0.9.10; `make dev` runs it.
+
+`hirdir admin restore`, `hirdir admin reset` and `hirdir admin load-examples` need the
+service stopped, the server and the second process both. Each looks for the two locks
+and refuses, with status 1, while either is held, saying which of the two runs and
+that `sudo systemctl stop hirdir` stops both; `reset` and `load-examples` refuse as
+well while anything answers where the server listens.
 
 `hirdir admin config` writes a complete configuration file from the application
 itself: every key of every table, each with its default and the comment that says what
