@@ -13,8 +13,8 @@ help:           ## list the targets
 version:        ## print the version
 	@sed -n 's/^__version__ = "\(.*\)"/\1/p' src/hirdir/__init__.py
 
-dev:            ## run the server for development on 127.0.0.1:8715 with data in ./dev-data
-	HIRDIR_CONFIG=dev-data/config.toml uv run hirdir admin serve --dev
+dev:            ## run the server for development on 127.0.0.1:8715 with data in ./dev-data, the background work in the same process
+	HIRDIR_CONFIG=dev-data/config.toml uv run hirdir admin serve --dev --work
 
 web:            ## build the web UI into src/hirdir/static
 	npm --prefix web ci

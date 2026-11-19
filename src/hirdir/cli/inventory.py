@@ -979,7 +979,7 @@ def _wait(target: Target, job: dict[str, Any], *, quiet: bool = False) -> dict[s
         now = (job["status"], job["rows_done"])
         if not quiet and now != said:
             typer.echo(
-                "queued: waiting for another import to be applied"
+                "queued: waiting to be applied"
                 if job["status"] == "queued"
                 else f"applying: {job['rows_done']} of {job['row_count']} rows",
                 err=True,

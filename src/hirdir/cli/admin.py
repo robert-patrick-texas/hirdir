@@ -9,13 +9,15 @@ import fcntl
 import hashlib
 import os
 import shutil
+import signal
 import socket
 import sqlite3
 import stat
+import threading
 import tomllib
 from collections.abc import Generator, Iterable
 from pathlib import Path
-from typing import Annotated, NamedTuple, TextIO
+from typing import Annotated, BinaryIO, NamedTuple, TextIO
 
 import typer
 import uvicorn
@@ -32,7 +34,7 @@ from hirdir.db.models import ReferenceFile
 from hirdir.domain import accounts, audit, settings
 from hirdir.domain import reset as reset_rules
 from hirdir.domain.errors import DomainError
-from hirdir.io import examples
+from hirdir.io import background, examples
 from hirdir.io import store as file_store
 from hirdir.io.store import Store
 
@@ -44,6 +46,9 @@ NAMED_IN_A_MESSAGE = 5
 SERVICE_UMASK = 0o027
 # The lock that one backup or restore at a time holds, in the backup directory.
 BACKUP_LOCK = "backup.lock"
+# The file in the state directory that the server holds a lock on while it runs; the
+# process of the background work holds `background.WORKER_LOCK` beside it (P-267).
+SERVER_LOCK = "server.lock"
 
 admin = typer.Typer(
     no_args_is_help=True,
@@ -98,8 +103,20 @@ def serve(
     dev: Annotated[
         bool, typer.Option("--dev", help="Keep state beside the config file and migrate at start.")
     ] = False,
+    work: Annotated[
+        bool,
+        typer.Option(
+            "--work",
+            help="Do the background work in this process as well, with no second process: "
+            "for development.",
+        ),
+    ] = False,
 ) -> None:
-    """Run the server. This is what the hirdir service starts."""
+    """Run the server. This is what the hirdir service starts.
+
+    It answers requests and does none of the background work, which is the second
+    process's, `hirdir admin work`. With --work the one process does both.
+    """
     from hirdir.app import create_app
 
     if dev:
@@ -114,20 +131,21 @@ def serve(
     # The application's own gateway reads the proxy's headers, and only from the
     # proxies named in the configuration. Uvicorn must leave them alone: if it
     # rewrote the client address first, the gateway would no longer see the proxy.
-    # One server to a database: a second one started on the same state directory would
-    # take for stopped the import the first is applying, and work it twice.
-    lock = _one_server(config.state_dir)
-    try:
-        app = create_app(config, scheduled=True)
+    # One server to a state directory, which the store of reference files relies on,
+    # and one process that does the background work: a second one would take for
+    # stopped the import the first is applying, and work it twice.
+    with contextlib.ExitStack() as held:
+        held.enter_context(contextlib.closing(_one_server(config.state_dir)))
+        if work:
+            held.enter_context(contextlib.closing(_one_worker(config.state_dir)))
+        app = create_app(config, scheduled=True, work=work)
         uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False)
-    finally:
-        lock.close()
 
 
 def _one_server(state_dir: Path) -> TextIO:
     """Hold the lock that only one server holds on a state directory, or stop."""
     state_dir.mkdir(parents=True, exist_ok=True)
-    held = (state_dir / "server.lock").open("a")
+    held = (state_dir / SERVER_LOCK).open("a")
     try:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -135,6 +153,42 @@ def _one_server(state_dir: Path) -> TextIO:
         typer.echo(f"another hirdir server is running on {state_dir}: stop it first", err=True)
         raise typer.Exit(1) from None
     return held
+
+
+def _one_worker(state_dir: Path) -> BinaryIO:
+    """Hold the lock that only one process of the background work holds on a state
+    directory, or stop."""
+    try:
+        return background.hold_lock(state_dir)
+    except background.AnotherWorks:
+        typer.echo(
+            f"another process of the background work is running on {state_dir}: stop it first",
+            err=True,
+        )
+        raise typer.Exit(1) from None
+
+
+@admin.command()
+def work() -> None:
+    """Do the background work. This is what the hirdir-worker service starts.
+
+    It applies the imports and bulk edits that wait, looking for them every second,
+    and does what is done by the clock and written to the database. It answers nothing
+    on the network. Stopped, it stops after the batch it is applying, and that job is
+    resumed by applying it again.
+    """
+    config = _load()
+    lock = _one_worker(config.state_dir)
+    stop = threading.Event()
+    for asked in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(asked, lambda *_: stop.set())
+    try:
+        with background.working(config):
+            typer.echo(f"hirdir: the background work of {config.state_dir} is under way", err=True)
+            stop.wait()
+        typer.echo(f"hirdir: the background work of {config.state_dir} is stopped", err=True)
+    finally:
+        lock.close()
 
 
 @admin.command()
@@ -526,7 +580,7 @@ def restore(
     ] = False,
 ) -> None:
     """Put a backup in place of the database, with the content of the reference files it
-    names. Stop the hirdir service first.
+    names. Stop the hirdir service first, which it refuses without.
 
     Nothing is changed until every file that the backup names has been found, in the
     store or in DIR with its checksum. The database as it was is kept beside it, and the
@@ -546,6 +600,10 @@ def restore(
             f"the copy: sudo cp -p {file} {kept} && sudo hirdir admin restore {kept} "
             f"--files {config.files_dir.with_name(config.files_dir.name + '.before-restore')}"
         )
+    # By the locks alone: a restore is run where nothing may be listening for it to ask.
+    _need_stopped(
+        config, "nothing reads or writes the database while it is put back", listening=False
+    )
     with _backups_held(config):
         _restore(config, target, aside, file, files, allow_missing_files)
 
@@ -696,6 +754,30 @@ def _is_serving(config: Config) -> bool:
         return False
 
 
+def _running(config: Config, listening: bool = True) -> list[str]:
+    """Name what of the service runs on the state directory of a configuration: the
+    server, which holds its lock there, or with `listening` answers where it listens,
+    and the process of the background work, which holds its own (P-267)."""
+    found = []
+    if background.is_held(config.state_dir / SERVER_LOCK) or (listening and _is_serving(config)):
+        found.append(f"the server on {config.listen} (hirdir.service)")
+    if background.is_held(config.state_dir / background.WORKER_LOCK):
+        found.append("the process of the background work (hirdir-worker.service)")
+    return found
+
+
+def _need_stopped(config: Config, so_that: str, listening: bool = True) -> None:
+    """Stop here, with words that say which runs, unless the service is stopped: the
+    server and the process of the background work both."""
+    found = _running(config, listening)
+    if found:
+        raise _fail(
+            f"the service is running, {' and '.join(found)}: stop it first, with "
+            "`sudo systemctl stop hirdir`, which stops the server and the process of the "
+            f"background work, so that {so_that}"
+        )
+
+
 @admin.command()
 def reset(
     everything: Annotated[
@@ -719,11 +801,7 @@ def reset(
     target = _sqlite_path(config)
     if not target.is_file():
         raise _fail(f"there is no database at {target}")
-    if _is_serving(config):
-        raise _fail(
-            f"the service is running on {config.listen}: stop it first, with "
-            "`sudo systemctl stop hirdir`, so that nobody is at work while the inventory goes"
-        )
+    _need_stopped(config, "nobody is at work while the inventory goes")
     engine = make_engine(config.database_url)
     with make_sessions(engine)() as db:
         held = reset_rules.counts(db)
@@ -789,11 +867,7 @@ def load_examples() -> None:
     path = config.database_path
     if path is not None and not path.is_file():
         raise _fail(f"there is no database at {path}")
-    if _is_serving(config):
-        raise _fail(
-            f"the service is running on {config.listen}: stop it first, with "
-            "`sudo systemctl stop hirdir`, so that nobody is at work while the examples load"
-        )
+    _need_stopped(config, "nobody is at work while the examples load")
     loaded: list[examples.Loaded] = []
 
     def told(done: examples.Loaded) -> None:

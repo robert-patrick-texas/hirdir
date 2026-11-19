@@ -534,7 +534,10 @@ def test_the_alert_of_the_day_is_worked_out_just_after_midnight_and_at_start(
     # It is due again just after the next midnight, and not before.
     assert scheduler.run_due(start + timedelta(minutes=1)) == []
     zone = ZoneInfo("America/New_York")
+    # Five minutes past, once the record of the week is made, which another process
+    # may make (P-267): at two minutes past it is not due yet.
     midnight = datetime.combine(
         start.astimezone(zone).date() + timedelta(days=1), time(0, 2), tzinfo=zone
     )
-    assert scheduler.run_due(midnight) == ["long reports"]
+    assert scheduler.run_due(midnight) == []
+    assert scheduler.run_due(midnight + timedelta(minutes=4)) == ["long reports"]

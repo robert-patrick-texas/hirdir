@@ -10,8 +10,9 @@ The content and the database agree because content is put in place before the re
 that names it is stored, and is removed only after the last record that names it is
 gone, both under `LOCK`: a change that puts content in place stores its record before it
 lets the lock go, and a removal looks again, under the lock, at what the database
-names. There is one server process for one database, so one lock of the process is
-enough.
+names. There is one server process for one database, and the process of the background
+work neither reads nor writes the store (P-267), so one lock of the server's process
+is enough. That is why the sweep, at the server's start, is the server's own.
 """
 
 import hashlib

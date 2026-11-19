@@ -34,3 +34,9 @@ hirdir: unusual-interpreter python [opt/hirdir/python/lib/python3.*/encodings/ro
 # documentation in /usr/share/doc/hirdir/html covers them.
 hirdir: no-manual-page [usr/bin/hirdir]
 hirdir: no-manual-page [usr/sbin/hirdir-setup]
+
+# hirdir-worker.service is the second process of the one service (P-267). It is wanted
+# by hirdir.service and by no target, so that it is started whenever the server is, at
+# the start of the host and by hand, and is left unstarted where a site has disabled
+# the server.
+hirdir: systemd-service-file-refers-to-unusual-wantedby-target hirdir.service [usr/lib/systemd/system/hirdir-worker.service]

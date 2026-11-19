@@ -56,7 +56,11 @@
 #                      and an archived item, reference files uploaded and downloaded
 #                      through nginx and a backup of them restored on a second, clean
 #                      host, then the inventory made by hand, and the capacity balance
-#                      of the worked example
+#                      of the worked example; and, where the package has the unit of
+#                      the background work, the two units of the service: an import
+#                      applied by the second process, the server answering alone while
+#                      that unit is stopped, and a stop, a start and a restart of
+#                      hirdir acting on both
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -618,10 +622,107 @@ print(f"{(expires - datetime.now(UTC)).total_seconds() / 3600:.1f}")' "$work/bod
 wait_ready() {
     for _ in $(seq 30); do
         request GET "$prefix/api/v1/health/ready"
-        if [ "$status" = 200 ]; then return 0; fi
+        if [ "$status" = 200 ]; then
+            if wait_worker; then return 0; fi
+            status="200 from the server, while hirdir-worker.service did not get under way"
+            return 1
+        fi
         sleep 1
     done
     return 1
+}
+
+# ---- the two units of the service ---------------------------------------------------------
+#
+# From 0.9.10 the service is two units (P-267): hirdir.service, the server, and
+# hirdir-worker.service, the process of the background work, which is started, stopped
+# and restarted with it. Nothing here names a release: what is asked of the second unit
+# is asked of a package that has it, and of an installation that has it.
+
+# ships_worker DEB: whether a package has the unit of the background work. The list of
+# its files is read to its end, and once for each package: a reader that stops at the
+# first match ends dpkg-deb with a broken pipe, which this script takes for a failure.
+declare -A worker_shipped=()
+ships_worker() {
+    if [ -z "${worker_shipped[$1]:-}" ]; then
+        worker_shipped[$1]=$(dpkg-deb -c "$1" | grep -c '/usr/lib/systemd/system/hirdir-worker\.service$' || true)
+    fi
+    [ "${worker_shipped[$1]}" -gt 0 ]
+}
+
+# Whether the installation in the container has it.
+has_worker() { inside test -e /usr/lib/systemd/system/hirdir-worker.service; }
+
+# Whether the process of the background work has said, since its unit was last started,
+# that it is under way. What it does as it starts is done by then: the record of a week
+# that has none, which the releases before made before their server answered, and the
+# marking of a job found applying. So what is asked of the installation next finds
+# both done, as it did when one process did both.
+worker_under_way() {
+    inside bash -c 'id=$(systemctl show --property InvocationID --value hirdir-worker.service) &&
+        [ -n "$id" ] &&
+        journalctl --quiet --no-pager --output cat _SYSTEMD_INVOCATION_ID="$id" | grep -q "is under way\$"' \
+        >/dev/null 2>&1
+}
+
+# wait_worker: where the installation has the second process, wait until it is under
+# way, 30 seconds at the most. An installation that has none has nothing to wait for.
+wait_worker() {
+    has_worker || return 0
+    for _ in $(seq 30); do
+        if worker_under_way; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
+
+# units_are: what systemd says of the two units, the server first: is-active of each.
+units_are() {
+    echo "$(inside systemctl is-active hirdir.service 2>&1) $(inside systemctl is-active hirdir-worker.service 2>&1)"
+}
+
+# unit_pid UNIT: the process a unit runs.
+unit_pid() { inside systemctl show --property MainPID --value "$1" 2>&1; }
+
+# listening_sockets PID: how many TCP sockets a process listens on, read from /proc in
+# the container: the sockets it holds that the kernel lists as listening.
+listening_sockets() {
+    inside /opt/hirdir/python/bin/python3 -I -c '
+import os, sys
+
+held = set()
+for name in os.listdir(f"/proc/{sys.argv[1]}/fd"):
+    try:
+        target = os.readlink(f"/proc/{sys.argv[1]}/fd/{name}")
+    except OSError:
+        continue
+    if target.startswith("socket:["):
+        held.add(target[len("socket:["):-1])
+listening = 0
+for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+    with open(table, encoding="ascii") as lines:
+        next(lines)
+        for line in lines:
+            fields = line.split()
+            listening += fields[3] == "0A" and fields[9] in held
+print(listening)' "$1" 2>&1
+}
+
+# Nothing of the unit of the background work is left: no process, no unit file, nothing
+# that enabled it, nothing that deb-systemd-helper remembers of it, which would have a
+# later upgrade take it for a unit that the site disabled, and systemd knows no such
+# unit that runs. Prints "nothing", or what is left. For a purge, and for going back to
+# a release that has no such unit.
+worker_left() {
+    inside bash -c '
+left=""
+pgrep -f "[h]irdir admin work" >/dev/null && left="$left a process"
+[ -e /usr/lib/systemd/system/hirdir-worker.service ] && left="$left the unit file"
+[ -n "$(find /etc/systemd/system -name "hirdir-worker*" 2>/dev/null)" ] && left="$left a link under /etc/systemd/system"
+[ -e /etc/systemd/system/hirdir.service.wants ] && left="$left hirdir.service.wants"
+[ -n "$(find /var/lib/systemd/deb-systemd-helper-enabled /var/lib/systemd/deb-systemd-helper-masked -name "hirdir-worker*" 2>/dev/null)" ] && left="$left what the helper of the package remembers of it"
+[ "$(systemctl is-active hirdir-worker.service 2>/dev/null)" = active ] && left="$left an active unit"
+echo "${left:-nothing}"' 2>&1
 }
 
 # wait_status WANTED METHOD PATH: repeat a request until it has the wanted status, for
@@ -692,7 +793,10 @@ sys.stdout.write(answer.read().decode())' "$token" "$@" >"$work/answer" 2>&1 || 
 # Wait until the service answers its health probe on the loopback port.
 wait_local_ready() {
     for _ in $(seq 30); do
-        if [ "$(local_status GET /api/v1/health/ready)" = 200 ]; then return 0; fi
+        if [ "$(local_status GET /api/v1/health/ready)" = 200 ]; then
+            wait_worker
+            return
+        fi
         sleep 1
     done
     return 1
@@ -1330,6 +1434,10 @@ failed_upgrade() {
     expect "pkg dpkg holds hirdir $version as not configured" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$version install ok half-configured"
     expect "pkg the service was not started" "$(inside systemctl is-active hirdir.service 2>&1)" inactive
+    if has_worker; then
+        expect "pkg neither of its two units: the process of the background work is stopped too, and nothing of hirdir runs" \
+            "$(units_are) $(inside pgrep -c -f '[h]irdir admin (serve|work)' 2>&1)" "inactive inactive 0"
+    fi
     expect "pkg the database still says revision $revision_before" "$(revision_now)" "$revision_before"
     expect "pkg the failed migration was undone as a whole: the database has the tables it had, and none of the migration's" \
         "$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_before"
@@ -1361,6 +1469,7 @@ failed_upgrade() {
     fi
     expect "pkg dpkg holds hirdir $previous_version as installed" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$previous_version install ok installed"
+    gone_back_worker
     check "pkg systemctl stop hirdir succeeds" inside systemctl stop hirdir.service
     check "pkg hirdir admin restore BACKUP succeeds" inside hirdir admin restore "${backup:-/nonexistent}"
     check "pkg systemctl start hirdir succeeds" inside systemctl start hirdir.service
@@ -1416,6 +1525,7 @@ failed_upgrade() {
     else
         fail "pkg $version serves"
     fi
+    upgraded_units
     expect "pkg the Admin signs in with the access code from before" \
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
     witness_carried fields "after the upgrade that went through,"
@@ -1454,6 +1564,7 @@ failed_upgrade() {
     check "pkg dpkg --configure hirdir succeeds" inside dpkg --configure hirdir
     expect "pkg dpkg holds hirdir $previous_version as installed" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$previous_version install ok installed"
+    gone_back_worker
     # The older package takes the nginx snippet for its conffile again. dpkg must not
     # ask about it: there is nobody to answer, and the installation would stop there.
     expect "pkg dpkg kept the nginx snippet that $version wrote, and left no second copy of it" \
@@ -1482,6 +1593,18 @@ failed_upgrade() {
 # sides, so the older package reads the database as the newer one leaves it: going back
 # is installing the older package again, with nothing to restore, and what was entered
 # since the upgrade stays.
+# gone_back_worker: once the previous release is installed again in place of the new
+# version. Where the new version has the unit of the background work and the previous
+# release has not, nothing of it may be left: the previous release's own scripts stop
+# the server alone, and know nothing of what enabled the unit. Where both have it, it
+# is the previous release's unit by then, and what is asked of it is asked elsewhere.
+gone_back_worker() {
+    ships_worker "$deb" || return 0
+    if ships_worker "$previous"; then return 0; fi
+    expect "pkg going back to $previous_version, which has no unit of the background work, leaves nothing of it: no process, no unit, nothing that enabled it" \
+        "$(worker_left)" nothing
+}
+
 without_migration() {
     local body=$1 backup database=/var/lib/hirdir/hirdir.db schema_before events_before events_hids
 
@@ -1509,6 +1632,7 @@ without_migration() {
     else
         fail "pkg $version serves"
     fi
+    upgraded_units
     expect "pkg the Admin signs in with the access code from before" \
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
     tables_carried "after the upgrade,"
@@ -1528,6 +1652,7 @@ without_migration() {
     expect "pkg dpkg holds hirdir $previous_version as installed, and the service runs" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1) $(inside systemctl is-active hirdir.service 2>&1)" \
         "$previous_version install ok installed active"
+    gone_back_worker
     expect "pkg the schema is at revision $revision_before still, the same statement for statement" \
         "$(revision_now) $(schema_sum "$database")" "$revision_before $schema_before"
     check "pkg hirdir admin check of $previous_version exits 0" inside hirdir admin check
@@ -1549,6 +1674,22 @@ without_migration() {
         fail "pkg the package purges"
         tail -n 20 "$work/apt.log"
     fi
+}
+
+# upgraded_units: once an upgrade has gone through and the server answers. Where the
+# new version has the unit of the background work, the upgrade leaves it enabled and
+# running beside the server, whether the previous release had such a unit or not.
+upgraded_units() {
+    ships_worker "$deb" || return 0
+    local had="as it was with $previous_version"
+    if ! ships_worker "$previous"; then
+        had="which $previous_version did not have: the upgrade installed it, enabled it and started it with the server"
+    fi
+    expect "pkg after the upgrade both units of the service are enabled and running, hirdir.service and hirdir-worker.service, $had" \
+        "$(inside systemctl is-enabled hirdir.service 2>&1) $(inside systemctl is-enabled hirdir-worker.service 2>&1) $(units_are)" \
+        "enabled enabled active active"
+    expect "pkg and the process of the background work has said that it is under way" \
+        "$(worker_under_way && echo yes || echo no)" yes
 }
 
 # ---- the previous release, with real state in it -------------------------------------------
@@ -3505,6 +3646,7 @@ upgrade() {
     else
         fail "pkg the readiness probe answers through nginx under $prefix/, the prefix from before (got $status)"
     fi
+    upgraded_units
 
     token=$old_session
     api GET /auth/me
@@ -3666,6 +3808,21 @@ installed() {
     expect "S01 hirdir.service is running" "$(inside systemctl is-active hirdir.service 2>&1)" active
     main_pid=$(inside systemctl show --property MainPID --value hirdir.service)
     expect "S01 the service runs as user hirdir" "$(inside ps -o user= -p "$main_pid" 2>&1)" hirdir
+    if has_worker; then
+        local worker_pid
+        # Once the server listens and the second process is under way: the package has
+        # only just started them.
+        wait_local_ready || true
+        worker_pid=$(unit_pid hirdir-worker.service)
+        expect "pkg hirdir-worker.service, the second unit of the service, is enabled and running, wanted by hirdir.service and part of it" \
+            "$(inside systemctl is-enabled hirdir-worker.service 2>&1) $(inside systemctl is-active hirdir-worker.service 2>&1) $(inside systemctl show --property WantedBy --value hirdir-worker.service 2>&1) $(inside systemctl show --property PartOf --value hirdir-worker.service 2>&1)" \
+            "enabled active hirdir.service hirdir.service"
+        expect "pkg it runs hirdir admin work as user hirdir, a process of its own" \
+            "$(inside ps -o user= -p "$worker_pid" 2>&1) $(inside bash -c "tr '\\0' ' ' </proc/$worker_pid/cmdline | grep -c 'hirdir admin work'" 2>&1) $([ "$worker_pid" != "$main_pid" ] && echo apart)" \
+            "hirdir 1 apart"
+        expect "pkg the server listens on one socket and the process of the background work on none" \
+            "$(listening_sockets "$main_pid") $(listening_sockets "$worker_pid")" "1 0"
+    fi
     expect "S01 /var/lib/hirdir belongs to hirdir, mode 0750" \
         "$(inside stat -c '%a %U:%G' /var/lib/hirdir 2>&1)" "750 hirdir:hirdir"
     # Made by the package, so that its mode does not depend on who takes the first backup.
@@ -4047,7 +4204,7 @@ files() {
         "$status $(job_counts)" "202 [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
     authorized POST "$prefix/api/v1/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
     expect "pkg sent again with the same key, the apply is answered with the first answer, the job as it was begun, and marked as replayed" \
-        "$status $(header idempotency-replayed) $(job_counts)" "202 true [\"applying\", $large_rows, $large_rows, 0, 0, 0]"
+        "$status $(header idempotency-replayed) $(job_counts)" "202 true [\"queued\", $large_rows, $large_rows, 0, 0, 0]"
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-sw-*' --data-urlencode 'limit=1'
     expect "pkg and the $large_rows items are there once" "$status $(json_field total)" "200 $large_rows"
 
@@ -7209,6 +7366,128 @@ reinstall() {
     fi
 }
 
+# ---- the second process of the service ----------------------------------------------------
+
+# tag_file LABEL: write a file of one tag, and print its path.
+tag_file() {
+    printf 'label\n%s\n' "$1" >"$work/tag-$1.csv"
+    echo "$work/tag-$1.csv"
+}
+
+# job_said: what the import job in the last response says of an apply: its status, how
+# many rows are done and applied, and how its failure begins.
+job_said() {
+    json '(lambda j: [j["status"], j["rows_done"], j["applied"], (j.get("failure") or "")[:45]])(d.get("job", d))'
+}
+
+# What the two processes do, each by itself (P-267). It is asked of an installation
+# that has the unit of the background work, and of no other.
+second_process() {
+    has_worker || return 0
+    section "the second process of the service"
+    local hid code worker_pid
+    sign_in "$admin" "$admin_code"
+    expect "pkg both units of the service run" "$(units_are)" "active active"
+
+    # With both running, an import is applied within moments of being asked for.
+    send "/imports/preview?entity=tags" "$(tag_file pkgtest-worker-1)"
+    hid=$(json 'd["job"]["hid"]')
+    apply_job "/imports/$hid/apply"
+    expect "pkg an import asked for through the API is applied in the background, both units running" \
+        "$status $(job_said)" '202 ["applied", 1, 1, ""]'
+
+    # The second process stopped, by itself: the server answers alone, and applies nothing.
+    worker_pid=$(unit_pid hirdir-worker.service)
+    check "pkg systemctl stop hirdir-worker succeeds, by itself" inside systemctl stop hirdir-worker.service
+    expect "pkg and stops that unit alone: the server runs, and no process of the background work is left" \
+        "$(units_are) $(inside pgrep -c -f '[h]irdir admin work' 2>&1)" "active inactive 0"
+    request GET "$prefix/api/v1/health/ready"
+    code=$status
+    api GET /about
+    expect "pkg the server alone answers: the readiness probe, and a request of somebody signed in" \
+        "$code $status $(json_field version)" "200 200 $version"
+    api GET /about/load
+    if [ "$status" = 200 ]; then
+        expect "pkg and says that the process of the background work is not running, in worker of GET /about/load" \
+            "$(json_field worker)" not_running
+    else
+        note "this package has no GET /about/load ($status), where the server says whether the process of the background work runs"
+    fi
+    api POST /tags '{"label": "pkgtest-worker-by-hand"}'
+    expect "pkg a change is stored by the server alone" "$status" 201
+    send "/imports/preview?entity=tags" "$(tag_file pkgtest-worker-2)"
+    hid=$(json 'd["job"]["hid"]')
+    expect "pkg and so is a preview of an import" "$status" 201
+    api POST "/imports/$hid/apply"
+    code=$status
+    sleep 5
+    api GET "/imports/$hid"
+    expect "pkg an apply asked for while the unit is stopped is taken, 202, and nothing of it is applied, by the server or by anything else: it waits, queued" \
+        "$code $status $(job_said)" '202 200 ["queued", 0, 0, ""]'
+    api GET /tags
+    expect "pkg its tag is not there" "$status $(json 'sum(t["label"] == "pkgtest-worker-2" for t in d)')" "200 0"
+
+    # Started again, it applies what waited: a job is applying only once a process has
+    # taken it up, so one that waited queued was never cut short, and nobody asks again.
+    check "pkg systemctl start hirdir-worker succeeds, by itself" inside systemctl start hirdir-worker.service
+    if wait_worker; then
+        pass "pkg and the process of the background work says that it is under way, as another process than before"
+    else
+        fail "pkg and the process of the background work says that it is under way, as another process than before"
+    fi
+    for _ in $(seq 30); do
+        api GET "/imports/$hid"
+        case $(json_field status) in queued | applying) sleep 1 ;; *) break ;; esac
+    done
+    expect "pkg the apply that waited is applied when the unit starts, by the second process, with nobody asking again" \
+        "$status $(job_said) $([ "$(unit_pid hirdir-worker.service)" != "$worker_pid" ] && echo new)" \
+        '200 ["applied", 1, 1, ""] new'
+    api GET /tags
+    expect "pkg and its tag is there" "$status $(json 'sum(t["label"] == "pkgtest-worker-2" for t in d)')" "200 1"
+    api GET /about/load
+    if [ "$status" = 200 ]; then
+        expect "pkg the server says that the process of the background work is running" "$(json_field worker)" running
+    fi
+
+    # One service to an operator: a stop of hirdir stops both, and comes back once both
+    # have stopped, which the commands that need the service stopped rely on.
+    check "pkg systemctl stop hirdir succeeds" inside systemctl stop hirdir.service
+    expect "pkg and has stopped both units when it comes back: nothing of hirdir runs" \
+        "$(units_are) $(inside pgrep -c -f '[h]irdir admin (serve|work)' 2>&1)" "inactive inactive 0"
+    # The process of the background work alone, with no server: a command that needs
+    # the service stopped refuses, and names the one that runs. hirdir admin reset is
+    # asked without the word it wants, so that it changes nothing whatever it finds.
+    check "pkg systemctl start hirdir-worker starts the second unit without the server" \
+        inside systemctl start hirdir-worker.service
+    wait_worker || true
+    code=0
+    inside bash -c 'echo no | hirdir admin reset' >"$work/worker-alone.out" 2>&1 || code=$?
+    expect "pkg with the process of the background work alone running, hirdir admin reset refuses, names it and not the server, and says that systemctl stop hirdir stops both" \
+        "$(units_are) $code $(grep -c 'the service is running, the process of the background work (hirdir-worker.service): stop it first, with `sudo systemctl stop hirdir`, which stops the server and the process of the background work' "$work/worker-alone.out") $(grep -c 'the server on' "$work/worker-alone.out")" \
+        "inactive active 1 1 0"
+    check "pkg systemctl stop hirdir-worker" inside systemctl stop hirdir-worker.service
+    code=0
+    inside bash -c 'echo no | hirdir admin reset' >"$work/worker-alone.out" 2>&1 || code=$?
+    expect "pkg with both stopped it goes on, asks for the word reset, and without it changes nothing" \
+        "$code $(grep -c 'nothing was changed' "$work/worker-alone.out") $(grep -c 'the service is running' "$work/worker-alone.out")" \
+        "1 1 0"
+    check "pkg systemctl start hirdir succeeds" inside systemctl start hirdir.service
+    if wait_ready; then
+        pass "pkg hirdir answers again through nginx"
+    else
+        fail "pkg hirdir answers again through nginx (got $status)"
+    fi
+    expect "pkg and a start of hirdir has started both units" "$(units_are)" "active active"
+    # What was made here is taken out again, so that what follows finds what it expects.
+    api GET /tags
+    for hid in $(json '" ".join(t["hid"] for t in d if t["label"].startswith("pkgtest-worker-"))'); do
+        api DELETE "/tags/$hid"
+    done
+    api GET /tags
+    expect "pkg the three tags that these checks made are taken out again" \
+        "$status $(json 'sum(t["label"].startswith("pkgtest-worker-") for t in d)')" "200 0"
+}
+
 # ---- on the host: files, restart, backup ---------------------------------------------
 
 state() {
@@ -7235,16 +7514,35 @@ state() {
             "$(inside stat -c '%U %a' /var/lib/hirdir/server.lock 2>&1) $code $(grep -c 'another hirdir server is running on /var/lib/hirdir: stop it first' "$work/second.log") $(inside systemctl is-active hirdir.service 2>&1)" \
             "hirdir 640 1 1 active"
     fi
+    if has_worker; then
+        local worker_pid
+        worker_pid=$(unit_pid hirdir-worker.service)
+        code=0
+        inside timeout 30 runuser -u hirdir -- /opt/hirdir/venv/bin/hirdir admin work >"$work/second-worker.log" 2>&1 || code=$?
+        expect "pkg the process of the background work holds its own lock, /var/lib/hirdir/worker.lock, an empty file that the hirdir user made; a second one started on the state directory is refused, and says so, and the one that runs goes on" \
+            "$(inside stat -c '%U %a %s' /var/lib/hirdir/worker.lock 2>&1) $code $(grep -c 'another process of the background work is running on /var/lib/hirdir: stop it first' "$work/second-worker.log") $(inside systemctl is-active hirdir-worker.service 2>&1) $([ "$(unit_pid hirdir-worker.service)" = "$worker_pid" ] && echo same)" \
+            "hirdir 640 0 1 1 active same"
+    fi
     # Root has run hirdir admin by now. Apart from the byte-code that postinst compiled and
     # prerm removes, every file under /opt/hirdir must be one dpkg installed.
     expect "S01 nothing is under /opt/hirdir that the package did not install" \
         "$(inside bash -c 'comm -23 <(find /opt/hirdir ! -type d ! -path "*/__pycache__/*" | sort) <(dpkg -L hirdir | sort) | head -n 3' 2>&1)" ""
 
+    local pids_before=""
+    if has_worker; then pids_before="$(unit_pid hirdir.service) $(unit_pid hirdir-worker.service)"; fi
     check "S02 systemctl restart hirdir succeeds" inside systemctl restart hirdir.service
     if wait_ready; then
         pass "S02 after the restart the health probe answers again"
     else
         fail "S02 after the restart the health probe answers again (got $status)"
+    fi
+    if has_worker; then
+        local server_now worker_now
+        server_now=$(unit_pid hirdir.service)
+        worker_now=$(unit_pid hirdir-worker.service)
+        expect "pkg systemctl restart hirdir restarted both units of the service: each runs, as a process it was not before" \
+            "$(units_are) $([ "$server_now" != "${pids_before% *}" ] && echo new) $([ "$worker_now" != "${pids_before#* }" ] && echo new)" \
+            "active active new new"
     fi
     token=$first_token
     authorized GET /hirdir/api/v1/auth/me
@@ -7457,6 +7755,8 @@ purge() {
         /etc/nginx/conf.d/hirdir.conf /usr/share/hirdir /usr/share/doc/hirdir; do
         check "S01 the purge leaves no $path" inside test ! -e "$path"
     done
+    expect "pkg the purge leaves no unit of hirdir in /usr/lib/systemd/system, and nothing of the unit of the background work: no process, no unit, nothing that enabled it" \
+        "$(inside bash -c 'ls /usr/lib/systemd/system | grep -c "^hirdir"' 2>&1) $(worker_left)" "0 nothing"
     check "S01 the purge leaves no hirdir user" bash -c "! docker exec '$container' getent passwd hirdir"
     check "S01 the purge leaves no hirdir group" bash -c "! docker exec '$container' getent group hirdir"
     check "S01 the purge leaves no unit enabled" \
@@ -7513,6 +7813,7 @@ else
         inventory
         capacity_balance
         reinstall
+        second_process
         state
         if [ "$e2e" = 1 ]; then browser_scenarios; fi
         another_prefix
@@ -7534,6 +7835,8 @@ if [ "$failures" -gt 0 ]; then
     echo "package-test: $failures check(s) FAILED in the $mode pass"
     echo "--- journal of hirdir.service"
     inside journalctl --unit hirdir.service --no-pager --lines 30 2>&1 || true
+    echo "--- journal of hirdir-worker.service"
+    inside journalctl --unit hirdir-worker.service --no-pager --lines 30 2>&1 || true
     echo "--- /var/log/nginx/error.log"
     inside tail -n 20 /var/log/nginx/error.log 2>&1 || true
     exit 1

@@ -92,7 +92,8 @@ def apply_bulk_update(
 ) -> r.ImportJobOut:
     """Apply a previewed bulk edit in the background, or resume one that stopped.
 
-    The answer is at once: the job, `applying`, or `queued` while another is applied.
+    The answer is at once: the job, `queued`. It is `applying` once the background
+    work has taken it up, which is within a second where no other job is ahead.
     Anybody with the Inventory role may apply it, whoever made it. An item that has been
     changed since the preview, by anybody, is left as it is and its row is `stale`;
     the rest are changed. `GET /imports/{hid}` says how far it has got.

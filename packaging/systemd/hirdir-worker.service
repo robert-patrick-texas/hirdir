@@ -1,0 +1,50 @@
+[Unit]
+Description=hirdir background work: imports and bulk edits applied, and what is done by the clock
+Documentation=file:///usr/share/doc/hirdir/docs/install.html
+# One service to an operator: stopped and restarted whenever hirdir.service is, and,
+# being wanted by it once enabled, started whenever it is. After it, so that a stop of
+# hirdir.service, which goes in the other order, comes back with this one stopped.
+PartOf=hirdir.service
+After=hirdir.service
+
+[Service]
+Type=exec
+User=hirdir
+Group=hirdir
+# It answers nothing on the network. It applies the imports and bulk edits that wait
+# in the database, and stops after the batch it is in, for which it has a minute.
+ExecStart=/opt/hirdir/venv/bin/hirdir admin work
+Restart=on-failure
+RestartSec=3
+
+# The database, the signing key and the backups live in /var/lib/hirdir. Nothing in
+# it is readable by other users.
+StateDirectory=hirdir
+StateDirectoryMode=0750
+WorkingDirectory=/var/lib/hirdir
+UMask=0027
+
+# The same limits as hirdir.service, line for line: it writes to the state directory
+# and nowhere else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hirdir
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=hirdir.service

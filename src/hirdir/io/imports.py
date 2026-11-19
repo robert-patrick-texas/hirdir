@@ -5,7 +5,8 @@ change, where none of it is kept: in a savepoint that is then undone, or for a l
 file on a copy of the database, so that nobody waits for it. What it reports is
 therefore what an apply will do, and no rule is written twice.
 
-An apply is worked in the background by the server's worker (`hirdir.io.background`),
+An apply is asked for by a request, which stores the job as queued, and worked in the
+background by the worker (`hirdir.io.background`), which takes it up as applying,
 one job at a time, 50 rows to a batch and each batch a transaction of its own (D-185).
 It works every row again, compares it with what was previewed, and keeps each row that
 agrees. A row whose record has moved on since the preview is left out as stale, and the
@@ -42,6 +43,9 @@ COUNTED = {"create": "created", "update": "updated", "unchanged": "unchanged"}
 SOURCES = ("file", "bulk")
 # The jobs that are being applied, or wait to be.
 BUSY = ("queued", "applying")
+# Why a job is stopped that the stop of the background work cut short: the process
+# that applied it stopped, after the batch it was in or without storing it.
+CUT_SHORT = "the background work stopped while it was being applied; apply it again to resume"
 # Every so many rows the session lets go of the records it has worked on, so that a
 # large file costs no more for each row than a small one.
 LET_GO_EVERY = 500
@@ -524,21 +528,17 @@ def list_rows(
 # --- an apply in the background (D-185) -----------------------------------------------
 
 
-def _being_applied(db: Session, hid: str) -> bool:
-    """Say whether another job than hid is being applied, or waits to be."""
-    other = select(ImportJob.hid).where(ImportJob.status.in_(BUSY), ImportJob.hid != hid)
-    return db.scalar(other.limit(1)) is not None
-
-
 def begin_apply(
     db: Session, context: AuditContext, hid: str, *, source: str, skip_rejected: bool = False
 ) -> ImportJob:
     """Ask for a preview to be applied in the background, or for a stopped apply to go on.
 
     Anybody who may change the inventory may ask, whoever made the preview, and it is
-    applied once. The job is `applying` at once, or `queued` while another is applied:
-    one job is applied at a time, in the order they were asked for, by the worker of
-    the server (`work_job`). A stopped job goes on as it was begun.
+    applied once. The job is `queued`, whether another is ahead of it or none: asking
+    stores the request and applies nothing. The worker of the background work takes
+    it up (`work_job`), one job at a time in the order they were asked for, and it is
+    `applying` from then, so that a job is `applying` only where a process has taken
+    it (P-263, P-267). A stopped job goes on as it was begun.
     """
     # Of two that ask at the same moment, the second sees what the first stored: the
     # job taken, or another job ahead of it.
@@ -560,7 +560,7 @@ def begin_apply(
             {"skip_rejected": "correct them and preview again, or apply the rest without them"},
         )
     before = job.status
-    job.status = "queued" if _being_applied(db, hid) else "applying"
+    job.status = "queued"
     job.applied_at, job.applied_by, job.failure = clock.now(), context.actor_hid, None
     if not resuming:
         job.skip_rejected = skip_rejected
@@ -587,14 +587,17 @@ def begin_apply(
 
 
 def recover(db: Session) -> list[str]:
-    """Mark stopped every job that was being applied when the server stopped.
+    """Mark stopped every job that was being applied when the background work stopped.
 
-    It is called as the server starts, before its worker does anything. A job that
-    waited, `queued`, waits still, and is applied in its turn. Return the jobs stopped.
+    It is called as the worker starts, before it does anything. Only a worker makes a
+    job `applying`, as it takes it up, and one worker works a database: so a job found
+    `applying` here is one that the stop of the last worker cut short. A job that
+    waited, `queued`, which nobody had taken up, waits still, and is applied in its
+    turn. Return the jobs stopped.
     """
     found = list(db.scalars(select(ImportJob.hid).where(ImportJob.status == "applying")))
     for hid in found:
-        _stop(db, hid, "the server stopped while it was being applied; apply it again to resume")
+        _stop(db, hid, CUT_SHORT)
     return found
 
 
@@ -1075,7 +1078,8 @@ def _role(db: Session, context: AuditContext) -> Role | None:
 
 
 def _take(db: Session, hid: str) -> ImportJob | None:
-    """Take a job that is to be applied, as the one that is applying. None if it is not."""
+    """Take a job that is to be applied, as the one that is applying, in a transaction
+    of its own before anything of it is worked. None if it is not to be applied."""
     dialect.hold_other_writers(db)
     job = db.get(ImportJob, hid)
     if job is not None:
@@ -1134,11 +1138,7 @@ def work_job(
         cut, typed = _plan(db, hid, run, which)
         for number, batch in enumerate(cut):
             if number and stop.wait(PAUSE_BETWEEN_BATCHES):
-                _stop(
-                    db,
-                    hid,
-                    "the server stopped while it was being applied; apply it again to resume",
-                )
+                _stop(db, hid, CUT_SHORT)
                 db.commit()
                 return "stopped"
             try:

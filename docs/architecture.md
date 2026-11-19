@@ -11,12 +11,27 @@ hirdir CLI ──────┤   nginx (Ubuntu's)            hirdir.service
 integrations ────┘   terminates TLS,      ──▶    one Python process       ──▶  SQLite file and
                      strips the prefix           FastAPI: API + web UI         reference files
                                                                                /var/lib/hirdir
+                                                 hirdir-worker.service    ──▶  the same
+                                                 one Python process
+                                                 the background work,
+                                                 no network
 ```
 
-One process serves both the API and the built web UI. nginx does TLS and nothing else
-of ours. There is no second service, no queue and no cache in the MVP. An import or a
-bulk edit is applied in the background by a thread of that one process, and the jobs
-waiting for it are rows of the database: see "Applying in the background" below.
+Two processes of the one package work one database, from 0.9.10 (P-263, P-267). **The
+server**, `hirdir admin serve`, serves both the API and the built web UI, and answers
+people. **The process of the background work**, `hirdir admin work`, does what no
+person waits for: it applies the imports and bulk edits that were asked for, and
+records the capacity balance of the week by the clock. It answers nothing on the
+network, so it has a processor of its own and the answers to people are not slowed by
+it. The two share the database and the state directory and nothing else: no signal
+passes between them, and the jobs that wait to be applied are rows of the database,
+which the second process looks for every second. See "Applying in the background" and
+"What is done by the clock" below. nginx does TLS and nothing else of ours. There is
+no queue and no cache in the MVP.
+
+`hirdir admin serve --work` is one process that does both, as the server did before
+0.9.10: `make dev` runs it, and the Python tests of the routes run the application so,
+inside the test's own process.
 
 ## Components
 
@@ -25,7 +40,8 @@ waiting for it are rows of the database: see "Applying in the background" below.
 | Operating system | Ubuntu 26.04 LTS, amd64 | |
 | Python | 3.15.2, shipped inside the package | moves to each new production release; 3.16 when it is released |
 | Python tooling | uv, ruff, ty | uv for the lock, the environment and the bundled interpreter |
-| Server | FastAPI on Uvicorn, Pydantic models | one worker |
+| Server | FastAPI on Uvicorn, Pydantic models | one process, `hirdir admin serve` |
+| Background work | the same package, with no web server in it | a second process, `hirdir admin work`: the applies of imports and bulk edits, and the record made by the clock |
 | Database access | SQLAlchemy 2 with Alembic migrations | |
 | Database | SQLite in WAL mode | PostgreSQL as an option LATER |
 | CLI | Typer, with httpx2 to call the API | same package as the server; httpx2 is the continuation of httpx under Pydantic |
@@ -42,13 +58,14 @@ cut. See [release-process.md](release-process.md).
 src/hirdir/
   __init__.py        the version, and nothing else
   app.py             application factory, middleware, static UI
-  schedule.py        what the server does by itself at set times
+  schedule.py        what is done by the clock, and which of the two processes does it
   config.py          /etc/hirdir/config.toml and its defaults
   db/                engine, models, dialect helpers, migrations/
   domain/            the rules: inheritance, lifecycle, matching, counting, geography
   api/               routers under /api/v1, one module per record type
   auth/              providers (local now; RADIUS and SAML later), tokens, roles
-  io/                filter grammar, CSV and JSON import and export, the store of reference files, the examples
+  io/                filter grammar, CSV and JSON import and export, the store of reference files, the examples,
+                     and the background work of the second process
   cli/               the hirdir command: client commands and `hirdir admin`
   static/            the built web UI (generated, not committed)
 web/                 TypeScript source of the web UI
@@ -217,11 +234,21 @@ upload, by its extension and by its first bytes.
   another is answered `503` with `Retry-After`, and nothing of it was done. Reading is
   never held up.
 - **Applying in the background.** `POST /imports/{hid}/apply`, and the apply of a bulk
-  edit, store the job as `applying`, or `queued` behind another, and answer `202` at
-  once. A worker in the server's own process, a thread with its own database session
-  (`io/background.py`), applies one job at a time: the one applying, then the queued
-  ones in the order they were asked for. The route wakes it once the request is
-  stored, and it also looks for work by itself every five seconds. It works out the
+  edit, store the job as `queued` and answer `202` at once. The server applies
+  nothing. A worker in the second process, `hirdir admin work`, a thread with its own
+  database session (`io/background.py`), applies one job at a time: the one applying,
+  then the queued ones in the order they were asked for. It takes a job up by making
+  it `applying`, in a transaction of its own, before the first batch: the process that
+  takes a piece of work is the one that owns it (P-263), and `applying` is said of a
+  job only by the process that applies it.
+  It finds its work by looking in the database every second, one read of an index, so
+  an apply begins within a second of being asked for; nothing is sent from the one
+  process to the other, since a signal that went astray would leave a job waiting
+  (P-267). It opens the database as the server does (`db/engine.py`), so it is one
+  writer among the others, with the same `busy_timeout`. Where one process does both,
+  `hirdir admin serve --work` and the tests of the routes, the worker is a thread of
+  that process, which the route wakes once the request is stored, and which also looks
+  for work by itself every five seconds. It works out the
   order of the rows once for the whole job, then works them 50 to a batch
   (`io/imports.py`), each batch a transaction that takes the one writer's place before
   it looks, as a small preview does, and stores with its rows what it did with each
@@ -235,13 +262,27 @@ upload, by its extension and by its first bytes.
   The batches are under the request ID of the apply, and as the person who asked for
   it, whose role is looked at again as the worker takes it up. An error nobody foresaw
   undoes the batch it happened in and stops the job, and is logged with its
-  traceback. When the server stops, the worker stops after the batch it is in, at
-  most a minute later, and the job is `stopped`; when it starts, before the worker
-  does anything, a job still `applying` is marked `stopped`, since only a stop that
-  cut it short leaves one so. A stopped job is resumed by asking for it to be applied
-  again, from the first row that was not applied. There is one worker for one
-  database, because there is one process: two servers on one database would each
-  take the jobs.
+  traceback. When the process that applies stops, on `SIGTERM` or `SIGINT`, the worker
+  stops after the batch it is in, at most a minute later, and the job is `stopped`;
+  when it starts, before the worker does anything, a job still `applying` is marked
+  `stopped`, since only a stop that cut it short leaves one so. A job that was asked
+  for while no process was there to apply it is another thing, and its row says so:
+  the server takes the request and stores it whether the second process runs or not,
+  the job waits as `queued`, with nothing of it applied, and is applied when that
+  process starts. A stopped job is resumed by asking for it to be applied again, which
+  stores it `queued` once more, from the first row that was not applied. There is one
+  worker for one
+  database: two on one database would each take the jobs, and each would take for
+  stopped what the other is applying. The process that applies holds a lock on
+  `worker.lock` in the state directory for as long as it runs, as the server holds one
+  on `server.lock`, and a second one stops with `another process of the background
+  work is running on /var/lib/hirdir: stop it first`; `hirdir admin serve --work`
+  holds both locks. The lock is asked for and nothing is written for it. The server
+  learns whether the process runs by asking for the same lock, shared, and being
+  refused (`worker_state` in `io/background.py`), which is `worker` of `GET
+  /about/load`: `running`, `not_running`, or `in_process` where one process does both.
+  Such a question holds the file for an instant, so a process that starts asks for
+  its lock for two seconds before it takes another to be running.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
@@ -280,22 +321,33 @@ upload, by its extension and by its first bytes.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent, and the worker's at the end of each batch. Every update of a
   row names the `row_version` it was read at.
-- **What the server does by itself.** A few things are done at set times, by the
-  server and not by a request: the record of the capacity balance each Monday just
-  after midnight, and each night just after midnight the long reports worked out ahead
-  and kept, the coverage report, the renewal worklist, the summary of the renewal alert
-  and the capacity report, each for the view its page opens with. `hirdir/schedule.py` holds them as a list of jobs, each a name, when
-  it is due and what it does, run by a scheduler in the server's own process. The
-  scheduler is started with the application and stopped with it. When the server
-  starts, the jobs that run at start are run before the first request is answered, and
+- **What is done by the clock.** A few things are done at set times, and not by a
+  request: the record of the capacity balance each Monday a minute after midnight, and
+  each night five minutes after midnight the long reports worked out ahead and kept,
+  the coverage report, the renewal worklist, the summary of the renewal alert and the
+  capacity report, each for the view its page opens with. `hirdir/schedule.py` holds
+  them as a list of jobs, each a name, when it is due and what it does, and says which
+  process runs which. **The record of the week is the second process's**, `hirdir
+  admin work`: it is written to the database, which is where the server finds it.
+  **The long reports are the server's own**, whichever process does the rest: what is
+  worked out is kept in the memory of the process that answers (D-184), so worked out
+  in another process it would be kept where no request reads it, and the first person
+  of the day would wait for each report all the same, in the server and at the moment
+  somebody is waiting. They are due four minutes after the record, whose audit event
+  would otherwise leave them stale on a Monday. Each process has a scheduler for its
+  own jobs, started with it and stopped with it. When a process starts, its jobs that
+  run at start are run first, in the server before the first request is answered, and
   then a thread of its own wakes once a minute and runs, each with a session of its
   own and as one writer among the others, every job that has come due since it last
   looked, by the clock of the `time_zone` setting. What a job writes is audited with
   `via` of `system`. A job that fails is logged and tried again a minute later. A time
-  that passed while the server was stopped is not made up for, so a job that must not
-  miss one also runs at start and looks for what is missing: the server records the
-  balance when it starts in a week that has no record. The tests run a job for a
-  moment they choose, through `run_due`, and do not wait for a Monday.
+  that passed while a process was stopped is not made up for, so a job that must not
+  miss one also runs at start and looks for what is missing: the second process
+  records the balance when it starts in a week that has no record. Where that happens,
+  the reports that the server worked out as it started are left stale by the record's
+  event, and are worked out again when they are first asked for, as after any change.
+  The tests run a job for a moment they choose, through `run_due`, and do not wait
+  for a Monday.
 - **Reference files.** The content of a file is kept beside the database and never in
   it, in `files/` under the state directory, `/var/lib/hirdir/files/`, in a file named
   for its SHA-256 checksum under a directory of its first two characters:
@@ -307,10 +359,14 @@ upload, by its extension and by its first bytes.
   refused as soon as it is over the limit; it is then checked, moved into place and
   its record stored. Content is written before the record that names it and removed
   only after the last such record is gone, under one lock of the server process, so
-  that what the database names is there; there is one process for one database. A
+  that what the database names is there; there is one server for one database, and
+  the second process neither reads nor writes the store. A
   part left in `files/.incoming/` by an upload that was cut short is removed when the
   server starts, with any content that no record names and that is more than a day
-  old. `src/hirdir/io/store.py` keeps them (P-161).
+  old. That sweep is the server's own, before it answers its first request, and not
+  the second process's: the lock is the server's, and a sweep made by another process
+  while the server takes an upload would remove the part that upload is being written
+  to. `src/hirdir/io/store.py` keeps them (P-161).
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
   `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. It puts into
   `backups/files/` the content the store holds that is not there yet, before it copies
@@ -338,7 +394,10 @@ upload, by its extension and by its first bytes.
   deletion of an item or a device group that was a mistake (P-227); it erases every
   reference and its content after the backup it takes. It is a
   command on the server, with no route behind it, and runs only while the service is
-  stopped, after a backup. Every table is named in `domain/reset.py` as one that a
+  stopped, the server and the process of the background work both, after a backup. It
+  looks for the two locks, and where the server listens, and says which of the two
+  runs; `hirdir admin restore` and `hirdir admin load-examples` refuse in the same
+  way. Every table is named in `domain/reset.py` as one that a
   reset clears or one that it keeps, and a test fails when a new table is in neither. Of
   those it clears, it names the bookkeeping too: what was asked of the inventory and
   what the server keeps of it, which an empty inventory may hold.
@@ -363,9 +422,12 @@ unused, and one that a change has made wrong is never given. At most 64 answers 
 kept, the least used dropped first, and a restart drops them all. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
 The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as D-184 first had it, was measured at three times as long on the fixture. All four are
-worked out just after midnight in the application's time zone, and when the server
-starts, for the view each page opens with, so that the first person of the day is not
-kept waiting; any other view is worked out when it is first asked for, and then kept. A
+worked out just after midnight in the application's time zone, at five minutes past,
+and when the server starts, for the view each page opens with, so that the first
+person of the day is not kept waiting. The server works them out itself, where the
+second process does the rest of what is done by the clock (P-267): they are kept in
+the memory of the process that answers, and nowhere that another process could put
+them. Any other view is worked out when it is first asked for, and then kept. A
 Try of the capacity report is worked out each time and never kept. An Admin may check
 what is kept, `POST /kept-answers/check`: each kept answer is worked out anew and
 compared with what was kept, and the check says which report and which request had
@@ -473,7 +535,8 @@ trigger to put a second behind a load balancer, which waits for PostgreSQL (P-26
 | `/etc/nginx/conf.d/hirdir.conf` | the `upstream hirdir` block (a conffile) |
 | `/usr/share/hirdir/nginx/snippet.conf` | the nginx snippet as this version ships it: the `location` block above, under `/hirdir`, with the upload limit |
 | `/etc/nginx/snippets/hirdir.conf` | that snippet under the prefix of this host. Written at install and at each upgrade, never shipped, and not a conffile |
-| `/usr/lib/systemd/system/hirdir.service` | runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
+| `/usr/lib/systemd/system/hirdir.service` | the server: runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
+| `/usr/lib/systemd/system/hirdir-worker.service` | the process of the background work: runs `hirdir admin work` as user `hirdir`, under the same limits, and listens on nothing. Started, stopped and restarted with `hirdir.service` |
 | `/usr/lib/systemd/system/hirdir-backup.{service,timer}` | the daily backup |
 | `/usr/lib/systemd/system/hirdir-upgrade.{service,timer}` | the nightly upgrade from GitHub. Shipped, and not enabled: a site turns it on |
 | `/var/lib/hirdir/` | database, signing key, the content of reference files in `files/`, backups with the files they name in `backups/files/` (created at install, never shipped) |
@@ -486,7 +549,7 @@ The package carries Python and every Python dependency. It depends on `libc6`,
 **On install** the maintainer script creates the user, the state directory, its backup
 directory and the store of reference files, `files/`, each for the `hirdir` user alone,
 creates the signing key, runs the migrations, writes the nginx snippet, enables and
-starts the service, and prints two lines: how to create the first Admin (`sudo hirdir
+starts the service, both its units, and prints two lines: how to create the first Admin (`sudo hirdir
 admin create-user --role admin NAME`), and how to add the site (`sudo hirdir-setup`).
 
 **On upgrade** it makes the store of reference files where it is missing, as at
@@ -498,6 +561,26 @@ service again. The signing key and the
 one conffile, the nginx upstream, are left as they are, and no value of the settings
 file is changed, so sessions and service tokens go on working, and `hirdir` stays under
 its prefix.
+
+**The two units of the service.** `hirdir.service` is the server and
+`hirdir-worker.service` the process of the background work, and to an operator the
+two are one service: `systemctl start hirdir`, `stop` and `restart` act on both. The
+worker's unit is `PartOf=hirdir.service`, which hands it every stop and restart of the
+server; `After=hirdir.service`, so that it starts once the server has and, since a
+stop goes in the other order, is stopped before `systemctl stop hirdir` comes back,
+which is what a command that needs the service stopped relies on; and
+`WantedBy=hirdir.service`, so that enabling it, which the package does, is what makes
+a start of the server start it. It has no place of its own in the start of the host:
+a server that a site has disabled leaves it unstarted too. `systemctl stop
+hirdir-worker` stops it alone, the server answering as before, and `systemctl start
+hirdir-worker` or a restart of the service brings it back. It has the limits of
+`hirdir.service`, line for line, which a test holds. The maintainer scripts name both
+units wherever they stop the service; they start and restart the server, which brings
+the worker with it. An upgrade from a release before 0.9.10, which has no such unit,
+enables it and starts it with the server. Going back to such a release, the script of
+the release that is leaving stops the worker before its files go, since the older
+release's own scripts stop the server alone, and takes away what enabled it once the
+unit is gone.
 
 **The settings file** is not a conffile, for the reason the snippet is not: a release
 that adds a setting ships a different file, and dpkg would ask every site that had
@@ -591,7 +674,7 @@ volume.
 | `make check` | `ruff format --check`, `ruff check`, `ty check`, `pytest` over `tests/unit`, `tests/api` and `packaging/tests`, and the web UI's type check, lint and unit tests |
 | `make test` | the Python tests of `make check`, alone |
 | `make test-changed` | only the Python tests that what has changed since their last run can reach; for use while working, never in place of `make check` |
-| `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server |
+| `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server, with the process of the background work beside it |
 | `make browser` | the browser scenarios on the host, against a fresh scratch inventory, with one list of every scenario that failed; `ARGS="--last-failed"`, `ARGS="--since <commit>"` or spec files, see "The browser scenarios on the host" below |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
@@ -624,6 +707,15 @@ itself is done once.
   One test keeps the cost that is released and checks it. The acceptance scenarios and
   the package test start the server as a process of its own, and so always run with
   the full cost.
+- **What production starts.** The tests of the routes run the application inside the
+  test's own process, with the worker that applies as a thread of it, which is
+  `in_process`. Every harness that starts a server as a process starts what the
+  package starts: `hirdir admin serve`, and `hirdir admin work` beside it once the
+  server answers, and waits for that process to say that it is at work before a
+  scenario begins, so that what that process does as it starts, the record of a week
+  that has none, is done before anything is asked. The acceptance scenarios
+  (`tests/acceptance/conftest.py`) and `make browser` do so; the package test has the
+  two units. Each stops the second process with the server.
 - **Only what a change can reach, while working.** `make test-changed` keeps a record,
   in `.testmondata`, of the lines of Python each test runs, and runs the tests whose
   lines have changed since. It does not see a change to a file that is not Python, such
@@ -642,8 +734,8 @@ Measured on the four-core build host with nothing else running, at 0.4.1: the 67
 Python tests of `make check` take 33 seconds, and the 22 scenarios of `make acceptance`
 42 seconds. Run one at a time and with everything done again for each test, as before
 0.4.1, the two together took 475 seconds. A scenario is not shortened further: nearly
-all of its time is the server and `hirdir admin` starting as real processes, which is
-what it is there to show.
+all of its time is the server, from 0.9.10 the process of the background work, and
+`hirdir admin` starting as real processes, which is what it is there to show.
 
 **The browser scenarios** of `make e2e` are the spec files in `web/e2e/`, which
 Playwright runs against the fresh install. The files run side by side, each in a worker
@@ -718,9 +810,10 @@ on the build host in one pass that reports every failure:
    Admin, `e2e-admin`, the Admin of the environment, as the package test does; the
    examples are not loaded, since every spec file makes what it needs. It builds the web
    UI, unless `--built` says the build is current, and serves it with
-   `hirdir admin serve --dev` on a free port, never 8715. When it ends, or is
-   interrupted, it stops that server by its port; the inventory is kept until the next
-   run.
+   `hirdir admin serve --dev` on a free port, never 8715, with `hirdir admin work`
+   beside it on the same inventory, as the package runs the two. When it ends, or is
+   interrupted, it stops that server by its port and the second process with it; the
+   inventory is kept until the next run.
 2. It waits for a quiet host and takes the number of files at once from `E2E_WORKERS`,
    or one fewer than `scripts/test_load.py` says, the server needing a processor too.
 3. It runs the ordinary project, and then each project that runs alone, in the order of
@@ -765,9 +858,9 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
-| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx; and, where the new version has the unit of the background work, both units are enabled and running once the upgrade is done, also from a release that had no such unit. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below. An upgrade that stops leaves both units stopped, and going back to a release that has no unit of the background work leaves no process, no unit and no link of it |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
@@ -1751,8 +1844,9 @@ run ends with the status 1.
 [requirements.md](requirements.md#qualities) against the fixture: 10,000 rows preview
 in under 30 s and apply in under 60 s. It copies the fixture's database into a folder
 of its own, which it throws away at the end, makes an account with the Inventory role
-in the copy, and serves the copy as `hirdir admin serve` does, with uvicorn on a free
-port of 127.0.0.1 and the worker that applies imports beside the requests. It makes a
+in the copy, and serves the copy as `hirdir admin serve --work` does, with uvicorn on
+a free port of 127.0.0.1 and the worker that applies imports beside the requests, in
+the one process. It makes a
 file of 10,000 new switches and access points of the fixture's models, places and
 owners, previews it, applies it and asks the job how far it has got until it is
 applied, while a person signs in every second. The parts of the apply are timed by

@@ -539,9 +539,7 @@ export function ApplyPreview(props: ApplyPreviewProps) {
           <div className="alert alert-info" data-testid="apply-progress">
             <p>
               <strong>
-                {job.status === "queued"
-                  ? "Waiting for another import or bulk edit to be applied first."
-                  : "Being applied."}
+                {job.status === "queued" ? "Waiting to be applied, in its turn." : "Being applied."}
               </strong>{" "}
               <span data-testid="apply-progress-text">{progressText(job, noun)}</span>.
             </p>

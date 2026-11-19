@@ -4108,7 +4108,8 @@ export interface paths {
     /**
      * Apply a preview in the background, or resume one that stopped.
      *
-     * The answer is at once: the job, `applying`, or `queued` while another is applied.
+     * The answer is at once: the job, `queued`. It is `applying` once the background
+     * work has taken it up, which is within a second where no other job is ahead.
      * Anybody with the Inventory role may apply it, whoever made it. The rows are applied
      * 50 at a time; a row whose record changed since the preview is left out as `stale`,
      * and the rest go on. `GET /imports/{hid}` says how far it has got.
@@ -4374,7 +4375,8 @@ export interface paths {
     /**
      * Apply a previewed bulk edit in the background, or resume one that stopped.
      *
-     * The answer is at once: the job, `applying`, or `queued` while another is applied.
+     * The answer is at once: the job, `queued`. It is `applying` once the background
+     * work has taken it up, which is within a second where no other job is ahead.
      * Anybody with the Inventory role may apply it, whoever made it. An item that has been
      * changed since the preview, by anybody, is left as it is and its row is `stale`;
      * the rest are changed. `GET /imports/{hid}` says how far it has got.
@@ -10959,7 +10961,7 @@ export interface components {
       source: "file" | "bulk";
       /** How many rows the apply left out because they changed since the preview. */
       stale: number;
-      /** `queued` and `applying` while it is applied in the background, `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied. */
+      /** `queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied. */
       status: "previewed" | "queued" | "applying" | "applied" | "stopped" | "failed";
       system: components["schemas"]["SystemRef"] | null;
       /** An import of items: the external system the file was read from, by whose identifier, `external_id`, its rows are matched first (P-248). */

@@ -18,7 +18,9 @@ sudo apt install ./hirdir_0.3.0_amd64.deb
 ```
 
 This creates the `hirdir` user, the state directory `/var/lib/hirdir`, the database and
-the key that signs sessions, and starts `hirdir.service` listening on `127.0.0.1:8715`.
+the key that signs sessions, and starts the service: `hirdir.service`, the server,
+listening on `127.0.0.1:8715`, and `hirdir-worker.service` beside it, which does the
+work that no person waits for and listens on nothing. See [The service](#the-service).
 The database begins with no account and no inventory, and with the lists of choices
 and the lifecycle rules at their defaults. Nothing is reachable from outside the host
 yet.
@@ -330,6 +332,78 @@ are in the database and not in this file. An Admin lists them with their default
 changes them on the Settings page or by `PUT /settings/{key}`, and `null` returns one
 to its default.
 
+## The service
+
+From 0.9.10 the service is two processes, each a unit of systemd, on the one database:
+
+| Unit | Runs | What it does |
+|---|---|---|
+| `hirdir.service` | `hirdir admin serve` | The server. It answers the web page, the API and the command line, on `127.0.0.1:8715`. |
+| `hirdir-worker.service` | `hirdir admin work` | The process of the background work. It applies the imports and bulk edits that were asked for, and records the capacity balance of the week each Monday just after midnight. It listens on nothing. |
+
+What nobody waits for is so kept off the processor that answers people. Both run as
+the `hirdir` user, under the same limits, and write to `/var/lib/hirdir` and nowhere
+else.
+
+**Stopping and starting.** The two are stopped, started and restarted as one, by the
+name of the server:
+
+```bash
+sudo systemctl stop hirdir           # both
+sudo systemctl start hirdir          # both
+sudo systemctl restart hirdir        # both
+systemctl status hirdir hirdir-worker
+```
+
+`systemctl stop hirdir` comes back once both have stopped. The second process can be
+restarted by itself, which no person signed in notices:
+
+```bash
+sudo systemctl restart hirdir-worker
+```
+
+**Logs.** Each unit has its own:
+
+```bash
+journalctl -u hirdir                 # the server: requests that failed, with their request ID
+journalctl -u hirdir-worker          # the background work: an apply that stopped, a job of the clock that failed
+journalctl -u hirdir -u hirdir-worker    # both, in the order things happened
+```
+
+When it has started, the second process says `hirdir: the background work of
+/var/lib/hirdir is under way`, and when it is stopped, `hirdir: the background work of
+/var/lib/hirdir is stopped`.
+
+**While the second process is not running** the server answers as always: every page,
+every list, every change. What is asked of the background waits. An import or a bulk
+edit that is applied then is taken and shown as waiting to be applied, `queued`, and
+nothing of it is applied; when the process starts it applies it, and the others that
+waited, in the order they were asked for. A job that was being applied when the
+process stopped is `stopped`, with the reason, and Apply on the job, or the same
+`POST`, resumes it from the first row it had not applied; nothing is applied twice. The record
+of a week that was missed is made when the process next starts. systemd starts the
+process again by itself, three seconds after it fails.
+
+**One of each to a state directory.** While it runs, the server holds a lock on
+`/var/lib/hirdir/server.lock` and the second process one on
+`/var/lib/hirdir/worker.lock`, files of their own that they make there. A second
+`hirdir admin serve` on the same directory stops at once with `another hirdir server
+is running on /var/lib/hirdir: stop it first`, and a second `hirdir admin work`, after
+two seconds, with `another process of the background work is running on
+/var/lib/hirdir: stop it first`.
+
+**The commands that need the service stopped** need both stopped: `hirdir admin
+restore`, `hirdir admin reset` and `hirdir admin load-examples`. `sudo systemctl stop
+hirdir` stops both. Each refuses while either runs and says which, for instance:
+
+```text
+hirdir: the service is running, the process of the background work (hirdir-worker.service): stop it first, with `sudo systemctl stop hirdir`, which stops the server and the process of the background work, so that nobody is at work while the inventory goes
+```
+
+**A state directory elsewhere.** A site that moved `state_dir` and gave
+`hirdir.service` and `hirdir-backup.service` a drop-in with its `ReadWritePaths` gives
+`hirdir-worker.service` the same one.
+
 ## Backup and restore
 
 A timer backs the database up every day into `/var/lib/hirdir/backups/` and keeps the
@@ -351,8 +425,9 @@ sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db
 sudo systemctl start hirdir
 ```
 
-`restore` checks the file first and keeps the database as it was beside the restored
-one, named `hirdir.db.before-restore`. It takes the reference files from the `files/`
+`restore` refuses while the service is running, the server or the process of the
+background work, and says which. It checks the file first and keeps the database as it
+was beside the restored one, named `hirdir.db.before-restore`. It takes the reference files from the `files/`
 beside the backup and checks, before it changes anything, that it has every one the
 backup names, byte for byte. It then puts them into `/var/lib/hirdir/files/`, linked
 to those of `backups/files/` as a backup links them, and copied from anywhere else;
@@ -429,8 +504,9 @@ signing key and the backups stay. `--yes` goes on without asking, for a script.
 
 ```bash
 sudo hirdir admin check
-systemctl status hirdir
+systemctl status hirdir hirdir-worker
 journalctl -u hirdir
+journalctl -u hirdir-worker
 curl -s http://127.0.0.1:8715/api/v1/health/ready
 ```
 
@@ -438,7 +514,8 @@ curl -s http://127.0.0.1:8715/api/v1/health/ready
 whole, and how many reference files there are and what they take in
 `/var/lib/hirdir/files/`. It names each file whose content is not there, which is a
 failure and exits with an error, and each content that no reference names, which is
-not: the service removes it when it starts, a day after it was put there.
+not: the server removes it when it starts, a day after it was put there. The two
+units and their logs are under [The service](#the-service).
 
 ## Upgrade
 
@@ -487,8 +564,8 @@ Every one of these ways asks nothing once it has begun, so an upgrade with nobod
 the keyboard goes through. `hirdir-setup --upgrade` refuses a package older than the
 one installed, and when apt is done it runs the `hirdir-setup` that the new package
 brought, which finishes whatever that version wants done and reports how the upgrade
-went: the schema revision, whether the service is running, and where the release
-notes are. So a later version can add a step to an upgrade without a new tool having to
+went: the schema revision, whether the service is running, each of its two units, and
+where the release notes are. So a later version can add a step to an upgrade without a new tool having to
 be fetched first.
 
 ### Upgrades by themselves
@@ -533,8 +610,8 @@ package by its own means before `--upgrade PACKAGE.deb`.
 
 The upgrade does six things, in this order:
 
-1. It stops the service, so that nothing writes to the database while its schema
-   changes.
+1. It stops the service, the server and the process of the background work, so that
+   nothing writes to the database while its schema changes.
 2. It backs the database up into `/var/lib/hirdir/backups/` and says where:
    `hirdir: the database as it was before this upgrade is kept at
    /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db`.
@@ -550,7 +627,7 @@ The upgrade does six things, in this order:
    files.max_megabytes. Nothing you set was changed.` A file you have edited is treated
    the same: every line of yours stays where it is, a new setting goes to the end of
    its table, and the file as it was is kept beside it as `config.toml.<when>.bak`.
-6. It starts the service again.
+6. It starts the service again, both its units.
 
 It keeps every account, user group, role grant, service token and audit event, so
 access codes and service tokens go on working. It keeps the key that signs sessions,
@@ -1714,6 +1791,77 @@ Going back to 0.9.8 needs no backup, because the schema is the same:
 sudo apt install --allow-downgrades ./hirdir_0.9.8_amd64.deb
 ```
 
+### From 0.9.9 to 0.9.10
+
+The schema stays at revision `0014`: 0.9.10 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same.
+
+**The service is two processes.** The upgrade installs a second unit,
+`hirdir-worker.service`, enables it and starts it with the server. It runs `hirdir
+admin work`, as the `hirdir` user and under the limits of `hirdir.service`, and does
+what no person waits for, which until now was done by threads of the server: it
+applies the imports and bulk edits that are asked for, and records the capacity
+balance of the week. It listens on nothing. The server, `hirdir.service`, answers
+people and does none of that work, so a long import no longer takes the processor
+that answers them; both still write through the one writer of the database, so a save
+waits its turn behind a batch of an import as before. [The service](#the-service) has
+the whole of it. For whoever operates the host:
+
+- `sudo systemctl stop hirdir`, `start` and `restart` act on both units, as they acted
+  on the one. Nothing in a script that stops and starts `hirdir` needs to change.
+- `systemctl status hirdir-worker` and `journalctl -u hirdir-worker` show the second
+  process, whose lines `journalctl -u hirdir` no longer has: an apply that stopped,
+  and a record of the week that could not be made.
+- `hirdir admin restore`, `hirdir admin reset` and `hirdir admin load-examples` need
+  both stopped, which `sudo systemctl stop hirdir` does, and say which of the two
+  runs. `restore`, which until now went on whatever ran, refuses too.
+- Monitoring that watches `hirdir.service` watches `hirdir-worker.service` as well
+  from now on. With the second process down the server answers and nothing looks
+  wrong but that no import is applied.
+- A site that moved `state_dir`, with a drop-in that gives `hirdir.service` and
+  `hirdir-backup.service` their `ReadWritePaths`, gives `hirdir-worker.service` the
+  same drop-in before the upgrade, or the second process cannot write there and
+  systemd starts it over and over:
+  `/etc/systemd/system/hirdir-worker.service.d/`.
+- The state directory gains one file, `worker.lock`, empty, which the second process
+  holds a lock on while it runs.
+
+**What is done by the clock.** The record of the week's capacity balance is made by
+the second process, each Monday a minute after midnight and when it starts in a week
+that has none. The long reports are worked out by the server, as before, when it
+starts and each night, now at five minutes after midnight: they are kept in the
+memory of the process that answers, so that process works them out.
+
+**An apply begins within a second.** The second process looks for work every second.
+The server stores an apply that is asked for as `queued`, and the second process makes
+it `applying` as it takes it up. So an apply that is asked for while that process is
+not running, in the seconds of a restart of `hirdir-worker` for instance, waits as
+`queued` and is applied when the process starts. A job that was being applied when
+that process stopped is `stopped`, and its reason now reads `the background work
+stopped while it was being applied; apply it again to resume`, where it named the
+server.
+
+<!-- load: settings and About -->
+
+For a script that reads the API: `POST /api/v1/imports/<HID>/apply`, and the apply
+of a bulk edit, answer `202` with the job `queued`, always, where the job could be
+`applying` in that answer. A script that waits for `GET /api/v1/imports/<HID>` to say
+`applied` or `stopped`, as [From 0.6.1 to 0.7.0](#from-061-to-070) had it, needs no
+change; one that took `queued` to mean that another job is ahead takes it now to mean
+that the job waits to be taken up. `hirdir import --apply` waits as before.
+
+`hirdir admin serve --work` is the one process that does both, for development.
+
+Going back to 0.9.9 needs no backup, because the schema is the same:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.9_amd64.deb
+```
+
+The second process is stopped and its unit removed with the package that brought it,
+and `/var/lib/hirdir/worker.lock` is left, an empty file that 0.9.9 does not look at.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -1764,7 +1912,7 @@ installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
 goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
-0.9.4, 0.9.5, 0.9.6, 0.9.7 and 0.9.9 are such releases. The section of each release above says what its upgrade changed.
+0.9.4, 0.9.5, 0.9.6, 0.9.7, 0.9.9 and 0.9.10 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 

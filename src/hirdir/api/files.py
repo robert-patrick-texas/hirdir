@@ -137,7 +137,8 @@ def apply_import(
 ) -> r.ImportJobOut:
     """Apply a preview in the background, or resume one that stopped.
 
-    The answer is at once: the job, `applying`, or `queued` while another is applied.
+    The answer is at once: the job, `queued`. It is `applying` once the background
+    work has taken it up, which is within a second where no other job is ahead.
     Anybody with the Inventory role may apply it, whoever made it. The rows are applied
     50 at a time; a row whose record changed since the preview is left out as `stale`,
     and the rest go on. `GET /imports/{hid}` says how far it has got.
