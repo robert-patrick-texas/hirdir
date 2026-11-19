@@ -736,10 +736,37 @@ def update_group(
     return group
 
 
+def hosting(db: Session, hid: str) -> list[Item]:
+    """Return the items not retired that name a group as their host, by name (P-246)."""
+    found = db.scalars(
+        select(Item).where(Item.host_group_hid == hid, Item.record_status != "retired")
+    )
+    return sorted(found, key=lambda item: (records.key(items.shown_name(item)), item.hid))
+
+
+def _refuse_if_hosting(db: Session, group: DeviceGroup) -> None:
+    """Refuse to retire a stack or a cluster that something runs on, naming each (P-247):
+    each is given another host, or is retired, first."""
+    if group.record_status == "retired":
+        return
+    running = hosting(db, group.hid)
+    if running:
+        count = len(running)
+        what = "1 item runs" if count == 1 else f"{count} items run"
+        raise Conflict(
+            f"{what} on {group.name}: give each another host, or retire it, first",
+            depends_on=[items.existing_item(one) for one in running],
+        )
+
+
 def retire_group(db: Session, context: AuditContext, hid: str, row_version: int) -> DeviceGroup:
-    """Retire a group: its record stays, and its current memberships end today."""
+    """Retire a group: its record stays, and its current memberships end today.
+
+    A stack or a cluster that something runs on is refused, naming what (P-247).
+    """
     dialect.hold_other_writers(db)
     group = get_group(db, hid)
+    _refuse_if_hosting(db, group)
     values = {"record_status": "retired", "observed_master_hid": None, "master_observed_at": None}
     records.apply(db, context, RECORD_TYPE, group, row_version, values, action="retire")
     day = today(db)

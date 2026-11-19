@@ -45,6 +45,10 @@ function job(more: Partial<Job> = {}): Job {
     applied: 0,
     stale: 0,
     skip_rejected: null,
+    system_hid: null,
+    system: null,
+    complete: null,
+    not_reported: 0,
     failure: null,
     created_at: "2026-11-13T21:31:18Z",
     applied_by: null,
@@ -116,8 +120,12 @@ describe("rowsQuery", () => {
 });
 
 describe("firstPage", () => {
-  const small: Preview = { job: job({ row_count: 9 }), rows: rows(9) };
-  const large: Preview = { job: job({ row_count: 2500 }), rows: rows(ROWS_PAGE) };
+  const small: Preview = { job: job({ row_count: 9 }), rows: rows(9), not_reported_first: [] };
+  const large: Preview = {
+    job: job({ row_count: 2500 }),
+    rows: rows(ROWS_PAGE),
+    not_reported_first: [],
+  };
 
   it("is the rows the preview's own answer holds, with the number of all rows", () => {
     expect(firstPage(small, "", 0)).toEqual({ items: small.rows, total: 9 });
@@ -131,7 +139,11 @@ describe("firstPage", () => {
   });
 
   it("is asked for when the answer holds fewer rows than a page", () => {
-    const short: Preview = { job: job({ row_count: 2500 }), rows: rows(50) };
+    const short: Preview = {
+      job: job({ row_count: 2500 }),
+      rows: rows(50),
+      not_reported_first: [],
+    };
     expect(firstPage(short, "", 0)).toBeNull();
     expect(firstPage(null, "", 0)).toBeNull();
     expect(firstPage(undefined, "", 0)).toBeNull();

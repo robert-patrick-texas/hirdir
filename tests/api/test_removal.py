@@ -48,6 +48,7 @@ def test_the_items_ticked_are_retired_by_one_request_each_as_its_page_retires_it
     done = _retire(client, inventory, "/items", named)
 
     assert done == {
+        "dry_run": False,
         "retired": [
             {"hid": one["hid"], "label": "site9-sw-wrong-01"},
             {"hid": two["hid"], "label": "site9-sw-wrong-02"},
@@ -56,6 +57,8 @@ def test_the_items_ticked_are_retired_by_one_request_each_as_its_page_retires_it
         "already": [{"hid": three["hid"], "label": "site9-sw-wrong-03"}],
         "refused": [],
         "missing": [NOBODY],
+        # Nothing runs on a switch here (P-247).
+        "hosted": [],
     }
     for item in (one, two):
         assert make.get(f"/items/{item['hid']}")["record_status"] == "retired"
@@ -115,8 +118,8 @@ def test_one_that_is_refused_leaves_the_others_as_they_went(
     one, two = _switches(make, 2)
     retire = item_rules.retire_item
 
-    def refusing(db: Any, context: Any, hid: str, row_version: int) -> Any:
-        retire(db, context, hid, row_version)
+    def refusing(db: Any, context: Any, hid: str, row_version: int, went: Any = None) -> Any:
+        retire(db, context, hid, row_version, went)
         if hid == one["hid"]:
             # Refused after it had written: what it wrote is undone.
             raise domain_errors.Invalid("not now", {"record_status": "a rule says no"})
@@ -130,6 +133,7 @@ def test_one_that_is_refused_leaves_the_others_as_they_went(
             "hid": one["hid"],
             "label": "site9-sw-wrong-01",
             "detail": "not now; record_status: a rule says no",
+            "depends_on": [],
         }
     ]
     assert [entry["hid"] for entry in done["retired"]] == [two["hid"]]

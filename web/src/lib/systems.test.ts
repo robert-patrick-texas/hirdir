@@ -123,6 +123,7 @@ describe("systems as words and links", () => {
       "registered",
       "pending",
       "removed",
+      "not_reported",
     ]);
   });
 

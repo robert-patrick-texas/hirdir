@@ -24,6 +24,7 @@ from hirdir.db.models import (
     PurchaseRequest,
 )
 from hirdir.domain import (
+    audit,
     catalog,
     choices,
     contracts,
@@ -747,15 +748,31 @@ def update_item(
     return item
 
 
-def retire_item(db: Session, context: AuditContext, hid: str, row_version: int) -> Item:
+# The entry of the retire event of an item that went with the item it ran on (P-247).
+RETIRED_WITH = "retired_with"
+
+
+def retire_item(
+    db: Session,
+    context: AuditContext,
+    hid: str,
+    row_version: int,
+    went: list[tuple[Item, str]] | None = None,
+) -> Item:
     """Retire an item: keep the record and its history, and leave it out of what is counted.
 
     Its memberships of groups end today: a retired item is in no stack, cluster or
     domain any more, and the memberships stay on record with the day they ended.
+
+    What runs on it goes with it, in the same change (P-247): each item not retired that
+    names it as its host is retired as this one is, and what runs on that in its turn,
+    each by its own event that names in `retired_with` the item it ran on. `went`, where
+    given, is told each of them with that item's HID, the host first.
     """
     dialect.hold_other_writers(db)
     item = get_item(db, hid)
-    if item.record_status != "retired":
+    retiring = item.record_status != "retired"
+    if retiring:
         if item.row_version != row_version:
             records.touch(item, context, row_version)
         _leave_groups(db, context, hid)
@@ -764,7 +781,35 @@ def retire_item(db: Session, context: AuditContext, hid: str, row_version: int) 
     records.apply(
         db, context, RECORD_TYPE, item, row_version, {"record_status": "retired"}, action="retire"
     )
+    if retiring:
+        _retire_hosted(db, context, item, went)
     return item
+
+
+def _retire_hosted(
+    db: Session, context: AuditContext, host: Item, went: list[tuple[Item, str]] | None
+) -> None:
+    """Retire what runs on an item that is retired, and beneath that, each by itself.
+
+    Only what names the item as `host_item_hid` goes: what runs on a cluster that the
+    item is a member of names the cluster, and stays with it. One that is retired
+    already is left as it is, which also ends any line that came back on itself.
+    """
+    running = list(
+        db.scalars(
+            select(Item)
+            .where(Item.host_item_hid == host.hid, Item.record_status != "retired")
+            .order_by(Item.hid)
+        )
+    )
+    for one in running:
+        if one.record_status == "retired":
+            # Retired meanwhile, with another that ran on this host.
+            continue
+        if went is not None:
+            went.append((one, host.hid))
+        with_host = audit.because(context, RETIRED_WITH, None, host.hid, of=(RECORD_TYPE, one.hid))
+        retire_item(db, with_host, one.hid, one.row_version, went)
 
 
 def transition(

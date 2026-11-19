@@ -103,8 +103,13 @@ def apply_bulk_update(
 @router.post("/retire")
 def retire_items(body: r.RetireMany, _: Inventory, context: Audit, db: Db) -> r.RetiredMany:
     """Retire several items at once, each as its own retire route does, with an audit
-    event each (P-228). One retired already is counted, not refused."""
-    return shapes.retired_out(removal.retire_many(db, context, removal.ITEM, body.hids))
+    event each (P-228). One retired already is counted, not refused.
+
+    What runs on each, and on that, is retired with it, and named in `hosted` (P-247).
+    With `dry_run` nothing is changed, and the answer is the same.
+    """
+    done = removal.retire_many(db, context, removal.ITEM, body.hids, dry_run=body.dry_run)
+    return shapes.retired_out(done)
 
 
 @router.post("/delete")
@@ -137,7 +142,8 @@ def update_item(hid: str, body: r.ItemPatch, _: Inventory, context: Audit, db: D
 
 @router.post("/{hid}/retire")
 def retire_item(hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db) -> r.ItemOut:
-    """Retire an item. Its record and history are kept."""
+    """Retire an item. Its record and history are kept. What runs on it, and on that, is
+    retired with it, each by an event that names in `retired_with` the host (P-247)."""
     return shapes.item_out(db, items.retire_item(db, context, hid, body.row_version))
 
 
@@ -206,6 +212,7 @@ def replace_item(
         disposition=body.disposition,
         expected_online=body.expected_online,
         old_item=body.old_item.model_dump(exclude_unset=True) if body.old_item else None,
+        hand_over_hosted=body.hand_over_hosted,
     )
     return shapes.replacement_out(db, replacement)
 

@@ -1193,7 +1193,7 @@ class ItemRef(Model):
 
 
 ContractStatus = Literal["active", "renewal_pending", "expired", "pending", "cancelled"]
-RegistrationStatus = Literal["registered", "pending", "removed"]
+RegistrationStatus = Literal["registered", "pending", "removed", "not_reported"]
 
 
 class ContractRef(Model):
@@ -1895,6 +1895,15 @@ class Replace(Model):
             "with a replaced_on that has come."
         ),
     )
+    hand_over_hosted: bool = Field(
+        default=True,
+        description=(
+            "Whether what runs on the item that leaves, each item that names it as "
+            "`host_item_hid`, is given the item that comes as its host, each by a change "
+            "that names the replacement (P-247). Left out, true. Where something is handed "
+            "over, the item that comes must be one that may be a host."
+        ),
+    )
 
 
 class ReplacementRemove(Model):
@@ -2116,6 +2125,10 @@ class RetireMany(Model):
         max_length=removal.MOST_AT_ONCE,
         description="Each is retired as its own retire route does. One named twice counts once.",
     )
+    dry_run: bool = Field(
+        default=False,
+        description="Answer what it would do, `hosted` among it, and change nothing (P-247).",
+    )
 
 
 class RecordLabel(Model):
@@ -2125,19 +2138,54 @@ class RecordLabel(Model):
     label: str = Field(description=LABEL)
 
 
+class Dependent(Model):
+    """A record that depends on one that is to be deleted, and so stands in the way."""
+
+    record_type: str = Field(
+        description="Its kind, as the audit trail names it: `contract` for a coverage under "
+        "it, `purchase_line`, `item` for an item installed in it or that runs on it, "
+        "`item_replacement`, `circuit`, `reference_file`, or `device_group` for a group "
+        "nested in it."
+    )
+    hid: str
+    label: str = Field(
+        description="What it is known by: a contract by its number, a purchase line as "
+        "RITM0012345/2, a replacement by its two items, a circuit by its enterprise circuit "
+        "ID or its name, a reference by its title, an item or a group as `label` above."
+    )
+
+
 class RetireRefused(RecordLabel):
     """A record the rules did not let be retired."""
 
     detail: str = Field(description="Why.")
+    depends_on: list[Dependent] = Field(
+        description="Where what runs on it is why, a stack or a cluster that items name as "
+        "their host: those items (P-247). Empty otherwise.",
+    )
+
+
+class HostedRetired(RecordLabel):
+    """An item retired with the host it runs on, which the request named (P-247)."""
+
+    host_hid: str = Field(
+        description="The item it runs on, which went first: one named, or one that went "
+        "with one named."
+    )
 
 
 class RetiredMany(Model):
-    """What a request that retires several did with each record it named."""
+    """What a request that retires several did, or with `dry_run` would do, with each."""
 
+    dry_run: bool
     retired: list[RecordLabel] = Field(description="What this request retired.")
     already: list[RecordLabel] = Field(description="What was retired before it: not refused.")
     refused: list[RetireRefused]
     missing: list[str] = Field(description="Each HID that names no such record.")
+    hosted: list[HostedRetired] = Field(
+        description="The items not named that are retired with those named, because they "
+        "run on one of them or on what runs on one, each once (P-247). Empty for groups.",
+    )
 
 
 class DeleteMany(Model):
@@ -2150,22 +2198,6 @@ class DeleteMany(Model):
         "requires it, and a dry run does not.",
     )
     dry_run: bool = Field(default=False, description="Answer what it would do, and change nothing.")
-
-
-class Dependent(Model):
-    """A record that depends on one that is to be deleted, and so stands in the way."""
-
-    record_type: str = Field(
-        description="Its kind, as the audit trail names it: `contract` for a coverage under "
-        "it, `purchase_line`, `item` for an item installed in it, `item_replacement`, "
-        "`circuit`, `reference_file`, or `device_group` for a group nested in it."
-    )
-    hid: str
-    label: str = Field(
-        description="What it is known by: a contract by its number, a purchase line as "
-        "RITM0012345/2, a replacement by its two items, a circuit by its enterprise circuit "
-        "ID or its name, a reference by its title, an item or a group as `label` above."
-    )
 
 
 class DeleteRefused(RecordLabel):
@@ -4457,6 +4489,20 @@ class ImportJobOut(Model):
         description="How many rows the apply left out because they changed since the preview."
     )
     skip_rejected: bool | None = Field(description="Whether it was applied without them.")
+    system_hid: str | None = Field(
+        description="An import of items: the external system the file was read from, by "
+        "whose identifier, `external_id`, its rows are matched first (P-248)."
+    )
+    system: SystemRef | None
+    complete: bool | None = Field(
+        description="With a system: the file is everything that system reports, so that each "
+        "item registered with it that no row names is marked `not_reported` once the file is "
+        "applied whole."
+    )
+    not_reported: int = Field(
+        description="How many items that marks: as the preview found, and once applied, how "
+        "many it marked. None is marked where a row was rejected, left out or stale."
+    )
     failure: str | None = Field(
         description="Why a stopped job stopped, or why a failed one was not applied."
     )
@@ -4509,6 +4555,10 @@ class ImportPreview(Model):
     job: ImportJobOut
     rows: list[ImportRowOut] = Field(
         description="The first hundred rows. `GET /imports/{hid}/rows` pages through all."
+    )
+    not_reported_first: list[RecordLabel] = Field(
+        description="Of a `complete` import that is not applied yet: the first ten items it "
+        "would mark `not_reported`, by label (P-248). Empty otherwise.",
     )
 
 

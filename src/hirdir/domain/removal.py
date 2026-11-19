@@ -65,19 +65,32 @@ class Kind:
     record_type: str
     model: Any
     label: Callable[[Any], str]
-    retire: Callable[[Session, AuditContext, str, int], Any]
+    # Retire one, telling the list what went with it because it ran on it (P-247).
+    retire: Callable[[Session, AuditContext, str, int, list[tuple[Item, str]]], Any]
 
 
 def _group_label(group: DeviceGroup) -> str:
     return group.name
 
 
+def _retire_item(
+    db: Session, context: AuditContext, hid: str, row_version: int, went: list[tuple[Item, str]]
+) -> Any:
+    return items.retire_item(db, context, hid, row_version, went)
+
+
+def _retire_group(
+    db: Session, context: AuditContext, hid: str, row_version: int, _: list[tuple[Item, str]]
+) -> Any:
+    return groups.retire_group(db, context, hid, row_version)
+
+
 def kind_of(record_type: str) -> Kind:
     """Return the kind of record that is retired or deleted several at a time."""
     if record_type == ITEM:
-        return Kind(ITEM, Item, items.shown_name, items.retire_item)
+        return Kind(ITEM, Item, items.shown_name, _retire_item)
     if record_type == DEVICE_GROUP:
-        return Kind(DEVICE_GROUP, DeviceGroup, _group_label, groups.retire_group)
+        return Kind(DEVICE_GROUP, DeviceGroup, _group_label, _retire_group)
     raise Invalid("this kind of record is not retired or deleted so", {"kind": "item or group"})
 
 
@@ -117,30 +130,59 @@ def said(error: DomainError) -> str:
 
 @dataclass
 class Retired:
-    """What a request that retires several did with each record it named."""
+    """What a request that retires several did, or with a dry run would do, with each
+    record it named; and in `hosted`, by its HID, label and host, each item that went
+    with one named because it runs on it (P-247)."""
 
+    dry_run: bool = False
     retired: list[tuple[str, str]] = field(default_factory=list)
     already: list[tuple[str, str]] = field(default_factory=list)
-    refused: list[tuple[str, str, str]] = field(default_factory=list)
+    refused: list[tuple[str, str, str, list[Existing]]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    hosted: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 def retire_many(
-    db: Session, context: AuditContext, record_type: str, hids: Sequence[str]
+    db: Session,
+    context: AuditContext,
+    record_type: str,
+    hids: Sequence[str],
+    *,
+    dry_run: bool = False,
 ) -> Retired:
     """Retire each record named, as its own page retires it, with an audit event each.
 
     One that is retired already is counted so and not refused. One that the rules refuse
     is named with why, and leaves the others as they went. No version is asked for: what
     a person ticked is what is retired, as it is when the request is worked.
+
+    With `dry_run` the work is done in a savepoint that is then undone, so that the answer
+    is what the request would do, by the same rules, and nothing is kept.
     """
     kind = kind_of(record_type)
     named = unique(hids)
     # The memberships and the coverage that retiring ends are read with no other change
     # under way, as one retire reads them.
     dialect.hold_other_writers(db)
+    if not dry_run:
+        return _retire_each(db, context, kind, named, Retired())
+    trying = db.begin_nested()
+    try:
+        return _retire_each(db, context, kind, named, Retired(dry_run=True))
+    finally:
+        trying.rollback()
+
+
+def _retire_each(
+    db: Session, context: AuditContext, kind: Kind, named: list[str], done: Retired
+) -> Retired:
+    """Retire each record named, in the order named, and say what became of each.
+
+    What runs on an item goes with it (P-247). One named that went with another named
+    before it is counted as retired by this request, and only once.
+    """
     found = read(db, kind.model, named)
-    done = Retired()
+    went_with: dict[str, tuple[str, str, str]] = {}
     for hid in named:
         record = found.get(hid)
         if record is None:
@@ -148,17 +190,25 @@ def retire_many(
             continue
         label = kind.label(record)
         if record.record_status == "retired":
-            done.already.append((hid, label))
+            if hid in went_with:
+                done.retired.append((hid, label))
+            else:
+                done.already.append((hid, label))
             continue
         savepoint = db.begin_nested()
+        went: list[tuple[Item, str]] = []
         try:
-            kind.retire(db, context, hid, record.row_version)
+            kind.retire(db, context, hid, record.row_version, went)
         except DomainError as error:
             savepoint.rollback()
-            done.refused.append((hid, label, said(error)))
+            done.refused.append((hid, label, said(error), getattr(error, "depends_on", [])))
         else:
             savepoint.commit()
             done.retired.append((hid, label))
+            for one, host_hid in went:
+                went_with.setdefault(one.hid, (one.hid, items.shown_name(one), host_hid))
+    asked = set(named)
+    done.hosted = [one for hid, one in went_with.items() if hid not in asked]
     return done
 
 
@@ -229,15 +279,22 @@ def _replacements(db: Session, piece: list[str], ties: _Ties) -> None:
                 ties.outside[hid].append(tie)
 
 
+def _above(item: Item) -> str | None:
+    """Return the item an item is beneath: the one it is installed in, or the one it runs
+    on (P-247). An item has one of the two at most."""
+    return item.parent_item_hid or item.host_item_hid
+
+
 def _item_ties(db: Session, found: dict[str, Item]) -> _Ties:
-    """Return what depends on each item: what is installed in it, what covers it or has,
-    the line it arrived on, a replacement, a circuit and a reference."""
+    """Return what depends on each item: what is installed in it or runs on it, what
+    covers it or has, the line it arrived on, a replacement, a circuit and a reference."""
     ties = _Ties({hid: [] for hid in found}, {hid: [] for hid in found})
     for piece in _pieces(list(found)):
-        for child in db.scalars(
-            select(Item).where(Item.parent_item_hid.in_(piece)).order_by(Item.hid)
-        ):
-            parent = child.parent_item_hid or ""
+        # What runs on it stands in its way as what is installed in it does, retired or
+        # not, unless it is deleted by the same request (P-247).
+        beneath = or_(Item.parent_item_hid.in_(piece), Item.host_item_hid.in_(piece))
+        for child in db.scalars(select(Item).where(beneath).order_by(Item.hid)):
+            parent = _above(child) or ""
             if child.hid in found:
                 ties.inside[parent].append(child.hid)
             else:
@@ -273,7 +330,8 @@ def _item_ties(db: Session, found: dict[str, Item]) -> _Ties:
 
 
 def _group_ties(db: Session, found: dict[str, DeviceGroup]) -> _Ties:
-    """Return what depends on each device group: a group nested in it and a circuit."""
+    """Return what depends on each device group: a group nested in it, an item that runs
+    on it, retired or not (P-247), and a circuit."""
     ties = _Ties({hid: [] for hid in found}, {hid: [] for hid in found})
     for piece in _pieces(list(found)):
         for child in db.scalars(
@@ -286,6 +344,10 @@ def _group_ties(db: Session, found: dict[str, DeviceGroup]) -> _Ties:
                 ties.inside[parent].append(child.hid)
             else:
                 ties.outside[parent].append(Existing(DEVICE_GROUP, child.hid, child.name))
+        for running in db.scalars(
+            select(Item).where(Item.host_group_hid.in_(piece)).order_by(Item.hid)
+        ):
+            ties.outside[running.host_group_hid or ""].append(items.existing_item(running))
         _circuits(db, CircuitDevice.group_hid, piece, ties)
     return ties
 
@@ -426,14 +488,21 @@ def _delete_one(
 
 
 def _delete_item(db: Session, context: AuditContext, item: Item, why: str) -> None:
-    """Delete an item. A stack that saw it as master sees none now, by a change of its own
-    that says why."""
+    """Delete an item. A stack that saw it as master sees none now, and an item that was
+    seen to run on it was seen on nothing (P-247), each by a change of its own that says
+    why."""
     seen_by = db.scalars(select(DeviceGroup).where(DeviceGroup.observed_master_hid == item.hid))
     for stack in seen_by:
         cleared = {"observed_master_hid": None, "master_observed_at": None}
         records.apply(
             db, context, DEVICE_GROUP, stack, None, cleared, [change(WENT_WITH, None, item.hid)]
         )
+    seen_on = list(
+        db.scalars(select(Item).where(Item.observed_host_hid == item.hid).order_by(Item.hid))
+    )
+    for one in seen_on:
+        cleared = {"observed_host_hid": None, "host_observed_at": None}
+        records.apply(db, context, ITEM, one, None, cleared, [change(WENT_WITH, None, item.hid)])
     _delete_one(db, context, ITEM, item, "item_hid", why)
 
 
@@ -478,7 +547,7 @@ def delete_many(
         return done
     going = {hid: found[hid] for hid, _ in done.deleted}
     if record_type == ITEM:
-        for item in _deepest_first(going, lambda one: one.parent_item_hid):
+        for item in _deepest_first(going, _above):
             _delete_item(db, context, item, why)
     else:
         for group in _deepest_first(going, lambda one: one.parent_group_hid):

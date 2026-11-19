@@ -27,7 +27,7 @@ from hirdir import clock
 from hirdir.auth.roles import Role
 from hirdir.db import dialect, engine
 from hirdir.db.models import AuditEvent, ImportJob, ImportRow, User
-from hirdir.domain import accounts, audit, deleted, records
+from hirdir.domain import accounts, audit, deleted, items, records, systems
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Deleted, Invalid, NotAllowed, NotFound
 from hirdir.io import columns as cells
@@ -155,14 +155,14 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     new = record is None or claimed
     before = None
     if record is not None and not claimed:
-        before = which.read(db, [record])[0]
+        before = which.read_for(run, [record])[0]
     if claimed:
         run.claim(record.hid)
     record = which.write(run, record, values, new)
     db.flush()
     result.changes = [
         change
-        for change in _differences(which, before, which.read(db, [record])[0])
+        for change in _differences(which, before, which.read_for(run, [record])[0])
         if change["field"] not in which.restated
         and (change["field"] not in which.by_the_clock or values.get(change["field"]) is not None)
     ]
@@ -183,13 +183,16 @@ def _work(
     mode: str,
     rows: Sequence[Row],
     skip: frozenset[int] = frozenset(),
+    system_hid: str | None = None,
 ) -> list[Result]:
     """Work every row, each in a savepoint of its own, and report them in the file's order.
 
     A row that is refused leaves nothing behind and is reported as rejected. The rows
-    numbered in `skip` are not worked at all.
+    numbered in `skip` are not worked at all. `system_hid` is the external system a file
+    of items was read from (P-248).
     """
     run = Run(db, context, role, mode)
+    run.system_hid = system_hid
     results: list[Result] = []
     workable = [
         number for number, row in enumerate(rows, start=1) if number not in skip and not row.reasons
@@ -255,11 +258,25 @@ def preview_rows(
     rows: Sequence[Row],
     file_name: str | None = None,
     file_sha256: str | None = None,
+    system_hid: str | None = None,
+    complete: bool = False,
 ) -> ImportJob:
-    """Work the rows without keeping anything, and store what they would do."""
+    """Work the rows without keeping anything, and store what they would do.
+
+    A file read from an external system that is everything it reports counts how many
+    items its apply would mark `not_reported`: none where a row is rejected (P-248).
+    """
     working = replace(context, via="import") if source == "file" else context
     with engine.trial(db, in_place=len(rows) <= IN_PLACE_UP_TO) as trying:
-        results = _work(trying, working, role, which, mode, rows)
+        results = _work(trying, working, role, which, mode, rows, system_hid=system_hid)
+    marks = 0
+    if (
+        complete
+        and system_hid is not None
+        and not any(result.outcome == "rejected" for result in results)
+    ):
+        named = {result.record_hid for result in results if result.row_version is not None}
+        marks = len(systems.not_named(db, system_hid, {hid for hid in named if hid}))
     job = ImportJob(
         source=source,
         entity=which.name,
@@ -269,6 +286,9 @@ def preview_rows(
         status="previewed",
         row_count=len(rows),
         created_by=context.actor_hid,
+        system_hid=system_hid,
+        complete=complete if system_hid is not None else None,
+        not_reported=marks,
         **_count(results),
     )
     db.add(job)
@@ -315,14 +335,22 @@ def preview(
     mode: str | None = None,
     file_name: str | None = None,
     max_bytes: int = files.MAX_BYTES,
+    system: str | None = None,
+    complete: bool = False,
 ) -> ImportJob:
-    """Read a file, work out what importing it would do, and store that as a preview."""
+    """Read a file, work out what importing it would do, and store that as a preview.
+
+    A file of items may name `system`, the external system it was read from, by whose
+    identifier its rows are matched first, and be `complete`, everything that system
+    reports (P-248).
+    """
     parsed = files.read(
         data, format_=format_, entity_name=entity_name, mode=mode, max_bytes=max_bytes
     )
     name = records.clean(file_name)
     if name is not None and len(name) > 255:
         raise Invalid("the file name is too long", {"file_name": "at most 255 characters"})
+    system_hid = _read_from(db, parsed, records.clean(system), complete)
     return preview_rows(
         db,
         context,
@@ -333,7 +361,63 @@ def preview(
         rows=parsed.rows,
         file_name=name,
         file_sha256=hashlib.sha256(data).hexdigest(),
+        system_hid=system_hid,
+        complete=complete,
     )
+
+
+def _read_from(db: Session, parsed: files.Parsed, system: str | None, complete: bool) -> str | None:
+    """Return the external system a file was read from, refusing what cannot be one: a
+    system that is not there or is retired, a file of another entity than items, a file
+    that is everything a system reports and names none, and a file that gives a system's
+    identifiers and names no system (P-248)."""
+    if system is None:
+        if complete:
+            raise Invalid(
+                "a file that is everything a system reports names the system",
+                {"complete": "give system, the external system the file was read from"},
+            )
+        if parsed.entity.name == "items" and any(
+            row.values.get("external_id") for row in parsed.rows
+        ):
+            raise Invalid(
+                "a file of a system's identifiers names the system",
+                {
+                    "external_id": "give system, the external system whose identifiers "
+                    "these are, or leave the column blank"
+                },
+            )
+        return None
+    if parsed.entity.name != "items":
+        raise Invalid(
+            "only a file of items is read from an external system",
+            {"system": "a file of items only"},
+        )
+    found = systems.the_one(db, system, "system")
+    if found.record_status == "retired":
+        raise Invalid("the system is retired", {"system": f"{found.name} is retired"})
+    return found.hid
+
+
+# The most items a preview names that a file would mark `not_reported`.
+FIRST_NOT_REPORTED = 10
+
+
+def not_reported_first(db: Session, job: ImportJob) -> list[tuple[str, str]]:
+    """Return the first items a `complete` import that is not applied yet would mark
+    `not_reported`, each by its HID and label, by name (P-248): read now, from the
+    rows the preview matched. None where a row is rejected, as its apply marks none."""
+    if not job.complete or job.system_hid is None or job.status != "previewed" or job.rejected:
+        return []
+    named = set(
+        db.scalars(
+            select(ImportRow.record_hid).where(
+                ImportRow.job_hid == job.hid, ImportRow.record_hid.is_not(None)
+            )
+        )
+    )
+    left = systems.not_named(db, job.system_hid, {hid for hid in named if hid})
+    return [(item.hid, items.shown_name(item)) for _, item in left[:FIRST_NOT_REPORTED]]
 
 
 def get_job(db: Session, hid: str, source: str | None = None) -> ImportJob:
@@ -856,8 +940,32 @@ def _plan(
     return [[by_number[number] for number in batch] for batch in batches(ordered, together)], typed
 
 
+def _mark_not_reported(
+    db: Session, job: ImportJob, context: AuditContext, counts: Mapping[str | None, int]
+) -> int:
+    """Mark `not_reported` what the system of a file that is everything it reports did
+    not name, once the file is applied whole (P-248); and nothing where a row was
+    rejected, left out or stale. Return how many were marked."""
+    if not job.complete or job.system_hid is None:
+        return 0
+    if counts.get("rejected", 0) or counts.get("stale", 0):
+        return 0
+    named = set(
+        db.scalars(
+            select(ImportRow.record_hid).where(
+                ImportRow.job_hid == job.hid, ImportRow.record_hid.is_not(None)
+            )
+        )
+    )
+    return systems.mark_not_reported(db, context, job.system_hid, {hid for hid in named if hid})
+
+
 def _complete(db: Session, hid: str, context: AuditContext) -> None:
-    """Mark a job applied, now that every row is worked, with the counts of what it did."""
+    """Mark a job applied, now that every row is worked, with the counts of what it did.
+
+    A file that is everything its system reports marks what it did not name here, once,
+    at the end of its apply, however often it stopped and was resumed (P-248).
+    """
     dialect.hold_other_writers(db)
     job = db.get_one(ImportJob, hid)
     db.refresh(job)
@@ -867,6 +975,9 @@ def _complete(db: Session, hid: str, context: AuditContext) -> None:
         .group_by(ImportRow.applied_outcome)
     )
     counts: dict[str | None, int] = dict(db.execute(by_outcome).all())
+    marked = _mark_not_reported(db, job, context, counts)
+    if job.complete:
+        job.not_reported = marked
     before = job.status
     job.status = "applied"
     audit.record(
@@ -880,6 +991,7 @@ def _complete(db: Session, hid: str, context: AuditContext) -> None:
             *(change(name, None, counts.get(outcome, 0)) for outcome, name in COUNTED.items()),
             change("stale", None, counts.get("stale", 0)),
             change("rejected", None, counts.get("rejected", 0)),
+            *([change("not_reported", None, marked)] if job.complete else []),
         ],
     )
     db.commit()
@@ -946,6 +1058,7 @@ def work_job(
         working = replace(context, via="import") if job.source == "file" else context
         run = Run(db, working, role, job.mode)
         run.given_role = as_role
+        run.system_hid = job.system_hid
         # A job that is resumed knows again what its earlier batches made only for a
         # reference, so that a row that describes one of them is worked as previewed.
         run.stubs |= _stubs_made(db, hid)
