@@ -6,6 +6,7 @@ The host fields are set through the database here, as the rules of naming a host
 another part's (P-246): what is tested is what follows from them.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -32,6 +33,7 @@ def _host(
     }
     if seen is not None:
         values["observed_host_hid"] = seen["hid"]
+        values["host_observed_at"] = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
     db.execute(update(Item).where(Item.hid == item["hid"]).values(**values))
     db.commit()
 
@@ -291,4 +293,99 @@ def test_a_stack_that_a_virtual_context_runs_on_is_not_retired(
     assert tried["hosted"] == []
     assert [one["depends_on"] for one in tried["refused"]] == [
         [{"hid": context["hid"], "record_type": "item", "label": "site2-n7k-01-vdc2"}]
+    ]
+
+
+# --- deleting (P-227, P-247) ---------------------------------------------------------
+
+
+def _delete(
+    client: TestClient, admin: dict[str, str], path: str, hids: list[str], dry_run: bool = False
+) -> dict[str, Any]:
+    body = {"hids": hids, "reason": "a wrong file", "dry_run": dry_run}
+    response = client.post(f"{API}{path}/delete", json=body, headers=admin)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_host_is_not_deleted_while_something_names_it_retired_or_not(
+    client: TestClient, make: Maker, admin: dict[str, str], db: Session
+) -> None:
+    made = _virtual(make)
+    _hosted(db, made)
+    web = _get(make, made["web"])
+    make.post(f"/items/{web['hid']}/retire", {"row_version": web["row_version"]}, 200)
+
+    done = _delete(client, admin, "/items", [made["esx"]["hid"]])
+
+    assert done["deleted"] == []
+    assert done["refused"] == [
+        {
+            "hid": made["esx"]["hid"],
+            "label": "site2-esx-01",
+            "depends_on": sorted(
+                [
+                    {"record_type": "item", "hid": made["app"]["hid"], "label": "site2-vm-app01"},
+                    {"record_type": "item", "hid": made["web"]["hid"], "label": "site2-vm-web01"},
+                ],
+                key=lambda one: one["hid"],
+            ),
+        }
+    ]
+
+
+def test_a_host_deleted_with_what_runs_on_it_goes_last(
+    client: TestClient, make: Maker, admin: dict[str, str], db: Session
+) -> None:
+    made = _virtual(make)
+    _hosted(db, made)
+    everything = [made[one]["hid"] for one in ("esx", "app", "web", "dns")]
+
+    done = _delete(client, admin, "/items", everything)
+
+    assert sorted(one["hid"] for one in done["deleted"]) == sorted(everything)
+    assert done["refused"] == []
+    for hid in everything:
+        make.get(f"/items/{hid}", 404)
+
+
+def test_what_was_seen_on_a_deleted_item_is_cleared_of_it_by_an_event_that_says_so(
+    client: TestClient, make: Maker, admin: dict[str, str], db: Session
+) -> None:
+    made = _virtual(make)
+    cluster = make.group("site2-esx-cluster", "cluster", [(made["other"], "member")])
+    _host(db, made["app"], group=cluster, seen=made["esx"])
+
+    done = _delete(client, admin, "/items", [made["esx"]["hid"]])
+
+    assert [one["hid"] for one in done["deleted"]] == [made["esx"]["hid"]]
+    db.expire_all()
+    app = db.get_one(Item, made["app"]["hid"])
+    assert (app.host_group_hid, app.observed_host_hid, app.host_observed_at) == (
+        cluster["hid"],
+        None,
+        None,
+    )
+    assert _cause(make, made["app"], "update", "deleted_with") == [made["esx"]["hid"]]
+
+
+def test_a_group_that_something_runs_on_is_not_deleted(
+    client: TestClient, make: Maker, admin: dict[str, str], db: Session
+) -> None:
+    made = _virtual(make)
+    cluster = make.group("site2-esx-cluster", "cluster", [(made["esx"], "member")])
+    _host(db, made["app"], group=cluster)
+    app = _get(make, made["app"])
+    make.post(f"/items/{app['hid']}/retire", {"row_version": app["row_version"]}, 200)
+
+    done = _delete(client, admin, "/device-groups", [cluster["hid"]], dry_run=True)
+
+    assert done["refused"] == [
+        {
+            "hid": cluster["hid"],
+            "label": "site2-esx-cluster",
+            "depends_on": [
+                {"record_type": "item", "hid": made["app"]["hid"], "label": "site2-vm-app01"}
+            ],
+        }
     ]
