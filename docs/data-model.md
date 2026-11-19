@@ -2001,7 +2001,10 @@ first rule that applies decides, and no later rule is tried:
    none, the rules that follow are tried, as for any row with no model. A row of a
    model of the kind `virtual_context` is never matched by this rule: its serial
    number names its host (P-251), and the row is matched by the rules that follow as
-   a row that gives no serial number is.
+   a row that gives no serial number is. So is a row that gives a serial number and no
+   model where the one item, not retired, of its name or host name, as rule 4 compares
+   them, is a virtual context: the row is that context; two such items are an error on
+   the row, and an item of that name that is no context is matched as before.
 3. `asset_tag` is given: the item with that tag.
 4. Neither serial number nor asset tag is given: the one item, not retired, that has
    that name or that host name, whether or not it has a serial number of its own. A

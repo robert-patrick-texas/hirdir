@@ -2008,7 +2008,41 @@ class Items(Entity):
         if entry is None and not (vendor or pid):
             line_model = self._line_model(run, None, values)
             entry = run.db.get(CatalogEntry, line_model) if line_model else None
+            if entry is None:
+                # A row that names no model is of a context where the one item of its
+                # name, as rule 4 compares names, is one.
+                named = self._named(run, values)
+                entry = run.db.get(CatalogEntry, named.catalog_entry_hid or "") if named else None
         return entry is not None and entry.kind == hosting.VIRTUAL_CONTEXT
+
+    @staticmethod
+    def _named(run: Run, values: Mapping[str, Any]) -> Item | None:
+        """Return the one item, not retired, that a row names by its name or its host
+        name, as rule 4 of "Identity and matching" compares them; two are an error."""
+        called: Any = func.coalesce(Item.name, Item.hostname)
+        host: Any = Item.hostname
+        for given, column in ((values.get("name"), called), (values.get("hostname"), host)):
+            if not given:
+                continue
+            named = list(
+                run.db.scalars(
+                    select(Item)
+                    .where(
+                        dialect.equals_text(column, str(given).strip()),
+                        Item.record_status != "retired",
+                    )
+                    .limit(2)
+                )
+            )
+            if len(named) > 1:
+                field = "name" if column is called else "hostname"
+                raise Invalid(
+                    f"more than one item is called {given}",
+                    {field: "more than one item answers to this; give the HID of the one meant"},
+                )
+            if named:
+                return named[0]
+        return None
 
     def _by_serial(
         self, db: Session, model: str, serial: str, values: Mapping[str, Any]
