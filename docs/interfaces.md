@@ -25,6 +25,7 @@ and CLI's types are generated from it.
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back. `POST /items/retire` and `POST /device-groups/retire` retire several at once, each as its own route does (P-228): see [Retiring several, and deleting](#retiring-several-and-deleting) |
 | Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. An Admin deletes an item or a device group that was a mistake and that nothing else depends on with `POST /items/delete` and `POST /device-groups/delete` (P-227), and removes a replacement that was a mistake with `POST /item-replacements/{hid}/remove` (P-238). Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, which for an item or a device group that was deleted holds `deleted`, when, by whom and why, read from the audit trail (P-236), `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
+| A busy server | A server past its ceiling answers `503` with the title `Busy`, `Retry-After` and the member `busy`, at once and with nothing of the request done: first what costs most and can wait, the reports, the exports, the previews of imports and the pages of lists, and then every read. A change that is stored, a sign-in, the health routes and About are never so answered. It is told from the `503` of a change that waited for another to be stored by `busy`, which only it has (P-265). See [The server's own measures](#the-servers-own-measures) |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
@@ -53,7 +54,7 @@ and CLI's types are generated from it.
 | Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
 | Audit | `GET /audit-events` |
-| About | `GET /about`: the version and what it runs on, the product name and whom to ask (P-168, P-169) |
+| About | `GET /about`: the version and what it runs on, the product name and whom to ask (P-168, P-169). `GET /about/load`: the server's own measures of its last ten minutes, and whether it is busy (P-265, P-266) |
 | Health | `GET /health/live`, `GET /health/ready` (no sign-in needed) |
 
 ### Roles
@@ -70,6 +71,7 @@ and CLI's types are generated from it.
 | List and check the kept answers of the long reports | | | yes |
 | Users, groups, role grants, access codes, service tokens | | | yes |
 | Read audit events | yes | yes | yes |
+| Read the server's own measures, `GET /about/load`, as `GET /about` is read: signed in, with any role or none | yes | yes | yes |
 
 ### Settings
 
@@ -103,6 +105,7 @@ out, these decide it:
 | `map_link` | `map_url` of a site and of a location: the setting with the place's latitude and longitude in it, or null where it is blank or the place has none (P-229, P-236) |
 | `count_kinds` | the kinds of model whose major items are components, managed nodes and carry weight in the summary and the reports. Its default holds `hardware`, `virtual_machine`, `virtual_context` and `container` from 0.9.8 (P-246); an installation that has set it itself keeps what it set, and adds the two new kinds to count them |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
+| `busy_response_ms`, `busy_cpu_percent`, `busy_over_seconds` | the ceiling past which the server answers `503` Busy, and `ceiling` of `GET /about/load`. Each holds from the moment it is saved, and no request reads the database to learn it. `busy_response_ms` or `busy_cpu_percent` at 0 is a measure not looked at, and both at 0 is no ceiling (P-265). See [The server's own measures](#the-servers-own-measures) |
 
 The fixed values are these. What was decided:
 
@@ -114,6 +117,7 @@ The fixed values are these. What was decided:
 | `condition_health` | failed and dead say failed, degraded and suspect degraded, good good; any other condition says nothing of health | D-112 |
 | `review_status_of_what_a_file_makes` | unreviewed | P-14 |
 | `refused_file_types` | the extensions of a web page, a script or a program, which no reference may have whatever `reference_file_types` says | P-159 |
+| `busy_fewest_requests` | 5, the requests, answered and in flight, of which how long requests take is read: with fewer, `busy_response_ms` is not looked at | P-265 |
 
 And the limits that protect the service: `default_page_size` 100 and `max_page_size`
 1000, the rows of a page of a list, and `max_offset` 10,000,000; `max_filter_length`
@@ -126,9 +130,11 @@ of a file or a bulk edit, `max_export_hids` 10,000, and `import_batch_rows` 50 (
 `max_region_depth` 16; `max_request_lines` 1000 and `max_line_quantity` 100,000;
 `sign_in_max_delay_seconds` 300 and `sign_in_window_seconds` 3600;
 `max_attachments_per_request` 1000, the records one `POST /reference-files/{hid}/attachments` or one upload puts a reference on; `idempotency_key_hours` 24, `max_idempotency_key_length` 200 and
-`max_kept_answer_bytes` 1,048,576; and `writer_wait_seconds` 5, how long a change waits
-for the one writer before it is answered `503`. Each is listed with the value the code
-uses, read from where it is used.
+`max_kept_answer_bytes` 1,048,576; `writer_wait_seconds` 5, how long a change waits
+for the one writer before it is answered `503`; and `busy_retry_seconds` 5, how long a
+request that a busy server did not take is told to wait, `load_window_seconds` 600, how
+long the server keeps its own measures, and `load_step_seconds` 5, the length of a step
+of them. Each is listed with the value the code uses, read from where it is used.
 
 ### People
 
@@ -694,6 +700,91 @@ them.
   writer's place before they look, so the second sees what the first stored: a host
   retired first is refused as the host of a change that comes after, and an item given
   the host first is retired with it.
+
+### The server's own measures
+
+The server keeps its last ten minutes in memory, in steps of five seconds, and reads
+from them whether it is busy (P-262, P-265). Nothing of it is written anywhere, and it
+starts empty when the server starts.
+
+In each step it counts every request it answered, the page and its files among them, by
+how it was answered: well, with a status below `400`; not taken as asked, `4xx`; failed,
+`5xx`, the `503` of a change that waited for another to be stored among them; and as
+busy, below. It keeps the shortest, the average and the longest time of an answer, from
+the arrival of the request to the last byte of its answer, and the processor time the
+process used, every thread of it, as a percentage of one processor. A stretch in which
+nothing was asked is filled, when something next asks, with the processor time used in
+it, spread evenly.
+
+**The ceiling.** Two measures are read over the last `busy_over_seconds`, 30 unless set:
+
+| Measure | What it is | Its ceiling |
+|---|---|---|
+| `response_ms` | how long requests take: the median, in milliseconds, of the time taken by the requests under `/api/v1` answered in that time and of the time waited so far by those still in flight, where the two together are five or more. With fewer there is no such measure. The median, so that one long export among quick answers is not a busy server; those in flight, so that a server from which nothing comes back is not taken for an idle one | `busy_response_ms`, 5000 unless set |
+| `cpu_percent` | the processor: the processor time the process used in that time, as a percentage of that time on one processor. A server that started later than that used nothing before | `busy_cpu_percent`, 95 unless set |
+
+Past either ceiling the server is `busy`; once it has been so without a break for a
+further `busy_over_seconds` it is `very_busy`; and it is `ok` again as soon as neither
+measure is past its ceiling. Whether it is busy is asked when a request of the API
+arrives, or `GET /about/load` is read, so being busy begins when something asks and
+finds it so. A ceiling of 0 is a measure not looked at, and both at 0 is
+no ceiling: nothing is refused and nothing is read for it. The measures are read again
+once a second at the most, however many requests arrive.
+
+**What is refused.** Each route is one of three to a busy server, by the route and not
+by its method alone:
+
+| A request | While `busy` | While `very_busy` |
+|---|---|---|
+| What costs most and can wait: every `GET` that answers a page of a list, `{items, total, limit, offset}`, and the `POST .../query` that asks for the same; everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check` | refused | refused |
+| Every other `GET` of the API | answered | refused |
+| Everything else: `POST /auth/sign-in` and the rest of `/auth`; every request that stores a change, which is every other `POST`, `PUT`, `PATCH` and `DELETE`, applying a preview among them; `/health/live` and `/health/ready`; `GET /about` and `GET /about/load`; `GET /settings`, so that an Admin who set the ceiling too low can set it again; `GET /openapi.json`; and the page itself and its files | answered | answered |
+
+A request that is refused is answered at once, before it waits for anything and before
+who sent it is looked at, so one with no sign-in is answered so as well:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/problem+json
+Retry-After: 5
+
+{ "type": "about:blank", "title": "Busy", "status": 503,
+  "detail": "the server is busy and this request was not answered; try again shortly",
+  "errors": [],
+  "busy": { "state": "busy", "because": ["cpu_percent"], "retry_after": 5 } }
+```
+
+Nothing of it was done, and it may be sent again after `Retry-After`, 5 seconds, which
+`busy.retry_after` repeats. `busy.state` is `busy` or `very_busy`, and `busy.because`
+the measures that are past the ceiling. The `503` of a change that waited for another
+to be stored has the same title and no `busy`. An answer of busy is counted, in `busy`
+below, and is in neither measure: its time is in no time of an answer.
+
+The three settings are the Admin's, `PUT /settings/{key}` as any other: `busy_response_ms`,
+a whole number of milliseconds from 0 to 600,000; `busy_cpu_percent`, a whole number
+from 0 to 100; `busy_over_seconds`, a whole number of seconds from 5 to 300. Each holds
+from the moment it is saved, and when the server starts: the server keeps them in
+memory, and no request reads the database to learn them.
+
+**`GET /about/load`** returns the measures, for anyone signed in (P-266). It asks
+nothing of the database but who is signed in, is never refused as busy, and is a few
+kilobytes, so that it can be asked every few seconds:
+
+| Member | What it holds |
+|---|---|
+| `state`, `because` | `ok`, `busy` or `very_busy`, and the measures that are past the ceiling, `response_ms`, `cpu_percent` or both; empty while it is `ok` |
+| `ceiling` | the settings in force: `response_ms`, `cpu_percent` and `over_seconds` |
+| `measures` | the two measures as the ceiling reads them now: `response_ms`, null with fewer than five requests, and `cpu_percent` |
+| `window_seconds`, `step_seconds` | 600 and 5 |
+| `started_at`, `at` | when the server started, and its measures with it; when this was read |
+| `totals` | over the window: `requests`, and of them `ok`, `not_accepted`, `failed` and `busy`; `response_ms` and `cpu_percent`, each with `low`, `average` and `high`. The times are null where nothing was answered. Those of the processor are of the steps that are whole, the one under way being read only while there is no other |
+| `in_flight` | `count`, the requests being answered now, this one not counted, and `oldest_ms`, how long the oldest has waited, null with none |
+| `process` | `memory_bytes`, the memory the server's process holds |
+| `host` | `memory_total_bytes`, `memory_used_bytes` and `memory_free_bytes`, free being what a new process could have; `disk_total_bytes` and `disk_free_bytes`, of the disk the inventory is kept on; `processors`; and `load_1m`, the load average of the last minute. Each is null where the host does not say |
+| `worker` | whether the background work is being done: `running`, by the process of its own; `not_running`; or `in_process`, by the server itself (P-267) |
+| `points` | the steps of the window, the oldest first, as lists side by side, for a graph: `at`, when the first began, and `requests`, `average_ms`, `high_ms`, `cpu_percent` and `busy`, entry `i` of each being the step that began `i` times `step_seconds` after `at`. There are as many as the server has run steps, 120 at the most, and the last is under way. A step in which nothing was answered has null for its times, and the step under way has null for `cpu_percent` until a second of it has passed |
+
+Every time is in milliseconds and every share of the processor in percent, to a tenth.
 
 ## Filter grammar
 

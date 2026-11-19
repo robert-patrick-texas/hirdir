@@ -1,11 +1,16 @@
 """Turning records into the shapes the API returns."""
 
+from dataclasses import asdict
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from hirdir import clock
 from hirdir.api import schemas
 from hirdir.db.models import AuditEvent, Contact, RoleGrant, User, UserGroup
-from hirdir.domain import accounts
+from hirdir.domain import accounts, load
+from hirdir.io.measures import Host
 
 
 def person_ref(contact: Contact | None) -> schemas.PersonRef | None:
@@ -106,4 +111,61 @@ def audit_out(db: Session, event: AuditEvent) -> schemas.AuditEventOut:
         record_type=event.record_type,
         record_hid=event.record_hid,
         changes=event.changes,
+    )
+
+
+def _tenth(value: float | None) -> float | None:
+    """Return a time or a share to a tenth, which is as much as either says."""
+    return None if value is None else round(value, 1)
+
+
+def _hundredth(value: float | None) -> float | None:
+    return None if value is None else round(value, 2)
+
+
+def _spread(spread: load.Spread) -> schemas.LoadSpread:
+    return schemas.LoadSpread(
+        low=_tenth(spread.low), average=_tenth(spread.average), high=_tenth(spread.high)
+    )
+
+
+def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
+    """Return the server's own measures as its meter gives them, with what the host
+    says of itself and whether the background work is being done."""
+    reading, points = picture.reading, picture.points
+    said = asdict(host)
+    return schemas.Load(
+        state=reading.state,
+        because=list(reading.because),
+        ceiling=schemas.LoadCeiling.model_validate(picture.ceiling),
+        measures=schemas.LoadMeasures(
+            response_ms=_tenth(reading.response_ms), cpu_percent=round(reading.cpu_percent, 1)
+        ),
+        window_seconds=load.WINDOW_SECONDS,
+        step_seconds=load.STEP_SECONDS,
+        started_at=picture.started_at,
+        at=clock.now(),
+        totals=schemas.LoadTotals(
+            requests=picture.requests,
+            ok=picture.ok,
+            not_accepted=picture.not_accepted,
+            failed=picture.failed,
+            busy=picture.busy,
+            response_ms=_spread(picture.response_ms),
+            cpu_percent=_spread(picture.cpu_percent),
+        ),
+        in_flight=schemas.LoadInFlight(
+            count=picture.in_flight, oldest_ms=_tenth(picture.oldest_ms)
+        ),
+        process=schemas.LoadProcess(memory_bytes=said.pop("process_memory_bytes")),
+        host=schemas.LoadHost(**{**said, "load_1m": _hundredth(said["load_1m"])}),
+        worker=worker,
+        points=schemas.LoadPoints(
+            at=points.at,
+            requests=points.requests,
+            average_ms=[_tenth(value) for value in points.average_ms],
+            high_ms=[_tenth(value) for value in points.high_ms],
+            cpu_percent=[_tenth(value) for value in points.cpu_percent],
+            busy=points.busy,
+        ),
     )

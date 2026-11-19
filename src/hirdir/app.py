@@ -20,6 +20,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 import hirdir
 from hirdir.api import (
     addresses,
+    busy,
     carrier_contacts,
     catalog,
     circuits,
@@ -41,9 +42,9 @@ from hirdir.auth import tokens
 from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.domain import file_kinds, product
+from hirdir.domain import file_kinds, load, product
 from hirdir.ids import new_hid
-from hirdir.io import background, fields, tables
+from hirdir.io import background, fields, measures, tables
 from hirdir.io.store import Store
 from hirdir.schedule import JOBS, SERVER_JOBS, Scheduler
 
@@ -113,6 +114,12 @@ class Gateway:
     and removes any cookie, because hirdir never sets one. An error that nothing else
     answered is logged with its request ID and answered here as a problem document, so
     that it carries the same headers as every other response.
+
+    It is the outermost layer, so it is where the server measures itself (P-265): every
+    request is timed from its arrival to the last byte of its answer and counted by its
+    status, in the meter of the application. And it is where a server past its ceiling
+    answers that it is busy, at once, on the event loop: before the request waits for a
+    thread or for the database.
     """
 
     def __init__(
@@ -120,11 +127,14 @@ class Gateway:
         app: ASGIApp,
         trusted_proxies: tuple[str, ...],
         limits: Callable[[], tuple[int, int]] | None = None,
+        kinds: busy.Kinds | None = None,
     ) -> None:
         self.app = app
         self.trusted = frozenset(trusted_proxies)
         # The largest body of a request, and of an upload of a reference file.
         self.limits = limits
+        # What each route of the API is to a server that is busy.
+        self.kinds = kinds
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -140,14 +150,27 @@ class Gateway:
         root = scope.get("root_path", "")
         is_api = scope["path"].startswith(root + "/api/")
         is_asset = scope["path"].startswith(root + "/assets/")
-        refused = self._too_large(scope, headers, root)
+        # The meter of the application as it is bound now: its state is that of one
+        # installation, and a test binds one application to many.
+        meter: load.Meter = scope["app"].state.load
+        refused: Response | None = None
+        if is_api:
+            refused = self._busy(scope, meter, root)
+        if refused is not None:
+            flight = None
+        else:
+            flight = meter.began(*measures.clock(), api=is_api)
+            scope["state"]["in_flight"] = flight
+            refused = self._too_large(scope, headers, root)
 
         started = False
+        status = 500
 
         async def send_with_headers(message: Message) -> None:
-            nonlocal started
+            nonlocal started, status, flight
             if message["type"] == "http.response.start":
                 started = True
+                status = message["status"]
                 out = MutableHeaders(scope=message)
                 out["X-Request-Id"] = request_id
                 # A download says of itself what it may do, which is nothing (P-159).
@@ -163,26 +186,57 @@ class Gateway:
                     out["Cache-Control"] = KEEP_FOR_GOOD
                 del out["Set-Cookie"]
             await send(message)
+            if (
+                flight is not None
+                and message["type"] == "http.response.body"
+                and not message.get("more_body")
+            ):
+                # The last byte of the answer is sent: what the request took is known.
+                meter.ended(flight, *measures.clock(), status=status)
+                flight = None
 
-        if refused is not None:
-            # The rest of the body is read and thrown away before the answer, so that a
-            # proxy that is still sending it is answered rather than cut off.
-            while True:
-                message = await receive()
-                if message["type"] != "http.request" or not message.get("more_body"):
-                    break
-            await refused(scope, receive, send_with_headers)
-            return
         try:
-            await self.app(scope, receive, send_with_headers)
-        except Exception:
-            log.exception("request %s failed: %s %s", request_id, scope["method"], scope["path"])
-            if started:
-                raise
-            failure = problems.problem(
-                500, "Server error", f"something went wrong; the request ID is {request_id}"
-            )
-            await failure(scope, receive, send_with_headers)
+            if refused is not None:
+                # The rest of the body is read and thrown away before the answer, so
+                # that a proxy that is still sending it is answered rather than cut off.
+                while True:
+                    message = await receive()
+                    if message["type"] != "http.request" or not message.get("more_body"):
+                        break
+                await refused(scope, receive, send_with_headers)
+                return
+            try:
+                await self.app(scope, receive, send_with_headers)
+            except Exception:
+                log.exception(
+                    "request %s failed: %s %s", request_id, scope["method"], scope["path"]
+                )
+                if started:
+                    raise
+                failure = problems.problem(
+                    500, "Server error", f"something went wrong; the request ID is {request_id}"
+                )
+                await failure(scope, receive, send_with_headers)
+        finally:
+            if flight is not None:
+                # An answer that was cut short, or never begun, is over all the same.
+                meter.ended(flight, *measures.clock(), status=status if started else 500)
+
+    def _busy(self, scope: Scope, meter: load.Meter, root: str) -> Response | None:
+        """Return the answer of a server that is past its ceiling to a request it does
+        not take, or None (P-265). The meter says whether the server is busy, from what
+        it holds in memory; only then is the request's route looked for, to learn
+        whether it is one that waits. An answer of busy is counted, and is in neither
+        measure."""
+        now, cpu = measures.clock()
+        reading = meter.reading(now, cpu)
+        if reading.state == load.OK or self.kinds is None:
+            return None
+        path = scope["path"][len(root) :] if scope["path"].startswith(root) else scope["path"]
+        if not load.refuses(reading.state, self.kinds.of(scope["method"], path)):
+            return None
+        meter.turned_away(now, cpu)
+        return problems.server_busy(reading)
 
     def _too_large(self, scope: Scope, headers: Headers, root: str) -> Response | None:
         """Return the answer to a body that says it is over the limit of its route, or
@@ -273,8 +327,9 @@ def _named(html: str, facts: dict[str, Any]) -> str:
 def bind(app: FastAPI, config: Config) -> None:
     """Give the application everything it holds of one installation.
 
-    That is its settings, its database, the key that signs sessions and the count of
-    failed sign-ins: all of it is here, and none in the routes. The tests rely on that.
+    That is its settings, its database, the key that signs sessions, the count of
+    failed sign-ins and the meter of its own load: all of it is here, and none in the
+    routes. The tests rely on that.
     They build the routes once and bind them to the state of each test in turn, which
     `create_app` does once, for the server.
     """
@@ -286,6 +341,9 @@ def bind(app: FastAPI, config: Config) -> None:
     app.state.throttle = Throttle(config.sign_in_failures_before_delay)
     # The content of reference files, beside the database (P-161).
     app.state.store = Store(config.files_dir)
+    # The server's own measures of its last ten minutes, which start empty, and the
+    # ceiling as the settings of this database have it (P-265).
+    measures.start(app.state)
 
 
 # --- what runs beside the requests --------------------------------------------------
@@ -373,5 +431,6 @@ def create_app(config: Config, scheduled: bool = False, work: bool = True) -> Fa
         Gateway,
         trusted_proxies=config.trusted_proxies,
         limits=lambda: (app.state.config.max_file_bytes, app.state.config.max_reference_bytes),
+        kinds=busy.Kinds(ROUTERS, API_PREFIX),
     )
     return app

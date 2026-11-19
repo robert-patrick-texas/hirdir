@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.db.models import Setting
-from hirdir.domain import file_kinds, lifecycle, product, records
+from hirdir.domain import file_kinds, lifecycle, load, product, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
@@ -461,6 +461,29 @@ SPECS: dict[str, Spec] = {
         "{longitude} where they go. Blank, they are plain numbers",
         _map_link(),
     ),
+    # 0.9.10: the ceiling past which the server answers that it is busy (P-265). The
+    # meter keeps the three in memory, from the moment one is saved.
+    load.RESPONSE_SETTING: Spec(
+        load.DEFAULT_RESPONSE_MS,
+        "how long requests may take before the server is busy, in milliseconds: the "
+        "median of the answers of the API over the last busy_over_seconds and of the "
+        "wait of the requests still in flight. Past it, reports, exports, previews and "
+        "pages of lists are answered 503 Busy at once. 0: not looked at",
+        _whole(load.RESPONSE_SETTING, 0, load.MOST_RESPONSE_MS, " of milliseconds"),
+    ),
+    load.PROCESSOR_SETTING: Spec(
+        load.DEFAULT_CPU_PERCENT,
+        "the share of one processor, in percent, that the server's process may use over "
+        "the last busy_over_seconds before the server is busy. 0: not looked at, and "
+        "both at 0 is no ceiling",
+        _whole(load.PROCESSOR_SETTING, 0, load.MOST_CPU_PERCENT),
+    ),
+    load.OVER_SETTING: Spec(
+        load.DEFAULT_OVER_SECONDS,
+        "over how long the two measures of the ceiling are read, in seconds, and how "
+        "much longer the server is busy before every read of the API is answered Busy",
+        _whole(load.OVER_SETTING, load.FEWEST_OVER_SECONDS, load.MOST_OVER_SECONDS, " of seconds"),
+    ),
 }
 
 
@@ -590,6 +613,16 @@ def check_items(db: Session, count: int, field: str, what: str = "items") -> Non
             "too many at once",
             {field: f"at most {most:,} {what} to a request (max_items_per_request)"},
         )
+
+
+def ceiling(db: Session) -> load.Ceiling:
+    """Return the ceiling in force: what the three settings of it say (P-265)."""
+    held = values(db, load.SETTINGS)
+    return load.Ceiling(
+        response_ms=int(held[load.RESPONSE_SETTING]),
+        cpu_percent=int(held[load.PROCESSOR_SETTING]),
+        over_seconds=int(held[load.OVER_SETTING]),
+    )
 
 
 def set_setting(
@@ -729,6 +762,14 @@ def fixed_values() -> dict[str, Fixed]:
             "P-159",
         ),
         Fixed(
+            "busy_fewest_requests",
+            load.FEWEST_REQUESTS,
+            "the requests, answered and in flight, of which how long requests take is "
+            "read: with fewer, busy_response_ms is not looked at",
+            DECIDED,
+            "P-265",
+        ),
+        Fixed(
             "default_page_size",
             listing.DEFAULT_LIMIT,
             "the rows of a page of a list where limit is not given",
@@ -848,6 +889,24 @@ def fixed_values() -> dict[str, Fixed]:
             "writer_wait_seconds",
             engine.WRITER_WAIT_SECONDS,
             "how long a change waits for another to be stored before it is answered 503",
+            PROTECTS,
+        ),
+        Fixed(
+            "busy_retry_seconds",
+            load.RETRY_SECONDS,
+            "how long a request that a busy server did not take is told to wait",
+            PROTECTS,
+        ),
+        Fixed(
+            "load_window_seconds",
+            load.WINDOW_SECONDS,
+            "how long the server keeps its own measures, in memory",
+            PROTECTS,
+        ),
+        Fixed(
+            "load_step_seconds",
+            load.STEP_SECONDS,
+            "the length of a step of the server's own measures",
             PROTECTS,
         ),
     )

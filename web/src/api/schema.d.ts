@@ -22,6 +22,32 @@ export interface paths {
       };
     };
   };
+  "/api/v1/about/load": {
+    /**
+     * Say how the server is doing, by its own measures of its last ten minutes: whether
+     * it is busy and by which measure, what it answered and how long an answer took, the
+     * processor time it used, the requests in flight, the memory and the disk of the host,
+     * whether the background work is being done, and the ten minutes step by step, for a
+     * graph. Kept in memory and read from there: it asks nothing of the database but who
+     * is signed in, and a busy server answers it all the same (P-265, P-266).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Load"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/addresses": {
     /** List addresses, by address unless a sort says otherwise. */
     get: {
@@ -7525,7 +7551,11 @@ export interface paths {
     };
   };
   "/api/v1/settings/{key}": {
-    /** Give a setting a value. Null returns it to its default. */
+    /**
+     * Give a setting a value. Null returns it to its default. A setting of the ceiling,
+     * `busy_response_ms`, `busy_cpu_percent` or `busy_over_seconds`, holds from the moment
+     * it is stored (P-265).
+     */
     put: {
       parameters: {
         query?: never;
@@ -11438,6 +11468,113 @@ export interface components {
       /** The address of a link. Blank on a file. */
       url: string | null;
     };
+    /** The server's own measures of its last ten minutes, kept in memory (P-265, P-266). */
+    Load: {
+      /** When this was read. */
+      at: string;
+      /** The measures that are past the ceiling. Empty while `state` is `ok`. */
+      because: ("response_ms" | "cpu_percent")[];
+      ceiling: components["schemas"]["LoadCeiling"];
+      host: components["schemas"]["LoadHost"];
+      in_flight: components["schemas"]["LoadInFlight"];
+      measures: components["schemas"]["LoadMeasures"];
+      points: components["schemas"]["LoadPoints"];
+      process: components["schemas"]["LoadProcess"];
+      /** When the server started, and its measures. */
+      started_at: string;
+      /** `busy`: past the ceiling, and what costs most and can wait is answered 503. `very_busy`: still so `over_seconds` later, and every read is. */
+      state: "ok" | "busy" | "very_busy";
+      /** The length of a step: 5. */
+      step_seconds: number;
+      totals: components["schemas"]["LoadTotals"];
+      /** How long the measures are kept: 600. */
+      window_seconds: number;
+      /** Whether the background work is being done: by the process of its own, by nothing, or by this process (P-267). */
+      worker: "running" | "not_running" | "in_process";
+    };
+    /** The ceiling in force: the three settings of it (P-265). */
+    LoadCeiling: {
+      /** `busy_cpu_percent`: what `measures.cpu_percent` may reach. 0: not looked at. */
+      cpu_percent: number;
+      /** `busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy before it is very busy. */
+      over_seconds: number;
+      /** `busy_response_ms`: what `measures.response_ms` may reach. 0: not looked at. */
+      response_ms: number;
+    };
+    /** What the host says of itself. Each is null where the host does not say. */
+    LoadHost: {
+      /** Of the disk the inventory is kept on. */
+      disk_free_bytes: number | null;
+      /** Of the disk the inventory is kept on. */
+      disk_total_bytes: number | null;
+      /** The load average of the last minute. */
+      load_1m: number | null;
+      /** What a new process could have. */
+      memory_free_bytes: number | null;
+      memory_total_bytes: number | null;
+      /** The total less what is free. */
+      memory_used_bytes: number | null;
+      processors: number | null;
+    };
+    /** The requests being answered now. The request that asks is not counted. */
+    LoadInFlight: {
+      count: number;
+      /** How long the oldest has waited, in milliseconds. Null with none. */
+      oldest_ms: number | null;
+    };
+    /** The two measures as the ceiling reads them now, over the last `over_seconds`. */
+    LoadMeasures: {
+      /** The processor time the process used, as a percentage of one processor. */
+      cpu_percent: number;
+      /** How long requests take: the median, in milliseconds, of the time taken by the requests of the API answered in that time and of the time waited so far by those in flight. Null with fewer than five. */
+      response_ms: number | null;
+    };
+    /**
+     * The steps of the window as lists side by side, the oldest first: entry `i` of each
+     * is the step that began `i` times `step_seconds` after `at`. The last is under way.
+     */
+    LoadPoints: {
+      /** When the first step began. */
+      at: string;
+      /** The average time of an answer. Null where nothing was answered. */
+      average_ms: (number | null)[];
+      /** The answers of busy given in the step. */
+      busy: number[];
+      /** The processor time used, as a percentage of one processor. Null in the step under way until a second of it has passed. */
+      cpu_percent: (number | null)[];
+      /** The longest time of an answer. Null where nothing was answered. */
+      high_ms: (number | null)[];
+      /** The requests answered in the step. */
+      requests: number[];
+    };
+    /** The server's process. */
+    LoadProcess: {
+      /** The memory it holds. Null where unknown. */
+      memory_bytes: number | null;
+    };
+    /** The lowest, the average and the highest of a value. Null where there was none. */
+    LoadSpread: {
+      average: number | null;
+      high: number | null;
+      low: number | null;
+    };
+    /** What was answered in the window, and how. */
+    LoadTotals: {
+      /** Answered 503 as busy, by a server past its ceiling. */
+      busy: number;
+      /** The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole. */
+      cpu_percent: components["schemas"]["LoadSpread"];
+      /** Failed: `5xx`, the 503 of a change that waited for another among them. */
+      failed: number;
+      /** Not taken as asked: `4xx`. */
+      not_accepted: number;
+      /** Answered well: a status below 400. */
+      ok: number;
+      /** Every request answered: the four below together. */
+      requests: number;
+      /** The time of an answer, in milliseconds, from the arrival of the request to the last byte of its answer. An answer of busy is not in it. */
+      response_ms: components["schemas"]["LoadSpread"];
+    };
     /** A new location: in a site, or within a location of one. */
     LocationCreate: {
       address1?: string | null;
@@ -12378,6 +12515,8 @@ export interface components {
     };
     /** An error, as an RFC 9457 problem document. */
     Problem: {
+      /** On the 503 of a server that is past its ceiling and took nothing of the request (P-265). Left out of every other problem, the 503 of a change that waited for another to be stored among them. */
+      busy?: components["schemas"]["ProblemBusy"] | null;
       /** On a 404 for an item or a device group that an Admin deleted: when, by whom and why. Left out of every other problem. */
       deleted?: components["schemas"]["ProblemDeleted"] | null;
       /** On a 409 for a record that others stand on, as a stack or a cluster that items run on is refused retirement: those records, each as `existing` names one (P-247). Left out of every other problem. */
@@ -12389,6 +12528,15 @@ export interface components {
       status: number;
       title: string;
       type?: string;
+    };
+    /** Why a server past its ceiling did not take a request (P-265). */
+    ProblemBusy: {
+      /** The measures that are past the ceiling: how long requests take, the share of one processor the process uses. */
+      because: ("response_ms" | "cpu_percent")[];
+      /** The seconds to wait, as `Retry-After` says. */
+      retry_after: number;
+      /** `busy`: what costs most and can wait is not taken. `very_busy`: no read of the API is. */
+      state: "busy" | "very_busy";
     };
     /** The deletion of a record that a request named, read from the audit trail (P-236). */
     ProblemDeleted: {
