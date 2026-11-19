@@ -15,7 +15,7 @@ import type { PendingMember } from "../lib/groups";
 import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad } from "../lib/hooks";
 import { fewNames, handedOverText, handOverLabel, hostsNothingHint } from "../lib/hostFollows";
-import { mayHost } from "../lib/hosting";
+import { hostedListPath, mayHost } from "../lib/hosting";
 import { useChoices, useRules } from "../lib/lists";
 import { choiceLabel, choiceOptions } from "../lib/options";
 import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
@@ -427,7 +427,21 @@ function HostedNames({ hid }: { hid: string }) {
   // What is handed over is what names it as its host; what runs on those stays on them.
   const rows = (hosted.data?.items ?? []).filter((row) => row.depth === 1);
   const few = fewNames(rows.map((row) => row.item.hid));
-  if (few.length === 0) return <Problem error={hosted.error} />;
+  // Where they are more, the item list of what names it as its host leads to them (review).
+  if (few.length === 0) {
+    return (
+      <>
+        <Problem error={hosted.error} />
+        {hosted.data && rows.length > 0 && (
+          <p className="hand-over-names" data-testid="hand-over-list">
+            <Link to={hostedListPath("item", hid)}>
+              The {rows.length.toLocaleString("en-US")} that run on it in the item list
+            </Link>
+          </p>
+        )}
+      </>
+    );
+  }
   return (
     <ul className="hand-over-names" data-testid="hand-over-names">
       {rows.map((row) => (
