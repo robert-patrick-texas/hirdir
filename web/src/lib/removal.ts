@@ -34,9 +34,51 @@ export function dependentPath(dependent: Pick<Dependent, "record_type" | "hid">)
   return kindPath(dependent.record_type, dependent.hid);
 }
 
-/** What a record in the way is, as people say it: "contract", "purchase line". */
-export function dependentKind(dependent: Pick<Dependent, "record_type">): string {
+/**
+ * What a record in the way is, as people say it: "contract", "purchase line". 0.9.8: an
+ * item in the way runs on the record where `runsOn` says so, as every item does that
+ * stands in the way of a group (P-247), and is otherwise installed in it.
+ */
+export function dependentKind(dependent: Pick<Dependent, "record_type">, runsOn = false): string {
+  if (dependent.record_type === "item" && runsOn) return "item that runs on it";
   return DEPENDENT_WORDS[dependent.record_type] ?? dependent.record_type.replaceAll("_", " ");
+}
+
+/**
+ * 0.9.8: of the items that stand in the way of deleting an item, those that run on it,
+ * by their HIDs, from what each of them names as its host (P-247). The answer names an
+ * item installed in it and one that runs on it alike.
+ */
+export function runningOn(
+  refused: readonly {
+    hid: string;
+    depends_on: readonly Pick<Dependent, "record_type" | "hid">[];
+  }[],
+  hosts: readonly { hid: string; host_item_hid?: string | null }[],
+): Set<string> {
+  const hostOf = new Map(hosts.map((one) => [one.hid, one.host_item_hid ?? null]));
+  const found = new Set<string>();
+  for (const one of refused) {
+    for (const dependent of one.depends_on) {
+      if (dependent.record_type === "item" && hostOf.get(dependent.hid) === one.hid) {
+        found.add(dependent.hid);
+      }
+    }
+  }
+  return found;
+}
+
+/** The HIDs of the items that stand in the way of a deletion, each once. */
+export function itemsInTheWay(
+  refused: readonly { depends_on: readonly Pick<Dependent, "record_type" | "hid">[] }[],
+): string[] {
+  const found = new Set<string>();
+  for (const one of refused) {
+    for (const dependent of one.depends_on) {
+      if (dependent.record_type === "item") found.add(dependent.hid);
+    }
+  }
+  return [...found];
 }
 
 const DEPENDENT_WORDS: Readonly<Record<string, string>> = {
@@ -78,7 +120,71 @@ export function retiredText(kind: RemovalKind, answer: RetiredMany, ticked = tru
   if (answer.missing.length > 0) {
     parts.push(`${countOf(kind, answer.missing.length)} not found, as deleted since.`);
   }
+  // 0.9.8: what ran on them went with them, and is counted apart (P-247).
+  const hosted = answer.hosted.length;
+  if (hosted > 0) {
+    parts.splice(1, 0, `${withThemText(hosted, answer.retired.length, "past")}`);
+  }
   return parts.join(" ");
+}
+
+/**
+ * 0.9.8: what goes, or went, with those named because it runs on one of them (P-247):
+ * "With them, 3 items that ran on them were retired." `named` is how many were named
+ * and retired, which says "it" or "them".
+ */
+export function withThemText(hosted: number, named: number, when: "past" | "ahead"): string {
+  const them = named === 1 ? "it" : "them";
+  if (when === "past") {
+    return `With ${them}, ${plural(hosted, "item that ran", "items that ran")} on ${them} ${hosted === 1 ? "was" : "were"} retired.`;
+  }
+  return `With ${them}, ${plural(hosted, "item that runs", "items that run")} on ${them} will be retired: what runs on it goes with its host.`;
+}
+
+/**
+ * 0.9.8: the question of a Retire of the rows ticked, once the server's dry run has said
+ * what it would do (P-247): how many of those ticked are retired, and what goes with them.
+ */
+export function retireWillText(kind: RemovalKind, answer: RetiredMany, ticked: number): string {
+  const count = answer.retired.length;
+  const parts = [
+    count === ticked
+      ? `${countOf(kind, count)} will be retired.`
+      : count > 0
+        ? `${count.toLocaleString("en-US")} of the ${countOf(kind, ticked)} ticked will be retired.`
+        : `None of the ${countOf(kind, ticked)} ticked can be retired.`,
+  ];
+  if (answer.already.length > 0) {
+    parts.push(`${countOf(kind, answer.already.length)} retired already.`);
+  }
+  if (answer.refused.length > 0) {
+    parts.push(`${countOf(kind, answer.refused.length)} refused:`);
+  }
+  if (answer.missing.length > 0) {
+    parts.push(`${countOf(kind, answer.missing.length)} not found, as deleted since.`);
+  }
+  return parts.join(" ");
+}
+
+/** "What runs on it:", or "The 3 that run on it:", before a list of them. */
+export function runOnItLead(count: number): string {
+  return count === 1 ? "What runs on it:" : `The ${count.toLocaleString("en-US")} that run on it:`;
+}
+
+/**
+ * 0.9.8: what the page of an item says before its Retire where something runs on it
+ * (P-247): how many go with it, which the list beneath names.
+ */
+export function goesWithItText(count: number, deeper: boolean): string {
+  if (count === 1) return "1 item runs on it, and is retired with it, as its own page retires it:";
+  const where = deeper ? "on it, or on what runs on it," : "on it,";
+  return `${count.toLocaleString("en-US")} items run ${where} and are retired with it, each as its own page retires it:`;
+}
+
+/** 0.9.8: what the page of an item says once it is retired, with what went with it. */
+export function itemRetiredText(hosted: number): string {
+  if (hosted === 0) return "The item was retired.";
+  return `The item was retired, and with it ${plural(hosted, "item that ran", "items that ran")} on it.`;
 }
 
 /**

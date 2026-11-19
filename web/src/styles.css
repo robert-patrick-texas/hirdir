@@ -2784,3 +2784,37 @@ td.tick input {
 dialog.removal-dialog {
   max-width: 40rem;
 }
+
+/* 0.9.8, lane W4 */
+
+/* What goes with a Retire, and what stands in its way, as lists of links (P-247). */
+.removal-hosted,
+.removal-depends {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+/* The box of Replace for what runs on the item that leaves, with the names beneath. */
+.hand-over-names {
+  margin: 0.25rem 0 0 1.75rem;
+  padding-left: 1rem;
+}
+
+/* What a tool's report marks as not reported, in its preview (P-248). */
+.not-reported-preview ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.import-from {
+  display: block;
+  font-size: 0.875rem;
+}
+
+/* A registration whose system reports the item no more, to be looked at (P-249). */
+.to-look-at,
+.registration-review-line {
+  background: var(--warn-surface);
+}

@@ -134,6 +134,11 @@ export class ApiError extends Error {
   readonly existing: ExistingRecord | null;
   /** On a 404 for a record an Admin deleted: when, by whom and why. */
   readonly deleted: DeletedRecord | null;
+  /**
+   * 0.9.8: on a 409 for a record that others stand on, those records, as the items that
+   * run on a stack or a cluster refused retirement (P-247). Empty on every other.
+   */
+  readonly dependsOn: readonly ExistingRecord[];
 
   constructor(init: {
     status: number;
@@ -143,6 +148,7 @@ export class ApiError extends Error {
     retryAfter?: number | null;
     existing?: ExistingRecord | null;
     deleted?: DeletedRecord | null;
+    dependsOn?: readonly ExistingRecord[];
   }) {
     const detail = init.detail ?? "";
     let text = detail || init.title;
@@ -159,6 +165,7 @@ export class ApiError extends Error {
     this.retryAfter = retryAfter;
     this.existing = init.existing ?? null;
     this.deleted = init.deleted ?? null;
+    this.dependsOn = init.dependsOn ?? [];
   }
 
   /** The record changed since it was read: read it again before changing it. */
@@ -208,6 +215,12 @@ export async function problemOf(response: Response): Promise<ApiError> {
     retryAfter: retryAfterOf(response),
     existing: existingOf(problem.existing),
     deleted: deletedOf(problem.deleted),
+    dependsOn: Array.isArray(problem.depends_on)
+      ? problem.depends_on.flatMap((one) => {
+          const record = existingOf(one);
+          return record ? [record] : [];
+        })
+      : [],
   });
 }
 

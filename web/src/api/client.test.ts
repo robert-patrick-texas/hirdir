@@ -285,6 +285,25 @@ describe("problem documents", () => {
     );
     expect(other.existing).toBeNull();
   });
+
+  it("carry what runs on a cluster refused retirement, each named whole (P-247)", async () => {
+    const vm = { hid: "i-2", record_type: "item", label: "site2-vm-app01" };
+    const refused = setup(() =>
+      json(409, {
+        title: "Conflict",
+        status: 409,
+        detail: "1 item runs on site2-esx-cluster: give each another host, or retire it, first",
+        depends_on: [vm, { hid: "i-3", label: 4 }],
+      }),
+    );
+    const error = await thrownBy(() =>
+      refused.client.request("post", "/api/v1/items", { body: {} }),
+    );
+    expect(error.dependsOn).toEqual([vm]);
+    const plain = setup(() => json(409, { title: "Conflict", status: 409 }));
+    const other = await thrownBy(() => plain.client.request("post", "/api/v1/items", { body: {} }));
+    expect(other.dependsOn).toEqual([]);
+  });
 });
 
 describe("no answer", () => {
