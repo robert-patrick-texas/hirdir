@@ -22,6 +22,12 @@ from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVer
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
 MAX_REFERENCE = 200
+# What a refusal of a day to come says at `replaced_on`, in words a person reads in the
+# form: what a replacement changes of either item is done with the request.
+ON_THE_DAY = (
+    "what a replacement changes of either item is done on the day it is entered: a day "
+    "that has come, today or before"
+)
 
 
 def latest_first() -> list[Any]:
@@ -143,11 +149,14 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
 
 
 def _hand_over_hosted(
-    db: Session, context: AuditContext, old: Item, new: Item, replacement_hid: str
+    db: Session, context: AuditContext, old: Item, new: Item, replacement_hid: str, day: date
 ) -> None:
     """Give what runs on the item that leaves the item that comes as its host (P-247),
     each by a change of its own that names the replacement. What was seen to run on
-    the old item is left as it is: that is what was seen."""
+    the old item is left as it is: that is what was seen.
+
+    It is done with the request, as all a replacement changes of either item is, so a
+    replacement on a day to come hands nothing over: it is refused on `replaced_on`."""
     running = list(
         db.scalars(
             select(Item)
@@ -157,6 +166,15 @@ def _hand_over_hosted(
     )
     if not running:
         return
+    if day > groups.today(db):
+        count = len(running)
+        what = "1 item runs" if count == 1 else f"{count} items run"
+        raise Invalid(
+            f"{what} on {items.shown_name(old)}, and what runs on the item that leaves is "
+            "handed over on the day the replacement is entered, unless hand_over_hosted is "
+            "false",
+            {"replaced_on": ON_THE_DAY},
+        )
     why = hosting.why_no_host(db, new, running)
     if why is not None:
         count = len(running)
@@ -164,9 +182,8 @@ def _hand_over_hosted(
         raise Invalid(
             f"{what} on {items.shown_name(old)}, and {why}",
             {
-                "hand_over_hosted": f"{what} on the item that leaves, and the item that comes "
-                "may not be their host: give hand_over_hosted false to leave them where "
-                "they are"
+                "hand_over_hosted": f"the item that comes may not be their host: {why}. "
+                "Leave them where they are, or choose another item"
             },
         )
     for one in running:
@@ -242,8 +259,9 @@ def replace(
             if given
         ]
         raise Invalid(
-            "what a replacement changes of either item is done with the request",
-            {"replaced_on": f"with {', '.join(named)}, a day that has come: today or before"},
+            "what a replacement changes of either item is done with the request, and "
+            f"{', '.join(named)} is given with a day to come",
+            {"replaced_on": ON_THE_DAY},
         )
     if new_item is not None:
         new = items.create_item(db, context, dict(new_item))
@@ -276,7 +294,7 @@ def replace(
     circuit_records.hand_over(db, context, old.hid, new.hid)
     # And what runs on it, unless the request says otherwise (P-247).
     if hand_over_hosted:
-        _hand_over_hosted(db, context, old, new, replacement.hid)
+        _hand_over_hosted(db, context, old, new, replacement.hid, day)
     # Then what the request names of each item, by that item's rules, each change saying
     # the replacement it came from (P-242).
     replacing = audit.because(context, "replacing", None, replacement.hid)
