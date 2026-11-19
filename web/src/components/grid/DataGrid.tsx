@@ -66,7 +66,7 @@ import { plural } from "../../lib/format";
 import { type GridPlace, GridPlaces, placeFor, tabStorage, viewText } from "../../lib/gridPlace";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout, withoutFilters } from "../../lib/gridStore";
-import { toApiError } from "../../lib/hooks";
+import { askAgain, hearAskAgain, toApiError } from "../../lib/hooks";
 import { useSite } from "../../lib/product";
 import { shiftRange, unreadText, withCount } from "../../lib/selection";
 import { browserStorage } from "../../lib/session";
@@ -336,6 +336,13 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const [allMatching, setAllMatching] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [turn, setTurn] = useState(0);
+  // 0.9.10: rows that a busy server did not answer are asked for again with everything
+  // else on the page that was so refused, whichever Try again is pressed (P-265).
+  const refusedBusy = error?.busy != null;
+  useEffect(
+    () => (refusedBusy ? hearAskAgain(() => setTurn((was) => was + 1)) : undefined),
+    [refusedBusy],
+  );
   // Copy and Export: which is under way, how it went, and text the clipboard refused.
   const [working, setWorking] = useState<"" | "copy" | FileFormat>("");
   const [done, setDone] = useState("");
@@ -1078,7 +1085,15 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       <Problem error={error} />
       {error && !error.aborted && (
         <p className="grid-retry">
-          <button type="button" onClick={() => setTurn((was) => was + 1)}>
+          <button
+            type="button"
+            onClick={() => {
+              // 0.9.10: with whatever else of the page a busy server did not answer, as
+              // the lists of choices its columns hold (P-265): the grid hears it too.
+              if (error.busy) askAgain();
+              else setTurn((was) => was + 1);
+            }}
+          >
             Try again
           </button>
         </p>

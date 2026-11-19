@@ -61,6 +61,40 @@ function keptAsIs<T>(was: LoadState<T>, key: string, data: T): boolean {
   return was.key === key && !was.loading && was.error === null && sameAnswer(was.data, data);
 }
 
+// 0.9.10: asking again for what a busy server did not answer (P-265). A server past its
+// ceiling answers a read at once that it is busy, and to try again in a few seconds.
+// Nothing asks again by itself. The page offers Try again under the refusal of a read,
+// and pressing it asks again for every read on the page that was so refused, since one
+// busy moment refuses several: the rows of a list and the lists of choices beside it.
+
+const askers = new Set<() => void>();
+// The refusals of reads, which are the ones that can be asked again from here: a refused
+// change is sent again by the form that sent it.
+const reads = new WeakSet<ApiError>();
+
+/** Hear when the person asks again. Returns the means to stop hearing. */
+export function hearAskAgain(asker: () => void): () => void {
+  askers.add(asker);
+  return () => {
+    askers.delete(asker);
+  };
+}
+
+/** Ask again for every read on the page that a busy server did not answer. */
+export function askAgain(): void {
+  for (const asker of [...askers]) asker();
+}
+
+/** Note the failure of a read, where it is a busy server's, as one to offer Try again under. */
+export function noteRead(error: ApiError): void {
+  if (error.busy) reads.add(error);
+}
+
+/** Whether a failure is that of a read a busy server did not answer, which `askAgain` asks again. */
+export function canAskAgain(error: ApiError | null | undefined): boolean {
+  return !!error && error.busy !== null && reads.has(error);
+}
+
 /**
  * Read something from the server, and again whenever `key` changes or `reload` is called.
  * What was read stays on show while the same key is being read again.
@@ -105,7 +139,9 @@ export function useLoad<T>(key: string, load: (signal: AbortSignal) => Promise<T
       },
       (error: unknown) => {
         if (controller.signal.aborted || quiet) return;
-        setState((was) => ({ ...was, key, error: toApiError(error), loading: false }));
+        const failure = toApiError(error);
+        noteRead(failure);
+        setState((was) => ({ ...was, key, error: failure, loading: false }));
       },
     );
     return () => controller.abort();
@@ -114,6 +150,15 @@ export function useLoad<T>(key: string, load: (signal: AbortSignal) => Promise<T
   const reload = useCallback(
     () => setTurn(({ count }) => ({ count: count + 1, quiet: false })),
     [],
+  );
+  // 0.9.10: what a busy server did not answer is asked for again when the person says so,
+  // with Try again under any such refusal on the page (P-265).
+  useEffect(
+    () =>
+      hearAskAgain(() => {
+        if (read.current.error?.busy) reload();
+      }),
+    [reload],
   );
   const refresh = useCallback(
     () => setTurn(({ count }) => ({ count: count + 1, quiet: true })),

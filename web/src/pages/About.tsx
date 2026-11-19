@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Problem } from "../components/Problem";
+import { ServerLoad } from "../components/ServerLoad";
 import { HelpList } from "../components/WhomToAsk";
 import { useLoad, useTitle } from "../lib/hooks";
 import { helpOf, site, siteOfAbout } from "../lib/product";
@@ -11,6 +12,8 @@ import { allows } from "../lib/roles";
 /**
  * What is running: the product, by the name the site gives it, and the software, which is
  * hirdir whatever the site calls it; and whom to ask, the team that runs it (P-168, P-169).
+ * Under it, the server's own measures, which that part of the page reads by itself and
+ * again by the clock (P-266): nothing here is read or drawn again with them.
  */
 export function About() {
   useTitle("About");
@@ -70,6 +73,7 @@ export function About() {
           </section>
         </>
       )}
+      <ServerLoad />
     </>
   );
 }

@@ -51,6 +51,7 @@ import { IMPORTS_SORT } from "../lib/tableSorts";
 import type { Entity } from "../lib/transfer";
 import { POLL_MS, useJob } from "../lib/useJob";
 import { useServerSort } from "../lib/useServerSort";
+import { waitAsTold } from "../lib/watch";
 
 const JOBS_PAGE = 20;
 // How long the list of past imports waits to be read again while one of it is applying.
@@ -447,14 +448,15 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
   const items = jobs.data?.items ?? [];
   const holdsAll = jobs.data ? jobs.data.total === items.length : false;
   // A job of the list that is being applied is followed here too: the list is read again
-  // a moment after each answer, until none of those on show is under way.
+  // a moment after each answer, until none of those on show is under way; and after the
+  // answer of a busy server, no sooner than it says (P-265).
   const underWay = items.some(isWorking);
-  const { loading, reload } = jobs;
+  const { loading, reload, error } = jobs;
   useEffect(() => {
     if (!underWay || loading) return;
-    const timer = setTimeout(reload, JOBS_POLL_MS);
+    const timer = setTimeout(reload, waitAsTold(JOBS_POLL_MS, error));
     return () => clearTimeout(timer);
-  }, [underWay, loading, reload]);
+  }, [underWay, loading, reload, error]);
 
   return (
     <section aria-labelledby="import-jobs">

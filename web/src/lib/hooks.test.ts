@@ -1,5 +1,68 @@
 import { describe, expect, it } from "vitest";
-import { askedNext, sameAnswer } from "./hooks";
+import { ApiError } from "../api/client";
+import { askAgain, askedNext, canAskAgain, hearAskAgain, noteRead, sameAnswer } from "./hooks";
+
+describe("asking again of a busy server", () => {
+  const busy = () =>
+    new ApiError({
+      status: 503,
+      title: "Busy",
+      retryAfter: 5,
+      busy: { state: "busy", because: ["cpu_percent"], retry_after: 5 },
+    });
+
+  it("is offered under the refusal of a read that a busy server did not answer", () => {
+    const refusal = busy();
+    expect(canAskAgain(refusal)).toBe(false);
+    noteRead(refusal);
+    expect(canAskAgain(refusal)).toBe(true);
+    // Another refusal of the same words, as of a preview that a form sent, is not a read.
+    expect(canAskAgain(busy())).toBe(false);
+  });
+
+  it("is not offered under any other failure of a read, nor under none", () => {
+    const waited = new ApiError({
+      status: 503,
+      title: "Busy",
+      detail: "another change",
+      retryAfter: 1,
+    });
+    noteRead(waited);
+    expect(canAskAgain(waited)).toBe(false);
+    const unreachable = new ApiError({ status: 0, title: "No answer" });
+    noteRead(unreachable);
+    expect(canAskAgain(unreachable)).toBe(false);
+    expect(canAskAgain(null)).toBe(false);
+    expect(canAskAgain(undefined)).toBe(false);
+  });
+
+  it("tells everything that hears, until it stops hearing", () => {
+    const heard: string[] = [];
+    const stopOne = hearAskAgain(() => heard.push("one"));
+    const stopOther = hearAskAgain(() => heard.push("other"));
+    askAgain();
+    expect(heard).toEqual(["one", "other"]);
+    stopOne();
+    askAgain();
+    expect(heard).toEqual(["one", "other", "other"]);
+    stopOther();
+    askAgain();
+    expect(heard).toHaveLength(3);
+  });
+
+  it("tells those that heard when it was asked, though one stops another meanwhile", () => {
+    const heard: string[] = [];
+    let stopSecond = () => {};
+    const stopFirst = hearAskAgain(() => {
+      heard.push("first");
+      stopSecond();
+    });
+    stopSecond = hearAskAgain(() => heard.push("second"));
+    askAgain();
+    expect(heard).toEqual(["first", "second"]);
+    stopFirst();
+  });
+});
 
 describe("askedNext", () => {
   it("asks for other text as a new search, and counts nothing again", () => {

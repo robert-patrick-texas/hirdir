@@ -10,6 +10,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { type ApiError, api } from "../api";
 import { toApiError } from "./hooks";
 import { isWorking, type Job } from "./preview";
+import { waitAsTold } from "./watch";
 
 /** How long a page waits before it reads a job that is under way again, in milliseconds. */
 export const POLL_MS = 1000;
@@ -85,10 +86,11 @@ export function useJob(hid: string, { first, onEnded }: Options = {}): FollowedJ
 
   // While the apply is under way, the job is read again a moment after each answer, and
   // after a read that failed too: the server may have been busy for that moment.
-  // Each answer is a new state, which times the next read from itself.
+  // Each answer is a new state, which times the next read from itself. 0.9.10: a server
+  // past its ceiling says how long to leave it alone, and is left alone that long (P-265).
   useEffect(() => {
     if (!working || state.loading) return;
-    const timer = setTimeout(() => setTurn((count) => count + 1), POLL_MS);
+    const timer = setTimeout(() => setTurn((count) => count + 1), waitAsTold(POLL_MS, state.error));
     return () => clearTimeout(timer);
   }, [working, state]);
 

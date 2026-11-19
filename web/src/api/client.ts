@@ -121,6 +121,23 @@ export type ExistingRecord = Schemas["ProblemRecord"];
 /** 0.9.7: the deletion of a record a 404 is for, when, by whom and why (P-227). */
 export type DeletedRecord = Schemas["ProblemDeleted"];
 
+/**
+ * 0.9.10: what a server past its ceiling says of itself where it does not take a request
+ * (P-265): how busy it is and by which measure. Only its `503` holds one.
+ */
+export type BusyServer = Schemas["ProblemBusy"];
+
+/**
+ * What the page says of a request a busy server did not take, with the seconds of
+ * `Retry-After` where the answer names them. They are the words of the failure itself,
+ * so every place that says why a request failed says them, and no page has its own.
+ */
+export function busyWords(retryAfter: number | null): string {
+  const when =
+    retryAfter !== null && retryAfter > 0 ? `in ${plural(retryAfter, "second")}` : "shortly";
+  return `The server is busy and did not answer this. Try again ${when}.`;
+}
+
 /** A request the server refused, or that never reached it (status 0). */
 export class ApiError extends Error {
   readonly status: number;
@@ -139,6 +156,11 @@ export class ApiError extends Error {
    * run on a stack or a cluster refused retirement (P-247). Empty on every other.
    */
   readonly dependsOn: readonly ExistingRecord[];
+  /**
+   * 0.9.10: on the 503 of a server past its ceiling, what it says of itself (P-265).
+   * Null on every other, the 503 of a change that waited for another among them.
+   */
+  readonly busy: BusyServer | null;
 
   constructor(init: {
     status: number;
@@ -149,13 +171,18 @@ export class ApiError extends Error {
     existing?: ExistingRecord | null;
     deleted?: DeletedRecord | null;
     dependsOn?: readonly ExistingRecord[];
+    busy?: BusyServer | null;
   }) {
     const detail = init.detail ?? "";
     let text = detail || init.title;
-    const retryAfter = init.retryAfter ?? null;
+    const busy = init.busy ?? null;
+    // The header says how long to wait, and the problem repeats it for an answer that
+    // came through something that dropped the header.
+    const retryAfter = init.retryAfter ?? busy?.retry_after ?? null;
     if (init.status === 429 && retryAfter !== null) {
       text = `Too many attempts. Try again in ${plural(retryAfter, "second")}.`;
     }
+    if (busy) text = busyWords(retryAfter);
     super(text);
     this.name = "ApiError";
     this.status = init.status;
@@ -166,6 +193,7 @@ export class ApiError extends Error {
     this.existing = init.existing ?? null;
     this.deleted = init.deleted ?? null;
     this.dependsOn = init.dependsOn ?? [];
+    this.busy = busy;
   }
 
   /** The record changed since it was read: read it again before changing it. */
@@ -221,7 +249,27 @@ export async function problemOf(response: Response): Promise<ApiError> {
           return record ? [record] : [];
         })
       : [],
+    busy: response.status === 503 ? busyOf(problem.busy) : null,
   });
+}
+
+const BUSY_MEASURES: readonly string[] = ["response_ms", "cpu_percent"];
+
+/** What a busy server says of itself in its 503, where it says it whole. */
+function busyOf(given: unknown): BusyServer | null {
+  if (typeof given !== "object" || given === null) return null;
+  const { state, because, retry_after } = given as Partial<BusyServer>;
+  if (state !== "busy" && state !== "very_busy") return null;
+  return {
+    state,
+    because: Array.isArray(because)
+      ? because.filter((measure) => BUSY_MEASURES.includes(measure))
+      : [],
+    retry_after:
+      typeof retry_after === "number" && Number.isFinite(retry_after) && retry_after >= 0
+        ? retry_after
+        : 0,
+  };
 }
 
 /** The deletion a 404 tells of, where it tells of one whole. */
@@ -260,6 +308,13 @@ export interface ClientDeps {
     get: () => Session | null;
     clear: (reason: EndReason) => void;
   };
+  /**
+   * 0.9.10: told of every answer of the server, good or refused, as it arrives: its
+   * status and its headers. It is where something every answer carries in a header is
+   * read, once, for every kind of request. Nothing is told of a request that had no
+   * answer. What it throws is not the request's failure, and is let go.
+   */
+  onAnswer?: (answer: { status: number; headers: Headers }) => void;
 }
 
 /**
@@ -427,6 +482,12 @@ export function createClient(deps: ClientDeps): Client {
 
   /** The answer, or what the server refused the request with. */
   async function checked(response: Response, session: Session | null): Promise<Response> {
+    // Every answer passes here, of an upload as of any other request: see `onAnswer`.
+    try {
+      deps.onAnswer?.({ status: response.status, headers: response.headers });
+    } catch {
+      // Whoever listens failed: the answer is the request's all the same.
+    }
     if (response.status === 401) {
       // The session is no longer good. Forgetting it brings the sign-in page back.
       const problem = await problemOf(response);

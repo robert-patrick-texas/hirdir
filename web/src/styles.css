@@ -2853,3 +2853,164 @@ dialog.removal-dialog {
 .hosted-depth-3 {
   padding-left: 2.5rem;
 }
+
+/* === 0.9.10: the server's own measures on About (P-266) =============================== */
+
+/* A state to be noticed that is no fault: a busy server, background work not running. */
+.alert-warn {
+  background: var(--warn-surface);
+  border-color: var(--warn);
+}
+
+/* A table of a few numbers is as wide as what it holds, not as the page. */
+table.load-table {
+  width: auto;
+}
+
+.load-graph-part {
+  margin: 0 0 1rem;
+}
+
+/* The names of these facts are long: on a narrow window a name is wrapped before its
+   value is squeezed to a word a line. */
+.load-facts {
+  grid-template-columns: fit-content(60%) minmax(0, 1fr);
+}
+
+/* The graph is as wide as the page allows, to a width at which it still reads as one
+   picture, and is drawn smaller on a narrow window, all of it in view. */
+.load-graph {
+  display: block;
+  width: 100%;
+  max-width: 60rem;
+  height: auto;
+}
+
+.load-graph text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.load-graph text.load-plot-name {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.load-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.load-time-line,
+.load-cpu {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.load-time-line {
+  stroke: var(--accent);
+}
+
+.load-time-dot {
+  fill: var(--accent);
+}
+
+.load-time-bars {
+  fill: var(--accent);
+  fill-opacity: 0.22;
+}
+
+.load-cpu {
+  stroke: var(--trend-demand);
+}
+
+.load-cpu-dot {
+  fill: var(--trend-demand);
+}
+
+.load-cpu-area {
+  fill: var(--trend-demand);
+  fill-opacity: 0.16;
+}
+
+.load-ceiling {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+}
+
+.load-busy-band {
+  fill: var(--danger);
+  fill-opacity: 0.16;
+}
+
+.load-busy-mark {
+  fill: var(--danger);
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+
+/* What a step is pointed at by: the column of both plots at it. */
+.load-hit {
+  fill: transparent;
+}
+
+.load-step:hover .load-hit {
+  fill: var(--text);
+  fill-opacity: 0.08;
+}
+
+.load-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.load-key {
+  display: inline-block;
+  width: 1.4rem;
+  height: 0.7rem;
+  vertical-align: middle;
+}
+
+.load-key-time-line {
+  height: 0;
+  border-top: 2px solid var(--accent);
+}
+
+.load-key-time-bars {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* A line over what lies under it, as the plot of the processor is drawn. */
+.load-key-cpu {
+  border-top: 2px solid var(--trend-demand);
+  background: color-mix(in srgb, var(--trend-demand) 16%, transparent);
+}
+
+.load-key-ceiling {
+  height: 0;
+  border-top: 1px dashed var(--muted);
+}
+
+/* The triangle of a step in which an answer of busy was given. */
+.load-key-busy {
+  width: 0;
+  height: 0;
+  border-left: 0.4rem solid transparent;
+  border-right: 0.4rem solid transparent;
+  border-top: 0.7rem solid var(--danger);
+}
+
+.load-busy-steps {
+  color: var(--muted);
+  font-size: 0.9rem;
+}

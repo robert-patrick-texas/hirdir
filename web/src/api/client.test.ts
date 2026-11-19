@@ -192,6 +192,130 @@ describe("429", () => {
   });
 });
 
+describe("every answer", () => {
+  function heard(answer: () => Response) {
+    const answers: Array<{ status: number; header: string | null }> = [];
+    const client = createClient({
+      baseURI: () => BASE,
+      fetch: async () => answer(),
+      sessions: new SessionStore(memoryStorage()),
+      onAnswer: ({ status, headers }) =>
+        answers.push({ status, header: headers.get("X-Request-Id") }),
+    });
+    return { client, answers };
+  }
+
+  it("is told with its status and its headers, good or refused", async () => {
+    const good = heard(() => json(200, {}, { "X-Request-Id": "r-1" }));
+    await good.client.request("get", "/api/v1/about");
+    expect(good.answers).toEqual([{ status: 200, header: "r-1" }]);
+
+    const refused = heard(() => problem(503, "Busy", "", [], { "X-Request-Id": "r-2" }));
+    await thrownBy(() => refused.client.request("get", "/api/v1/vendors"));
+    expect(refused.answers).toEqual([{ status: 503, header: "r-2" }]);
+  });
+
+  it("is not told of a request that had no answer", async () => {
+    const answers: number[] = [];
+    const client = createClient({
+      baseURI: () => BASE,
+      fetch: async () => {
+        throw new TypeError("no network");
+      },
+      sessions: new SessionStore(memoryStorage()),
+      onAnswer: ({ status }) => answers.push(status),
+    });
+    const error = await thrownBy(() => client.request("get", "/api/v1/about"));
+    expect(error.status).toBe(0);
+    expect(answers).toEqual([]);
+  });
+
+  it("is the request's whatever the one told of it does", async () => {
+    const client = createClient({
+      baseURI: () => BASE,
+      fetch: async () => json(200, { version: "0.1.0" }),
+      sessions: new SessionStore(memoryStorage()),
+      onAnswer: () => {
+        throw new Error("the listener failed");
+      },
+    });
+    expect((await client.request("get", "/api/v1/about")).version).toBe("0.1.0");
+  });
+});
+
+describe("503", () => {
+  const BUSY = {
+    type: "about:blank",
+    title: "Busy",
+    status: 503,
+    detail: "the server is busy and this request was not answered; try again shortly",
+    errors: [],
+    busy: { state: "busy", because: ["cpu_percent"], retry_after: 5 },
+  };
+
+  it("of a busy server is said as that, with the seconds of Retry-After", async () => {
+    const { client } = setup(() => json(503, BUSY, { "Retry-After": "5" }));
+    const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
+    expect(error.status).toBe(503);
+    expect(error.busy).toEqual({ state: "busy", because: ["cpu_percent"], retry_after: 5 });
+    expect(error.retryAfter).toBe(5);
+    expect(error.message).toBe(
+      "The server is busy and did not answer this. Try again in 5 seconds.",
+    );
+  });
+
+  it("of a busy server says the seconds the problem repeats where the header is lost", async () => {
+    const { client } = setup(() =>
+      json(503, { ...BUSY, busy: { state: "very_busy", because: [], retry_after: 1 } }),
+    );
+    const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
+    expect(error.busy?.state).toBe("very_busy");
+    expect(error.message).toBe(
+      "The server is busy and did not answer this. Try again in 1 second.",
+    );
+  });
+
+  it("of a busy server that names no time says shortly", async () => {
+    const { client } = setup(() =>
+      json(503, { ...BUSY, busy: { state: "busy", because: ["response_ms", "other"] } }),
+    );
+    const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
+    expect(error.busy).toEqual({ state: "busy", because: ["response_ms"], retry_after: 0 });
+    expect(error.message).toBe("The server is busy and did not answer this. Try again shortly.");
+  });
+
+  it("of a change that waited for another keeps the server's sentence, and is not busy", async () => {
+    const { client } = setup(() =>
+      problem(
+        503,
+        "Busy",
+        "another change is being stored and this one was not made; try again in a moment",
+        [],
+        { "Retry-After": "1" },
+      ),
+    );
+    const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
+    expect(error.busy).toBeNull();
+    expect(error.retryAfter).toBe(1);
+    expect(error.message).toBe(
+      "another change is being stored and this one was not made; try again in a moment",
+    );
+  });
+
+  it("is not busy for a member of another shape, nor on another status", async () => {
+    for (const [status, busy] of [
+      [503, "yes"],
+      [503, { state: "idle" }],
+      [500, BUSY.busy],
+    ] as const) {
+      const { client } = setup(() => json(status, { ...BUSY, status, busy }));
+      const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
+      expect(error.busy).toBeNull();
+      expect(error.message).toBe(BUSY.detail);
+    }
+  });
+});
+
 describe("problem documents", () => {
   it("give the detail as the message and the field messages by field", async () => {
     const { client } = setup(() =>

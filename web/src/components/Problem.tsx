@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 import { Link } from "react-router";
 import type { ApiError, ExistingRecord } from "../api/client";
-import { hearChanges } from "../lib/hooks";
+import { askAgain, canAskAgain, hearChanges } from "../lib/hooks";
 import { existingLead, existingPath, fieldErrors, fieldLine, sentence } from "../lib/problems";
 import { runOnItLead } from "../lib/removal";
 
@@ -35,8 +35,14 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
   const cause = useContext(StaleCause);
   // A message about a field the form shows is shown beside its input, not here.
   const others = fieldErrors(visible, shown).rest;
+  // 0.9.10: a busy server is said in the page's own words, which need no title before
+  // them (P-265); the 503 of a change that waited keeps the server's, under its title.
   const heading =
-    visible && visible.detail !== "" && visible.status !== 429 && visible.status !== 0
+    visible &&
+    visible.detail !== "" &&
+    visible.status !== 429 &&
+    visible.status !== 0 &&
+    !visible.busy
       ? visible.title
       : "";
   // 0.9.6: the record that has the value already, as a link to it (P-207).
@@ -45,7 +51,11 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
   return (
     <div className="live" aria-live="assertive" aria-atomic="true">
       {visible && (
-        <div className="alert alert-error" data-status={visible.status}>
+        <div
+          className="alert alert-error"
+          data-status={visible.status}
+          data-busy={visible.busy ? visible.busy.state : undefined}
+        >
           {visible.stale ? (
             <p>
               <strong>This record has changed.</strong>{" "}
@@ -85,6 +95,15 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
             <p>
               <button type="button" onClick={onReload}>
                 Reload
+              </button>
+            </p>
+          )}
+          {/* 0.9.10: a read that a busy server did not answer is asked again from here,
+              with every other read on the page that was so refused (P-265). */}
+          {canAskAgain(visible) && (
+            <p>
+              <button type="button" onClick={askAgain}>
+                Try again
               </button>
             </p>
           )}
