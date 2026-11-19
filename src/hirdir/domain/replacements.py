@@ -130,13 +130,16 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
         # The old membership ends first, so that its position is free for the new item,
         # which takes it as it is (P-219).
         groups.update_member(db, context, group.hid, member.hid, None, {"left_on": day})
-        groups.add_members(
-            db,
-            context,
-            group.hid,
-            [{"item_hid": new.hid, "role": role, "position": position, "joined_on": day}],
-            handed_over=True,
-        )
+        # A refusal of the new item's joining names it as the request does: the new item
+        # is in another stack, or the same one, or is a minor item.
+        with groups.named_at("", {"item_hid": "new_item_hid"}):
+            groups.add_members(
+                db,
+                context,
+                group.hid,
+                [{"item_hid": new.hid, "role": role, "position": position, "joined_on": day}],
+                handed_over=True,
+            )
 
 
 def replace(

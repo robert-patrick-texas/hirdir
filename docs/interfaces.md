@@ -301,7 +301,9 @@ with its `row_version`, and records that another took its place (P-241, P-242):
   that leaves moves with the replacement, so the same request sent twice is refused the
   second time as stale, a `409`, and makes one replacement.
 - The new item takes over the old one's current memberships of groups, with the same
-  role and position, and its connections of circuits, on the same sides (P-147).
+  role and position, and its connections of circuits, on the same sides (P-147). A
+  refusal of its joining, where it is a minor item or a current member of another stack
+  or cluster or of the same group already, names `new_item_hid`.
 - `drop_identity`, true, is for the replacement of a current member of a stack: in the
   same change the item that comes gives up its own `hostname` and `fqdn`, its
   addresses, each removed as `DELETE /addresses/{hid}` removes it, and its own

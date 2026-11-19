@@ -850,7 +850,7 @@ def _joining(
 
 
 @contextmanager
-def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[None]:
+def named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[None]:
     """Name each field of a refusal as the member it is about: `members.0.disposition`.
 
     `renamed` gives the name the request has for a field the rule names otherwise.
@@ -858,7 +858,7 @@ def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator
     try:
         yield
     except (Invalid, Conflict) as error:
-        if where:
+        if where or renamed:
             error.fields = {
                 f"{where}{(renamed or {}).get(name, name)}": message
                 for name, message in error.fields.items()
@@ -880,7 +880,7 @@ def take_on(
     the cause of `caused` what it was made by: joining the group (P-217), or the
     replacement whose item takes a member's place (P-242).
     """
-    with _named_at(where):
+    with named_at(where):
         items.update_item(db, caused, item.hid, item.row_version, dict(fields))
         if drop:
             for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
@@ -1171,7 +1171,7 @@ def give_back(
     """
     item = items.get_item(db, item_hid)
     leaving = caused
-    with _named_at(where, {"to": "lifecycle_state", "reason": "state_reason"}):
+    with named_at(where, {"to": "lifecycle_state", "reason": "state_reason"}):
         state = given.get("lifecycle_state")
         if "lifecycle_state" in given and state is None:
             raise Invalid(
