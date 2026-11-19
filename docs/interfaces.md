@@ -1184,6 +1184,12 @@ page says the rules, and this says how a file carries them.
   rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, the
   item's; once applied, `not_reported_first` is empty. `pending` and `removed`
   registrations, and those of device groups, are left as they are.
+  A `complete` file of no rows is refused before the preview, a `422` on `complete`:
+  a file that is everything a system reports names at least one thing. What stays
+  possible is a file cut short, that names some and not the rest: it marks what it does
+  not name, and the next whole file of the system makes each `registered` again, each
+  change by an event of its own. The preview's `not_reported` and
+  `not_reported_first` are there to be read before the file is applied.
 - **The status `not_reported`** is a status of a registration as any other: a person
   sets it back to `registered`, or to `removed`, by `PATCH /registrations/{hid}`, and the
   next file of the system that names the item makes it `registered` again.

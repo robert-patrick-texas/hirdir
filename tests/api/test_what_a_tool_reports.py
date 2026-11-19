@@ -186,6 +186,11 @@ def test_what_a_file_read_from_a_system_needs(make: Maker, files: Files) -> None
     assert "external_id" in errors(no_system)
     complete = files.preview("items", _csv(",site2-vm-app01,"), 422, complete="true")
     assert "complete" in errors(complete)
+    # A report that came out empty would mark everything the system has: it is refused.
+    empty = files.preview("items", _csv(), 422, system=SYSTEM, complete="true")
+    assert errors(empty)["complete"] == (
+        "a file that is everything a system reports names at least one thing"
+    )
     assert "system" in errors(files.preview("items", _csv(",a,"), 422, system="Example Nothing"))
     assert "system" in errors(files.preview("items", _csv(",a,"), 422, system="Example Discovery"))
     assert "system" in errors(

@@ -393,6 +393,12 @@ def _read_from(db: Session, parsed: files.Parsed, system: str | None, complete: 
             "only a file of items is read from an external system",
             {"system": "a file of items only"},
         )
+    if complete and not parsed.rows:
+        # A report that came out empty is no report: it would mark everything (P-248).
+        raise Invalid(
+            "a file that is everything a system reports names at least one thing",
+            {"complete": "a file that is everything a system reports names at least one thing"},
+        )
     found = systems.the_one(db, system, "system")
     if found.record_status == "retired":
         raise Invalid("the system is retired", {"system": f"{found.name} is retired"})
