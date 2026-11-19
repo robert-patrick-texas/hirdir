@@ -218,7 +218,11 @@ memberships made.
   cleared, so that the stack's location is in force. Its planned location, owner and
   operator stay as they are. It is refused for a cluster, a controller domain and a
   custom group, and, with `disposition` and `expected_online`, on a row of a file that
-  enters a membership that has ended already, with its `left_on`. Left out, false.
+  enters a membership that has ended already, with its `left_on`. Left out, false. An
+  item known by its host name alone is refused it, a `422` on `members.0.item_hid`,
+  since it would be left nothing to be known by: it is given a name, a serial number
+  with its model or an asset tag first. So is the item that comes in a replacement with
+  `drop_identity`, on `new_item_hid`.
 - `disposition` and `expected_online`, given, are the item's from that change, checked
   by the rule of its lifecycle state as `PATCH /items/{hid}` checks them. Left out or
   `null`, each stays as it is: nothing follows from the other, so Production for a
@@ -475,7 +479,10 @@ is in none, and puts the item into it as its first member, at position 1 (P-243)
   and for one that has left the team's hands, in Released or Archived; and, a `409` on
   `item_hid`, for one that is a current member of a stack already, naming that stack as
   `existing`; and, a `422` on `name`, where neither the request nor the item gives a
-  name. A refusal of any part leaves no stack made and the item as it was.
+  name. An item known by its host name alone, with no name, no serial number with its
+  model and no asset tag, is refused before anything is changed, a `422` on `item_hid`:
+  the stack takes the host name, which would leave the item nothing to be known by, so
+  it is given a name, a serial number or an asset tag first. A refusal of any part leaves no stack made and the item as it was.
 - The answer, `201`, is the new device group, as `POST /device-groups` answers. The
   audit trail holds the stack made, the membership, the change of the item, its host
   name, its FQDN and the four it gives up, and each address moved, as an `update` of

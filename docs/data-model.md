@@ -590,7 +590,10 @@ Rules, checked on every write:
   and each change of the item and each address moved says the stack it was made for,
   in `joining_group`. It is refused for a minor item, for an item that is retired or
   has left the team's hands, for one that is a current member of a stack, and where a
-  group has the name.
+  group has the name; and for an item known by its host name alone, which the stack
+  takes and which would leave it nothing to be known by, until it is given a name, a
+  serial number with its model or an asset tag. A member that joins a stack with its
+  name and place given up is refused so too (P-217).
 - An item is a current member of one group at most once, and of at most one stack and
   at most one cluster among the groups that are not retired. The members of a stack
   and of a cluster are major items.
