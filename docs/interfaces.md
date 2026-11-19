@@ -183,7 +183,11 @@ without its own where it has its own, and `steps` in the order of the walk. A st
 `level`, one of `own`, `device_group`, `parent_item`, `catalog`, `setting`, `location`,
 `site` and `region`; the record it looks at, `hid` and `name`, and for a group its
 `type`, its `rank` among the item's groups from 1, and `via_hid` and `via_name`, the group
-it is nested in that holds the value where the group holds none of its own; `value`, what that record
+it is nested in that holds the value where the group holds none of its own; `reached_by`,
+what the record is to the one before it in the walk, `member` for a group it is a current
+member of, `host` for what it runs on, an item or the stack or the cluster (P-246), and
+`parent` for the item it is installed in or the group it is nested in, null for its own
+and for the rest; `value`, what that record
 holds, with its label; and `outcome`, `decides`, `passed_over`, `nothing`, `retired`, an operator or a group
 that is retired, or `raises`, the minimum of a support weight that raises the value found
 (P-155), which keeps the source it was found at.
@@ -309,7 +313,10 @@ the rules, and this says how the API carries them.
   group's HID, as for a member: a group a host item is a member of, the stack or the
   cluster it runs on itself, or a group that one is nested in. So `host` always names
   an item and `device_group` a group, in the record, in the list's
-  `effective.operator_hid.source` and in a file's `<field>_source`. `effective.serial_number`, on every item,
+  `effective.operator_hid.source` and in a file's `<field>_source`. Each of the four
+  has `source_label`, the name of the item or the group it came from, null for the
+  item's own, in the record and in the rows of a list; so does the owner of a device
+  group. `effective.serial_number`, on every item,
   is its own, or for a virtual context with none the serial number of the item it runs
   on, with `source` `host`. `GET /items/{hid}/resolution` has the steps of each item
   it runs on with `level` `host`, after those of the item and what it is installed in,

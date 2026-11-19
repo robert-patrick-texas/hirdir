@@ -6,8 +6,8 @@ import type { Schemas } from "../api/client";
 
 export type Effective = Schemas["EffectiveValue"];
 export type Source = Effective["source"];
-/** A record in force: the value is its HID, and `label` is what people call it. */
-export type EffectiveRecord = Schemas["EffectiveReference"];
+/** A record in force: its HID, what people call it, and the name of what it came from. */
+export type EffectiveRecord = Schemas["EffectiveOwner"];
 
 const FROM: Readonly<Record<Source, string>> = {
   own: "",

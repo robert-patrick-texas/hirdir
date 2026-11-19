@@ -22,6 +22,9 @@ from hirdir.domain import descent, geography, groups, inheritance, operators, we
 from hirdir.domain import items as item_rules
 
 Outcome = Literal["decides", "passed_over", "nothing", "retired", "raises"]
+# What a record of the walk is to the record before it: a group it is a member of, what
+# it runs on (P-246), or what it is installed in or nested in.
+ReachedBy = Literal["member", "host", "parent"]
 StepLevel = Literal[
     "own", "device_group", "parent_item", "host", "catalog", "setting", "location", "site", "region"
 ]
@@ -45,6 +48,7 @@ class Step:
     via_name: str | None = None
     retired: bool = False
     outcome: Outcome = "nothing"
+    reached_by: ReachedBy | None = None
 
 
 @dataclass
@@ -117,7 +121,7 @@ def _group_steps(
         key=lambda group: (descent.GROUP_ORDER.index(group.type), group.name_key, group.hid),
     )
     in_force = descent.of_groups(db, ordered, name, gone)
-    steps = []
+    steps: list[Step] = []
     for rank, group in enumerate(ordered, start=rank_from):
         found = in_force[group.hid]
         own = getattr(group, name)
@@ -241,9 +245,14 @@ def _line_walk(
     for above in (item_rules.Above(item, "parent_item"), *line):
         one = above.record
         if isinstance(one, DeviceGroup):
-            steps.append(_host_group_step(db, name, one, skip, names))
+            step = _host_group_step(db, name, one, skip, names)
+            step.reached_by = "host"
+            steps.append(step)
             break
         value = getattr(one, name)
+        reached: ReachedBy | None = None
+        if one is not item:
+            reached = "host" if above.source == "host" else "parent"
         steps.append(
             Step(
                 level="own" if one is item else above.source,
@@ -252,9 +261,12 @@ def _line_walk(
                 value=value,
                 label=names.of(name, value),
                 retired=name == "operator_hid" and value in gone,
+                reached_by=reached,
             )
         )
-        steps += _group_steps(db, name, one, skip, names)
+        for step in _group_steps(db, name, one, skip, names):
+            step.reached_by = "member"
+            steps.append(step)
     return steps
 
 
@@ -370,6 +382,7 @@ def of_group(db: Session, group: DeviceGroup) -> list[Walk]:
                     type=one.type,
                     retired=(name == "operator_hid" and value in gone)
                     or (one is not group and one.record_status == descent.RETIRED),
+                    reached_by=None if one is group else "parent",
                 )
             )
         walks.append(_decided(name, steps))
