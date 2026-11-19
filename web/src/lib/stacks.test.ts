@@ -4,6 +4,7 @@ import {
   dropsOf,
   dropsText,
   groupWords,
+  hostedText,
   joinedText,
   joinStanding,
   type LeavingRules,
@@ -385,6 +386,19 @@ describe("a switch that stands alone made a stack (P-243)", () => {
     expect(makeStackText("FCW1", {})).toMatch(
       /^FCW1 has no host name, FQDN, address, place, owner or operator of its own/,
     );
+  });
+
+  it("says what runs on a switch goes to the stack, with the count (P-252)", () => {
+    expect(hostedText(0)).toBe("");
+    expect(hostedText(undefined)).toBe("");
+    expect(hostedText(1)).toBe("The 1 thing that runs on it will run on the stack.");
+    expect(hostedText(2)).toBe("The 2 things that run on it will run on the stack.");
+    expect(makeStackGoes({ hosted_count: 1 })).toEqual(["the 1 thing that runs on it"]);
+    expect(makeStackGoes({ hostname: "sw1", hosted_count: 3 })).toEqual([
+      "the host name sw1",
+      "the 3 things that run on it",
+    ]);
+    expect(makeStackGoes({ hosted_count: 0 })).toEqual([]);
   });
 
   it("says what was made, with how many more members", () => {

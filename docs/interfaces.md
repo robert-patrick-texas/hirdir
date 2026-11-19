@@ -2687,7 +2687,12 @@ What 0.9.6 changes:
   unticked or the item is named, while New group, Add members and More members say it
   beside the member's row and send nothing. An item of a kind that runs on a host, a
   virtual machine, a virtual context or a container, is offered neither Join a stack nor
-  Make it a stack. No other page
+  Make it a stack. What runs on a switch goes to the stack it joins or is made of
+  (P-252): under the box of each member chosen for a stack, in Add members, New group,
+  Join a stack, Replace and More members, a line says it, `The 2 things that run on it
+  will run on the stack.`, from the item's `hosted_count`, whether or not the box is
+  ticked, and a cluster's member says nothing; Make it a stack's sentence of what goes
+  to the stack counts it, as `the 1 thing that runs on it`. No other page
   reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
   each replacement.
 
