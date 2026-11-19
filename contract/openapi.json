@@ -18421,12 +18421,12 @@
         "description": "The ceiling in force: the three settings of it (P-265).",
         "properties": {
           "cpu_percent": {
-            "description": "`busy_cpu_percent`: what `measures.cpu_percent` may reach. 0: not looked at.",
+            "description": "`busy_cpu_percent`: what `measures.cpu_percent` may reach, which is up to 100 for each processor of the host. 0: not looked at.",
             "title": "Cpu Percent",
             "type": "integer"
           },
           "over_seconds": {
-            "description": "`busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy before it is very busy.",
+            "description": "`busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy, by what came since, before it is very busy.",
             "title": "Over Seconds",
             "type": "integer"
           },
@@ -18548,6 +18548,7 @@
         "description": "The requests being answered now. The request that asks is not counted.",
         "properties": {
           "count": {
+            "description": "Those whose body has not all come are counted: they wait for their sender, are in neither measure, and have no age.",
             "title": "Count",
             "type": "integer"
           },
@@ -18560,7 +18561,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long the oldest has waited, in milliseconds. Null with none.",
+            "description": "How long the oldest has waited since the server had the whole of it, in milliseconds. Null with none.",
             "title": "Oldest Ms"
           }
         },
@@ -18576,7 +18577,7 @@
         "description": "The two measures as the ceiling reads them now, over the last `over_seconds`.",
         "properties": {
           "cpu_percent": {
-            "description": "The processor time the process used, as a percentage of one processor.",
+            "description": "The processor time the process used, every thread of it, as a percentage of one processor. It passes 100 where several requests are in the database at once.",
             "title": "Cpu Percent",
             "type": "number"
           },
@@ -18589,7 +18590,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long requests take: the median, in milliseconds, of the time taken by the requests of the API answered in that time and of the time waited so far by those in flight. Null with fewer than five.",
+            "description": "How long requests take: the median, in milliseconds, of the time taken by the requests of the API that came in that time, whatever each took, and of the time waited so far by those in flight, however long ago they came. A request's time begins when the server has the whole of it, its body with it. Null with fewer than five.",
             "title": "Response Ms"
           }
         },
@@ -18634,7 +18635,7 @@
             "type": "array"
           },
           "cpu_percent": {
-            "description": "The processor time used, as a percentage of one processor. Null in the step under way until a second of it has passed.",
+            "description": "The processor time used, as a percentage of one processor, which may pass 100. Null in the step under way until a second of it has passed.",
             "items": {
               "anyOf": [
                 {
@@ -18763,10 +18764,10 @@
           },
           "cpu_percent": {
             "$ref": "#/components/schemas/LoadSpread",
-            "description": "The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole."
+            "description": "The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole. Each may pass 100."
           },
           "failed": {
-            "description": "Failed: `5xx`, the 503 of a change that waited for another among them.",
+            "description": "Failed: `5xx`, the 503 of a change that waited for another among them, and an answer that was not sent to its last byte.",
             "title": "Failed",
             "type": "integer"
           },
@@ -18787,7 +18788,7 @@
           },
           "response_ms": {
             "$ref": "#/components/schemas/LoadSpread",
-            "description": "The time of an answer, in milliseconds, from the arrival of the request to the last byte of its answer. An answer of busy is not in it."
+            "description": "The time of an answer, in milliseconds, from when the server had the whole request, its body with it, to the last byte of its answer. An answer of busy is not in it."
           }
         },
         "required": [
@@ -24436,7 +24437,7 @@
         "description": "Why a server past its ceiling did not take a request (P-265).",
         "properties": {
           "because": {
-            "description": "The measures that are past the ceiling: how long requests take, the share of one processor the process uses.",
+            "description": "The measures that are past the ceiling: how long requests take, the processor time the process uses as a percentage of one processor.",
             "items": {
               "enum": [
                 "response_ms",
@@ -31604,7 +31605,7 @@
     },
     "/api/v1/about/load": {
       "get": {
-        "description": "Say how the server is doing, by its own measures of its last ten minutes: whether\nit is busy and by which measure, what it answered and how long an answer took, the\nprocessor time it used, the requests in flight, the memory and the disk of the host,\nwhether the background work is being done, and the ten minutes step by step, for a\ngraph. Kept in memory and read from there: it asks nothing of the database but who\nis signed in, and a busy server answers it all the same (P-265, P-266).",
+        "description": "Say how the server is doing, by its own measures of its last ten minutes: whether\nit is busy and by which measure, what it answered and how long an answer took, the\nprocessor time it used, the requests in flight, the memory and the disk of the host,\nwhether the background work is being done, and the ten minutes step by step, for a\ngraph. The time of a request begins when the server has the whole of it, its body\nwith it, so what a sender takes to send is in no time; and the share of the\nprocessor is of one processor, which the process passes where several requests are\nin the database at once. Kept in memory and read from there: it asks nothing of the\ndatabase but who is signed in, and a busy server answers it all the same (P-265,\nP-266).",
         "operationId": "about_load_api_v1_about_load_get",
         "responses": {
           "200": {

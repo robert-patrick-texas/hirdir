@@ -5,9 +5,11 @@ what it answered and how, how long an answer took, and the processor time the pr
 used. Nothing of it is written anywhere, and it starts empty.
 
 Two measures are read from it over the last `busy_over_seconds`: how long requests take,
-and the share of one processor the process used. Past the ceiling of either the server
-is busy, and what costs most and can wait is turned away at once; still busy a further
-`busy_over_seconds` later it is very busy, and every read is.
+and the processor time the process used as a percentage of one processor, which passes
+100 where several threads of it work at once. Past the ceiling of either the server is
+busy, and what costs most and can wait is turned away at once; still busy a further
+`busy_over_seconds` later, by what came after it became busy, it is very busy, and
+every read is.
 
 Nothing here reads a clock or the host. The time, in seconds that only go forward, and
 the processor time the process has used so far are given by whoever asks, so the rules
@@ -29,7 +31,7 @@ STEPS = WINDOW_SECONDS // STEP_SECONDS
 FEWEST_REQUESTS = 5
 # The measures are read again this often at the most, however many requests ask.
 READ_EVERY_SECONDS = 1.0
-# The answers whose times are kept for the median, at the most: the newest.
+# The answers whose times are kept for the median, at the most: the last given.
 MOST_TIMES = 20_000
 # What an answer of busy says to wait, in seconds: a step, in which the measures move.
 RETRY_SECONDS = STEP_SECONDS
@@ -44,9 +46,11 @@ DEFAULT_CPU_PERCENT = 95
 DEFAULT_OVER_SECONDS = 30
 # What the settings take: a measure at 0 is not looked at; a load counts as sustained
 # over no less than a step and no more than half of what the meter keeps, so that the
-# second step is always within it.
+# second step is always within it. The share of the processor is of one processor, and
+# a process whose threads work at once uses more than one: the setting takes 100 for
+# each processor of the host, which `hirdir.domain.settings` counts.
 MOST_RESPONSE_MS = WINDOW_SECONDS * 1000
-MOST_CPU_PERCENT = 100
+CPU_PERCENT_OF_A_PROCESSOR = 100
 FEWEST_OVER_SECONDS = STEP_SECONDS
 MOST_OVER_SECONDS = WINDOW_SECONDS // 2
 
@@ -181,8 +185,13 @@ class _Step:
 class _Flight:
     """A request that is being answered."""
 
+    # When the server had the request: when it arrived, or when the last piece of its
+    # body that came was handed to the application.
     began: float
     api: bool
+    # Whether the server has the whole of it. One whose body has not all come waits
+    # for its sender and not for the server: it is in flight, and in neither measure.
+    whole: bool
 
 
 @dataclass
@@ -206,11 +215,16 @@ class Meter:
     _origin: float = field(init=False, repr=False)
     _flights: dict[int, _Flight] = field(default_factory=dict, repr=False)
     _tokens: int = 0
-    # When each request of the API was answered and how long it took, the oldest first.
+    # When the server had each request of the API that it has answered, and how long
+    # the answer took, in the order they were answered.
     _times: deque[tuple[float, float]] = field(
         default_factory=lambda: deque(maxlen=MOST_TIMES), repr=False
     )
+    # Since when the server is busy, the processor time the process had used by then,
+    # and whether it is at the second step.
     _busy_since: float | None = None
+    _busy_cpu: float = 0.0
+    _very_busy: bool = False
     _reading: Reading = UNREAD
     _read_at: float | None = None
 
@@ -225,14 +239,27 @@ class Meter:
             self.ceiling = ceiling
             self._read_at = None
 
-    def began(self, now: float, cpu: float, api: bool) -> int:
+    def began(self, now: float, cpu: float, api: bool, whole: bool = True) -> int:
         """Note that a request arrived, and return what to end it with. `api` says
-        whether it is a request of the API, whose time is in the measure."""
+        whether it is a request of the API, whose time is in the measure, and `whole`
+        whether the server has all of it: a request that declares a body is not whole
+        until the body has come."""
         with self._lock:
             now = self._advance(now, cpu)
             self._tokens += 1
-            self._flights[self._tokens] = _Flight(now, api)
+            self._flights[self._tokens] = _Flight(now, api, whole)
             return self._tokens
+
+    def heard(self, token: int, now: float, cpu: float, whole: bool) -> None:
+        """Note that a piece of the body of a request was handed to the application,
+        and whether it was the last. The time of the request begins here, at the last
+        piece that came: what its sender took to send it is not the server's time."""
+        with self._lock:
+            flight = self._flights.get(token)
+            if flight is None or flight.whole:
+                return
+            flight.began = self._advance(now, cpu)
+            flight.whole = whole
 
     def ended(self, token: int, now: float, cpu: float, status: int) -> None:
         """Note that the last byte of the answer to a request was sent, with its status."""
@@ -244,7 +271,7 @@ class Meter:
             taken_ms = (now - flight.began) * 1000
             self._steps[-1].count(status, taken_ms)
             if flight.api:
-                self._times.append((now, taken_ms))
+                self._times.append((flight.began, taken_ms))
                 self._forget(now)
 
     def turned_away(self, now: float, cpu: float) -> None:
@@ -261,6 +288,7 @@ class Meter:
         with self._lock:
             if self.ceiling.none:
                 self._busy_since = None
+                self._very_busy = False
                 self._read_at = None
                 return UNREAD
             if self._read_at is not None and 0 <= now - self._read_at < READ_EVERY_SECONDS:
@@ -269,15 +297,13 @@ class Meter:
 
     def picture(self, now: float, cpu: float, but: int | None = None) -> Picture:
         """Return everything the meter says now, the measures read afresh. `but` is the
-        request that asks, which is not counted among those in flight."""
+        request that asks, which is not counted among those in flight. One whose body
+        has not all come is counted, and has no age: it waits for its sender."""
         with self._lock:
             now = self._advance(now, cpu)
             reading = self._read(now)
-            waits = [
-                (now - flight.began) * 1000
-                for token, flight in self._flights.items()
-                if token != but
-            ]
+            flying = [flight for token, flight in self._flights.items() if token != but]
+            waits = [(now - flight.began) * 1000 for flight in flying if flight.whole]
             steps = list(self._steps)
             timed = sum(step.timed for step in steps)
             lows = [step.low_ms for step in steps if step.low_ms is not None]
@@ -305,7 +331,7 @@ class Meter:
                     average=sum(whole) / len(whole),
                     high=max(whole),
                 ),
-                in_flight=len(waits),
+                in_flight=len(flying),
                 oldest_ms=max(waits) if waits else None,
                 points=Points(
                     at=self.started_at + timedelta(seconds=self._first * STEP_SECONDS),
@@ -362,20 +388,23 @@ class Meter:
         return now
 
     def _forget(self, now: float) -> None:
-        """Drop the times of answers given longer ago than the measure looks back."""
+        """Drop the times of requests that came longer ago than the measure looks back,
+        as far as they are the first of those kept: one that is kept behind a later one
+        is not read, and goes when its turn comes."""
         oldest = now - self.ceiling.over_seconds
         while self._times and self._times[0][0] <= oldest:
             self._times.popleft()
 
     def _share(self, offset: int, now: float) -> float:
         """Return the processor time used in a step as a percentage of the part of it
-        that has passed, on one processor."""
+        that has passed, on one processor: more than 100 where threads worked at once."""
         passed = min(now - self._begins(offset), STEP_SECONDS)
         return self._steps[offset].cpu_seconds / passed * 100 if passed > 0 else 0.0
 
     def _processor(self, now: float) -> float:
-        """Return the share of one processor the process used over the last
-        `over_seconds`. A server that started later than that used nothing before."""
+        """Return the processor time the process used over the last `over_seconds`, as
+        a percentage of that time on one processor. Nothing holds it to 100. A server
+        that started later than that used nothing before."""
         over = self.ceiling.over_seconds
         oldest = now - over
         used = 0.0
@@ -390,37 +419,62 @@ class Meter:
                 )
         return used / over * 100
 
-    def _response(self, now: float) -> float | None:
+    def _response(self, now: float, since: float) -> float | None:
         """Return how long requests take: the median of the time taken by the requests
-        of the API answered in the last `over_seconds` and of the time waited so far by
-        those in flight, or None where they are fewer than five. The median, so that
-        one long export among quick answers is not a busy server; those in flight, so
-        that a server from which nothing comes back is not taken for an idle one."""
-        self._forget(now)
-        times = [taken for _, taken in self._times]
-        times += [(now - flight.began) * 1000 for flight in self._flights.values() if flight.api]
+        of the API that the server has had since a moment, whatever each took, and of
+        the time waited so far by those in flight, however long ago they came; or None
+        where they are fewer than five. A request is in it from when the server had
+        the whole of it, so one leaves the measure `over_seconds` after it came and not
+        after it was answered: a stall that is over is not read as one that lasts. The
+        median, so that one long export among quick answers is not a busy server; those
+        in flight, so that a server from which nothing comes back is not taken for an
+        idle one."""
+        times = [taken for began, taken in self._times if began > since]
+        times += [
+            (now - flight.began) * 1000
+            for flight in self._flights.values()
+            if flight.api and flight.whole
+        ]
         return statistics.median(times) if len(times) >= FEWEST_REQUESTS else None
 
-    def _read(self, now: float) -> Reading:
-        """Read the two measures, and say whether the server is busy and at which step."""
+    def _past(self, response: float | None, processor: float) -> tuple[Measure, ...]:
+        """Return which of the two measures are past the ceiling. One at 0 is not
+        looked at."""
         ceiling = self.ceiling
-        response, processor = self._response(now), self._processor(now)
-        because = tuple(
-            name
-            for name, value, limit in (
-                (RESPONSE, response, ceiling.response_ms),
-                (PROCESSOR, processor, ceiling.cpu_percent),
-            )
-            # A measure at 0 is not looked at.
-            if limit and value is not None and value > limit
-        )
+        past: list[Measure] = []
+        if ceiling.response_ms and response is not None and response > ceiling.response_ms:
+            past.append(RESPONSE)
+        if ceiling.cpu_percent and processor > ceiling.cpu_percent:
+            past.append(PROCESSOR)
+        return tuple(past)
+
+    def _read(self, now: float) -> Reading:
+        """Read the two measures, and say whether the server is busy and at which step.
+
+        The second step is not reached by the passing of time alone. A server that has
+        been busy for a further `over_seconds` is very busy only where what came after
+        it became busy says so: five or more requests had since then and those in
+        flight, whose median is past the ceiling, or the processor time used since then,
+        which is counted and not read from the steps. Where neither does, what kept it
+        busy was the echo of before, and the further while is counted again from here.
+        """
+        over = self.ceiling.over_seconds
+        self._forget(now)
+        response, processor = self._response(now, now - over), self._processor(now)
+        because = self._past(response, processor)
         if not because:
             self._busy_since = None
-            state = OK
-        else:
-            if self._busy_since is None:
-                self._busy_since = now
-            state = VERY_BUSY if now - self._busy_since >= ceiling.over_seconds else BUSY
+            self._very_busy = False
+        elif self._busy_since is None:
+            self._busy_since, self._busy_cpu = now, self.cpu
+        elif not self._very_busy and now - self._busy_since >= over:
+            since = self._busy_since
+            used = (self.cpu - self._busy_cpu) / (now - since) * 100
+            if self._past(self._response(now, max(since, now - over)), used):
+                self._very_busy = True
+            else:
+                self._busy_since, self._busy_cpu = now, self.cpu
+        state: State = OK if not because else VERY_BUSY if self._very_busy else BUSY
         self._reading = Reading(state, because, response, processor)
         self._read_at = now
         return self._reading

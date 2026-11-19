@@ -28,8 +28,12 @@ export interface paths {
      * it is busy and by which measure, what it answered and how long an answer took, the
      * processor time it used, the requests in flight, the memory and the disk of the host,
      * whether the background work is being done, and the ten minutes step by step, for a
-     * graph. Kept in memory and read from there: it asks nothing of the database but who
-     * is signed in, and a busy server answers it all the same (P-265, P-266).
+     * graph. The time of a request begins when the server has the whole of it, its body
+     * with it, so what a sender takes to send is in no time; and the share of the
+     * processor is of one processor, which the process passes where several requests are
+     * in the database at once. Kept in memory and read from there: it asks nothing of the
+     * database but who is signed in, and a busy server answers it all the same (P-265,
+     * P-266).
      */
     get: {
       parameters: {
@@ -11494,9 +11498,9 @@ export interface components {
     };
     /** The ceiling in force: the three settings of it (P-265). */
     LoadCeiling: {
-      /** `busy_cpu_percent`: what `measures.cpu_percent` may reach. 0: not looked at. */
+      /** `busy_cpu_percent`: what `measures.cpu_percent` may reach, which is up to 100 for each processor of the host. 0: not looked at. */
       cpu_percent: number;
-      /** `busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy before it is very busy. */
+      /** `busy_over_seconds`: over how long the measures are read, and how much longer a busy server is busy, by what came since, before it is very busy. */
       over_seconds: number;
       /** `busy_response_ms`: what `measures.response_ms` may reach. 0: not looked at. */
       response_ms: number;
@@ -11518,15 +11522,16 @@ export interface components {
     };
     /** The requests being answered now. The request that asks is not counted. */
     LoadInFlight: {
+      /** Those whose body has not all come are counted: they wait for their sender, are in neither measure, and have no age. */
       count: number;
-      /** How long the oldest has waited, in milliseconds. Null with none. */
+      /** How long the oldest has waited since the server had the whole of it, in milliseconds. Null with none. */
       oldest_ms: number | null;
     };
     /** The two measures as the ceiling reads them now, over the last `over_seconds`. */
     LoadMeasures: {
-      /** The processor time the process used, as a percentage of one processor. */
+      /** The processor time the process used, every thread of it, as a percentage of one processor. It passes 100 where several requests are in the database at once. */
       cpu_percent: number;
-      /** How long requests take: the median, in milliseconds, of the time taken by the requests of the API answered in that time and of the time waited so far by those in flight. Null with fewer than five. */
+      /** How long requests take: the median, in milliseconds, of the time taken by the requests of the API that came in that time, whatever each took, and of the time waited so far by those in flight, however long ago they came. A request's time begins when the server has the whole of it, its body with it. Null with fewer than five. */
       response_ms: number | null;
     };
     /**
@@ -11540,7 +11545,7 @@ export interface components {
       average_ms: (number | null)[];
       /** The answers of busy given in the step. */
       busy: number[];
-      /** The processor time used, as a percentage of one processor. Null in the step under way until a second of it has passed. */
+      /** The processor time used, as a percentage of one processor, which may pass 100. Null in the step under way until a second of it has passed. */
       cpu_percent: (number | null)[];
       /** The longest time of an answer. Null where nothing was answered. */
       high_ms: (number | null)[];
@@ -11562,9 +11567,9 @@ export interface components {
     LoadTotals: {
       /** Answered 503 as busy, by a server past its ceiling. */
       busy: number;
-      /** The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole. */
+      /** The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole. Each may pass 100. */
       cpu_percent: components["schemas"]["LoadSpread"];
-      /** Failed: `5xx`, the 503 of a change that waited for another among them. */
+      /** Failed: `5xx`, the 503 of a change that waited for another among them, and an answer that was not sent to its last byte. */
       failed: number;
       /** Not taken as asked: `4xx`. */
       not_accepted: number;
@@ -11572,7 +11577,7 @@ export interface components {
       ok: number;
       /** Every request answered: the four below together. */
       requests: number;
-      /** The time of an answer, in milliseconds, from the arrival of the request to the last byte of its answer. An answer of busy is not in it. */
+      /** The time of an answer, in milliseconds, from when the server had the whole request, its body with it, to the last byte of its answer. An answer of busy is not in it. */
       response_ms: components["schemas"]["LoadSpread"];
     };
     /** A new location: in a site, or within a location of one. */
@@ -12531,7 +12536,7 @@ export interface components {
     };
     /** Why a server past its ceiling did not take a request (P-265). */
     ProblemBusy: {
-      /** The measures that are past the ceiling: how long requests take, the share of one processor the process uses. */
+      /** The measures that are past the ceiling: how long requests take, the processor time the process uses as a percentage of one processor. */
       because: ("response_ms" | "cpu_percent")[];
       /** The seconds to wait, as `Retry-After` says. */
       retry_after: number;

@@ -1,7 +1,8 @@
 """What the acceptance scenarios share: a real server process on an empty database.
 
 The server is started on a free port, and the first Admin is made with `hirdir admin`,
-exactly as on a new installation.
+exactly as on a new installation. One thing is not as there: the server starts with no
+ceiling on its load, as `tests/acceptance/serve.py` says and why.
 """
 
 import os
@@ -18,6 +19,9 @@ import httpx2
 import pytest
 
 HIRDIR = [sys.executable, "-m", "hirdir.cli.main"]
+ROOT = Path(__file__).resolve().parents[2]
+# `hirdir`, as the server of a scenario is started: with no ceiling (P-265).
+SERVER = [sys.executable, "-m", "tests.acceptance.serve"]
 ADMIN = ("ada", "acceptance-admin")
 
 
@@ -86,8 +90,9 @@ def started(tmp_path: Path, first_admin: bool = True) -> Generator[Server]:
     `first_admin` it starts on what the directory holds already, such as a restore."""
     running = configured(tmp_path)
     process = subprocess.Popen(  # noqa: S603 - our own command with fixed arguments
-        [*HIRDIR, "admin", "serve", "--dev"],
+        [*SERVER, "admin", "serve", "--dev"],
         env=running.env,
+        cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

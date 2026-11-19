@@ -239,16 +239,150 @@ def test_only_the_requests_of_the_api_are_in_the_median() -> None:
     assert measured.picture(9.0, 0.0).response_ms.high == pytest.approx(2000.0)
 
 
-def test_only_the_answers_of_the_last_while_are_in_the_median() -> None:
+def test_only_the_requests_that_came_in_the_last_while_are_in_the_median() -> None:
     measured = meter(SLOW)
     several(measured, 2.0)
     assert measured.reading(7.0, 0.0).state == load.BUSY
     for tenth in range(5):
         answer(measured, 12.0 + tenth / 10, 0.010)
-    # At 12.5 the answer given at 2 is out, and four slow ones are left of nine.
+    # At 12.5 the three that came before 2.5 are out, whenever they were answered,
+    # and two slow ones are left of seven.
     reading = measured.reading(12.5, 0.0)
     assert reading.response_ms == pytest.approx(10.0)
     assert reading.state == load.OK
+
+
+def asked_every_five_seconds(measured: Meter, until: int) -> dict[int, str]:
+    """Have About ask every five seconds, as the page does, and return what it was told
+    at each: a request of the API that is answered at once, like any other."""
+    told = {}
+    for at in range(5, until + 1, 5):
+        token = measured.began(float(at), 0.0, api=True)
+        told[at] = measured.picture(float(at), 0.0, but=token).reading.state
+        measured.ended(token, float(at), 0.0, status=200)
+    return told
+
+
+def stall(measured: Meter, until: int) -> dict[int, str]:
+    """Ten requests of the API come at once and are all answered twenty seconds later,
+    after which nothing but About asks. Return what About was told every five seconds."""
+    tokens = [measured.began(0.0, 0.0, api=True) for _ in range(10)]
+    told = asked_every_five_seconds(measured, 20)
+    for token in tokens:
+        measured.ended(token, 20.0, 0.0, status=200)
+    for at in range(25, until + 1, 5):
+        token = measured.began(float(at), 0.0, api=True)
+        told[at] = measured.picture(float(at), 0.0, but=token).reading.state
+        measured.ended(token, float(at), 0.0, status=200)
+    return told
+
+
+def test_a_stall_that_is_over_is_over_and_never_the_second_step() -> None:
+    told = stall(meter(Ceiling(response_ms=5000, cpu_percent=0, over_seconds=30)), 120)
+    # Five seconds of waiting are not past five seconds; ten are.
+    assert told[5] == load.OK
+    assert [told[at] for at in (10, 15, 20)] == [load.BUSY] * 3
+    # Answered at 20, the ten are still requests that came in the last half minute.
+    assert told[25] == load.BUSY
+    # Half a minute after they came they are out, and the server is what it is: idle.
+    assert [told[at] for at in range(30, 125, 5)] == [load.OK] * 19
+    assert load.VERY_BUSY not in told.values()
+
+
+def test_a_stall_that_is_over_with_the_longest_while_the_setting_takes() -> None:
+    told = stall(meter(Ceiling(response_ms=5000, cpu_percent=0, over_seconds=300)), 700)
+    assert told[10] == load.BUSY
+    # The ten stay in the measure for five minutes after they came, and are outnumbered
+    # by what About alone asks before one minute is out.
+    assert told[50] == load.BUSY
+    assert [told[at] for at in range(55, 705, 5)] == [load.OK] * 130
+    assert load.VERY_BUSY not in told.values()
+
+
+def test_a_request_leaves_the_measure_a_while_after_it_came_not_after_its_answer() -> None:
+    measured = meter(SLOW)
+    several(measured, 8.0)
+    # They came at 0 to 4 and were answered at 8 to 12. At 12 the three that came by 2
+    # are out, though they were answered two to four seconds ago: two are no measure.
+    assert measured.reading(12.0, 0.0).response_ms is None
+    # And one in flight is in it however long ago it came.
+    for _ in range(5):
+        measured.began(14.0, 0.0, api=True)
+    assert measured.reading(74.0, 0.0).response_ms == pytest.approx(60_000.0)
+
+
+def test_requests_from_which_nothing_comes_back_are_the_second_step() -> None:
+    measured = meter(SLOW)
+    for _ in range(5):
+        measured.began(0.0, 0.0, api=True)
+    assert measured.reading(2.0, 0.0).state == load.BUSY
+    assert measured.reading(11.0, 0.0).state == load.BUSY
+    # Ten seconds on they wait still: what is in flight is evidence of now.
+    assert measured.reading(12.0, 0.0).state == load.VERY_BUSY
+    assert measured.reading(3600.0, 0.0).state == load.VERY_BUSY
+
+
+# --- a request whose body has not all come -------------------------------------------
+
+
+def test_requests_whose_body_never_comes_hold_nothing_busy() -> None:
+    measured = meter(Ceiling())
+    # Five senders give the headers of a sign-in and no body.
+    for _ in range(5):
+        measured.began(0.0, 0.0, api=True, whole=False)
+    for at in range(5, 3605, 5):
+        picture = measured.picture(float(at), 0.0)
+        assert picture.reading.state == load.OK, at
+        assert picture.reading.response_ms is None
+        # They are in flight, which they are, and have no age.
+        assert (picture.in_flight, picture.oldest_ms) == (5, None)
+    # The same five with nothing more to come would be a server that answers nothing.
+    stuck = meter(Ceiling())
+    for _ in range(5):
+        stuck.began(0.0, 0.0, api=True)
+    assert stuck.picture(3600.0, 0.0).reading.state == load.BUSY
+    assert stuck.picture(3600.0, 0.0).oldest_ms == pytest.approx(3_600_000.0)
+
+
+def test_the_time_of_a_request_begins_when_the_server_has_the_whole_of_it() -> None:
+    measured = meter(SLOW)
+    # An upload that takes its sender nine seconds, and the server half of one.
+    token = measured.began(0.0, 0.0, api=True, whole=False)
+    measured.heard(token, 3.0, 0.0, whole=False)
+    measured.heard(token, 6.0, 0.0, whole=False)
+    assert measured.picture(8.0, 0.0).oldest_ms is None
+    measured.heard(token, 9.0, 0.0, whole=True)
+    # Whole, it waits for the server, from there.
+    assert measured.picture(9.25, 0.0).oldest_ms == pytest.approx(250.0)
+    # A piece told again changes nothing of one that is whole.
+    measured.heard(token, 9.3, 0.0, whole=True)
+    measured.ended(token, 9.5, 0.0, status=201)
+    picture = measured.picture(9.5, 0.0)
+    assert picture.response_ms.low == picture.response_ms.high == pytest.approx(500.0)
+    # Five more of them at once, and the measure is of the server's part alone.
+    slow = [measured.began(9.5, 0.0, api=True, whole=False) for _ in range(5)]
+    for token in slow:
+        measured.heard(token, 19.0, 0.0, whole=True)
+    for token in slow:
+        measured.ended(token, 19.5, 0.0, status=201)
+    reading = measured.picture(19.5, 0.0).reading
+    assert reading.response_ms == pytest.approx(500.0)
+    assert reading.state == load.OK
+
+
+def test_an_answer_given_before_the_body_came_is_timed_from_what_did_come() -> None:
+    measured = meter()
+    # Not signed in: answered at once, with nothing of the body read.
+    refused = measured.began(0.0, 0.0, api=True, whole=False)
+    measured.ended(refused, 0.25, 0.0, status=401)
+    # A sender that went away after its second piece.
+    gone = measured.began(1.0, 0.0, api=True, whole=False)
+    measured.heard(gone, 3.0, 0.0, whole=False)
+    measured.ended(gone, 3.5, 0.0, status=500)
+    picture = measured.picture(4.0, 0.0)
+    assert picture.response_ms.low == pytest.approx(250.0)
+    assert picture.response_ms.high == pytest.approx(500.0)
+    assert (picture.not_accepted, picture.failed, picture.in_flight) == (1, 1, 0)
 
 
 # --- the processor -------------------------------------------------------------------
@@ -274,6 +408,22 @@ def test_a_server_that_just_started_used_nothing_before() -> None:
     assert reading.cpu_percent == pytest.approx(30.0)
     assert reading.state == load.OK
     assert measured.reading(6.0, 6.0).state == load.BUSY
+
+
+def test_the_share_of_the_processor_passes_100_where_threads_work_at_once() -> None:
+    # Four threads each in a query use two processors' worth: nothing holds it to 100.
+    measured = meter(Ceiling(response_ms=0, cpu_percent=150, over_seconds=10))
+    reading = measured.reading(10.0, 12.0)
+    assert reading.cpu_percent == pytest.approx(120.0)
+    assert reading.state == load.OK
+    reading = measured.reading(20.0, 32.0)
+    assert reading.cpu_percent == pytest.approx(200.0)
+    assert (reading.state, reading.because) == (load.BUSY, (load.PROCESSOR,))
+    picture = measured.picture(30.0, 52.0)
+    assert picture.reading.state == load.VERY_BUSY
+    assert picture.points.cpu_percent[:6] == pytest.approx([120.0, 120.0, *[200.0] * 4])
+    assert picture.cpu_percent.high == pytest.approx(200.0)
+    assert picture.cpu_percent.average == pytest.approx((240.0 + 800.0) / 6)
 
 
 def test_the_processor_is_read_whatever_the_requests_are() -> None:
@@ -347,6 +497,38 @@ def test_the_second_step_comes_after_a_further_while_of_being_busy() -> None:
     ]
     # Busy since the sixth second: very busy from the sixteenth.
     assert [states[second] for second in (16, 30)] == [load.VERY_BUSY, load.VERY_BUSY]
+
+
+def test_the_echo_of_being_busy_is_never_the_second_step() -> None:
+    measured = meter(Ceiling(response_ms=0, cpu_percent=20, over_seconds=5))
+    # Flat out for twelve seconds in which nothing asked, and idle from the moment the
+    # first to ask finds it busy.
+    assert measured.reading(12.0, 12.0).state == load.BUSY
+    # Five seconds on, the steps still say 24%: the step from 10 to 15 holds the two
+    # seconds used before 12, read as spread over the whole of it. Nothing was used
+    # since the server became busy, so it is busy on the echo, and not very busy.
+    reading = measured.reading(17.0, 12.0)
+    assert reading.cpu_percent == pytest.approx(24.0)
+    assert reading.state == load.BUSY
+    assert measured.reading(18.0, 12.0).state == load.OK
+
+
+def test_the_further_while_is_counted_again_where_nothing_after_says_busy() -> None:
+    measured = meter(HOT)
+    assert measured.reading(10.0, 9.0).state == load.BUSY
+    # Idle for fourteen seconds in which nothing asked whether it is busy, and then
+    # flat out for six: 60% of the last ten seconds, and 30% of the twenty since it
+    # became busy. Time alone would make this the second step: it is the first, anew.
+    answer(measured, 24.0, 0.0, cpu=9.0)
+    reading = measured.reading(30.0, 15.0)
+    assert reading.cpu_percent == pytest.approx(60.0)
+    assert reading.state == load.BUSY
+    # Flat out from there: very busy ten seconds after that, and not before.
+    assert measured.reading(39.0, 24.0).state == load.BUSY
+    assert measured.reading(40.0, 25.0).state == load.VERY_BUSY
+    # Once at the second step it stays there for as long as it is busy.
+    assert measured.reading(44.0, 25.0).state == load.VERY_BUSY
+    assert measured.reading(46.0, 25.0).state == load.OK
 
 
 def test_being_busy_begins_when_something_asks_and_finds_it_so() -> None:

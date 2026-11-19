@@ -59,7 +59,7 @@ class ProblemBusy(Model):
     )
     because: list[Literal["response_ms", "cpu_percent"]] = Field(
         description="The measures that are past the ceiling: how long requests take, the "
-        "share of one processor the process uses."
+        "processor time the process uses as a percentage of one processor."
     )
     retry_after: int = Field(description="The seconds to wait, as `Retry-After` says.")
 
@@ -337,11 +337,12 @@ class LoadCeiling(Model):
         description="`busy_response_ms`: what `measures.response_ms` may reach. 0: not looked at."
     )
     cpu_percent: int = Field(
-        description="`busy_cpu_percent`: what `measures.cpu_percent` may reach. 0: not looked at."
+        description="`busy_cpu_percent`: what `measures.cpu_percent` may reach, which is "
+        "up to 100 for each processor of the host. 0: not looked at."
     )
     over_seconds: int = Field(
         description="`busy_over_seconds`: over how long the measures are read, and how "
-        "much longer a busy server is busy before it is very busy."
+        "much longer a busy server is busy, by what came since, before it is very busy."
     )
 
 
@@ -350,11 +351,15 @@ class LoadMeasures(Model):
 
     response_ms: float | None = Field(
         description="How long requests take: the median, in milliseconds, of the time "
-        "taken by the requests of the API answered in that time and of the time waited "
-        "so far by those in flight. Null with fewer than five."
+        "taken by the requests of the API that came in that time, whatever each took, "
+        "and of the time waited so far by those in flight, however long ago they came. "
+        "A request's time begins when the server has the whole of it, its body with it. "
+        "Null with fewer than five."
     )
     cpu_percent: float = Field(
-        description="The processor time the process used, as a percentage of one processor."
+        description="The processor time the process used, every thread of it, as a "
+        "percentage of one processor. It passes 100 where several requests are in the "
+        "database at once."
     )
 
 
@@ -373,25 +378,32 @@ class LoadTotals(Model):
     ok: int = Field(description="Answered well: a status below 400.")
     not_accepted: int = Field(description="Not taken as asked: `4xx`.")
     failed: int = Field(
-        description="Failed: `5xx`, the 503 of a change that waited for another among them."
+        description="Failed: `5xx`, the 503 of a change that waited for another among "
+        "them, and an answer that was not sent to its last byte."
     )
     busy: int = Field(description="Answered 503 as busy, by a server past its ceiling.")
     response_ms: LoadSpread = Field(
-        description="The time of an answer, in milliseconds, from the arrival of the "
-        "request to the last byte of its answer. An answer of busy is not in it."
+        description="The time of an answer, in milliseconds, from when the server had "
+        "the whole request, its body with it, to the last byte of its answer. An answer "
+        "of busy is not in it."
     )
     cpu_percent: LoadSpread = Field(
         description="The processor time the process used, as a percentage of one "
-        "processor: the lowest, the average and the highest of the steps that are whole."
+        "processor: the lowest, the average and the highest of the steps that are whole. "
+        "Each may pass 100."
     )
 
 
 class LoadInFlight(Model):
     """The requests being answered now. The request that asks is not counted."""
 
-    count: int
+    count: int = Field(
+        description="Those whose body has not all come are counted: they wait for their "
+        "sender, are in neither measure, and have no age."
+    )
     oldest_ms: float | None = Field(
-        description="How long the oldest has waited, in milliseconds. Null with none."
+        description="How long the oldest has waited since the server had the whole of "
+        "it, in milliseconds. Null with none."
     )
 
 
@@ -426,8 +438,8 @@ class LoadPoints(Model):
         description="The longest time of an answer. Null where nothing was answered."
     )
     cpu_percent: list[float | None] = Field(
-        description="The processor time used, as a percentage of one processor. Null in "
-        "the step under way until a second of it has passed."
+        description="The processor time used, as a percentage of one processor, which "
+        "may pass 100. Null in the step under way until a second of it has passed."
     )
     busy: list[int] = Field(description="The answers of busy given in the step.")
 

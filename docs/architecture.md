@@ -385,6 +385,20 @@ page. This is how it is built, and why so.
   whatever answered it, and tells the meter when each arrives and ends, with its
   status. The meter is kept on the application's state, where `bind` puts everything of
   one installation, so an application has one for each installation it is bound to.
+- **When the time of a request begins.** When the server has the whole of it: at its
+  arrival where it declares no body, and otherwise when the last piece of its body is
+  handed to the application, which `Gateway` sees by standing between the two. What a
+  slow sender takes to send is the network's time and not the server's. And a request
+  whose body never comes, five sign-ins of which only the headers were sent, would
+  otherwise wait for ever with the others in flight and hold the server very busy for
+  good: until it is whole it is counted as in flight, which it is, and is in neither
+  measure. nginx reads a body whole before it passes it on, so behind it the two
+  moments are the same.
+- **Every way out is counted.** A request leaves the meter when the last byte of its
+  answer is sent, and otherwise when `Gateway` is left: by an answer cut short after it
+  began, by a client that went away, by a request that was given up, by an error before
+  any answer. Each of those is counted as failed, whatever status it began with, and
+  nothing stays in flight that is not.
 - **In memory, and nothing stored.** Ten minutes in steps of five seconds are 120 small
   records, and beside them are the times of the answers of the API over the last
   `busy_over_seconds`, 20,000 at the most, for the median. Nothing is written to the
@@ -406,11 +420,22 @@ page. This is how it is built, and why so.
   nothing, and a measure of answers alone would read it as idle. The time each request
   in flight has waited so far is in the median with the answers, so that server is
   busy for as long as it is so.
+- **Why a request is counted from when it came.** The median is of the requests that
+  came in the last `busy_over_seconds`, whatever each took, and not of those answered
+  in it. Ten requests that stood for twenty seconds and then all ended would, counted
+  from their answers, keep an idle server busy for half a minute more; counted from
+  when they came, they are out of the measure half a minute after they came.
 - **Why five requests.** The median of two or three requests is one request. With
   fewer than five answered and in flight, how long requests take is not read at all,
   and the processor alone says whether the server is busy.
-- **The processor.** The process is one, and Python uses one processor at a time in it,
-  so the share of one processor it used is how near the server is to all it can do.
+- **The processor.** The measure is the processor time of the process, every thread
+  of it, as a percentage of one processor. Python runs one thread of the process at a
+  time, so a server that does nothing but work reads near 100. It can pass 100: SQLite
+  lets go of the interpreter while it runs a query, so four threads each in a query
+  read about 200, and so does hashing an access code beside other work. Nothing holds
+  the measure to 100, in the meter or on About, and `busy_cpu_percent` takes up to 100
+  for each processor of the host; 95 unless set is the server at the limit of what
+  Python alone can do.
   It is read over the same `busy_over_seconds`, and a server that started later than
   that used nothing before it started: the work of starting is not a sustained load.
   Nothing samples it by the clock. Whatever next asks, a request or About, brings the
@@ -426,7 +451,11 @@ page. This is how it is built, and why so.
 - **Two steps.** What costs most and can wait goes first, the reports, the exports, the
   previews of imports and the pages of lists: a list can be asked for again, and each
   one refused is the most relief. Only a server still busy `busy_over_seconds` later
-  refuses every read.
+  refuses every read, and only on the evidence of that further while: five or more
+  requests that came after it became busy, with those in flight, whose median is past
+  the ceiling, or the processor time used since it became busy, which is counted from
+  that moment and not read from the steps, whose edges are not exact. Without either,
+  the server was busy on the echo of before, and the further while begins again.
 - **What is never refused, and why.** A sign-in and every change that is stored: the
   work a person did is not thrown back at them while a list can wait (P-262). The
   health routes, so that what watches the service does not take a busy server for a
@@ -444,14 +473,19 @@ page. This is how it is built, and why so.
   application is bound to its database, and again when one of them is saved, once the
   change is stored. No request reads the database to learn them. Where the database
   cannot be read when the server starts, the ceiling is what it is unless set: a
-  server is never without one for that.
+  server is never without one for that. Reading the settings again and giving the
+  meter what was read are one step, under a lock of their own, so that of two saves at
+  the same moment the ceiling in force is that of the one that read last; it is not
+  the meter's lock, which is never held across a read of the database.
 - **In the tests.** The processor time of a test's process is the test's own, so an
   application inside the test process starts with no ceiling, and a test that wants
-  one gives the meter one or saves a setting. The acceptance scenarios start a server
-  as it is released, with its ceiling. Measured at 0.9.10 on the build host with other
-  work beside it: of their 54 servers none answered busy, and the one that worked
-  hardest, that of S13, held 78% of one processor over its busiest half minute, the
-  next 53%.
+  one gives the meter one or saves a setting. The servers of the acceptance scenarios
+  start with no ceiling too: `tests/acceptance/serve.py` is `hirdir admin`, started
+  with what the tests of the routes start with, so `hirdir admin serve --dev` itself
+  means nothing of the kind. With their ceiling, measured at 0.9.10 on the build host
+  with other work beside it, none of their 54 servers answered busy, but the one that
+  worked hardest, that of S13, held 78% of one processor over its busiest half minute:
+  too near 95 for a slower host.
 
 The ceiling is later what says that an installation has outgrown one process: the
 trigger to put a second behind a load balancer, which waits for PostgreSQL (P-262).

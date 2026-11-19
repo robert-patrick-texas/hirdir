@@ -9,6 +9,7 @@ decided, with the decision, and the limits that protect the service. Each is the
 value that is used, read from where it lives.
 """
 
+import os
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -256,6 +257,12 @@ def usable_map_link(value: Any) -> str | None:
         return None
 
 
+def _processors() -> int:
+    """Return how many processors the host has: the most the threads of one process
+    can use at once, each to its 100 percent (P-265)."""
+    return os.cpu_count() or 1
+
+
 def _states() -> tuple[str, ...]:
     return lifecycle.STATES
 
@@ -473,10 +480,12 @@ SPECS: dict[str, Spec] = {
     ),
     load.PROCESSOR_SETTING: Spec(
         load.DEFAULT_CPU_PERCENT,
-        "the share of one processor, in percent, that the server's process may use over "
-        "the last busy_over_seconds before the server is busy. 0: not looked at, and "
-        "both at 0 is no ceiling",
-        _whole(load.PROCESSOR_SETTING, 0, load.MOST_CPU_PERCENT),
+        "the processor time the server's process may use over the last "
+        "busy_over_seconds before the server is busy, as a percentage of one processor. "
+        "The process passes 100 where several requests are in the database at once, so "
+        "it takes up to 100 for each processor of the host. 0: not looked at, and both "
+        "at 0 is no ceiling",
+        _whole(load.PROCESSOR_SETTING, 0, load.CPU_PERCENT_OF_A_PROCESSOR * _processors()),
     ),
     load.OVER_SETTING: Spec(
         load.DEFAULT_OVER_SECONDS,

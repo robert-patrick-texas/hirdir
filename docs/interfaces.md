@@ -710,24 +710,39 @@ starts empty when the server starts.
 In each step it counts every request it answered, the page and its files among them, by
 how it was answered: well, with a status below `400`; not taken as asked, `4xx`; failed,
 `5xx`, the `503` of a change that waited for another to be stored among them; and as
-busy, below. It keeps the shortest, the average and the longest time of an answer, from
-the arrival of the request to the last byte of its answer, and the processor time the
-process used, every thread of it, as a percentage of one processor. A stretch in which
-nothing was asked is filled, when something next asks, with the processor time used in
-it, spread evenly.
+busy, below. An answer that was not sent to its last byte, cut short, never begun or
+given up with its request, is counted as failed. It keeps the shortest, the average and
+the longest time of an answer, and the processor time the process used, every thread of
+it, as a percentage of one processor: a share that passes 100 where several requests
+are in the database at once, since the database works without holding the others up.
+A stretch in which nothing was asked is filled, when something next asks, with the
+processor time used in it, spread evenly.
+
+**The time of a request** begins when the server has the whole of it and ends at the
+last byte of its answer. A request that declares no body is whole when it arrives. One
+that declares a body is whole when the last piece of the body has been handed to the
+application, so what a sender, or the network, takes to send is in no time. Until then
+it is in flight, and is in neither measure and has no age: a request whose body never
+comes holds nothing busy. One that is answered before its body has all come, as a
+request that is not signed in is, is timed from the last piece that did come, or from
+its arrival; one refused as too large, from its arrival.
 
 **The ceiling.** Two measures are read over the last `busy_over_seconds`, 30 unless set:
 
 | Measure | What it is | Its ceiling |
 |---|---|---|
-| `response_ms` | how long requests take: the median, in milliseconds, of the time taken by the requests under `/api/v1` answered in that time and of the time waited so far by those still in flight, where the two together are five or more. With fewer there is no such measure. The median, so that one long export among quick answers is not a busy server; those in flight, so that a server from which nothing comes back is not taken for an idle one | `busy_response_ms`, 5000 unless set |
-| `cpu_percent` | the processor: the processor time the process used in that time, as a percentage of that time on one processor. A server that started later than that used nothing before | `busy_cpu_percent`, 95 unless set |
+| `response_ms` | how long requests take: the median, in milliseconds, of the time taken by the requests under `/api/v1` that came in that time, whatever each took, and of the time waited so far by those still in flight, however long ago they came, where the two together are five or more. With fewer there is no such measure. A request is in it from when the server had the whole of it: it leaves the measure `busy_over_seconds` after it came, not after it was answered, so a stall that is over is not read as one that lasts. The median, so that one long export among quick answers is not a busy server; those in flight, so that a server from which nothing comes back is not taken for an idle one | `busy_response_ms`, 5000 unless set |
+| `cpu_percent` | the processor: the processor time the process used in that time, every thread of it, as a percentage of that time on one processor. It is near 100 where the server works without a pause, and passes it where several requests are in the database at once: four at once read about 200. A server that started later than that used nothing before | `busy_cpu_percent`, 95 unless set |
 
-Past either ceiling the server is `busy`; once it has been so without a break for a
-further `busy_over_seconds` it is `very_busy`; and it is `ok` again as soon as neither
-measure is past its ceiling. Whether it is busy is asked when a request of the API
-arrives, or `GET /about/load` is read, so being busy begins when something asks and
-finds it so. A ceiling of 0 is a measure not looked at, and both at 0 is
+Past either ceiling the server is `busy`, and it is `ok` again as soon as neither
+measure is past its ceiling. It is `very_busy` once it has been busy without a break for
+a further `busy_over_seconds` and what came after it became busy says so by itself:
+five or more requests that came since then, with those in flight, whose median is past
+the ceiling, or the processor time used since then. Where neither does, what kept it
+busy was the echo of before, and the further `busy_over_seconds` is counted again from
+there: being busy on what happened before never becomes the second step. Whether it is
+busy is asked when a request of the API arrives, or `GET /about/load` is read, so being
+busy begins when something asks and finds it so. A ceiling of 0 is a measure not looked at, and both at 0 is
 no ceiling: nothing is refused and nothing is read for it. The measures are read again
 once a second at the most, however many requests arrive.
 
@@ -762,9 +777,11 @@ below, and is in neither measure: its time is in no time of an answer.
 
 The three settings are the Admin's, `PUT /settings/{key}` as any other: `busy_response_ms`,
 a whole number of milliseconds from 0 to 600,000; `busy_cpu_percent`, a whole number
-from 0 to 100; `busy_over_seconds`, a whole number of seconds from 5 to 300. Each holds
+from 0 to 100 for each processor of the host, 400 on a host of four, as `accepts` of the
+setting says; `busy_over_seconds`, a whole number of seconds from 5 to 300. Each holds
 from the moment it is saved, and when the server starts: the server keeps them in
-memory, and no request reads the database to learn them.
+memory, and no request reads the database to learn them. Of two saves at the same
+moment the one stored last is the one in force.
 
 **`GET /about/load`** returns the measures, for anyone signed in (P-266). It asks
 nothing of the database but who is signed in, is never refused as busy, and is a few
@@ -774,15 +791,15 @@ kilobytes, so that it can be asked every few seconds:
 |---|---|
 | `state`, `because` | `ok`, `busy` or `very_busy`, and the measures that are past the ceiling, `response_ms`, `cpu_percent` or both; empty while it is `ok` |
 | `ceiling` | the settings in force: `response_ms`, `cpu_percent` and `over_seconds` |
-| `measures` | the two measures as the ceiling reads them now: `response_ms`, null with fewer than five requests, and `cpu_percent` |
+| `measures` | the two measures as the ceiling reads them now: `response_ms`, null with fewer than five requests, and `cpu_percent`, which may pass 100 |
 | `window_seconds`, `step_seconds` | 600 and 5 |
 | `started_at`, `at` | when the server started, and its measures with it; when this was read |
-| `totals` | over the window: `requests`, and of them `ok`, `not_accepted`, `failed` and `busy`; `response_ms` and `cpu_percent`, each with `low`, `average` and `high`. The times are null where nothing was answered. Those of the processor are of the steps that are whole, the one under way being read only while there is no other |
-| `in_flight` | `count`, the requests being answered now, this one not counted, and `oldest_ms`, how long the oldest has waited, null with none |
+| `totals` | over the window: `requests`, and of them `ok`, `not_accepted`, `failed` and `busy`; `response_ms` and `cpu_percent`, each with `low`, `average` and `high`. The times are null where nothing was answered. Those of the processor are of the steps that are whole, the one under way being read only while there is no other, and each may pass 100 |
+| `in_flight` | `count`, the requests being answered now, this one not counted and those whose body has not all come counted, and `oldest_ms`, how long the oldest has waited since the server had the whole of it, null with none |
 | `process` | `memory_bytes`, the memory the server's process holds |
 | `host` | `memory_total_bytes`, `memory_used_bytes` and `memory_free_bytes`, free being what a new process could have; `disk_total_bytes` and `disk_free_bytes`, of the disk the inventory is kept on; `processors`; and `load_1m`, the load average of the last minute. Each is null where the host does not say |
 | `worker` | whether the background work is being done: `running`, by the process of its own; `not_running`; or `in_process`, by the server itself (P-267) |
-| `points` | the steps of the window, the oldest first, as lists side by side, for a graph: `at`, when the first began, and `requests`, `average_ms`, `high_ms`, `cpu_percent` and `busy`, entry `i` of each being the step that began `i` times `step_seconds` after `at`. There are as many as the server has run steps, 120 at the most, and the last is under way. A step in which nothing was answered has null for its times, and the step under way has null for `cpu_percent` until a second of it has passed |
+| `points` | the steps of the window, the oldest first, as lists side by side, for a graph: `at`, when the first began, and `requests`, `average_ms`, `high_ms`, `cpu_percent` and `busy`, entry `i` of each being the step that began `i` times `step_seconds` after `at`. There are as many as the server has run steps, 120 at the most, and the last is under way. A step in which nothing was answered has null for its times, and the step under way has null for `cpu_percent` until a second of it has passed. `cpu_percent` may pass 100 |
 
 Every time is in milliseconds and every share of the processor in percent, to a tenth.
 

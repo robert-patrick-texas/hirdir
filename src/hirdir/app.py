@@ -116,10 +116,14 @@ class Gateway:
     that it carries the same headers as every other response.
 
     It is the outermost layer, so it is where the server measures itself (P-265): every
-    request is timed from its arrival to the last byte of its answer and counted by its
-    status, in the meter of the application. And it is where a server past its ceiling
-    answers that it is busy, at once, on the event loop: before the request waits for a
-    thread or for the database.
+    request is timed to the last byte of its answer and counted by its status, in the
+    meter of the application. Its time begins when the server has the whole of it: when
+    it arrives, where it declares no body, and otherwise when the last piece of its body
+    is handed to the application, so that what a sender takes to send is never the
+    server's time, and a request whose body never comes holds nothing busy. An answer
+    that was not sent to its last byte, cut short, never begun or given up, is counted
+    as failed. And it is where a server past its ceiling answers that it is busy, at
+    once, on the event loop: before the request waits for a thread or for the database.
     """
 
     def __init__(
@@ -156,12 +160,18 @@ class Gateway:
         refused: Response | None = None
         if is_api:
             refused = self._busy(scope, meter, root)
+        declared = headers.get("content-length", "")
+        # A request has a body where it says how long one is, or that one comes in pieces.
+        has_body = "transfer-encoding" in headers or (declared.isdigit() and int(declared) > 0)
+        heard = receive
         if refused is not None:
             flight = None
         else:
-            flight = meter.began(*measures.clock(), api=is_api)
+            flight = meter.began(*measures.clock(), api=is_api, whole=not has_body)
             scope["state"]["in_flight"] = flight
             refused = self._too_large(scope, headers, root)
+            if has_body and refused is None:
+                heard = self._hearing(receive, meter, flight)
 
         started = False
         status = 500
@@ -186,10 +196,10 @@ class Gateway:
                     out["Cache-Control"] = KEEP_FOR_GOOD
                 del out["Set-Cookie"]
             await send(message)
-            if (
-                flight is not None
-                and message["type"] == "http.response.body"
-                and not message.get("more_body")
+            if flight is not None and (
+                (message["type"] == "http.response.body" and not message.get("more_body"))
+                # A file that the server itself sends whole is one message.
+                or message["type"] == "http.response.pathsend"
             ):
                 # The last byte of the answer is sent: what the request took is known.
                 meter.ended(flight, *measures.clock(), status=status)
@@ -206,7 +216,7 @@ class Gateway:
                 await refused(scope, receive, send_with_headers)
                 return
             try:
-                await self.app(scope, receive, send_with_headers)
+                await self.app(scope, heard, send_with_headers)
             except Exception:
                 log.exception(
                     "request %s failed: %s %s", request_id, scope["method"], scope["path"]
@@ -219,8 +229,31 @@ class Gateway:
                 await failure(scope, receive, send_with_headers)
         finally:
             if flight is not None:
-                # An answer that was cut short, or never begun, is over all the same.
-                meter.ended(flight, *measures.clock(), status=status if started else 500)
+                # The last byte was never sent: the answer was cut short after it began,
+                # never begun, or given up with the request, and is over all the same.
+                # It failed, whatever status it began with.
+                meter.ended(flight, *measures.clock(), status=500)
+
+    @staticmethod
+    def _hearing(receive: Receive, meter: load.Meter, flight: int) -> Receive:
+        """Return what hands the body of a request to the application and tells the
+        meter of each piece: the time of the request begins at the last piece that
+        came, and it is whole once the last piece of all has. A sender that goes away
+        leaves it as it was."""
+        over = False
+
+        async def heard() -> Message:
+            nonlocal over
+            message = await receive()
+            if not over:
+                if message["type"] == "http.request":
+                    over = not message.get("more_body")
+                    meter.heard(flight, *measures.clock(), whole=over)
+                else:
+                    over = True
+            return message
+
+        return heard
 
     def _busy(self, scope: Scope, meter: load.Meter, root: str) -> Response | None:
         """Return the answer of a server that is past its ceiling to a request it does

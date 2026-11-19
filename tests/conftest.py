@@ -66,7 +66,7 @@ def quick_codes() -> Iterator[None]:
         yield
 
 
-AT_START = measures.at_start
+AT_START = measures.from_settings
 
 
 @pytest.fixture(scope="session", autouse=True)

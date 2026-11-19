@@ -7,6 +7,10 @@ here that want a busy server take the clock of the measures into their own hands
 give the application a meter with a ceiling, so that none of them waits.
 """
 
+import asyncio
+import os
+import threading
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,9 +21,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 from sqlalchemy.orm import Session
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from hirdir.api import busy
-from hirdir.app import API_PREFIX, ROUTERS
+from hirdir.app import API_PREFIX, ROUTERS, Gateway
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.domain import accounts, audit, load, settings
@@ -32,6 +37,7 @@ STARTED = datetime(2027, 3, 2, 14, 0, 0, tzinfo=UTC)
 # The processor alone, past half of one over ten seconds.
 HOT = Ceiling(response_ms=0, cpu_percent=50, over_seconds=10)
 NOWHERE = "00000000-0000-7000-8000-000000000000"
+PROCESSORS = os.cpu_count() or 1
 
 
 class Clock:
@@ -505,6 +511,316 @@ def test_how_long_requests_take_is_read_of_the_requests_of_the_api(
     assert client.get(f"{API}/items", headers=admin).status_code == 503
 
 
+def test_a_share_of_the_processor_past_100_is_shown_as_it_is(
+    client: TestClient, admin: dict, clock: Clock
+) -> None:
+    meter_of(client).hold(Ceiling(response_ms=0, cpu_percent=150, over_seconds=10))
+    # Several requests in the database at once: two processors' worth, for ten seconds.
+    clock.now, clock.cpu = 10.0, 20.0
+    now = measured(client, admin)
+    assert now["measures"]["cpu_percent"] == 200.0
+    assert (now["state"], now["because"]) == ("busy", ["cpu_percent"])
+    assert now["points"]["cpu_percent"][:2] == [200.0, 200.0]
+    assert now["totals"]["cpu_percent"] == {"low": 200.0, "average": 200.0, "high": 200.0}
+    assert now["ceiling"]["cpu_percent"] == 150
+
+
+# --- the ways out of the gateway -----------------------------------------------------
+
+
+class Wire:
+    """One request given to the gateway by hand: what it is, what its sender sends,
+    piece by piece, and what is sent back."""
+
+    def __init__(
+        self,
+        meter: load.Meter,
+        method: str = "GET",
+        path: str = f"{API}/tags",
+        length: int | None = None,
+        pieces: tuple[Message, ...] = ({"type": "http.request", "body": b"", "more_body": False},),
+    ) -> None:
+        headers = [] if length is None else [(b"content-length", str(length).encode())]
+        self.scope: Scope = {
+            "type": "http",
+            "method": method,
+            "path": path,
+            "raw_path": path.encode(),
+            "root_path": "",
+            "query_string": b"",
+            "headers": headers,
+            "client": ("192.0.2.10", 40000),
+            "app": SimpleNamespace(state=SimpleNamespace(load=meter)),
+        }
+        self.pieces = list(pieces)
+        self.sent: list[Message] = []
+        self.gone = asyncio.Event()
+
+    async def receive(self) -> Message:
+        if self.pieces:
+            return self.pieces.pop(0)
+        # Nothing more comes, for as long as the request lasts.
+        await self.gone.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(self, message: Message) -> None:
+        self.sent.append(message)
+
+    @property
+    def status(self) -> int | None:
+        return self.sent[0]["status"] if self.sent else None
+
+
+def through(inner: ASGIApp, wire: Wire) -> None:
+    """Send one request through the gateway to an application, to its end."""
+    gateway = Gateway(inner, trusted_proxies=(), limits=lambda: (100, 100))
+    asyncio.run(gateway(wire.scope, wire.receive, wire.send))
+
+
+def counted(meter: load.Meter, clock: Clock) -> tuple[int, int, int, int]:
+    """Return what a meter has counted as answered well, not taken as asked and failed,
+    and how many requests it still holds in flight."""
+    picture = meter.picture(*clock())
+    return picture.ok, picture.not_accepted, picture.failed, picture.in_flight
+
+
+@pytest.fixture
+def ticking(monkeypatch: pytest.MonkeyPatch) -> Clock:
+    """The clock of the measures in the hands of a test that has no application."""
+    held = Clock()
+    monkeypatch.setattr(measures, "clock", held)
+    return held
+
+
+def a_meter() -> load.Meter:
+    return load.Meter(0.0, 0.0, started_at=STARTED, ceiling=load.NO_CEILING)
+
+
+async def _begin(send: Send, status: int = 200) -> None:
+    await send({"type": "http.response.start", "status": status, "headers": []})
+
+
+def test_an_answer_that_is_sent_to_its_last_byte_is_counted_once(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        await _begin(send, 201)
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    meter = a_meter()
+    through(inner, Wire(meter))
+    assert counted(meter, ticking) == (1, 0, 0, 0)
+
+
+def test_a_streamed_answer_is_timed_to_its_last_byte_and_no_further(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        ticking.now += 1
+        await _begin(send)
+        for last in (False, False, True):
+            ticking.now += 1
+            await send({"type": "http.response.body", "body": b"rows", "more_body": not last})
+        # What the application does once the answer is sent is not the answer's time.
+        ticking.now += 60
+
+    meter = a_meter()
+    through(inner, Wire(meter))
+    picture = meter.picture(*ticking())
+    assert (picture.ok, picture.in_flight) == (1, 0)
+    assert picture.response_ms.high == 4000.0
+
+
+def test_a_file_the_server_sends_whole_is_an_answer_sent(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        await _begin(send)
+        await send({"type": "http.response.pathsend", "path": "/nowhere"})
+
+    meter = a_meter()
+    through(inner, Wire(meter, path="/assets/app.js"))
+    assert counted(meter, ticking) == (1, 0, 0, 0)
+
+
+def test_an_answer_cut_short_after_it_began_is_counted_as_failed(ticking: Clock) -> None:
+    async def stops(scope: Scope, receive: Receive, send: Send) -> None:
+        await _begin(send)
+        await send({"type": "http.response.body", "body": b"half", "more_body": True})
+
+    async def breaks(scope: Scope, receive: Receive, send: Send) -> None:
+        await stops(scope, receive, send)
+        raise RuntimeError("as nobody foresaw")
+
+    # It began with 200, and is not counted as answered well: its last byte never went.
+    meter = a_meter()
+    through(stops, Wire(meter))
+    assert counted(meter, ticking) == (0, 0, 1, 0)
+    # An error after the answer began cannot be answered again, and is raised.
+    wire = Wire(meter)
+    with pytest.raises(RuntimeError):
+        through(breaks, wire)
+    assert [message["type"] for message in wire.sent] == [
+        "http.response.start",
+        "http.response.body",
+    ]
+    assert counted(meter, ticking) == (0, 0, 2, 0)
+
+
+def test_an_error_before_any_answer_is_the_500_and_is_counted(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        raise RuntimeError("as nobody foresaw")
+
+    meter = a_meter()
+    wire = Wire(meter)
+    through(inner, wire)
+    assert wire.status == 500
+    assert b"something went wrong" in wire.sent[1]["body"]
+    assert counted(meter, ticking) == (0, 0, 1, 0)
+
+
+def test_an_application_that_answers_nothing_leaves_nothing_in_flight(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        return
+
+    meter = a_meter()
+    through(inner, Wire(meter))
+    assert counted(meter, ticking) == (0, 0, 1, 0)
+
+
+def test_a_client_that_goes_away_mid_request_leaves_nothing_in_flight(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        # It reads the body, as a route does, until the sender is gone.
+        while (await receive())["type"] == "http.request":
+            ticking.now += 2
+
+    meter = a_meter()
+    wire = Wire(
+        meter,
+        method="POST",
+        length=100,
+        pieces=(
+            {"type": "http.request", "body": b"a" * 50, "more_body": True},
+            {"type": "http.request", "body": b"a" * 50, "more_body": True},
+            {"type": "http.disconnect"},
+        ),
+    )
+    through(inner, wire)
+    assert wire.sent == []
+    assert counted(meter, ticking) == (0, 0, 1, 0)
+    # Its time is from the last piece that came: what its sender took is not in it.
+    assert meter.picture(*ticking()).response_ms.high == 2000.0
+
+
+def test_a_request_that_is_given_up_leaves_nothing_in_flight(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        raise asyncio.CancelledError
+
+    meter = a_meter()
+    with pytest.raises(asyncio.CancelledError):
+        through(inner, Wire(meter))
+    assert counted(meter, ticking) == (0, 0, 1, 0)
+
+
+def test_a_request_refused_as_too_large_is_counted_from_its_arrival(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        raise AssertionError("a request that is too large reaches no application")
+
+    class Slow(Wire):
+        async def receive(self) -> Message:
+            # The proxy is still sending what will be thrown away.
+            ticking.now += 1.5
+            return await super().receive()
+
+    meter = a_meter()
+    wire = Slow(
+        meter,
+        method="POST",
+        length=101,
+        pieces=(
+            {"type": "http.request", "body": b"a" * 50, "more_body": True},
+            {"type": "http.request", "body": b"a" * 51, "more_body": False},
+        ),
+    )
+    through(inner, wire)
+    assert wire.status == 413
+    assert counted(meter, ticking) == (0, 1, 0, 0)
+    assert meter.picture(*ticking()).response_ms.high == 3000.0
+
+
+def test_the_time_of_an_upload_is_the_server_s_part_of_it(ticking: Clock) -> None:
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        while (await receive()).get("more_body"):
+            pass
+        # The server has the whole of it, and takes a quarter of a second over it.
+        ticking.now += 0.25
+        await _begin(send, 201)
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    class Slow(Wire):
+        async def receive(self) -> Message:
+            # Each piece takes its sender ten seconds.
+            ticking.now += 10
+            assert meter.picture(*ticking()).oldest_ms is None
+            return await super().receive()
+
+    meter = a_meter()
+    pieces = tuple(
+        {"type": "http.request", "body": b"a" * 30, "more_body": more}
+        for more in (True, True, False)
+    )
+    through(inner, Slow(meter, method="POST", length=90, pieces=pieces))
+    picture = meter.picture(*ticking())
+    assert (picture.ok, picture.in_flight) == (1, 0)
+    assert picture.response_ms == load.Spread(250.0, 250.0, 250.0)
+
+
+def test_requests_whose_body_never_comes_hold_nothing_busy_and_end_when_given_up(
+    ticking: Clock,
+) -> None:
+    """Five senders give the headers of a sign-in and no body. They are in flight for
+    as long as they hold on, and the server is not busy for them."""
+
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        await receive()
+        raise AssertionError("no body ever comes")
+
+    meter = load.Meter(0.0, 0.0, started_at=STARTED, ceiling=Ceiling())
+
+    async def an_hour() -> None:
+        gateway = Gateway(inner, trusted_proxies=(), limits=lambda: (100, 100))
+        wires = [
+            Wire(meter, method="POST", path=f"{API}/auth/sign-in", length=40, pieces=())
+            for _ in range(5)
+        ]
+        held = [
+            asyncio.ensure_future(gateway(wire.scope, wire.receive, wire.send)) for wire in wires
+        ]
+        await asyncio.sleep(0)
+        for _ in range(720):
+            ticking.now += 5
+            picture = meter.picture(*ticking())
+            assert picture.reading.state == load.OK
+            assert (picture.in_flight, picture.oldest_ms) == (5, None)
+            assert meter.reading(*ticking()).state == load.OK
+        for one in held:
+            one.cancel()
+        await asyncio.gather(*held, return_exceptions=True)
+
+    asyncio.run(an_hour())
+    assert ticking.now == 3600
+    assert counted(meter, ticking) == (0, 0, 5, 0)
+
+
+def test_a_request_that_declares_no_body_is_whole_when_it_arrives(ticking: Clock) -> None:
+    seen: list[float | None] = []
+
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        ticking.now += 3
+        seen.append(meter.picture(*ticking()).oldest_ms)
+        await _begin(send)
+        await send({"type": "http.response.body", "body": b"[]"})
+
+    meter = a_meter()
+    through(inner, Wire(meter))
+    through(inner, Wire(meter, method="POST", length=0))
+    assert seen == [3000.0, 3000.0]
+
+
 # --- the settings of the ceiling -----------------------------------------------------
 
 
@@ -520,7 +836,10 @@ def test_the_settings_of_the_ceiling_are_listed_with_what_they_are_unless_set(
     assert listed["busy_response_ms"]["accepts"] == (
         "a whole number of milliseconds from 0 to 600,000"
     )
-    assert listed["busy_cpu_percent"]["accepts"] == "a whole number from 0 to 100"
+    # A process whose threads work at once uses more than one processor: 100 for each.
+    assert listed["busy_cpu_percent"]["accepts"] == (
+        f"a whole number from 0 to {100 * PROCESSORS:,}"
+    )
     assert listed["busy_over_seconds"]["accepts"] == "a whole number of seconds from 5 to 300"
     # And what is fixed of it.
     assert (
@@ -575,7 +894,8 @@ def test_a_setting_that_was_not_saved_changes_no_ceiling(
         ("busy_response_ms", -1),
         ("busy_response_ms", 600_001),
         ("busy_response_ms", 2.5),
-        ("busy_cpu_percent", 101),
+        ("busy_cpu_percent", 100 * PROCESSORS + 1),
+        ("busy_cpu_percent", -1),
         ("busy_cpu_percent", "95"),
         ("busy_over_seconds", 4),
         ("busy_over_seconds", 301),
@@ -595,12 +915,14 @@ def test_a_setting_that_was_not_saved_changes_no_ceiling(
     # The edges are taken.
     for key, value in (
         ("busy_response_ms", 600_000),
-        ("busy_cpu_percent", 100),
+        ("busy_cpu_percent", 100 * PROCESSORS),
         ("busy_over_seconds", 5),
         ("busy_over_seconds", 300),
     ):
         put(client, admin, key, value)
-    assert meter.ceiling == Ceiling(response_ms=600_000, cpu_percent=100, over_seconds=300)
+    assert meter.ceiling == Ceiling(
+        response_ms=600_000, cpu_percent=100 * PROCESSORS, over_seconds=300
+    )
 
 
 def test_saving_a_setting_of_the_ceiling_is_audited(client: TestClient, admin: dict) -> None:
@@ -644,6 +966,40 @@ def test_a_database_that_cannot_be_read_leaves_a_server_its_ceiling(tmp_path: Pa
     measures.renew(state)
     assert state.load.ceiling == HOT
     engine.dispose()
+
+
+def test_of_two_saves_at_the_same_moment_the_ceiling_of_the_last_read_is_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reading the settings and giving the meter what was read are one step. Were they
+    two, a save that read first and gave last would leave the older ceiling in force."""
+    older = Ceiling(response_ms=1000, cpu_percent=10, over_seconds=10)
+    newer = Ceiling(response_ms=2000, cpu_percent=20, over_seconds=20)
+    state = SimpleNamespace(load=a_meter(), sessions=nullcontext)
+    reads = iter((older, newer))
+    reading, go_on = threading.Event(), threading.Event()
+
+    def read(_db: object) -> Ceiling:
+        mine = next(reads)
+        if mine is older:
+            # The first has read, and is held up before it gives what it read.
+            reading.set()
+            assert go_on.wait(10)
+        return mine
+
+    monkeypatch.setattr(settings, "ceiling", read)
+    first = threading.Thread(target=measures.renew, args=(state,))
+    first.start()
+    assert reading.wait(10)
+    second = threading.Thread(target=measures.renew, args=(state,))
+    second.start()
+    # The second waits for the first, where it would otherwise read and give at once.
+    second.join(0.3)
+    assert second.is_alive()
+    go_on.set()
+    first.join(10)
+    second.join(10)
+    assert state.load.ceiling == newer
 
 
 # --- GET /about/load -----------------------------------------------------------------
