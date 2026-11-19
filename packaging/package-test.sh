@@ -2350,7 +2350,7 @@ witness_money() {
         'coverage|/reports/coverage|d["totals"]|GET /reports/coverage counts what it counted: the items in service, those of them that are covered and that are not, the one that is covered though it is retired, and those whose cover runs out soon'
         'capacity|/reports/capacity|[{k: v for k, v in d[view].items() if k != "by_category"} for view in ("active", "with_drafts")] + [[[c["category"], c["label"], c["lines"], c["units"], c["annual_cost"]] for c in d[view]["by_category"]] for view in ("active", "with_drafts")]|GET /reports/capacity answers the balance it answered, with and without the draft: demand, supply by category, the category of the site among them under its label, balance, coverage and cost'
         'by-contract|/reports/summary?by=contract|sorted([r["label"] or "", r["items"], r["component_count"]] for r in d["rows"])|GET /reports/summary?by=contract has the rows it had: an item in the row of each contract that covers it'
-        "portfolio|/vendors/$vendor/portfolio|[d[\"totals\"], [[k[\"kind\"], k[\"items\"], k[\"covered\"]] for k in d[\"kinds\"]], [[m[\"pid\"], m[\"items\"], m[\"covered\"], m[\"covered_until\"]] for m in d[\"models\"]], [a[\"name\"] for a in d[\"agreements\"]], sorted(c[\"number\"] for c in d[\"contracts\"])]|the portfolio of the vendor from before is what it was: its totals, its kinds and models with what is covered of each and until when, its agreement and its contracts")
+        "portfolio|/vendors/$vendor/portfolio|[d[\"totals\"], [[k[\"kind\"], k[\"items\"], k[\"covered\"]] for k in d[\"kinds\"] if k[\"items\"]], [[m[\"pid\"], m[\"items\"], m[\"covered\"], m[\"covered_until\"]] for m in d[\"models\"]], [a[\"name\"] for a in d[\"agreements\"]], sorted(c[\"number\"] for c in d[\"contracts\"])]|the portfolio of the vendor from before is what it was: its totals, the kinds it has items of and its models, with what is covered of each and until when, its agreement and its contracts")
 }
 
 # witness_renewals: what came with revision 0009, made through the API of the previous
@@ -4832,6 +4832,19 @@ structure() {
     expect "pkg and POST $prefix/api/v1/exports writes the family as a column when it is asked for, and filters by it" \
         "$status $(table '[head, sorted({r["family"] for r in rows}), sum(1 for r in rows if r["address"] == "2001:db8::10")]')" \
         '200 [["hid", "address", "family"], ["6"], 1]'
+
+    # A virtual machine that runs on the chassis has the chassis's owner from its host,
+    # and nothing to be looked at (P-246, P-249); the export of every item below carries
+    # its host back.
+    api POST /catalog-entries "{\"vendor_hid\": \"$vendor\", \"pid\": \"PT-VM\", \"kind\": \"virtual_machine\"}"
+    made=$status
+    api POST /items "{\"catalog_entry_hid\": \"$(json_field hid)\", \"name\": \"pkgtest-vm-01\", \"lifecycle_state\": \"Prod\", \"host_item_hid\": \"$chassis\"}"
+    made="$made $status"
+    api GET "/items/$(json_field hid)"
+    made="$made $(json "[(d['host'] or {}).get('item_hid') == '$chassis', d['effective']['owner_hid']['source'], d['effective']['owner_hid']['source_hid'] == '$chassis', d['review']]")"
+    api GET "/items/$chassis"
+    expect "pkg a model of the kind virtual_machine, and a machine of it named as running on the chassis, which has the chassis's owner from its host and nothing to be looked at; the chassis says one thing runs on it" \
+        "$made $(json_field hosted_count)" '201 201 [true, "host", true, []] 1'
 
     # Every record of the new kinds, the examples' and these, exported and imported back.
     for entity in networks device_groups device_group_members addresses; do
