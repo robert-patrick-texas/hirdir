@@ -2776,7 +2776,7 @@ def portfolio(
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Show everything from one vendor: the totals, the four kinds and the models. As
+    """Show everything from one vendor: the totals, the kinds and the models. As
     csv or json, the items of the vendor, one row each, with their cover: the working
     list for a renewal."""
     _checked_format(format_)
