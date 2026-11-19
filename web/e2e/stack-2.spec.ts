@@ -530,6 +530,15 @@ test("a switch that stands alone is made a stack from its page with a spare: the
       .locator("td")
       .first(),
   ).toHaveText("2");
+  // It is said once: not again when the page is loaded again, nor when it is come back to.
+  await page.reload();
+  await expect(memberRow(page, standaloneSerial)).toBeVisible();
+  await expect(page.locator(".alert-ok")).toHaveCount(0);
+  await memberRow(page, standaloneSerial).getByRole("link", { name: standaloneSerial }).click();
+  await expect(page.getByRole("heading", { level: 1, name: standaloneSerial })).toBeVisible();
+  await page.goBack();
+  await expect(memberRow(page, standaloneSerial)).toBeVisible();
+  await expect(page.locator(".alert-ok")).toHaveCount(0);
 
   // The switch has the stack's names, address and place, none of its own.
   await openItem(page, standaloneSerial);

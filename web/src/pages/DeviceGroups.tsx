@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, useMemo, useRef, useState } from "react";
+import { type FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -835,9 +835,17 @@ export function DeviceGroupDetail() {
   const group = useLoad(`device-group ${hid}`, (signal) =>
     api.request("get", "/api/v1/device-groups/{hid}", { path: { hid }, signal }),
   );
-  // 0.9.8: reached from Make it a stack, the page says what was made (P-243).
-  const { state: reached } = useLocation();
-  const [done, setDone] = useState<Said>(() => ({ text: madeNote(reached) }));
+  // 0.9.8: reached from Make it a stack, the page says what was made (P-243), once: the
+  // entry of the history is left without it, so that the page loaded again, or come back
+  // to, does not say it again.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [done, setDone] = useState<Said>(() => ({ text: madeNote(location.state) }));
+  useEffect(() => {
+    if (madeNote(location.state) === "") return;
+    const { pathname, search, hash } = location;
+    navigate({ pathname, search, hash }, { replace: true, state: null });
+  }, [location, navigate]);
   const record = group.data;
   useTitle(record ? record.name : "Group");
 

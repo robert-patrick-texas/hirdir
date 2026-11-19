@@ -2582,7 +2582,8 @@ What 0.9.6 changes:
   a spare. Make the stack sends `POST /items/{hid}/make-stack`, the name left out when
   blank; a refusal of the name, of the item or of a member is said beside it, by its row
   for a member. Afterwards the stack's page is shown, which says at the top that the
-  stack was made of the item, member 1, and how many more members it has. An item known
+  stack was made of the item, member 1, and how many more members it has, once: not
+  again when the page is loaded again or come back to. An item known
   by its host name alone, with no name, no asset tag and no serial number with a model,
   would be left with nothing to know it by once a stack takes that host name, which the
   server refuses: Make it a stack is not offered for it, and in its place the fact says
