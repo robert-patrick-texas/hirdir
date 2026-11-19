@@ -21,6 +21,7 @@ import { choiceLabel, choiceOptions } from "../lib/options";
 import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
 import { MAJOR_ONLY, memberOffer, pickLabel, SPARES } from "../lib/pick";
 import { fieldErrors } from "../lib/problems";
+import { newItemJoining, replaceWaits } from "../lib/replacing";
 import { type LeavingBody, replacedText, type SaidPart, stackOf } from "../lib/stacks";
 import { CheckField, SelectField, TextField } from "./Field";
 import { FormFields } from "./FormFields";
@@ -140,7 +141,6 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
   const ruled = rules.data ?? [];
 
   // The one that comes, as the box of a member that joins a stack holds it.
-  const typedHostname = typeof values.hostname === "string" ? values.hostname.trim() : "";
   const coming: PendingMember | null =
     how === WITH_EXISTING
       ? chosen && {
@@ -156,7 +156,9 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
           name: "The new item",
           role: "member",
           position: "",
-          joining: typedHostname ? { hostname: typedHostname } : {},
+          // What it is known by, as typed, so that the box says whether the stack would
+          // leave it nothing (review).
+          joining: newItemJoining(values),
           drop: true,
           ...change,
         };
@@ -234,7 +236,10 @@ export function ReplaceItem({ item, onReplaced, onCancel, onReload }: ReplaceIte
     ]);
   }
 
-  const ready = reason !== "" && (how === WITH_NEW || chosen !== null);
+  // In a stack, an item known by its host name alone that takes the stack's name is
+  // refused: the box says so beneath it, and Replace waits (P-243).
+  const waits = replaceWaits(stack !== null, coming);
+  const ready = reason !== "" && (how === WITH_NEW || chosen !== null) && !waits;
   const comingRefused = COMING_FIELDS.map((field) => refused[field]).filter(Boolean);
   return (
     <section className="panel replace-item" aria-labelledby={`replace-${item.hid}`}>
