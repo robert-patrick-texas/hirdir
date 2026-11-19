@@ -2526,7 +2526,7 @@ Accounts and settings are not touched.
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on. A file chosen before the page has read the kinds of file is given its first kind when they are read, a picture a photograph, unless the person has chosen one |
 | Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
-| About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin |
+| About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin. Under it, for everyone signed in, the server's own measures, from `GET /about/load` (P-266): whether the server is busy, and what a busy server does not answer; the two measures the ceiling reads, each with its ceiling, or that it is not looked at, and marked where it is past it; over the last ten minutes the lowest, the average and the highest time of an answer and share of one processor; how many requests were answered well, not taken as asked, failed, and answered as busy; the requests in flight and how long the oldest has waited; when the server started; the memory of the server's process, the memory of the host used and free, the space free where the inventory is kept, the processors of the host and its load; whether the background work is being done, by a process of its own or by the server itself, and where it is not, that imports and bulk edits wait; and one graph. A value the host does not say is "not known", never 0. See [The server's measures on About](#the-servers-measures-on-about) |
 
 What 0.9.5 adds to these pages, for the work of each day:
 
@@ -2921,6 +2921,25 @@ link to its page by what it is known by (P-207); a record whose kind has no page
 a choice, a network or a reference file, is named without a link, and so is a user or a user group to anyone but an
 Admin.
 
+A request that a busy server did not take, a `503` whose problem holds `busy`, is said
+as that wherever the page says why a request failed (P-262, P-265): "The server is busy
+and did not answer this. Try again in 5 seconds.", the seconds being those of
+`Retry-After`, and "Try again shortly." where the answer names none. The words are
+those of every such answer, to a list, a report, a search or a preview, since they are
+the words of the failure itself and no page has its own. They are other words than those
+of a change that waited for another to be stored, which has no `busy` and is said in the
+server's sentence, "Another change is being stored and this one was not made; try again
+in a moment." Nothing is asked again by itself: the person asks again, with a button Try
+again. A list has it beneath the words, as for any failure of its rows; every other read
+of a page that a busy server refused has it within the words. Either one asks again for
+every read on the page that was so refused, the rows of a list among them, since one busy
+moment refuses several and one press should clear them all. A refused preview or export
+is sent again by its own button, as any refused change is. The one thing a page reads
+again by the clock, a job that is being applied and the list of past imports while one of them is, is read again after a
+busy answer no sooner than the answer says. A busy answer is a failed read like any
+other to the page, so what was on show stays, and it is never a page that could not be
+drawn.
+
 A field that finds a record by what is typed searches again when Enter is pressed, when
 the same text is typed again, and when the person comes back to the tab with a search
 on show; a list of choices that a page read whole when it opened is read again when the
@@ -3024,6 +3043,37 @@ installed, the two versions, and a button, Load again. It is no dialog, takes no
 and is announced politely; the page never loads again by itself, so that what is typed
 into a form is not lost. A request that fails, or an answer without a version, says
 nothing, and nothing is asked while nobody is signed in.
+
+### The server's measures on About
+
+About asks `GET /about/load` when it opens and every five seconds after, while it is on
+show and its tab is in front, and not otherwise (P-266): nothing is asked while the tab
+is hidden, and coming back asks once at once. One request is out at a time: the next is
+asked five seconds after the last was sent, and a full five seconds after an answer that
+failed or took longer than that, so requests never pile up on a server that is slow; one
+with no answer in fifteen seconds is given up. Under the heading the page says when its
+numbers were read, by the server's clock in the application's time zone, and where the
+last request failed, that it did, when, and that the numbers are those of the earlier
+time; they stay on show. Nothing else on the page is read again by the clock, and what
+is the same in a new answer is left as it is drawn.
+
+The graph is drawn by the page, in SVG, with no library. It is the ten minutes on one
+axis of time, the newest at the right, with the minutes of the clock beneath, and two
+plots one above the other, each with a scale of its own, named with its unit: the time
+of an answer in milliseconds, the average of each step of five seconds as a line and the
+longest as a lighter bar behind it, and the share of one processor in percent as a line
+over its shaded area. A step in which nothing was answered is a gap in the line, not a 0, and so is one whose
+share of the processor is not known yet. Each ceiling that is looked at and lies within
+its scale is a dashed line across its plot. A step in which an answer of busy was given
+has a band down both plots and a triangle above them. Each line has another colour, from
+the page's own in light and in dark, and they are told apart without colour by the plot
+each is in, by the legend under the graph, which shows each line as it is drawn, and by
+the shape of the mark of busy. The graph is named for a reader of the page aloud by
+what it shows and from when to when, and under it the page says in words in how many
+steps an answer of busy was given, and when the last was; the lowest, the average and the
+highest of the ten minutes are in the table above it. Pointing at a step shows its time
+and its numbers. On a narrow window the graph is drawn smaller, all of it in view, and
+the page is no wider than the window.
 
 ### Times
 

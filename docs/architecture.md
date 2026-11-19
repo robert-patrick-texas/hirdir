@@ -686,8 +686,18 @@ sign-in page and the name of every download of every other file read, and the fi
 settings of whom to ask (P-168, P-169); they note each setting as they found it and put
 it back.
 
+The browser scenarios run with no ceiling (P-265): they drive the server as hard as the
+host allows, which is what the ceiling is there to refuse. Where a worker makes the
+accounts of its files, in `web/e2e/support.ts`, it first sets `busy_response_ms` and
+`busy_cpu_percent` to 0, as the Admin of the environment and through the API, where
+they are not 0 already; so a run leaves the installation it ran on with no ceiling. One
+file tests the ceiling, `busy.spec.ts`, in a project of its own, "the ceiling alone",
+after the name's and with one worker, since every request of every other file would
+feel it: it sets the three settings to the smallest values they take, keeps the server
+past them with requests of its own, and puts each back as it found it, however it ends.
+
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
-but `weights.spec.ts` and `product.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
+but `weights.spec.ts`, `product.spec.ts` and `busy.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
 Playwright project of its own after all the others, puts the setting back, and is run
 by itself with `--no-deps`. Nor does any file hold the one writer for long beside the
 others but one: `cover-many.spec.ts` loads a thousand switches from a file and covers a
