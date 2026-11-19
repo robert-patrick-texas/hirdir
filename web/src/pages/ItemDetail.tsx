@@ -529,6 +529,8 @@ function Facts({ item, choices, mayChange, onChanged }: FactsProps) {
         {/* 0.9.8: what it runs on and what it was seen on, where it is of such a kind (P-250). */}
         <HostFacts
           item={item}
+          mayChange={mayChange}
+          onChanged={onChanged}
           change={
             mayChange && (
               <ChangeLink

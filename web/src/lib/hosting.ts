@@ -230,6 +230,28 @@ export function seenAt(at: string | null | undefined): string {
   return at ? formatTime(at) : "";
 }
 
+/**
+ * The change that makes the item an item is entered as installed in its host (P-246): the
+ * host named, and the parent and the position cleared in the same request.
+ */
+export function parentAsHostBody(item: {
+  row_version: number;
+  parent_item_hid: string | null;
+  position: string | null;
+}): {
+  row_version: number;
+  host_item_hid: string | null;
+  parent_item_hid: null;
+  position?: null;
+} {
+  return {
+    row_version: item.row_version,
+    host_item_hid: item.parent_item_hid,
+    parent_item_hid: null,
+    ...(item.position ? { position: null } : {}),
+  };
+}
+
 // --- the fields of an item's form -------------------------------------------------------
 
 /** What the fields of what an item runs on need of the form they stand in. */

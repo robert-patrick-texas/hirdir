@@ -14,6 +14,7 @@ import {
   hostValue,
   hostWhat,
   mayHost,
+  parentAsHostBody,
   reviewsText,
   runsOnHost,
   sentHost,
@@ -249,6 +250,19 @@ describe("the one field of a form for an item or a group", () => {
     expect(localMoment("2026-11-18T09:30:41.5Z")).toBe(
       localMoment(new Date("2026-11-18T09:30:00Z")),
     );
+  });
+});
+
+describe("a machine entered as installed in its server", () => {
+  it("is made to run on it, out of its parent, in one request", () => {
+    expect(parentAsHostBody({ row_version: 2, parent_item_hid: "srv-1", position: null })).toEqual({
+      row_version: 2,
+      host_item_hid: "srv-1",
+      parent_item_hid: null,
+    });
+    expect(
+      parentAsHostBody({ row_version: 2, parent_item_hid: "srv-1", position: "Bay 3" }),
+    ).toHaveProperty("position", null);
   });
 });
 
