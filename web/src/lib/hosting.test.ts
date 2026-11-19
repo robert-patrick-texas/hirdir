@@ -11,6 +11,7 @@ import {
   hostHint,
   hostIsGone,
   hostItemOption,
+  hostMadeText,
   hostPath,
   hostSpecs,
   hostValue,
@@ -290,6 +291,28 @@ describe("a machine entered as installed in its server", () => {
     expect(
       parentAsHostBody({ row_version: 2, parent_item_hid: "srv-1", position: "Bay 3" }),
     ).toHaveProperty("position", null);
+  });
+});
+
+describe("what a press that names a host says after (P-252)", () => {
+  const stackRef: HostRef = { ...cluster, group_hid: "stk-1", name: "site2-stk-1", type: "stack" };
+
+  it("names the host the server answered, the stack for a member sent, and the member seen", () => {
+    const answer = {
+      hostname: "site2-n7k-01-vdc2",
+      host: stackRef,
+      observed_host: { hid: "sw-2", name: "site2-sw-02" },
+    };
+    expect(hostMadeText(answer, "sw-2")).toBe(
+      "site2-stk-1 is now the host of site2-n7k-01-vdc2, a stack; it was seen on site2-sw-02, a member of it.",
+    );
+  });
+
+  it("names the item sent where the server kept it", () => {
+    const answer = { hostname: "site2-n7k-01-vdc2", host: server, observed_host: null };
+    expect(hostMadeText(answer, "srv-1")).toBe(
+      "site2-esx-01 is now the host of site2-n7k-01-vdc2.",
+    );
   });
 });
 
