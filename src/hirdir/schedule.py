@@ -1,12 +1,18 @@
-"""What the server does by itself at set times: a small scheduler in the server's process.
+"""What is done by the clock, at set times and not by a request: a small scheduler.
 
 A job has a name, when it is due, and what it does. The scheduler wakes once a minute
 in a thread of its own and runs each job that has come due since it last looked, with
 a session of its own, by the clock of the application's time zone, the `time_zone`
 setting. A job that fails is logged and tried again at the next wake, until it is done.
-A job may also be run when the server starts. Nothing is run twice for one time it is
-due, and a time that passed while the server was stopped is not made up for: a job that
-must not miss one runs when the server starts as well, and finds there what is missing.
+A job may also be run when its process starts. Nothing is run twice for one time it is
+due, and a time that passed while the process was stopped is not made up for: a job
+that must not miss one runs at the start as well, and finds there what is missing.
+
+The service is two processes (P-267), and each runs a scheduler for its own jobs. What
+a job writes to the database is the second process's, `hirdir admin work`:
+`BACKGROUND_JOBS`. What a job keeps in the memory of the process that answers is the
+server's own: `SERVER_JOBS`. A process that does both, `hirdir admin serve --work`,
+runs them all, `JOBS`.
 
 `run_due` runs what is due at a moment it is given, which is how the tests drive it
 without waiting for a Monday.
@@ -31,6 +37,9 @@ log = logging.getLogger("hirdir.schedule")
 WAKE_SECONDS = 60.0
 # Just after midnight: a minute in, so that a clock a little behind is past it too.
 AFTER_MIDNIGHT = time(0, 1)
+# And once what is due then is done: the long reports are worked out after the record
+# of the week, which another process makes, and makes within the minute it is due in.
+AFTER_THE_RECORD = time(0, 5)
 MONDAY = 0
 
 # When a job is due: given a moment and the application's time zone, the latest moment
@@ -40,8 +49,8 @@ type When = Callable[[datetime, ZoneInfo], datetime]
 
 @dataclass(frozen=True)
 class Job:
-    """One thing the server does by itself: its name, when it is due, what it does with
-    a session and the moment it is run for, and whether it is run at start as well."""
+    """One thing done by the clock: its name, when it is due, what it does with a
+    session and the moment it is run for, and whether it is run at start as well."""
 
     name: str
     when: When
@@ -92,13 +101,23 @@ def work_out_ahead(db: Session, moment: datetime) -> None:
     reports.work_out_ahead(db)
 
 
-# R14.7: the balance of each week, each Monday just after midnight, and when the server
-# starts in a week that has none.
+# R14.7: the balance of each week, each Monday just after midnight, and when the
+# process that records it starts in a week that has none.
 CAPACITY_RECORD = Job("capacity record", weekly(MONDAY), record_balance, at_start=True)
 # D-179, P-157: the long reports of the day, just after midnight and when the server
-# starts. It runs after the record, whose audit event would otherwise leave them stale.
-LONG_REPORTS = Job("long reports", daily(), work_out_ahead, at_start=True)
+# starts. It runs after the record, whose audit event would otherwise leave them stale:
+# in one process by its place in the list, and between two by the minutes between them.
+LONG_REPORTS = Job("long reports", daily(AFTER_THE_RECORD), work_out_ahead, at_start=True)
 JOBS: tuple[Job, ...] = (CAPACITY_RECORD, LONG_REPORTS)
+# What the process of the background work does by the clock (P-267): what is written
+# to the database, where the server finds it.
+BACKGROUND_JOBS: tuple[Job, ...] = (CAPACITY_RECORD,)
+# What the server does by the clock itself, whichever process does the rest: the long
+# reports are kept in the memory of the process that answers (D-184, `hirdir.io.kept`),
+# so worked out by another process they would be kept where no request reads them, and
+# the first person of the day would wait for each all the same. Kept where both
+# processes read them, the job is the second process's: move it to the list above.
+SERVER_JOBS: tuple[Job, ...] = (LONG_REPORTS,)
 
 
 class Scheduler:

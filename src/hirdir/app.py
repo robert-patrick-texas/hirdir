@@ -45,7 +45,7 @@ from hirdir.domain import file_kinds, product
 from hirdir.ids import new_hid
 from hirdir.io import background, fields, tables
 from hirdir.io.store import Store
-from hirdir.schedule import Scheduler
+from hirdir.schedule import JOBS, SERVER_JOBS, Scheduler
 
 API_PREFIX = "/api/v1"
 ROUTERS = (
@@ -291,23 +291,31 @@ def bind(app: FastAPI, config: Config) -> None:
 # --- what runs beside the requests --------------------------------------------------
 
 
-def _lifespan(scheduled: bool) -> Callable[[FastAPI], Any]:
+def _lifespan(scheduled: bool, work: bool) -> Callable[[FastAPI], Any]:
     """Return what works beside the requests for as long as the server is up.
 
-    That is the worker that applies imports and bulk edits in the background (D-185),
+    With `work`, that is the background work, which the second process of the service
+    does otherwise (P-267): the worker that applies imports and bulk edits (D-185),
     started once the application is bound to its database and stopped, after the batch
-    it is in, when the server stops; and, for the server, what it does by itself at set
-    times (`hirdir.schedule`), which a test drives itself.
+    it is in, when the server stops, and for the server every job of the clock.
+
+    For the server, with or without it, that is what is the server's own. The sweep of
+    the store of reference files, before the first request is answered: the store is
+    kept under a lock of this process, and no other may sweep it while an upload is
+    taken (P-161). And the jobs of the clock that fill this process's memory
+    (`hirdir.schedule.SERVER_JOBS`). A test drives `hirdir.schedule` itself.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        applying = background.running(app.state)
-        await run_in_threadpool(applying.__enter__)
+        applying = background.running(app.state) if work else None
+        if applying is not None:
+            await run_in_threadpool(applying.__enter__)
         if scheduled:
             # What an upload cut short left behind, and content no record names (P-161).
             await run_in_threadpool(_sweep_store, app)
-        scheduler = Scheduler(lambda: app.state.sessions()) if scheduled else None
+        jobs = JOBS if work else SERVER_JOBS
+        scheduler = Scheduler(lambda: app.state.sessions(), jobs) if scheduled else None
         try:
             if scheduler is not None:
                 await run_in_threadpool(scheduler.start)
@@ -315,7 +323,8 @@ def _lifespan(scheduled: bool) -> Callable[[FastAPI], Any]:
         finally:
             if scheduler is not None:
                 await run_in_threadpool(scheduler.stop)
-            await run_in_threadpool(applying.__exit__, None, None, None)
+            if applying is not None:
+                await run_in_threadpool(applying.__exit__, None, None, None)
 
     return lifespan
 
@@ -328,9 +337,12 @@ def _sweep_store(app: FastAPI) -> None:
 # --- the application ------------------------------------------------------------------
 
 
-def create_app(config: Config, scheduled: bool = False) -> FastAPI:
+def create_app(config: Config, scheduled: bool = False, work: bool = True) -> FastAPI:
     """Build the application for one configuration. `scheduled` is for the server, which
-    does what is due at set times; a test drives `hirdir.schedule` itself."""
+    does what is due at set times; a test drives `hirdir.schedule` itself. `work` is
+    whether this process does the background work as well, as the tests of the routes
+    have it and `hirdir admin serve --work`; the server of the service does none, and
+    leaves it to the second process (P-267)."""
     app = FastAPI(
         title="hirdir",
         version=hirdir.__version__,
@@ -338,7 +350,7 @@ def create_app(config: Config, scheduled: bool = False) -> FastAPI:
         openapi_url=None,
         docs_url=None,
         redoc_url=None,
-        lifespan=_lifespan(scheduled),
+        lifespan=_lifespan(scheduled, work),
     )
     bind(app, config)
     # Every list is made ready by this one thread, before requests arrive side by side.
