@@ -1204,7 +1204,9 @@ page says the rules, and this says how a file carries them.
   `null` where nothing holds it. The command line says the same after a preview and after
   an apply, one with stale rows among them. An apply that stops and is resumed marks once, at its end. The
   preview counts in `not_reported` how many the apply would mark, none where a row is
-  rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, the
+  rejected, and names the first ten in `not_reported_first`, each `{hid, label}`, on the
+  job (`GET /imports/{hid}` and the list of jobs, worked out when the job is read) as on
+  the preview's answer, the
   item's; once applied, `not_reported_first` is empty. `pending` and `removed`
   registrations, and those of device groups, are left as they are.
   A `complete` file of no rows is refused before the preview, a `422` on `complete`:

@@ -50,6 +50,7 @@ function job(more: Partial<Job> = {}): Job {
     complete: null,
     not_reported: 0,
     not_reported_held: null,
+    not_reported_first: [],
     failure: null,
     created_at: "2026-11-13T21:31:18Z",
     applied_by: null,

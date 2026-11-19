@@ -297,7 +297,11 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
     preview = files.preview("items", text, system=SYSTEM, complete="true")
 
     assert (preview["job"]["complete"], preview["job"]["not_reported"]) == (True, 1)
-    assert preview["not_reported_first"] == [{"hid": made["db"]["hid"], "label": "site2-vm-db"}]
+    first = [{"hid": made["db"]["hid"], "label": "site2-vm-db"}]
+    assert preview["not_reported_first"] == first
+    # The job says the same when it is read again, while it waits to be applied.
+    assert make.get(f"/imports/{preview['job']['hid']}")["not_reported_first"] == first
+    assert preview["job"]["not_reported_first"] == first
     job = files.apply(preview)
     assert (job["status"], job["not_reported"]) == ("applied", 1)
     marked = _registration(make, system, made["db"])
@@ -326,7 +330,7 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
     assert make.get(f"/imports/{job['hid']}")["not_reported"] == 1
     # Once applied, the preview names none.
     shown = make.get(f"/imports/{job['hid']}")
-    assert shown["status"] == "applied"
+    assert (shown["status"], shown["not_reported_first"]) == ("applied", [])
 
     # The next file that names it makes it registered again.
     named_again = files.preview("items", _csv("vm-3,site2-vm-db,"), system=SYSTEM)
