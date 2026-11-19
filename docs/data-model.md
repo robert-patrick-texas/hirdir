@@ -303,7 +303,9 @@ its host.
   enter: what a tool reads from it is the chassis's. Where its `serial_number` is
   blank and it runs on an item, `effective.serial_number` is that item's, with the
   source `host`; the list and the page show it as from its host. It is not stored,
-  not unique to the context and not what a row of a file is matched by. A virtual
+  not unique to the context and not what a row of a file is matched by, and a filter
+  or a sort of the item list by `serial_number` sees only the item's own: the context
+  is found by its host, `host.name`. A virtual
   machine and a container show none but their own.
 - **Counting.** Each is a major item of a kind in `count_kinds` from the start: a
   component, a managed node of its own, and its support weight, by the rules of

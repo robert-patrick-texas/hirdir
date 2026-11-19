@@ -323,7 +323,9 @@ the rules, and this says how the API carries them.
   `observed_host_hid`, `host.name`, the name of the item or the group it runs on,
   `observed_host.name`, `host_observed_at`, `host_differs`, `hosted_count`, and
   `review`, which holds each reason: `review:eq:no_host`, and `review:empty:false` for
-  every item with one. `effective.location_hid`, `location`, `site`, `region`,
+  every item with one. A filter and a sort by `serial_number` see only a serial number
+  of the item's own: a virtual context that shows its switch's is not found by it, and
+  is found by what it runs on, `host.name`. `effective.location_hid`, `location`, `site`, `region`,
   `effective.owner_hid`, `effective.operator_hid` and `effective.planned_location_hid`
   answer through the host as the record does, and so do the geography tree and the
   summary, which count what runs on a host where its host is and with its host's owner
