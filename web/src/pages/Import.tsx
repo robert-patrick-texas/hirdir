@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { type ApiError, api } from "../api";
 import { useAuth } from "../auth";
-import { SelectField } from "../components/Field";
+import { CheckField, SelectField } from "../components/Field";
 import { ImportCreated } from "../components/ImportCreated";
 import { Pager } from "../components/Pager";
 import {
@@ -15,11 +15,14 @@ import {
 import { Problem } from "../components/Problem";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { plural } from "../lib/format";
 import { toApiError, useLoad, useTitle } from "../lib/hooks";
+import { COMPLETE_HINT, notReportedText } from "../lib/hostFollows";
 import { Keys, withKey } from "../lib/idempotency";
 import {
   ENTITIES,
   entityLabel,
+  FROM_NONE,
   fileIdentity,
   fileType,
   guessEntity,
@@ -28,7 +31,10 @@ import {
   type Mode,
   modeLabel,
   previewQuery,
+  type ReadFrom,
+  readsFromSystem,
 } from "../lib/imports";
+import { useSystems } from "../lib/lists";
 import {
   countsText,
   isWorking,
@@ -40,6 +46,7 @@ import {
 import { fieldErrors } from "../lib/problems";
 import { useSite } from "../lib/product";
 import { allows } from "../lib/roles";
+import { systemPath } from "../lib/systems";
 import { IMPORTS_SORT } from "../lib/tableSorts";
 import type { Entity } from "../lib/transfer";
 import { POLL_MS, useJob } from "../lib/useJob";
@@ -54,6 +61,8 @@ interface Sent {
   file: File;
   entity: Entity | "";
   mode: Mode | "";
+  /** 0.9.8: the tool it was read from, and whether it is everything it reports (P-248). */
+  from: ReadFrom;
   preview: Preview;
 }
 
@@ -74,7 +83,7 @@ export function Import() {
   const mayImport = allows(user.role, "inventory");
 
   /** Send a file to be previewed, and show the preview it becomes. */
-  async function preview(file: File, entity: Entity | "", mode: Mode | "") {
+  async function preview(file: File, entity: Entity | "", mode: Mode | "", from: ReadFrom) {
     const type = fileType(file);
     if (type === null) {
       setError(
@@ -95,15 +104,18 @@ export function Import() {
       return;
     }
     try {
-      const made = await withKey(keys.current, fileIdentity(file, entity, mode), (idempotencyKey) =>
-        api.upload("/api/v1/imports/preview", {
-          file,
-          type,
-          query: previewQuery(entity, mode, file.name),
-          idempotencyKey,
-        }),
+      const made = await withKey(
+        keys.current,
+        fileIdentity(file, entity, mode, from),
+        (idempotencyKey) =>
+          api.upload("/api/v1/imports/preview", {
+            file,
+            type,
+            query: previewQuery(entity, mode, file.name, from),
+            idempotencyKey,
+          }),
       );
-      setSent({ file, entity, mode, preview: made });
+      setSent({ file, entity, mode, from, preview: made });
       setJobsTurn((turn) => turn + 1);
       navigate(`/import/${encodeURIComponent(made.job.hid)}`);
     } catch (thrown) {
@@ -131,7 +143,7 @@ export function Import() {
           sent={mine}
           busy={busy}
           onChanged={() => setJobsTurn((turn) => turn + 1)}
-          again={mine ? () => preview(mine.file, mine.entity, mine.mode) : undefined}
+          again={mine ? () => preview(mine.file, mine.entity, mine.mode, mine.from) : undefined}
         />
       )}
       <PastJobs turn={jobsTurn} current={hid} />
@@ -142,7 +154,7 @@ export function Import() {
 interface UploadProps {
   busy: boolean;
   error: ApiError | null;
-  onPreview: (file: File, entity: Entity | "", mode: Mode | "") => void;
+  onPreview: (file: File, entity: Entity | "", mode: Mode | "", from: ReadFrom) => void;
 }
 
 /** The form that sends a file: the file, the records it holds and the mode beside it. */
@@ -151,7 +163,13 @@ function Upload({ busy, error, onPreview }: UploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [entity, setEntity] = useState<Entity | "">("");
   const [mode, setMode] = useState<Mode | "">("");
-  const known = ["entity", "mode"];
+  // 0.9.8: the external system a file of items was read from, and whether it is everything
+  // that system reports (P-248). Only the systems that are not retired are offered.
+  const [from, setFrom] = useState<ReadFrom>(FROM_NONE);
+  const systems = useSystems();
+  const offered = (systems.data ?? []).filter((system) => system.record_status !== "retired");
+  const reads = readsFromSystem(entity);
+  const known = ["entity", "mode", "system", "complete"];
   const refused = fieldErrors(error, known).shown;
 
   function choose(chosen: File | null) {
@@ -161,7 +179,7 @@ function Upload({ busy, error, onPreview }: UploadProps) {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (file) onPreview(file, entity, mode);
+    if (file) onPreview(file, entity, mode, reads ? from : FROM_NONE);
   }
 
   return (
@@ -217,7 +235,39 @@ function Upload({ busy, error, onPreview }: UploadProps) {
               </option>
             ))}
           </SelectField>
+          {reads && (
+            <SelectField
+              label="Read from"
+              name="system"
+              value={from.system}
+              onChange={(next) =>
+                setFrom((was) => ({ system: next, complete: next === "" ? false : was.complete }))
+              }
+              disabled={busy}
+              error={refused.system}
+              hint="A file of items that an external system reported: its rows are found first by that system's own identifier, external_id."
+            >
+              <option value="">No external system</option>
+              {offered.map((system) => (
+                <option key={system.hid} value={system.hid}>
+                  {system.name}
+                </option>
+              ))}
+            </SelectField>
+          )}
         </div>
+        {reads && from.system !== "" && (
+          <CheckField
+            label="This file is everything it reports"
+            name="complete"
+            checked={from.complete}
+            onChange={(complete) => setFrom((was) => ({ ...was, complete }))}
+            disabled={busy}
+            error={refused.complete}
+            hint={COMPLETE_HINT}
+          />
+        )}
+        <Problem error={systems.error} />
         <p className="actions">
           <button type="submit" className="primary" disabled={busy || !file}>
             Preview
@@ -281,6 +331,16 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
             <dd>{entityLabel(job.entity)}</dd>
             <dt>Mode</dt>
             <dd>{modeLabel(job.mode)}</dd>
+            {/* 0.9.8: the tool the file was read from (P-248). */}
+            {job.system && (
+              <>
+                <dt>Read from</dt>
+                <dd data-testid="import-system">
+                  <Link to={systemPath(job.system.hid)}>{job.system.name}</Link>
+                  {job.complete && <span className="muted"> · everything it reports</span>}
+                </dd>
+              </>
+            )}
             <dt>Status</dt>
             <dd data-testid="import-status">{statusLabel(job)}</dd>
             <dt>Made</dt>
@@ -300,6 +360,7 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
           </dl>
           <JobCounts job={job} />
           <ApplyCounts job={job} />
+          <NotReported job={job} first={sent?.preview.not_reported_first ?? []} />
           <ApplyPreview
             job={job}
             noun={bulk ? ["item", "items"] : ["row", "rows"]}
@@ -324,6 +385,43 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * 0.9.8: what a file that is everything a system reports marks, or marked, as not
+ * reported (P-248): how many, and the first of them as links where the preview named them.
+ */
+function NotReported({
+  job,
+  first,
+}: {
+  job: Job;
+  first: readonly { hid: string; label: string }[];
+}) {
+  const text = notReportedText(job);
+  if (!text) return null;
+  const named = job.status === "previewed" && job.rejected === 0 ? first : [];
+  return (
+    <div
+      className="not-reported-preview"
+      data-testid="import-not-reported"
+      data-count={job.not_reported}
+    >
+      <p>{text}</p>
+      {named.length > 0 && (
+        <ul>
+          {named.map((one) => (
+            <li key={one.hid}>
+              <Link to={`/items/${encodeURIComponent(one.hid)}`}>{one.label}</Link>
+            </li>
+          ))}
+          {job.not_reported > named.length && (
+            <li className="muted">and {plural(job.not_reported - named.length, "more")}</li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -439,6 +537,13 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                         {job.file_name || (source === "bulk" ? "Bulk edit" : "A file with no name")}
                       </Link>
                       <span className="hid mono">{job.hid}</span>
+                      {job.system && (
+                        <span className="muted import-from" data-testid="job-system">
+                          {" "}
+                          Read from {job.system.name}
+                          {job.complete ? ", everything it reports" : ""}
+                        </span>
+                      )}
                     </th>
                     <td>{entityLabel(job.entity)}</td>
                     <td>{modeLabel(job.mode)}</td>
