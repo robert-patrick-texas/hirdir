@@ -289,14 +289,18 @@ the rules, and this says how the API carries them.
   for `no_host`. A retired item has none. A device group answers `hosted_count` too.
 - **What it has from its host.** `effective.location_hid`, `planned_location_hid`,
   `owner_hid` and `operator_hid` of an item that runs on a host go on through it where
-  the item and its groups have none, with `source` `host` and `source_hid` the record
-  it runs on, or an item that one is installed in, that holds the value; a value of a
-  group of the host is `device_group` as always, and so is one the stack or the cluster
-  it runs on has from a group it is nested in. `effective.serial_number`, on every item,
+  the item and its groups have none, with `source` `host` and `source_hid` the item
+  that holds the value: the item it runs on, or an item that one is installed in or
+  runs on in its turn. Where a group holds it the source is `device_group` with that
+  group's HID, as for a member: a group a host item is a member of, the stack or the
+  cluster it runs on itself, or a group that one is nested in. So `host` always names
+  an item and `device_group` a group, in the record, in the list's
+  `effective.operator_hid.source` and in a file's `<field>_source`. `effective.serial_number`, on every item,
   is its own, or for a virtual context with none the serial number of the item it runs
-  on, with `source` `host`. `GET /items/{hid}/resolution` has the steps of the host
-  with `level` `host`, after those of the item and what it is installed in, each
-  followed by the host's groups.
+  on, with `source` `host`. `GET /items/{hid}/resolution` has the steps of each item
+  it runs on with `level` `host`, after those of the item and what it is installed in,
+  each followed by that item's groups; the stack or the cluster it runs on is a step of
+  `level` `device_group`, with its `type` and no `rank`.
 - **What runs on a record.** `GET /items/{hid}/hosted` and `GET
   /device-groups/{hid}/hosted`, which every role reads, answer `{total, items}`: each
   item that names the record as its host, and beneath each what runs on that, each as

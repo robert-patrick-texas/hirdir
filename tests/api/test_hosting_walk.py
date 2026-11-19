@@ -135,7 +135,15 @@ def test_a_cluster_that_something_runs_on_answers_as_a_group(placed: Placed) -> 
     )
     vm = lab.vm(host_group_hid=cluster["hid"])
 
-    assert _in_force(make, vm, "location_hid") == (placed.elsewhere["hid"], "host", cluster["hid"])
+    # A group holds it, so the source is a group's, as for a member: `host` names an item.
+    assert _in_force(make, vm, "location_hid") == (
+        placed.elsewhere["hid"],
+        "device_group",
+        cluster["hid"],
+    )
+    assert make.get(f"/items/{vm['hid']}")["effective"]["location_hid"]["source_label"] == (
+        "site2-esx-cluster"
+    )
     assert _in_force(make, vm, "owner_hid") == (
         placed.network["hid"],
         "device_group",
@@ -143,6 +151,28 @@ def test_a_cluster_that_something_runs_on_answers_as_a_group(placed: Placed) -> 
     )
     assert vm["hid"] in _listed(make, f"effective.location_hid:eq:{placed.elsewhere['hid']}")
     assert vm["hid"] in _listed(make, f"effective.owner_hid:eq:{placed.network['hid']}")
+    # A container in the machine has the cluster's place from the cluster, a group.
+    ctr = lab.ctr(host_item_hid=vm["hid"])
+    assert _in_force(make, ctr, "location_hid") == (
+        placed.elsewhere["hid"],
+        "device_group",
+        cluster["hid"],
+    )
+    by_source = "effective.operator_hid.source:eq:host"
+    assert ctr["hid"] not in _listed(make, by_source)
+    _patch(make, cluster, "/device-groups", operator_hid=placed.op["hid"])
+    assert ctr["hid"] in _listed(make, "effective.operator_hid.source:eq:device_group")
+    assert ctr["hid"] in _listed(make, f"effective.operator_hid.source_hid:eq:{cluster['hid']}")
+    exported = make.client.post(
+        "/api/v1/exports",
+        json={
+            "entity": "items",
+            "hids": [ctr["hid"]],
+            "columns": ["name", "location_source", "operator_source"],
+        },
+        headers=make.headers,
+    )
+    assert exported.text.splitlines()[1].split(",")[2:] == ["device_group", "device_group"]
     # Where the cluster has none, the hosts' own places do not reach the machine.
     _patch(make, cluster, "/device-groups", location_hid=None)
     assert _in_force(make, vm, "location_hid") == (None, "none", None)
@@ -179,7 +209,12 @@ def test_the_resolution_shows_the_step_of_the_host(placed: Placed) -> None:
     walk = make.get(f"/items/{on_cluster['hid']}/resolution")
     location = next(one for one in walk["fields"] if one["field"] == "location_hid")
     last = location["steps"][-1]
-    assert (last["level"], last["hid"], last["type"]) == ("host", lab.cluster["hid"], "cluster")
+    assert (last["level"], last["hid"], last["type"]) == (
+        "device_group",
+        lab.cluster["hid"],
+        "cluster",
+    )
+    assert (location["source"], location["source_hid"]) == ("none", None)
 
 
 def test_the_summary_and_the_tree_count_it_where_its_host_is(placed: Placed) -> None:
