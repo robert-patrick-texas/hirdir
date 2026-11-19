@@ -9,8 +9,9 @@ that is registered as one device is registered as the stack, and not as its memb
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from hirdir import clock, ids
 from hirdir.db import dialect
@@ -391,6 +392,11 @@ def reported(
                 "confirmed_at": now,
             },
         )
+    if known.status == REGISTERED and known.external_id == given:
+        # Only confirmed: nothing a person edits has changed, so the registration keeps
+        # its version, and has no event of its own; the import's event counts it.
+        confirm(db, known, now)
+        return known
     return update_registration(
         db,
         context,
@@ -398,6 +404,16 @@ def reported(
         known.row_version,
         {"external_id": external_id, "status": REGISTERED, "confirmed_at": now},
     )
+
+
+def confirm(db: Session, registration: Registration, at: Any) -> None:
+    """Move when the other system last agreed, and nothing else: no version, no moment
+    of change and no event (P-248). It is how a file of the system that names the
+    registration as it is says so; what changes otherwise is audited as any change."""
+    db.execute(
+        update(Registration).where(Registration.hid == registration.hid).values(confirmed_at=at)
+    )
+    set_committed_value(registration, "confirmed_at", at)
 
 
 def _item_name(item: Item) -> str:

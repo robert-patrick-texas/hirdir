@@ -1180,7 +1180,12 @@ page says the rules, and this says how a file carries them.
   that gives the item an identifier it had not has `external_id` among them too. A row
   whose registration is `registered` already, under the same identifier, changes nothing
   but `confirmed_at`: a file loaded a second time is `unchanged` in each such row, and
-  still confirms each registration. A
+  still confirms each registration. Such a confirmation moves `confirmed_at` alone: it
+  writes no event of the registration and leaves its `row_version` and `updated_at` as
+  they are, so that a page that read it is not refused as stale for it; the `apply`
+  event of the job names the system in `system` and counts them in `confirmed`. A
+  registration that is made, or whose status or identifier changes, has its own
+  `update` or `create`, which holds `confirmed_at` too. A
   row with no `external_id` is matched as any row and registers nothing. A file that
   gives `external_id` in a row and names no `system` is refused before the preview, a
   `422` on `external_id`. An export writes the column only where it is asked for by name,

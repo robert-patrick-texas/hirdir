@@ -1001,6 +1001,28 @@ def _mark_not_reported(
     )
 
 
+def _confirmed(db: Session, job: ImportJob) -> int:
+    """Return how many registrations an applied file read from a system confirmed and
+    changed in nothing else (P-248): its rows applied with an identifier whose changes do
+    not make or bring back a registration, nor give it another identifier. Each such
+    confirmation has no event of its own; the job's event of its apply counts them."""
+    if job.system_hid is None:
+        return 0
+    rows = db.execute(
+        select(ImportRow.values, ImportRow.changes).where(
+            ImportRow.job_hid == job.hid, ImportRow.applied_outcome.in_(list(COUNTED))
+        )
+    )
+    return sum(
+        1
+        for values, changes in rows
+        if (values or {}).get("external_id")
+        and not any(
+            entry.get("field") in ("registration", "external_id") for entry in changes or []
+        )
+    )
+
+
 def _complete(db: Session, hid: str, context: AuditContext) -> None:
     """Mark a job applied, now that every row is worked, with the counts of what it did.
 
@@ -1017,6 +1039,7 @@ def _complete(db: Session, hid: str, context: AuditContext) -> None:
     )
     counts: dict[str | None, int] = dict(db.execute(by_outcome).all())
     marked = _mark_not_reported(db, job, context, counts)
+    confirmed = _confirmed(db, job)
     if job.complete:
         job.not_reported = marked
     before = job.status
@@ -1033,6 +1056,11 @@ def _complete(db: Session, hid: str, context: AuditContext) -> None:
             change("stale", None, counts.get("stale", 0)),
             change("rejected", None, counts.get("rejected", 0)),
             *([change("not_reported", None, marked)] if job.complete else []),
+            *(
+                [change("system", None, job.system_hid), change("confirmed", None, confirmed)]
+                if job.system_hid is not None
+                else []
+            ),
         ],
     )
     db.commit()

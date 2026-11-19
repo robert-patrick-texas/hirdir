@@ -102,13 +102,22 @@ def test_a_row_no_registration_answers_is_matched_as_any_row_and_registers_its_i
     assert _registration(make, system, dns)["external_id"] == "vm-103"
 
     # Loaded again, nothing changes but when the system last agreed.
-    before = _registration(make, system, web)
+    before = [_registration(make, system, one) for one in (web, dns)]
+    events_before = make.audit(record_type="registration", limit=1000)
     again = files.preview("items", text, system=SYSTEM)
     assert counts(again["job"]) == (0, 0, 2, 0)
-    files.apply(again)
-    after = _registration(make, system, web)
-    assert after["row_version"] == before["row_version"] + 1
-    assert after["confirmed_at"] >= before["confirmed_at"]
+    job = files.apply(again)
+    after = [_registration(make, system, one) for one in (web, dns)]
+    # Each confirmation moves when the system last agreed, and nothing else: no version,
+    # and no event of its own. The import's event of its apply counts them.
+    for was, now in zip(before, after, strict=True):
+        assert now["row_version"] == was["row_version"]
+        assert now["updated_at"] == was["updated_at"]
+        assert now["confirmed_at"] > was["confirmed_at"]
+    assert make.audit(record_type="registration", limit=1000) == events_before
+    [applied] = make.audit(record_type="import_job", record_hid=job["hid"], action="apply")
+    told = {entry["field"]: entry["new"] for entry in applied["changes"]}
+    assert (told["system"], told["confirmed"]) == (system["hid"], 2)
     assert make.get("/items", limit=1)["total"] == 2
 
 
@@ -324,7 +333,12 @@ def test_a_file_that_is_everything_its_system_reports_marks_what_it_does_not_nam
     assert counts(named_again["job"]) == (0, 1, 0, 0)
     assert changes(named_again["rows"][0]) == {"registration": ("not_reported", "registered")}
     files.apply(named_again)
-    assert _registration(make, system, made["db"])["status"] == "registered"
+    back = _registration(make, system, made["db"])
+    assert back["status"] == "registered"
+    # Brought back, it has an event of its own, which holds when it was confirmed too.
+    latest = make.audit(record_type="registration", record_hid=back["hid"], action="update")[0]
+    assert {entry["field"] for entry in latest["changes"]} == {"status", "confirmed_at"}
+    assert {entry["field"]: entry["new"] for entry in latest["changes"]}["status"] == "registered"
     # And a person sets it as any status.
     marked = _registration(make, system, made["web"])
     make.patch(

@@ -1250,7 +1250,7 @@ taken back by lowering its quantity to what was received.
 | `registrations.item_hid` or `registrations.group_hid` | reference | exactly one, and not changed afterwards |
 | `registrations.external_id` | text | the other system's key for it |
 | `registrations.status` | choice | `registered`, `pending`, `removed`, `not_reported`. Left out, `registered`. `not_reported` is given by an import that is everything its system reports, to what it does not name (P-248) |
-| `registrations.confirmed_at` | timestamp | when the other system last agreed. Blank until somebody says |
+| `registrations.confirmed_at` | timestamp | when the other system last agreed. Blank until somebody says. A file of the system that only confirms a registration moves it alone, with no event and no new version: see "What a tool reports" |
 
 An item or a group is registered with one system once. A registration that ends is
 given the status `removed` and stays on record; when it begins again it is the same
@@ -1272,7 +1272,13 @@ identifier, in the same change. Two items registered under one identifier, and a
 item that the system knows under another identifier than the row gives, are errors on
 the row, never a guess. Every row that is matched or registered so says that the
 system reports the item now: its registration is `registered`, with `confirmed_at`
-the moment the import was applied, and `external_id` as given.
+the moment the import was applied, and `external_id` as given. The audit trail holds
+what changed, and the import's event the count of what was confirmed: a registration
+that the row only confirms, `registered` already under the same identifier, has its
+`confirmed_at` moved and nothing else, no event of its own and no new `row_version`,
+and the event of the import's apply names the system and says how many it confirmed
+so. A registration has an event of its own where something else of it changes: it is
+made, its status changes, or its identifier, and that event holds `confirmed_at` too.
 
 With `complete`, the file is everything that system reports. Once it has been applied
 whole, with no row rejected, left out or stale, every item whose registration with
