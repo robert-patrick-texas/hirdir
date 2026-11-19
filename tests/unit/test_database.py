@@ -12,6 +12,7 @@ import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 
@@ -705,8 +706,12 @@ def test_going_back_from_0013_with_an_item_replaced_twice_is_refused_in_words(
     assert "by the backup the upgrade made" in said
     engine = make_engine(url)
     with engine.begin() as connection:
-        # Nothing was changed: the schema is still 0013's, and every row is there.
-        assert migrate.current(engine) == "0013"
+        # Nothing was changed: the schema is where the upgrade left it, at its latest
+        # revision, the migrations after 0013 not undone either, and every row is there.
+        assert (
+            migrate.current(engine)
+            == ScriptDirectory.from_config(migrate.alembic_config(url)).get_current_head()
+        )
         assert connection.execute(text("SELECT count(*) FROM item_replacements")).scalar() == 3
         connection.execute(text("DELETE FROM item_replacements WHERE hid IN ('r-2', 'r-3')"))
     engine.dispose()
