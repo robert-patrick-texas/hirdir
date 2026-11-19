@@ -473,9 +473,11 @@ SPECS: dict[str, Spec] = {
     load.RESPONSE_SETTING: Spec(
         load.DEFAULT_RESPONSE_MS,
         "how long requests may take before the server is busy, in milliseconds: the "
-        "median of the answers of the API over the last busy_over_seconds and of the "
-        "wait of the requests still in flight. Past it, reports, exports, previews and "
-        "pages of lists are answered 503 Busy at once. 0: not looked at",
+        "95th percentile of the reads and the changes of the API that came over the "
+        "last busy_over_seconds, with the wait of those still in flight, where they are "
+        "twenty or more. Past it, reports, exports and previews are answered 503 Busy at "
+        "once. A third and two thirds of it are where the health of the server turns "
+        "from good to slow and to very slow. 0: not looked at",
         _whole(load.RESPONSE_SETTING, 0, load.MOST_RESPONSE_MS, " of milliseconds"),
     ),
     load.PROCESSOR_SETTING: Spec(
@@ -774,7 +776,7 @@ def fixed_values() -> dict[str, Fixed]:
             "busy_fewest_requests",
             load.FEWEST_REQUESTS,
             "the requests, answered and in flight, of which how long requests take is "
-            "read: with fewer, busy_response_ms is not looked at",
+            "read: with fewer there is no such measure, and time makes nothing busy",
             DECIDED,
             "P-265",
         ),

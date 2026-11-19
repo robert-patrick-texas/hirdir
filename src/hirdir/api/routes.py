@@ -332,7 +332,8 @@ def about(_: SignedIn, request: Request, db: Db) -> schemas.About:
 @meta.get("/about/load")
 def about_load(_: SignedIn, request: Request) -> schemas.Load:
     """Say how the server is doing, by its own measures of its last ten minutes: whether
-    it is busy and by which measure, what it answered and how long an answer took, the
+    it is busy and by which measure, its health in a word, which every answer of the API
+    carries in `X-Hirdir-Health`, what it answered and how long an answer took, the
     processor time it used, the requests in flight, the memory and the disk of the host,
     whether the background work is being done, and the ten minutes step by step, for a
     graph. The time of a request begins when the server has the whole of it, its body

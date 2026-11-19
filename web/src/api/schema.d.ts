@@ -25,7 +25,8 @@ export interface paths {
   "/api/v1/about/load": {
     /**
      * Say how the server is doing, by its own measures of its last ten minutes: whether
-     * it is busy and by which measure, what it answered and how long an answer took, the
+     * it is busy and by which measure, its health in a word, which every answer of the API
+     * carries in `X-Hirdir-Health`, what it answered and how long an answer took, the
      * processor time it used, the requests in flight, the memory and the disk of the host,
      * whether the background work is being done, and the ten minutes step by step, for a
      * graph. The time of a request begins when the server has the whole of it, its body
@@ -11479,6 +11480,8 @@ export interface components {
       /** The measures that are past the ceiling. Empty while `state` is `ok`. */
       because: ("response_ms" | "cpu_percent")[];
       ceiling: components["schemas"]["LoadCeiling"];
+      /** The health of the server in a word, which every answer of the API carries in `X-Hirdir-Health`. It stands on `measures.response_ms` against the thirds of its ceiling, `totals.bands.bounds_ms`: `good` under the first or with no measure, `slow` under the second, `very_slow` up to the third, `busy` past it. And `busy` whenever `state` is not `ok`, by either measure. */
+      health: "good" | "slow" | "very_slow" | "busy";
       host: components["schemas"]["LoadHost"];
       in_flight: components["schemas"]["LoadInFlight"];
       measures: components["schemas"]["LoadMeasures"];
@@ -11486,7 +11489,7 @@ export interface components {
       process: components["schemas"]["LoadProcess"];
       /** When the server started, and its measures. */
       started_at: string;
-      /** `busy`: past the ceiling, and what costs most and can wait is answered 503. `very_busy`: still so `over_seconds` later, and every read is. */
+      /** `busy`: past the ceiling, and what is long by nature, a report, an export or a preview, is answered 503. `very_busy`: still so `over_seconds` later, by what came since, and every read is. */
       state: "ok" | "busy" | "very_busy";
       /** The length of a step: 5. */
       step_seconds: number;
@@ -11495,6 +11498,13 @@ export interface components {
       window_seconds: number;
       /** Whether the background work is being done: by the process of its own, by nothing, or by this process (P-267). */
       worker: "running" | "not_running" | "in_process";
+    };
+    /** The requests of the measure answered in the window, by how long each took. */
+    LoadBands: {
+      /** The three bounds of the four bands, in milliseconds: a third of `busy_response_ms`, two thirds of it, and the ceiling. `[1000, 2000, 3000]` unless set, and those of 3000 where the setting is 0. */
+      bounds_ms: number[];
+      /** Four counts: under the first bound, from it to under the second, from the second to the third, and past the third. */
+      counts: number[];
     };
     /** The ceiling in force: the three settings of it (P-265). */
     LoadCeiling: {
@@ -11531,7 +11541,7 @@ export interface components {
     LoadMeasures: {
       /** The processor time the process used, every thread of it, as a percentage of one processor. It passes 100 where several requests are in the database at once. */
       cpu_percent: number;
-      /** How long requests take: the median, in milliseconds, of the time taken by the requests of the API that came in that time, whatever each took, and of the time waited so far by those in flight, however long ago they came. A request's time begins when the server has the whole of it, its body with it. Null with fewer than five. */
+      /** How long requests take: the 95th percentile, in milliseconds, of the time taken by the reads and the changes of the API that came in that time, whatever each took, and of the time waited so far by those in flight, however long ago they came. Reports, exports and previews are not in it. A request's time begins when the server has the whole of it, its body with it. Null with fewer than twenty. */
       response_ms: number | null;
     };
     /**
@@ -11549,6 +11559,10 @@ export interface components {
       cpu_percent: (number | null)[];
       /** The longest time of an answer. Null where nothing was answered. */
       high_ms: (number | null)[];
+      /** The time that half of the requests of the measure answered in the step took no longer than. Null where none was. */
+      p50_ms: (number | null)[];
+      /** The time that 95 in a hundred of the requests of the measure answered in the step took no longer than. Null where none was. */
+      p95_ms: (number | null)[];
       /** The requests answered in the step. */
       requests: number[];
     };
@@ -11563,8 +11577,26 @@ export interface components {
       high: number | null;
       low: number | null;
     };
+    /**
+     * The times of the answers of the window, in milliseconds. `low`, `average` and
+     * `high` are of every answer but an answer of busy. The percentiles are of the
+     * requests of the measure, the reads and the changes of the API: each is one of their
+     * times, the shortest that so many in a hundred of them are no longer than.
+     */
+    LoadTimes: {
+      average: number | null;
+      high: number | null;
+      low: number | null;
+      /** Half of them took no longer. Null with none. */
+      p50: number | null;
+      /** 95 in a hundred took no longer. Null with none. */
+      p95: number | null;
+      /** 99 in a hundred took no longer. Null with none. */
+      p99: number | null;
+    };
     /** What was answered in the window, and how. */
     LoadTotals: {
+      bands: components["schemas"]["LoadBands"];
       /** Answered 503 as busy, by a server past its ceiling. */
       busy: number;
       /** The processor time the process used, as a percentage of one processor: the lowest, the average and the highest of the steps that are whole. Each may pass 100. */
@@ -11578,7 +11610,7 @@ export interface components {
       /** Every request answered: the four below together. */
       requests: number;
       /** The time of an answer, in milliseconds, from when the server had the whole request, its body with it, to the last byte of its answer. An answer of busy is not in it. */
-      response_ms: components["schemas"]["LoadSpread"];
+      response_ms: components["schemas"]["LoadTimes"];
     };
     /** A new location: in a site, or within a location of one. */
     LocationCreate: {
@@ -12540,7 +12572,7 @@ export interface components {
       because: ("response_ms" | "cpu_percent")[];
       /** The seconds to wait, as `Retry-After` says. */
       retry_after: number;
-      /** `busy`: what costs most and can wait is not taken. `very_busy`: no read of the API is. */
+      /** `busy`: what is long by nature, a report, an export or a preview, is not taken. `very_busy`: no read of the API is. */
       state: "busy" | "very_busy";
     };
     /** The deletion of a record that a request named, read from the audit trail (P-236). */

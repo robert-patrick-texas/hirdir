@@ -54,8 +54,8 @@ class ProblemBusy(Model):
     """Why a server past its ceiling did not take a request (P-265)."""
 
     state: Literal["busy", "very_busy"] = Field(
-        description="`busy`: what costs most and can wait is not taken. `very_busy`: no "
-        "read of the API is."
+        description="`busy`: what is long by nature, a report, an export or a preview, "
+        "is not taken. `very_busy`: no read of the API is."
     )
     because: list[Literal["response_ms", "cpu_percent"]] = Field(
         description="The measures that are past the ceiling: how long requests take, the "
@@ -350,11 +350,12 @@ class LoadMeasures(Model):
     """The two measures as the ceiling reads them now, over the last `over_seconds`."""
 
     response_ms: float | None = Field(
-        description="How long requests take: the median, in milliseconds, of the time "
-        "taken by the requests of the API that came in that time, whatever each took, "
-        "and of the time waited so far by those in flight, however long ago they came. "
-        "A request's time begins when the server has the whole of it, its body with it. "
-        "Null with fewer than five."
+        description="How long requests take: the 95th percentile, in milliseconds, of "
+        "the time taken by the reads and the changes of the API that came in that time, "
+        "whatever each took, and of the time waited so far by those in flight, however "
+        "long ago they came. Reports, exports and previews are not in it. A request's "
+        "time begins when the server has the whole of it, its body with it. Null with "
+        "fewer than twenty."
     )
     cpu_percent: float = Field(
         description="The processor time the process used, every thread of it, as a "
@@ -371,6 +372,31 @@ class LoadSpread(Model):
     high: float | None
 
 
+class LoadTimes(LoadSpread):
+    """The times of the answers of the window, in milliseconds. `low`, `average` and
+    `high` are of every answer but an answer of busy. The percentiles are of the
+    requests of the measure, the reads and the changes of the API: each is one of their
+    times, the shortest that so many in a hundred of them are no longer than."""
+
+    p50: float | None = Field(description="Half of them took no longer. Null with none.")
+    p95: float | None = Field(description="95 in a hundred took no longer. Null with none.")
+    p99: float | None = Field(description="99 in a hundred took no longer. Null with none.")
+
+
+class LoadBands(Model):
+    """The requests of the measure answered in the window, by how long each took."""
+
+    bounds_ms: list[float] = Field(
+        description="The three bounds of the four bands, in milliseconds: a third of "
+        "`busy_response_ms`, two thirds of it, and the ceiling. `[1000, 2000, 3000]` "
+        "unless set, and those of 3000 where the setting is 0."
+    )
+    counts: list[int] = Field(
+        description="Four counts: under the first bound, from it to under the second, "
+        "from the second to the third, and past the third."
+    )
+
+
 class LoadTotals(Model):
     """What was answered in the window, and how."""
 
@@ -382,11 +408,12 @@ class LoadTotals(Model):
         "them, and an answer that was not sent to its last byte."
     )
     busy: int = Field(description="Answered 503 as busy, by a server past its ceiling.")
-    response_ms: LoadSpread = Field(
+    response_ms: LoadTimes = Field(
         description="The time of an answer, in milliseconds, from when the server had "
         "the whole request, its body with it, to the last byte of its answer. An answer "
         "of busy is not in it."
     )
+    bands: LoadBands
     cpu_percent: LoadSpread = Field(
         description="The processor time the process used, as a percentage of one "
         "processor: the lowest, the average and the highest of the steps that are whole. "
@@ -437,6 +464,14 @@ class LoadPoints(Model):
     high_ms: list[float | None] = Field(
         description="The longest time of an answer. Null where nothing was answered."
     )
+    p50_ms: list[float | None] = Field(
+        description="The time that half of the requests of the measure answered in the "
+        "step took no longer than. Null where none was."
+    )
+    p95_ms: list[float | None] = Field(
+        description="The time that 95 in a hundred of the requests of the measure "
+        "answered in the step took no longer than. Null where none was."
+    )
     cpu_percent: list[float | None] = Field(
         description="The processor time used, as a percentage of one processor, which "
         "may pass 100. Null in the step under way until a second of it has passed."
@@ -448,11 +483,19 @@ class Load(Model):
     """The server's own measures of its last ten minutes, kept in memory (P-265, P-266)."""
 
     state: Literal["ok", "busy", "very_busy"] = Field(
-        description="`busy`: past the ceiling, and what costs most and can wait is "
-        "answered 503. `very_busy`: still so `over_seconds` later, and every read is."
+        description="`busy`: past the ceiling, and what is long by nature, a report, "
+        "an export or a preview, is answered 503. `very_busy`: still so `over_seconds` "
+        "later, by what came since, and every read is."
     )
     because: list[Literal["response_ms", "cpu_percent"]] = Field(
         description="The measures that are past the ceiling. Empty while `state` is `ok`."
+    )
+    health: Literal["good", "slow", "very_slow", "busy"] = Field(
+        description="The health of the server in a word, which every answer of the API "
+        "carries in `X-Hirdir-Health`. It stands on `measures.response_ms` against the "
+        "thirds of its ceiling, `totals.bands.bounds_ms`: `good` under the first or "
+        "with no measure, `slow` under the second, `very_slow` up to the third, `busy` "
+        "past it. And `busy` whenever `state` is not `ok`, by either measure."
     )
     ceiling: LoadCeiling
     measures: LoadMeasures

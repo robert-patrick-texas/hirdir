@@ -137,6 +137,7 @@ def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
     return schemas.Load(
         state=reading.state,
         because=list(reading.because),
+        health=reading.health,
         ceiling=schemas.LoadCeiling.model_validate(picture.ceiling),
         measures=schemas.LoadMeasures(
             response_ms=_tenth(reading.response_ms), cpu_percent=round(reading.cpu_percent, 1)
@@ -151,7 +152,18 @@ def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
             not_accepted=picture.not_accepted,
             failed=picture.failed,
             busy=picture.busy,
-            response_ms=_spread(picture.response_ms),
+            response_ms=schemas.LoadTimes(
+                low=_tenth(picture.response_ms.low),
+                average=_tenth(picture.response_ms.average),
+                high=_tenth(picture.response_ms.high),
+                p50=_tenth(picture.percentiles.p50),
+                p95=_tenth(picture.percentiles.p95),
+                p99=_tenth(picture.percentiles.p99),
+            ),
+            bands=schemas.LoadBands(
+                bounds_ms=[round(bound, 1) for bound in picture.bounds_ms],
+                counts=list(picture.bands),
+            ),
             cpu_percent=_spread(picture.cpu_percent),
         ),
         in_flight=schemas.LoadInFlight(
@@ -165,6 +177,8 @@ def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
             requests=points.requests,
             average_ms=[_tenth(value) for value in points.average_ms],
             high_ms=[_tenth(value) for value in points.high_ms],
+            p50_ms=[_tenth(value) for value in points.p50_ms],
+            p95_ms=[_tenth(value) for value in points.p95_ms],
             cpu_percent=[_tenth(value) for value in points.cpu_percent],
             busy=points.busy,
         ),

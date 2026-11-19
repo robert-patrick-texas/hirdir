@@ -80,6 +80,9 @@ NO_SCRIPT = "<noscript>hirdir needs JavaScript to run.</noscript>"
 BOOT_NAME = '<p class="boot-name">hirdir</p>'
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
+# The header of every answer of the API that says the health of the server in a word,
+# for the mark in the menu bar (P-265).
+HEALTH = "X-Hirdir-Health"
 log = logging.getLogger("hirdir")
 KEEP_FOR_GOOD = "public, max-age=31536000, immutable"
 SMALLEST_COMPRESSED = 1024
@@ -124,6 +127,8 @@ class Gateway:
     that was not sent to its last byte, cut short, never begun or given up, is counted
     as failed. And it is where a server past its ceiling answers that it is busy, at
     once, on the event loop: before the request waits for a thread or for the database.
+    Every answer of the API says the health of the server, in `X-Hirdir-Health`, as the
+    meter had it in memory when the request arrived.
     """
 
     def __init__(
@@ -157,9 +162,22 @@ class Gateway:
         # The meter of the application as it is bound now: its state is that of one
         # installation, and a test binds one application to many.
         meter: load.Meter = scope["app"].state.load
+        now, cpu = measures.clock()
         refused: Response | None = None
+        # What is not of the API, the page and its files, stands apart: in no measure,
+        # never refused, and with no word of the server's health.
+        kind: load.Kind = load.APART
+        health: load.Health | None = None
         if is_api:
-            refused = self._busy(scope, meter, root)
+            # What the measures say, from memory: read again once a second at the most.
+            reading = meter.reading(now, cpu)
+            health = reading.health
+            if self.kinds is not None:
+                kind = self.kinds.of(scope["method"], scope["path"].removeprefix(root))
+            if load.refuses(reading.state, kind):
+                # An answer of busy is counted, and is in neither measure.
+                meter.turned_away(now, cpu)
+                refused = problems.server_busy(reading)
         declared = headers.get("content-length", "")
         # A request has a body where it says how long one is, or that one comes in pieces.
         has_body = "transfer-encoding" in headers or (declared.isdigit() and int(declared) > 0)
@@ -167,7 +185,7 @@ class Gateway:
         if refused is not None:
             flight = None
         else:
-            flight = meter.began(*measures.clock(), api=is_api, whole=not has_body)
+            flight = meter.began(now, cpu, measured=load.measured(kind), whole=not has_body)
             scope["state"]["in_flight"] = flight
             refused = self._too_large(scope, headers, root)
             if has_body and refused is None:
@@ -188,6 +206,8 @@ class Gateway:
                     out["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
                 out["X-Content-Type-Options"] = "nosniff"
                 out["Referrer-Policy"] = "no-referrer"
+                if health is not None:
+                    out[HEALTH] = health
                 if is_api:
                     out["Cache-Control"] = "no-store"
                 elif is_asset and message["status"] == 200:
@@ -254,22 +274,6 @@ class Gateway:
             return message
 
         return heard
-
-    def _busy(self, scope: Scope, meter: load.Meter, root: str) -> Response | None:
-        """Return the answer of a server that is past its ceiling to a request it does
-        not take, or None (P-265). The meter says whether the server is busy, from what
-        it holds in memory; only then is the request's route looked for, to learn
-        whether it is one that waits. An answer of busy is counted, and is in neither
-        measure."""
-        now, cpu = measures.clock()
-        reading = meter.reading(now, cpu)
-        if reading.state == load.OK or self.kinds is None:
-            return None
-        path = scope["path"][len(root) :] if scope["path"].startswith(root) else scope["path"]
-        if not load.refuses(reading.state, self.kinds.of(scope["method"], path)):
-            return None
-        meter.turned_away(now, cpu)
-        return problems.server_busy(reading)
 
     def _too_large(self, scope: Scope, headers: Headers, root: str) -> Response | None:
         """Return the answer to a body that says it is over the limit of its route, or
