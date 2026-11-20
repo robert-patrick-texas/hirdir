@@ -262,6 +262,29 @@ def tables(db: Session) -> list[Table]:
     return found
 
 
+def asked(db: Session, which: str, format_: str, whole_: bool, **narrowed: Any) -> Export:
+    """Return the export a request asks for: a list as it is narrowed, or, with `whole`,
+    the whole table in the form that loads back, as the file of every table holds it.
+
+    A whole table is one thing, the same for whoever asks: with it a filter, a sort,
+    columns, HIDs, the sources and the codes of places are refused, and not passed over.
+    """
+    if not whole_:
+        return plan(db, which, format_=format_, **narrowed)
+    names = {"filter_": "filter"}
+    beside = sorted(
+        names.get(name, name)
+        for name, value in narrowed.items()
+        if value and name not in ("own_values", "include_archived", "include_drafts")
+    )
+    if beside:
+        raise Invalid(
+            "a whole table is exported as it is",
+            {"whole": f"leave out {', '.join(beside)}: the whole table takes none of them"},
+        )
+    return whole(db, which, format_)
+
+
 def everything(db: Session, format_: str) -> list[Export]:
     """Return the export of every table, whole, in the order files are loaded."""
     if format_ not in files.FORMATS:

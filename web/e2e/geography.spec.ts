@@ -10,7 +10,8 @@
 //        changed: Room 102 keeps the building's, a room in another building shows the
 //        new one. A level that says "none here" stops the looking further up.
 //   S27  Site-2 is moved to another region: the paths, what is inherited and the counts
-//        follow, and the items are the records they were.
+//        follow, and the items are the records they were. 0.9.13: the file of the
+//        locations exported from the Geography page has the new paths (P-287).
 //
 // On the way: the location half of S18, a minor item that is where the item it is in is;
 // the Location and Site columns of the item grid; a location chosen by searching, in the
@@ -34,6 +35,7 @@
 // range kept for fiction. The scenarios build on one another and run in order: the later
 // ones use the places and the people the earlier ones made.
 
+import { readFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";
 import {
   assign,
@@ -678,7 +680,7 @@ test("S26: an override on the building holds when the contact on the region is c
 test("S27: the site is moved to another region, and the paths and the counts follow", async ({
   page,
   account,
-}) => {
+}, testInfo) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
   await signIn(page, account);
@@ -736,6 +738,26 @@ test("S27: the site is moved to another region, and the paths and the counts fol
   await openItem(page, second);
   expect(new URL(page.url()).pathname).toBe(itemPage);
   await expect(page.getByTestId("location")).toContainText(movedRoom);
+
+  // 0.9.13: the file of the locations, from the Geography page, says the new paths too,
+  // in the columns its import reads: the room by its site and the building it is in
+  // (P-287).
+  await geography(page);
+  const download = page.waitForEvent("download");
+  await page
+    .getByTestId("geography-export")
+    .getByRole("button", { name: "Export Locations as CSV" })
+    .click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^hirdir-locations-\d{8}T\d{6}[-+]\d{4}\.csv$/);
+  const saved = testInfo.outputPath(file.suggestedFilename());
+  await file.saveAs(saved);
+  const [header = "", ...lines] = (await readFile(saved, "utf8")).split("\n");
+  const columns = header.split(",");
+  expect(columns.slice(0, 4)).toEqual(["hid", "name", "site", "parent"]);
+  // No name, path or code of this file's places holds a comma or a quote.
+  const roomLine = lines.map((line) => line.split(",")).find((cells) => cells[1] === roomName);
+  expect(roomLine?.slice(1, 4)).toEqual([roomName, movedSite, path(movedSite, buildingName)]);
 
   await expectClean(page, seen);
 });

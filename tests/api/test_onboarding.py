@@ -8,9 +8,12 @@ from typing import Any, cast
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, event
+from sqlalchemy import Engine, event, update
+from sqlalchemy.orm import Session
 
+from hirdir.db.models import UserGroup
 from tests.api.inventory import API, Maker, errors
+from tests.conftest import ADMIN_CODE, VIEWER_CODE
 
 PERSON = {"name": "Example Person", "email": "example.person@example.net", "phone": "x1"}
 
@@ -321,6 +324,50 @@ def test_the_contacts_say_and_find_who_is_behind_an_operator(
     assert names(sort="-is_operator,name")[0] == "Example Both"
 
 
+def test_a_retired_contact_is_as_no_contact_for_the_gaps_and_still_answered(
+    client: TestClient, admin: dict, viewer: dict
+) -> None:
+    """A user whose contact is retired is in both gaps and in neither `some`, as nobody is
+    behind its operator; it still answers what is left over (P-280)."""
+    desk = Maker(client, admin)
+    made = desk.post("/users", {"username": "ex-left", "contact": PERSON, "operator": {}})
+    desk.post("/users", {"username": "ex-ops", "contact": {"name": "Example Ops"}, "operator": {}})
+    desk.post("/users", {"username": "ex-bot", "is_service_account": True})
+    contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
+    desk.post(
+        f"/contacts/{contact['hid']}/retire", {"row_version": contact["row_version"]}, expect=200
+    )
+
+    assert "ex-left" in _usernames(desk, contact="none")
+    assert "ex-left" not in _usernames(desk, contact="some")
+    assert "ex-left" in _usernames(desk, operator="none")
+    assert "ex-left" not in _usernames(desk, operator="some")
+    assert _usernames(desk, operator="some") == ["ex-ops"]
+    # Every user is in one of `some` and `none`, or is a service account.
+    everyone = sorted(_usernames(desk))
+    for which in ("contact", "operator"):
+        split = _usernames(desk, **{which: "some"}) + _usernames(desk, **{which: "none"})
+        assert sorted([*split, "ex-bot"]) == everyone, which
+
+    # What is left over is still answered, for the page to show it.
+    user = desk.get(f"/users/{made['user']['hid']}")
+    assert user["contact"]["record_status"] == "retired"
+    assert [one["hid"] for one in user["operators"]] == [made["operator"]["hid"]]
+    # The three lists agree: nobody is behind the operator, and the contact is none.
+    reader = Maker(client, viewer)
+    assert reader.get(f"/operators/{made['operator']['hid']}")["scope"] is None
+    seen = reader.get(f"/contacts/{contact['hid']}")
+    assert (seen["is_operator"], len(seen["operators"])) == (False, 1)
+
+    # A list shows a retired record with include_archived, and the filter says the same.
+    def names(**params: Any) -> list[str]:
+        return [one["name"] for one in reader.get("/contacts", **params)["items"]]
+
+    assert names(filter="record_status:eq:retired", include_archived="true") == ["Example Person"]
+    assert names(filter="is_operator:eq:true", include_archived="true") == ["Example Ops"]
+    assert names(filter="is_operator:eq:false", include_archived="true") == ["Example Person"]
+
+
 def _engine(client: TestClient) -> Engine:
     return cast(FastAPI, client.app).state.engine
 
@@ -349,6 +396,54 @@ def test_the_operators_of_a_page_are_read_in_one_statement(client: TestClient, a
         assert read("/contacts", 3) == read("/contacts", 9) == 2
     finally:
         event.remove(_engine(client), "before_cursor_execute", note)
+
+
+def test_a_page_of_users_or_of_groups_costs_the_same_statements_whatever_its_size(
+    client: TestClient, admin: dict
+) -> None:
+    """The role, the groups, the contact and the operators of the users of a page, and the
+    roles and the size of each group, are each read once for the page, never for a row."""
+    desk = Maker(client, admin)
+    groups = _groups(desk, *(f"Example Group {number}" for number in range(8)))
+    for number, group in enumerate(groups):
+        made = desk.post(
+            "/users",
+            {"username": f"ex-{number}", "contact": {"name": f"N{number}"}, "operator": {}},
+        )["user"]
+        desk.post("/role-grants", {"role": "viewer", "group_hid": group["hid"]})
+        assert (
+            client.put(
+                f"{API}/user-groups/{group['hid']}/members/{made['hid']}", headers=admin
+            ).status_code
+            == 204
+        )
+    statements: list[str] = []
+
+    def note(_connection: object, _cursor: object, statement: str, *_more: object) -> None:
+        statements.append(statement)
+
+    def cost(path: str, **params: Any) -> int:
+        statements.clear()
+        desk.get(path, **params)
+        return len(statements)
+
+    event.listen(_engine(client), "before_cursor_execute", note)
+    try:
+        assert cost("/users", limit=2) == cost("/users", limit=11)
+        assert cost("/users", limit=11, sort="role,groups,operators") == cost(
+            "/users", limit=2, sort="role,groups,operators"
+        )
+        few = cost("/user-groups")
+        _groups(desk, *(f"Example Other {number}" for number in range(6)))
+        assert cost("/user-groups") == few
+    finally:
+        event.remove(_engine(client), "before_cursor_execute", note)
+    found = {one["username"]: one for one in desk.get("/users")["items"]}
+    assert (found["ex-3"]["role"], [g["name"] for g in found["ex-3"]["groups"]]) == (
+        "viewer",
+        ["Example Group 3"],
+    )
+    assert found["ada"]["role"] == "admin"
 
 
 def test_the_gaps_are_found_by_the_index_of_the_operators_contact(
@@ -434,6 +529,29 @@ def test_a_users_notes_are_set_changed_and_cleared_and_each_change_is_audited(
     assert by_notes == ["ex-b", "ex-a"]
 
 
+def test_the_notes_of_an_account_are_answered_to_an_admin_alone(
+    client: TestClient, admin: dict
+) -> None:
+    """A person never reads what an Admin wrote of their account: not from /auth/me, and
+    not from signing in; an Admin reads them by the routes of users alone (P-281)."""
+    desk = Maker(client, admin)
+    found = {one["username"]: one for one in desk.get("/users")["items"]}
+    for name in ("vic", "ada"):
+        desk.patch(
+            f"/users/{found[name]['hid']}",
+            {"row_version": found[name]["row_version"], "notes": f"Of {name}: ends in June."},
+        )
+    for name, code in (("vic", VIEWER_CODE), ("ada", ADMIN_CODE)):
+        signed = client.post(f"{API}/auth/sign-in", json={"username": name, "access_code": code})
+        assert signed.status_code == 200, signed.text
+        assert signed.json()["user"]["notes"] is None
+        token = {"Authorization": f"Bearer {signed.json()['token']}"}
+        assert client.get(f"{API}/auth/me", headers=token).json()["notes"] is None
+        assert desk.get(f"/users/{found[name]['hid']}")["notes"] == f"Of {name}: ends in June."
+    listed = {one["username"]: one["notes"] for one in desk.get("/users")["items"]}
+    assert listed["vic"] == "Of vic: ends in June."
+
+
 # --- roles -------------------------------------------------------------------------------
 
 
@@ -448,3 +566,41 @@ def test_only_an_admin_makes_a_user_and_every_role_reads_the_operators_of_contac
     for headers in (admin, inventory, viewer):
         seen = Maker(client, headers).get(f"/contacts/{made['user']['contact_hid']}")
         assert seen["operators"][0]["hid"] == made["operator"]["hid"]
+
+
+# --- the name of a user group --------------------------------------------------------------
+
+
+def test_a_user_groups_name_holds_no_semicolon_which_separates_groups_in_a_file(
+    client: TestClient, admin: dict, db: Session
+) -> None:
+    desk = Maker(client, admin)
+    refused = client.post(f"{API}/user-groups", json={"name": "Example; East"}, headers=admin)
+    assert refused.status_code == 422
+    assert "semicolon" in errors(refused.json())["name"]
+    group = desk.post("/user-groups", {"name": "Example East"})
+    renamed = client.patch(
+        f"{API}/user-groups/{group['hid']}",
+        json={"row_version": group["row_version"], "name": "Example; East"},
+        headers=admin,
+    )
+    assert renamed.status_code == 422
+    assert "semicolon" in errors(renamed.json())["name"]
+
+    # One that holds one already, from before, keeps its name until it is renamed.
+    db.execute(
+        update(UserGroup)
+        .where(UserGroup.hid == group["hid"])
+        .values(name="Example; Old", name_key="example; old")
+    )
+    db.commit()
+    kept = desk.get(f"/user-groups/{group['hid']}")
+    kept = desk.patch(
+        f"/user-groups/{group['hid']}",
+        {"row_version": kept["row_version"], "name": "Example; Old", "description": "Kept."},
+    )
+    assert (kept["name"], kept["description"]) == ("Example; Old", "Kept.")
+    again = desk.patch(
+        f"/user-groups/{group['hid']}", {"row_version": kept["row_version"], "name": "Example Old"}
+    )
+    assert again["name"] == "Example Old"

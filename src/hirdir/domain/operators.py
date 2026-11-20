@@ -12,7 +12,7 @@ together.
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import ColumnElement, case, func, literal, select
+from sqlalchemy import ColumnElement, case, func, literal, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
@@ -65,9 +65,21 @@ def the_one(db: Session, text: str, field: str) -> Operator:
     return found
 
 
+def behind(contact: Contact | None) -> bool:
+    """Say whether somebody stands behind a label with this contact: one that is not
+    retired. A retired contact is as no contact, on each of the three lists (P-280)."""
+    return contact is not None and contact.record_status != "retired"
+
+
 def is_open(operator: Operator, contact: Contact | None) -> bool:
     """Say whether nobody is behind a label: it has no contact, or one that is retired."""
-    return contact is None or contact.record_status == "retired"
+    return not behind(contact)
+
+
+def nobody_behind(contact: Any) -> ColumnElement[bool]:
+    """Say, for the database, what `behind` says is not so: that the contact a column of
+    `contact` is, joined as an outer join, is none, or is retired (P-172, P-280)."""
+    return or_(contact.hid.is_(None), contact.record_status == "retired")
 
 
 def scope(contact: Contact | None, users: Mapping[str, User]) -> Scope | None:

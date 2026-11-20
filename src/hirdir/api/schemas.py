@@ -146,7 +146,9 @@ class UserOut(Model):
         "the order of their labels; none for a user with no contact (P-280)."
     )
     notes: str | None = Field(
-        description="What the account is for, who asked for it, when it is to end (P-281)."
+        description="What the account is for, who asked for it, when it is to end (P-281). "
+        "For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that "
+        "change a user, and null from `GET /auth/me` and signing in, for anybody."
     )
     is_service_account: bool
     disabled: bool

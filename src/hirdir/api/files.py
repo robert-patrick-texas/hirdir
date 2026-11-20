@@ -3,14 +3,14 @@
 from itertools import chain
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
-from hirdir.api.idempotent import IdempotentRoute, limited_body
+from hirdir.api.idempotent import IdempotentRoute, limited_body, refused
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
@@ -19,7 +19,8 @@ from hirdir.io import background, exports, imports, made, tables, users_file
 imports_ = APIRouter(prefix="/imports", tags=["Files"], route_class=IdempotentRoute)
 exports_ = APIRouter(prefix="/exports", tags=["Files"])
 # The users' own file, beside the routes of the accounts (P-288).
-users_file_ = APIRouter(prefix="/users", tags=["Accounts"])
+# An account route, which takes no Idempotency-Key, as none of them does (`api/routes.py`).
+users_file_ = APIRouter(prefix="/users", tags=["Accounts"], dependencies=[Depends(refused)])
 ZIP = "application/zip"
 
 FILE_TYPES = {"text/csv": "csv", "application/json": "json"}
@@ -253,10 +254,11 @@ def list_import_created(
 )
 def export(body: r.ExportRequest, _: Viewer, request: Request, db: Db) -> StreamingResponse:
     """Export a list as CSV or JSON, with the filter and the sort that the list takes."""
-    wanted = exports.plan(
+    wanted = exports.asked(
         db,
         body.entity,
-        format_=body.format,
+        body.format,
+        body.whole,
         filter_=body.filter,
         sort=body.sort,
         columns=body.columns,

@@ -50,13 +50,18 @@ type FileRoutes = {
     ? P
     : never;
 }[keyof paths];
-/** The routes that answer a `POST` with a file. */
+/**
+ * The routes that answer a `POST` with a file: an export, or, since 0.9.13, the zip of
+ * every table (P-286).
+ */
 type DownloadRoutes = {
   [P in keyof paths]: paths[P] extends {
     post: { responses: { 200: { content: { "text/csv": unknown } } } };
   }
     ? P
-    : never;
+    : paths[P] extends { post: { responses: { 200: { content: { "application/zip": unknown } } } } }
+      ? P
+      : never;
 }[keyof paths];
 
 /**
@@ -585,7 +590,7 @@ export function createClient(deps: ClientDeps): Client {
     route: string,
     options: LooseOptions,
     method = "post",
-    accept = "text/csv, application/json",
+    accept = "text/csv, application/json, application/zip",
   ): Promise<Download> {
     const response = await exchange(method, route, options, accept);
     try {

@@ -1,5 +1,4 @@
-"""Scenarios S03 to S05 of docs/build-plan.md, and the onboarding of R12.8, which has no
-number of its own there yet, against a real server process.
+"""Scenarios S03 to S05 and S54 of docs/build-plan.md, against a real server process.
 
 S01 and S02 need the installed package and a browser: `make package-test` and
 `make e2e` run them.
@@ -65,10 +64,10 @@ def test_s05_the_sixth_wrong_code_is_delayed_and_every_failure_is_audited(server
     assert all("set-cookie" not in attempt.headers for attempt in attempts)
 
 
-def test_r12_8_a_person_is_onboarded_in_one_step_and_each_list_finds_the_gaps(
+def test_s54_a_person_is_onboarded_in_one_step_and_each_list_finds_the_gaps(
     server: Server,
 ) -> None:
-    """R12.8: the user, its contact and its operator, with its role and its groups, in one
+    """S54 (R12.8): the user, its contact and its operator, with its role and its groups, in one
     request; a refusal of any part makes nothing; the lists say who is which (P-280 to
     P-283). The command line still makes a user with its contact."""
     admin = server.sign_in(*ADMIN)

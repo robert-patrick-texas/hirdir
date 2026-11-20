@@ -28,7 +28,7 @@ and CLI's types are generated from it.
 | A busy server | A server refuses where there is load to shed, by how long its reads take: nothing while they are good or slow; what is long by nature, the reports, the exports and the previews, while they are very slow; and every other read of the API as well while they are past the ceiling, with twenty-one reads or more in the measure. What it refuses it answers `503` with the title `Busy`, `Retry-After` and the member `busy`, at once and with nothing of the request done. A change that is stored, a sign-in, the health routes and About are never so answered, and no read is refused because a change was slow. It is told from the `503` of a change that waited for another to be stored by `busy`, which only it has (P-265). See [The server's own measures](#the-servers-own-measures) |
 | Health | Every answer of the API carries `X-Hirdir-Health`, the health of the server in a word and what it refuses, as they are when the answer begins, the request's own time counted: `good`, `slow`, `very_slow` or `busy`, then `; refusing=` and `nothing`, `long` or `reads`, as in `busy; refusing=nothing`. An answer that was slow says so itself. The health is the 95th percentile of how long requests take against the thirds of `busy_response_ms`, under 1, 2 and 3 seconds unless set, for a mark that is green, yellow, orange or red. A request that is refused carries what it was refused by. The page's own files carry none. See [The server's own measures](#the-servers-own-measures) |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
+| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere; `POST /users/export`, whose file holds neither, is one of them and refuses it as they do |
 
 ### Routes
 
@@ -48,7 +48,7 @@ and CLI's types are generated from it.
 | Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity`, `POST /reports/capacity/try`, `GET` and `POST /capacity-records`, `GET`, `PATCH` and `DELETE /capacity-records/{hid}` |
 | Circuits | `/circuits`, `POST /circuits/query`, `POST /circuits/{hid}/retire`; `GET` and `POST /circuits/{hid}/carriers`, `PATCH` and `DELETE /circuits/{hid}/carriers/{link_hid}`; `GET` and `POST /circuits/{hid}/costs`, `PATCH` and `DELETE /circuits/{hid}/costs/{line_hid}`; `GET` and `POST /circuits/{hid}/devices`, `PATCH` and `DELETE /circuits/{hid}/devices/{link_hid}`; `GET` and `POST /circuits/{hid}/contacts`, `PATCH` and `DELETE /circuits/{hid}/contacts/{link_hid}`; `/circuit-groups`, `POST /circuit-groups/query`, `POST /circuit-groups/{hid}/retire`, `GET` and `POST /circuit-groups/{hid}/members`, `DELETE /circuit-groups/{hid}/members/{member_hid}` |
 | References | `GET` and `POST /reference-files`, `POST /reference-files/links`, `GET`, `PATCH` and `DELETE /reference-files/{hid}`, `GET` and `PUT /reference-files/{hid}/content`, `POST /reference-files/{hid}/attachments`, `DELETE /reference-files/{hid}/attachments/{attachment_hid}`; `GET /catalog-entries/{hid}/references`, `GET /regions/{hid}/references`, `GET /sites/{hid}/references`, `GET /locations/{hid}/references`, `GET /circuits/{hid}/references` and `GET /items/{hid}/references` |
-| Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
+| Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules`, `GET /colours` (P-285) |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports`, `GET /exports/tables`, `POST /exports/all`; `POST /users/export` (Admin) |
 | Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/circuit-costs`, `/reports/duplicates` |
@@ -191,17 +191,29 @@ takes `contact` and `operator`, each `any`, which is the same as leaving it out,
 or `none`: `contact=some` gives the users that are a contact and `contact=none` those
 that are none; `operator=some` those whose contact stands behind an operator that is
 not retired, and `operator=none` those behind none, a user with no contact among them.
-A service account is no person and is in neither `none`. Each of a page's lists is read
-in one query for the page. The users are sorted by `notes` and by `operators`, the
-first of their labels, as by their other columns. `GET /contacts` filters and sorts by
-`is_operator`, true where the contact stands behind an operator that is not retired, as
-it does by `is_user`; `GET /operators` finds those with nobody behind them by `scope`,
-as before.
+A contact that is retired is as no contact for these: its user is in `contact=none`,
+and, since nobody is behind the operators of a retired contact, as `GET /operators`
+says with `scope` null, in `operator=none`, and in neither `some`; the user still
+answers its `contact`, with `record_status` `retired`, and its `operators`, so that a
+page shows what is left over. The three lists follow the one rule of who is behind a
+label, in `hirdir.domain.operators`. A service account is no person and is in neither
+`none`, so that `any` is `some`, `none` and the service accounts. What a page of users
+shows of each, its contact, its role in force, its groups and its operators, is read
+once for the whole page and never for a row, and so are the size and the roles of each
+group of `GET /user-groups`: a page costs the same statements whatever its size. The
+users are sorted by `notes` and by `operators`, the first of their labels, as by their
+other columns. `GET /contacts` filters and sorts by `is_operator`, true where the
+contact is not retired and stands behind an operator that is not retired, as it does by
+`is_user`; `GET /operators` finds those with nobody behind them by `scope`, as before.
 
 A user has `notes` (P-281): free text, at most as long as the notes of a contact,
 10,000 characters, `null` unless given, and blank is none. `POST /users` and
 `PATCH /users/{hid}` take it, `null` or blank clearing it, and a change of it is
-audited as any change of a user is, with its old and new text.
+audited as any change of a user is, with its old and new text. The notes on an account
+are for an Admin: they are answered by `GET /users`, `GET /users/{hid}` and the routes
+that make and change a user, and never to the person themselves: `GET /auth/me` and
+the user in the answer of `POST /auth/sign-in` give `notes` as `null`, to anybody, an
+Admin too, in the one shape of a user, and `hirdir whoami` prints none.
 
 `POST /users` makes, in the one change, what a new person needs (P-282, P-283). It takes
 `group_hids`, the user groups the new user is put into, each membership audited as
@@ -1400,8 +1412,15 @@ the whole inventory out and when. The event is stored before the first piece of 
 file is sent. An export is no change of the inventory, and no kept answer is worked
 out again for one.
 
+`POST /exports` with `whole` gives one table as the zip holds it: the whole table in the
+form that loads back, its stored values, the retired and the drafts among them, the
+items with each before the minor items in it. A whole table is the same for whoever
+asks: a filter, a sort, columns, HIDs, `include_sources` and `place_codes` beside it are
+refused with a `422` on `whole`. The Import page and Geography ask for a table so, and
+hold no copy of what whole means.
+
 What is exported loads back. The file of any table, as `POST /exports` gives it with
-`own_values`, the archived and the drafts included, previewed as an import into the
+`whole`, previewed as an import into the
 inventory it came from, changes nothing: every row is `unchanged` and none is
 rejected, in both formats, for every table. A test holds it over all of them.
 
@@ -1411,10 +1430,14 @@ with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a 
 with no contact, `role`, the role in force, granted to the user or to a group it is in,
 blank where it has none, `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person` or `service`,
-`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC, and `notes`; several
+`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC in the form the API gives
+it, `2026-11-20T15:04:05.123456Z`, and `notes`; several
 groups or operators stand in one cell, separated by `;` as the other files separate
 several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
-are. It holds no access code, no token and no hash of either, and no column beyond
+are. So that a cell of groups is read as it was written, the name of a user group holds
+no semicolon, as a tag's label and an operator's do not: `POST /user-groups` and a
+rename by `PATCH /user-groups/{hid}` refuse one with a `422` on `name`, and a group
+that holds one from before 0.9.13 keeps its name until it is renamed. It holds no access code, no token and no hash of either, and no column beyond
 these twelve. It is audited: an event `export` of the record type `user`, with no
 record of its own, whose `changes` hold `file_name` and `users`, how many rows the
 file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
@@ -3142,13 +3165,24 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   show it, with an operator's dot or a tag's square. A blank value is no colour, as
   before. The colours are read once for every picker on the page; until they come, the
   text box takes a colour by itself. Admin › Tags shows each tag's colour on its chip.
-- **Import.** Above the upload, What can be loaded and exported lists every table of
-  `GET /exports/tables` in the order of loading, each with how many records it holds
-  and Export CSV and Export JSON, the whole table in the form that loads back. A table
-  that holds nothing says so, and that its CSV is the template of its import. Export
-  everything, as CSV or as JSON, saves the zip of `POST /exports/all`.
-- **Geography.** Export offers regions, sites and locations, each as CSV and as JSON,
-  the same files as on the Import page (P-287).
+- **Import.** Beside the upload, on its right, What can be loaded and exported lists
+  every table of `GET /exports/tables` in the order of loading, each with how many
+  records it holds and its export as CSV and as JSON, one press each, the whole table in
+  the form that loads back: `POST /exports` with `own_values`, `include_archived` and
+  `include_drafts`, the items by `depth` and then `name`, as `POST /exports/all` sorts
+  them. The list is no taller than the upload and scrolls in its own box, so that the
+  upload and a preview stand where they stood; where the page is too narrow for both,
+  the list comes under the upload. A table that holds nothing says None, and its CSV
+  button reads CSV template: the header row alone, the template of its import. Export
+  everything, as CSV or as JSON, saves the zip of `POST /exports/all`. The counts are
+  read when the page opens and again when an apply ends; until they come every button
+  works, the tables being those the page knows. What became of the last press is said
+  beside its buttons: the name of the file saved, or the refusal, as of a busy server,
+  after which the button is pressed again. A View-only person has the list and its
+  buttons and no upload.
+- **Geography.** Under the words at the top, Export offers regions, sites and locations,
+  each as CSV and as JSON, one press each, the same files as on the Import page whatever
+  the view counts (P-287).
 
 ### The grid
 

@@ -481,13 +481,16 @@ def is_user(contact_hid: Any) -> ColumnElement[bool]:
     return contact_hid.in_(select(User.contact_hid).where(User.contact_hid.is_not(None)))
 
 
-def is_operator(contact_hid: Any) -> ColumnElement[bool]:
-    """Say whether the contact a column names stands behind an operator that is not
-    retired (P-280)."""
-    return contact_hid.in_(
-        select(Operator.contact_hid).where(
-            Operator.contact_hid.is_not(None), Operator.record_status != "retired"
-        )
+def is_operator(contact: Any) -> ColumnElement[bool]:
+    """Say whether a contact stands behind an operator that is not retired: a contact that
+    is retired stands behind none, as nobody is behind its labels (P-280)."""
+    return and_(
+        ~operators.nobody_behind(contact),
+        contact.hid.in_(
+            select(Operator.contact_hid).where(
+                Operator.contact_hid.is_not(None), Operator.record_status != "retired"
+            )
+        ),
     )
 
 
@@ -496,7 +499,7 @@ def operator_scope(contact: Any) -> ColumnElement[Any]:
     it is not, and nothing where nobody is behind it: no contact, or one that is retired,
     as an open label has (P-172)."""
     return case(
-        (or_(contact.hid.is_(None), contact.record_status == "retired"), None),
+        (operators.nobody_behind(contact), None),
         (is_user(contact.hid), operators.INTERNAL),
         else_=operators.EXTERNAL,
     )
@@ -1740,7 +1743,7 @@ CONTACTS = Listing(
         # The contact is a user's (P-172).
         "is_user": Field("boolean", is_user(Contact.hid)),
         # The contact stands behind an operator that is not retired (P-280).
-        "is_operator": Field("boolean", is_operator(Contact.hid)),
+        "is_operator": Field("boolean", is_operator(Contact)),
         "tags": _tags("contact", Contact),
         # How many places, owners and operators name it, as its record counts them.
         "uses": Field("integer", ordered_by=_counted(Contact, *contacts.USED_BY)),
@@ -1762,10 +1765,7 @@ OPERATORS = Listing(
         "contact.phone": Field("text", _OPERATOR_CONTACT.phone),
         "contact.phone2": Field("text", _OPERATOR_CONTACT.phone2),
         "scope": Field("choice", operator_scope(_OPERATOR_CONTACT)),
-        "is_open": Field(
-            "boolean",
-            or_(_OPERATOR_CONTACT.hid.is_(None), _OPERATOR_CONTACT.record_status == "retired"),
-        ),
+        "is_open": Field("boolean", operators.nobody_behind(_OPERATOR_CONTACT)),
         "record_status": Field("choice", Operator.record_status),
         # How many items, groups and places are given it, as its record counts them.
         "uses": Field(

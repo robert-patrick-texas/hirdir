@@ -8412,7 +8412,7 @@
             "type": "string"
           },
           "is_operator": {
-            "description": "The contact stands behind an operator that is not retired (P-280).",
+            "description": "The contact, not retired, stands behind an operator that is not retired: nobody is behind the operators of a retired contact (P-280).",
             "title": "Is Operator",
             "type": "boolean"
           },
@@ -13716,6 +13716,12 @@
             "maxItems": 50,
             "title": "Sort",
             "type": "array"
+          },
+          "whole": {
+            "default": false,
+            "description": "The whole table in the form that loads back, as the file of every table holds it: the stored values, the retired and the drafts among them, in the order its file is loaded in. A filter, a sort, columns, HIDs, the sources and the codes of places are refused beside it (P-286).",
+            "title": "Whole",
+            "type": "boolean"
           }
         },
         "required": [
@@ -31777,7 +31783,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the account is for, who asked for it, when it is to end (P-281).",
+            "description": "What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody.",
             "title": "Notes"
           },
           "operators": {
@@ -33603,7 +33609,7 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Return the signed-in user, with the role they hold right now.",
+        "description": "Return the signed-in user, with the role they hold right now. Its `notes` are\nnull: the notes on an account are answered by the routes of users alone (P-281).",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
@@ -49182,13 +49188,13 @@
             }
           },
           {
-            "description": "`some`, the users that are a contact; `none`, the people that are none. A service account is in neither `none` (P-280).",
+            "description": "`some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280).",
             "in": "query",
             "name": "contact",
             "required": false,
             "schema": {
               "default": "any",
-              "description": "`some`, the users that are a contact; `none`, the people that are none. A service account is in neither `none` (P-280).",
+              "description": "`some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280).",
               "enum": [
                 "any",
                 "some",
@@ -49199,13 +49205,13 @@
             }
           },
           {
-            "description": "`some`, the users whose contact stands behind an operator that is not retired; `none`, the people behind none (P-280).",
+            "description": "`some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280).",
             "in": "query",
             "name": "operator",
             "required": false,
             "schema": {
               "default": "any",
-              "description": "`some`, the users whose contact stands behind an operator that is not retired; `none`, the people behind none (P-280).",
+              "description": "`some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280).",
               "enum": [
                 "any",
                 "some",

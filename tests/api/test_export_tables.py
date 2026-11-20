@@ -149,7 +149,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
     )["user"]
     service = people.post("/users", {"username": "ex-service", "is_service_account": True})
     people.post(f"/users/{service['user']['hid']}/service-tokens", {"name": "monitoring"})
-    for name, role in (("Example Team; East", "inventory"), ("Example Readers", "viewer")):
+    for name, role in (("Example Team East", "inventory"), ("Example Readers", "viewer")):
         group = people.post("/user-groups", {"name": name})
         people.post("/role-grants", {"role": role, "group_hid": group["hid"]})
         response = client.put(
@@ -174,7 +174,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "phone": "'+1 555 0100",
         "phone2": "'@desk",
         "role": "inventory",
-        "groups": "Example Readers;Example Team; East",
+        "groups": "Example Readers;Example Team East",
         "operators": "EP;ex-ops",
         "kind": "person",
         "state": "disabled",
@@ -187,7 +187,10 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "kind": "service",
         "state": "enabled",
     }
-    assert rows["ada"]["last_sign_in_at"].endswith("+00:00")
+    # A time is written in the one form the API gives it, in UTC: ...Z.
+    ada = next(one for one in people.get("/users")["items"] if one["username"] == "ada")
+    assert rows["ada"]["last_sign_in_at"] == ada["last_sign_in_at"]
+    assert rows["ada"]["last_sign_in_at"].endswith("Z")
 
 
 def test_the_users_file_holds_no_access_code_token_or_hash_and_is_audited(
@@ -268,3 +271,47 @@ def test_an_export_leaves_the_kept_answers_good(
     make.vendor("Juniper")
     db.rollback()
     assert kept.stamp(db) != stamp
+
+
+def test_a_whole_table_is_asked_for_by_one_word_and_is_what_the_zip_holds(
+    client: TestClient, viewer: dict[str, str], make: Maker
+) -> None:
+    """`whole` is the server's rule of what loads back, so that no page copies it: the
+    items among them, which the zip writes with each before the minor items in it."""
+    chassis = make.item(name="ex-chassis-01")
+    make.item(name="a-card-of-it", parent_item_hid=chassis["hid"], position="slot 1")
+    retired = make.contact("Example Retired")
+    make.post(f"/contacts/{retired['hid']}/retire", {"row_version": retired["row_version"]}, 200)
+    zipped = client.post(f"{API}/exports/all", json={"format": "csv"}, headers=viewer)
+    archive = zipfile.ZipFile(io.BytesIO(zipped.content))
+    for entity in ("items", "contacts"):
+        alone = client.post(
+            f"{API}/exports", json={"entity": entity, "whole": True}, headers=viewer
+        )
+        assert alone.status_code == 200, alone.text
+        assert alone.text == archive.read(f"{entity}.csv").decode(), entity
+    names = [row["name"] for row in csv.DictReader(io.StringIO(alone.text))]
+    assert "Example Retired" in names
+    # Narrowed, it would be no whole table: refused, and not passed over.
+    for beside in (
+        {"filter": "name:eq:x"},
+        {"sort": ["name"]},
+        {"columns": ["name"]},
+        {"hids": [retired["hid"]]},
+        {"include_sources": True},
+        {"place_codes": True},
+    ):
+        refused = client.post(
+            f"{API}/exports", json={"entity": "contacts", "whole": True, **beside}, headers=viewer
+        )
+        assert refused.status_code == 422, beside
+        (error,) = refused.json()["errors"]
+        assert error["field"] == "whole", beside
+        assert next(iter(beside)) in error["message"], beside
+    # What says the same as whole does is taken with it.
+    same = client.post(
+        f"{API}/exports",
+        json={"entity": "contacts", "whole": True, "own_values": True, "include_archived": True},
+        headers=viewer,
+    )
+    assert same.text == alone.text

@@ -639,7 +639,10 @@ export interface paths {
     };
   };
   "/api/v1/auth/me": {
-    /** Return the signed-in user, with the role they hold right now. */
+    /**
+     * Return the signed-in user, with the role they hold right now. Its `notes` are
+     * null: the notes on an account are answered by the routes of users alone (P-281).
+     */
     get: {
       parameters: {
         query?: never;
@@ -8211,9 +8214,9 @@ export interface paths {
       parameters: {
         query?: {
           q?: string;
-          /** `some`, the users that are a contact; `none`, the people that are none. A service account is in neither `none` (P-280). */
+          /** `some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280). */
           contact?: "any" | "some" | "none";
-          /** `some`, the users whose contact stands behind an operator that is not retired; `none`, the people behind none (P-280). */
+          /** `some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280). */
           operator?: "any" | "some" | "none";
           /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
@@ -9980,7 +9983,7 @@ export interface components {
       created_at: string;
       email: string | null;
       hid: string;
-      /** The contact stands behind an operator that is not retired (P-280). */
+      /** The contact, not retired, stands behind an operator that is not retired: nobody is behind the operators of a retired contact (P-280). */
       is_operator: boolean;
       /** The contact is the person a user is. */
       is_user: boolean;
@@ -10830,6 +10833,8 @@ export interface components {
       /** Write each place the short way, by the codes of its site and its own: `S2 > R102`, with names where a place has no code (P-235). */
       place_codes?: boolean;
       sort?: string[];
+      /** The whole table in the form that loads back, as the file of every table holds it: the stored values, the retired and the drafts among them, in the order its file is loaded in. A filter, a sort, columns, HIDs, the sources and the codes of places are refused beside it (P-286). */
+      whole?: boolean;
     };
     /** One table that a file is taken for, as the Import page lists it (P-286). */
     ExportTable: {
@@ -13922,7 +13927,7 @@ export interface components {
       hid: string;
       is_service_account: boolean;
       last_sign_in_at: string | null;
-      /** What the account is for, who asked for it, when it is to end (P-281). */
+      /** What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody. */
       notes: string | null;
       /** The operators whose contact is the user's, retired ones among them, in the order of their labels; none for a user with no contact (P-280). */
       operators: components["schemas"]["OperatorBrief"][];

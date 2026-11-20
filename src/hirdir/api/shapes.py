@@ -626,7 +626,7 @@ def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
             uses=uses[contact.hid],
             is_user=contact.hid in users,
             user=_user_brief(users.get(contact.hid)),
-            is_operator=contacts.is_operator(behind[contact.hid]),
+            is_operator=contacts.is_operator(contact, behind[contact.hid]),
             operators=[shapes.OperatorBrief.model_validate(one) for one in behind[contact.hid]],
         )
         for contact in found
