@@ -143,12 +143,7 @@ export function TableExports({ turn }: { turn: number }) {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr
-                key={row.entity}
-                data-entity={row.entity}
-                data-count={row.count ?? undefined}
-                className={holdsNothing(row) ? "table-empty" : undefined}
-              >
+              <tr key={row.entity} data-entity={row.entity} data-count={row.count ?? undefined}>
                 <th scope="row">{row.label}</th>
                 <td className="number" data-testid="table-count">
                   {countWords(row.count)}
