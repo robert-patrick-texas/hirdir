@@ -152,6 +152,15 @@ nothing has changed for half a minute, which a setting says (P-276). Its migrati
 what the owner answered when it was published, and changes nothing that is held: while
 the form of a row is open, the row's buttons stand at its foot, beside the form, so
 that a setting with a long description opens with its Change button in view (P-278).
+0.9.13 follows it with what the owner asked for the daily work of an Admin and of an
+operator, to review, to load and to take out what is held with fewer clicks (P-280 to
+P-288): who is a user, a contact and an operator said on each list, with its gaps;
+notes on a user; a user's groups from its own page and when it is made; a new user made
+with its contact and its operator in one step; an operator made of a user in one press;
+a colour chosen from a grid and a slider; every table exported from the Import page,
+an empty one as its template and all at once, and what is exported loading back as
+nothing to change; Geography exported as its three tables; and the users as CSV. Its
+migration, `0016`, adds the notes of a user and changes no record.
 
 ## From 0.6.1 to 0.9.0
 
