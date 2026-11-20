@@ -3127,9 +3127,11 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   contact a link, as such a user is one of both gaps; where it is behind none that is
   not retired and has a contact that is not, Make an operator makes one in one press, with
   the username as its label and the next unused colour, read when it is pressed, and
-  leads to it (P-284). A label the server does not take, too long or
-  another operator's, opens the label and the colour in place, with the refusal at
-  the field, to be put right and made from there.
+  leads to it (P-284). Where the label would be no label, a contact's name over 40
+  characters or with a semicolon, there is no press that must fail: the label and the
+  colour are open at once, the fault said at the label in plain words and nothing sent
+  until it is put right. A label another operator has, refused by the server, opens
+  them too, with the refusal at the field. The colour on show there is the one sent.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
   stands behind, as links, in the column Operators, which filters and sorts by
   `is_operator`, a released one written `label (released)`; and plain words where there

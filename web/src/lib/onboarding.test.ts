@@ -10,6 +10,7 @@ import {
   followUsername,
   gapShown,
   groupGrants,
+  labelProblem,
   NEW_USER_FIELDS,
   type NewUserForm,
   newUserBody,
@@ -71,6 +72,16 @@ describe("Make an operator labels it by the person (P-284)", () => {
     );
     expect(operatorLabelOf({ name: "Example Person", user: null })).toBe("Example Person");
     expect(operatorLabelOf({ name: "Example Person" })).toBe("Example Person");
+  });
+
+  it("says what is wrong with a label in plain words, before anything is sent", () => {
+    expect(labelProblem("ex-ops")).toBeNull();
+    expect(labelProblem("x".repeat(40))).toBeNull();
+    expect(labelProblem("x".repeat(41))).toBe(
+      "A label is at most 40 characters, and this one has 41: choose a shorter one.",
+    );
+    expect(labelProblem(" ")).toMatch(/^A label is needed/);
+    expect(labelProblem("ex;ops")).toMatch(/no semicolon/);
   });
 
   it("opens its fields for a refusal of the label or the colour, not of the whole", () => {

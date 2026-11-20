@@ -649,20 +649,27 @@ test("P-284: an operator is made in one press, from a user's page and from a con
   await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "external");
   await page.unroute("**/api/v1/colours");
 
-  // A name that is no label: the label and the colour open in place, with the refusal.
+  // A name that is no label: no press that must fail, but the label and the colour open
+  // at once, the fault said in plain words, and nothing sent until it is put right.
   await page.goto(`./contacts/${encodeURIComponent(longContact.hid)}`);
-  await marks.getByRole("button", { name: "Make an operator" }).click();
+  await expect(marks.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
   const label = marks.getByLabel("Label (required)");
   await expect(label).toHaveAttribute("aria-invalid", "true");
   await expect(label).toHaveValue(long);
+  await expect(marks.locator(".field-error").first()).toContainText(
+    `A label is at most 40 characters, and this one has ${long.length}`,
+  );
   await expect(marks.getByRole("textbox", { name: "Colour" })).toHaveValue(/^#[0-9a-f]{6}$/);
+  await marks.getByRole("button", { name: "Make the operator" }).click();
+  await expect(label).toHaveValue(long);
   await label.fill(`${suffix}-long`);
+  await expect(label).not.toHaveAttribute("aria-invalid", "true");
   await marks.getByRole("button", { name: "Make the operator" }).click();
   await expect(page.getByTestId("operator-heading")).toContainText(`${suffix}-long`);
   await page.getByTestId("operator-person").getByRole("link", { name: long }).click();
   await expect(marks.getByRole("link", { name: `${suffix}-long` })).toBeVisible();
   await expect(marks.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
-  await expectClean(page, seen, ["422 POST"]);
+  await expectClean(page, seen);
 
   // The users the file made are disabled: none is left that can sign in.
   for (const hid of made.users) {

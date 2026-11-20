@@ -54,6 +54,24 @@ export function operatorLabelOf(person: {
   return person.user ? person.user.username : person.name;
 }
 
+/** The most characters an operator's label has, as the server holds it ("### People"). */
+export const MOST_IN_A_LABEL = 40;
+
+/**
+ * What is wrong with a label before it is sent, in plain words, or null: a label is not
+ * blank, is at most 40 characters and has no semicolon. A name that is no label, as a
+ * contact's long name, is said so at the field at once, and not sent to be refused.
+ */
+export function labelProblem(label: string): string | null {
+  const trimmed = label.trim();
+  if (trimmed === "") return "A label is needed: the username, initials, a code such as Op2.";
+  if (trimmed.length > MOST_IN_A_LABEL) {
+    return `A label is at most ${MOST_IN_A_LABEL} characters, and this one has ${trimmed.length}: choose a shorter one.`;
+  }
+  if (trimmed.includes(";")) return "A label has no semicolon: choose one without it.";
+  return null;
+}
+
 /**
  * Whether a refusal of a new operator is of its label or its colour, which the form of
  * Make an operator then opens with, rather than a refusal of the whole.
