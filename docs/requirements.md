@@ -406,9 +406,11 @@ as AI.
   staff lines added, changed or left out would give, beside the balance in force,
   saving nothing and auditing nothing (P-156).
 - **R14.13** The capacity balance and the other long reports MUST be worked out ahead,
-  each night and when the server starts, and given to every session alike while
-  nothing has changed them; an Admin MUST be able to check what is kept against
-  answers worked out anew, which says what differed (P-142, P-157).
+  each night, when the service starts and, by day, once nothing has changed for a
+  time that a setting says, by the process of the background work and not by the one
+  that answers people, and given to every session alike while nothing has changed
+  them; an Admin MUST be able to check what is kept against answers worked out anew,
+  which says what differed (P-142, P-157, P-275, P-276).
 
 ### R15 Circuits
 

@@ -327,25 +327,41 @@ upload, by its extension and by its first bytes.
   the coverage report, the renewal worklist, the summary of the renewal alert and the
   capacity report, each for the view its page opens with. `hirdir/schedule.py` holds
   them as a list of jobs, each a name, when it is due and what it does, and says which
-  process runs which. **The record of the week is the second process's**, `hirdir
-  admin work`: it is written to the database, which is where the server finds it.
-  **The long reports are the server's own**, whichever process does the rest: what is
-  worked out is kept in the memory of the process that answers (D-184), so worked out
-  in another process it would be kept where no request reads it, and the first person
-  of the day would wait for each report all the same, in the server and at the moment
-  somebody is waiting. They are due four minutes after the record, whose audit event
-  would otherwise leave them stale on a Monday. Each process has a scheduler for its
-  own jobs, started with it and stopped with it. When a process starts, its jobs that
-  run at start are run first, in the server before the first request is answered, and
-  then a thread of its own wakes once a minute and runs, each with a session of its
-  own and as one writer among the others, every job that has come due since it last
-  looked, by the clock of the `time_zone` setting. What a job writes is audited with
-  `via` of `system`. A job that fails is logged and tried again a minute later. A time
-  that passed while a process was stopped is not made up for, so a job that must not
-  miss one also runs at start and looks for what is missing: the second process
-  records the balance when it starts in a week that has no record. Where that happens,
-  the reports that the server worked out as it started are left stale by the record's
-  event, and are worked out again when they are first asked for, as after any change.
+  process runs which. **Both are the second process's**, `hirdir admin work`, and the
+  server does nothing by the clock (P-275). The record of the week is written to the
+  database, which is where the server finds it, and so, from 0.9.11, are the long
+  reports: a row to each in `kept_answers`, which the server reads when it is asked
+  for one and has it in its memory no more; see
+  [Answers that are kept](#answers-that-are-kept). Until then they were kept in the
+  memory of the process that answers alone (D-184), and so the server worked them out
+  itself, on the processor that answers people. They are due four minutes after the
+  record, whose audit event would otherwise leave them stale on a Monday, and run
+  after it at a start, by their place in the list. The second process has the
+  scheduler, started with it and stopped with it; a server that does both, `hirdir
+  admin serve --work`, has it too. When the process starts, the jobs that run at start
+  are run first, and then a thread of its own wakes once a minute and runs, each with
+  a session of its own and as one writer among the others, every job that has come due
+  since it last looked, by the clock of the `time_zone` setting. What a job writes of
+  the records is audited with `via` of `system`; a kept answer is no record, and
+  writing one is no event. A job that fails is logged and tried again a minute later.
+  A time that passed while the process was stopped is not made up for, so a job that
+  must not miss one also runs at start and looks for what is missing: the second
+  process records the balance when it starts in a week that has no record, and works
+  out the long reports that the database does not hold good.
+- **What is done after a change.** One thing is done neither by a request nor by the
+  clock (P-276): by day the second process works the long reports out again once a
+  change has left them stale and nothing has changed since for
+  `reports_ahead_after_seconds`, 30 unless set. Its worker asks at every look, each
+  second, when it has no import or bulk edit to apply: is a row of the four not good
+  for the present moment, and is the newest change of the inventory or its settings
+  that old? It reads the age from the audit event itself and remembers nothing between
+  two looks, so a restart, a change made by another process and the turn of the day
+  are all one case; the question is three small reads. The one thread applies and
+  works ahead, so nothing is worked out while an import is applied, each batch of
+  which is a change, and an apply that is asked for while the reports are being worked
+  out waits for them, some seconds on a large inventory. A failure is logged and tried
+  again a minute later, not at every look. With the setting at 0 only the job of the
+  clock works them out.
   The tests run a job for a moment they choose, through `run_due`, and do not wait
   for a Monday.
 - **Reference files.** The content of a file is kept beside the database and never in
@@ -414,25 +430,57 @@ upload, by its extension and by its first bytes.
 The coverage report, the renewal worklist, the summary of the renewal alert and, from
 0.8.0, the capacity report are worked out once and given again while nothing could
 have changed them, to every person and in every session alike (D-184, P-157). Each
-answer is kept in the memory of the server process with the database it is of, the
-newest audit event there is, the day in the application's time zone and the request
+answer is kept with the database it is of, the newest audit event of a change of the
+inventory or its settings, the day in the application's time zone and the request
 whole: filter, view, section, sort and page. Every change writes an audit event, a
 setting's among them, so a newer event, or the turn of the day, leaves a kept answer
-unused, and one that a change has made wrong is never given. At most 64 answers are
-kept, the least used dropped first, and a restart drops them all. What is kept is no
+unused, and one that a change has made wrong is never given. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
+
+They are kept in two places (P-275). **In the memory of the process that gave it**,
+every answer: at most 64, the least used dropped first, and a restart drops them all.
+**In the database**, the four that are worked out ahead, each for the view its page
+opens with: `kept_answers`, a row to each report, with the request, the newest event
+and the day it is good for, the version of `hirdir` that worked it out, when, and the
+answer as JSON. The version is there because an upgrade may change how a report is
+worked out and writes no event. A process that is asked for a report looks in its
+memory first; then, for one of the four, at the row, which it gives, and takes into
+its memory, where the row is of the same request, event, day and version; and
+otherwise works the answer out itself and keeps it in its memory alone. So a request
+that only reads never writes, and never waits for the one writer. The answer is read
+back from its row in the form the route gives it, or the balance is worked with, and
+a row that cannot be read so is logged and treated as if it were not there.
+
+The table is written by whoever works ahead, the second process of the service, or a
+server that does both, and by nothing else but the check. `hirdir.io.kept.work_ahead`
+works out those of the four that the database does not hold good; then it lets go what
+it has read, takes the writer's place, reads the newest event again, and writes each
+row whose answer was worked out with that very event. An answer that was worked out
+while something changed is of no moment for certain, so it is thrown away, and worked
+out again when the inventory has been quiet. A row is replaced, never added to: the
+table holds four rows at the most, and nothing is swept. Being in the database, a kept
+answer goes where its inventory goes: it is in a backup with the events it is good
+for, comes back with them at a restore, and is cleared by a reset.
+
 The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as D-184 first had it, was measured at three times as long on the fixture. All four are
-worked out just after midnight in the application's time zone, at five minutes past,
-and when the server starts, for the view each page opens with, so that the first
-person of the day is not kept waiting. The server works them out itself, where the
-second process does the rest of what is done by the clock (P-267): they are kept in
-the memory of the process that answers, and nowhere that another process could put
-them. Any other view is worked out when it is first asked for, and then kept. A
-Try of the capacity report is worked out each time and never kept. An Admin may check
-what is kept, `POST /kept-answers/check`: each kept answer is worked out anew and
-compared with what was kept, and the check says which report and which request had
-differed, which none should. It is audited and leaves the kept answers good, since it
-changes no record. `src/hirdir/io/kept.py` keeps them.
+worked out ahead by the second process: when it starts, just after midnight in the
+application's time zone, at five minutes past, and by day once nothing has changed
+for `reports_ahead_after_seconds` (P-276), so that neither the first person of the
+day nor the first after a change is kept waiting, and the processor that answers
+people is not the one that works them out. Somebody who asks before the second
+process has come to it, or while it does not run, is answered by the server, which
+works the report out as it does any other view; the second process may then work out
+the same once more, as it cannot see into the memory of the server. Any other view is
+worked out when it is first asked for, and then kept in memory. A Try of the capacity
+report is worked out each time and never kept. An Admin may list what is kept, `GET
+/kept-answers`, what the server has given and what the database holds that nobody has
+asked for yet, each with `ahead`, whether the database holds it; and may check it,
+`POST /kept-answers/check`: each kept answer is worked out anew and compared with what
+was kept, in memory and in its row, and the check says which report and which request
+had differed, which none should, and writes again a row that did. It is audited and
+leaves the kept answers good, since it changes no record. `src/hirdir/io/kept.py`
+keeps them, and a report is one of the four where its module says so there, with the
+form of its answer.
 
 ## The server's own measures
 

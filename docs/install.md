@@ -339,7 +339,7 @@ From 0.9.10 the service is two processes, each a unit of systemd, on the one dat
 | Unit | Runs | What it does |
 |---|---|---|
 | `hirdir.service` | `hirdir admin serve` | The server. It answers the web page, the API and the command line, on `127.0.0.1:8715`. |
-| `hirdir-worker.service` | `hirdir admin work` | The process of the background work. It applies the imports and bulk edits that were asked for, and records the capacity balance of the week each Monday just after midnight. It listens on nothing. |
+| `hirdir-worker.service` | `hirdir admin work` | The process of the background work. It applies the imports and bulk edits that were asked for, records the capacity balance of the week each Monday just after midnight, and works out the long reports ahead, at night and after a change, and keeps them in the database for the server to give. It listens on nothing. |
 
 What nobody waits for is so kept off the processor that answers people. Both run as
 the `hirdir` user, under the same limits, and write to `/var/lib/hirdir` and nowhere
@@ -381,7 +381,11 @@ nothing of it is applied; when the process starts it applies it, and the others 
 waited, in the order they were asked for. A job that was being applied when the
 process stopped is `stopped`, with the reason, and Apply on the job, or the same
 `POST`, resumes it from the first row it had not applied; nothing is applied twice. The record
-of a week that was missed is made when the process next starts. systemd starts the
+of a week that was missed is made when the process next starts. The long reports are
+not worked out ahead meanwhile: the first person to open the first page, the coverage
+report, the renewal worklist or the capacity report after a change, or on a new day,
+waits while the server works it out, some seconds on a large inventory, and everybody
+after that person has it at once, as before 0.9.11. systemd starts the
 process again by itself, three seconds after it fails.
 
 **One of each to a state directory.** While it runs, the server holds a lock on
@@ -1898,6 +1902,54 @@ sudo apt install --allow-downgrades ./hirdir_0.9.9_amd64.deb
 
 The second process is stopped and its unit removed with the package that brought it,
 and `/var/lib/hirdir/worker.lock` is left, an empty file that 0.9.9 does not look at.
+
+### From 0.9.10 to 0.9.11
+
+The schema goes from revision `0014` to `0015`. One table is added, `kept_answers`,
+which starts empty; nothing that is held is changed, and the upgrade writes no audit
+event. It takes its backup and stops and starts the service as every upgrade does.
+
+**The long reports are worked out by the second process.** The coverage report, the
+renewal worklist, the summary of the renewal alert and the capacity balance, each for
+the view its page opens with, were worked out ahead by the server, when it started and
+each night, and kept in its memory. From 0.9.11 `hirdir-worker.service` works them
+out, on a processor of its own, and keeps them in the new table, a row to each, where
+the server finds them:
+
+- when the second process starts, and each night at five minutes after midnight, as
+  the server did;
+- and by day, once nothing has changed for half a minute. After a change the reports
+  of the night are stale, and until now the next person to open the first page waited
+  while the server worked them out again. Now the second process does it, 30 seconds
+  after the last change of a run of them, and whoever comes after that has them at
+  once. Somebody who looks sooner is answered by the server as before.
+
+There is one new setting, under Admin, Settings: `reports_ahead_after_seconds`, 30
+unless set, a whole number from 0 to 3,600. A longer time suits a team that changes
+records all day and reads the reports seldom; 0 turns the work by day off, and leaves
+the start and the night.
+
+For whoever operates the host:
+
+- Nothing is to be done at the upgrade, and no answer of the API differs.
+- A restart of the server no longer works the reports out, so it answers its first
+  request sooner; what the table holds is still good after it.
+- With the second process down, nothing is worked out ahead: see
+  [The service](#the-service). About says whether it runs.
+- `journalctl -u hirdir-worker` has a line where working ahead failed, `the long
+  reports could not be worked out ahead; it is tried again in 60 seconds`. The server
+  answers all the same, working each report out when it is asked for.
+- The table is in every backup, four rows at the most, and comes back with a restore:
+  a row is given only for the very state of the inventory it was worked out of, so
+  nothing of a later day is given after going back to an earlier backup. `hirdir admin
+  reset` clears it.
+- Admin, Settings, Check kept reports lists what the database holds as well, marked
+  as worked out ahead, and checks it with the rest.
+
+Going back to 0.9.10 is by the backup the upgrade made, as
+[Going back to the release before](#going-back-to-the-release-before) says, since the
+schema changed. What the table held is lost with it and is nothing to keep: 0.9.10
+works the reports out itself when it starts.
 
 ### If the upgrade stops
 

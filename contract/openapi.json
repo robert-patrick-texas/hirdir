@@ -17531,6 +17531,11 @@
         "additionalProperties": false,
         "description": "A long report that is kept, and would be given as it is now.",
         "properties": {
+          "ahead": {
+            "description": "Whether the database holds it, worked out ahead for the view its page opens with (P-275). The others are in the memory of the server alone.",
+            "title": "Ahead",
+            "type": "boolean"
+          },
           "kept_at": {
             "format": "date-time",
             "title": "Kept At",
@@ -17545,6 +17550,7 @@
             "type": "string"
           },
           "uses": {
+            "description": "How many times the server has given it since it had it.",
             "title": "Uses",
             "type": "integer"
           }
@@ -17553,7 +17559,8 @@
           "report",
           "request",
           "kept_at",
-          "uses"
+          "uses",
+          "ahead"
         ],
         "title": "KeptAnswer",
         "type": "object"
@@ -42057,7 +42064,7 @@
     },
     "/api/v1/kept-answers": {
       "get": {
-        "description": "List the long reports that are kept and would be given now: the report, the\nrequest whole, when it was worked out, and how many times it has been given since.\nFor an Admin, since the kept answers are in the server's memory.",
+        "description": "List the long reports that are kept and would be given now: the report, the\nrequest whole, when it was worked out, how many times the server has given it\nsince, and whether the database holds it, worked out ahead (P-275). Those the\nserver has given come first, then what the database holds that nobody has asked\nfor yet.",
         "operationId": "kept_answers_api_v1_kept_answers_get",
         "responses": {
           "200": {
@@ -42083,7 +42090,7 @@
     },
     "/api/v1/kept-answers/check": {
       "post": {
-        "description": "Work out each kept answer anew, compare it with what was kept, and keep the new\none. `differed` names each that was not the same, which none should be: one that\nwas is a defect to report. Audited as `kept_answers_checked`; it changes no record\nand leaves the kept answers good (P-157).",
+        "description": "Work out each kept answer anew, compare it with what was kept, and keep the new\none: those the server has given, and those the database holds, worked out ahead.\n`differed` names each that was not the same, which none should be: one that was is\na defect to report. Audited as `kept_answers_checked`; it changes no record and\nleaves the kept answers good (P-157).",
         "operationId": "check_kept_answers_api_v1_kept_answers_check_post",
         "responses": {
           "200": {

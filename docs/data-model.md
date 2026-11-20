@@ -1740,6 +1740,7 @@ and is refused, not rounded, when it has more.
 | `busy_response_ms` | 3000 | how long requests may take before the server is busy, in milliseconds: the 95th percentile of the reads and the changes of the API that came over the last `busy_over_seconds`, with the wait of those still in flight, which of twenty or fewer is the slowest. Its thirds are the health of the server, the mark in the menu bar: good under a third, slow to two thirds, very slow to the whole and busy past it. What is refused is decided by the reads alone, where twenty-one or more of them came in that time: reports, exports and previews are answered `503` Busy where the reads are very slow, and every read where they are busy. A whole number from 0 to 600,000; at 0 nothing is refused for it, and the health is said by the thirds of 3000 (P-265) |
 | `busy_cpu_percent` | 95 | the processor time the server's process may use over the last `busy_over_seconds`, as a percentage of one processor, before the health of the server is very slow at the least, and reports, exports and previews are answered `503` Busy. The processor alone never makes it busy. The process passes 100 where several requests are in the database at once, so it is a whole number from 0 to 100 for each processor of the host; 0 is not looked at, and both at 0 is no ceiling |
 | `busy_over_seconds` | 30 | over how long the two measures of the ceiling are read, in seconds, and for how long after it last refused its reads the server refuses what is long. A whole number from 5 to 300 |
+| `reports_ahead_after_seconds` | 30 | how long after the newest change of the inventory or its settings the second process of the service works out again the long reports that the change left stale, in seconds: the coverage report, the renewal worklist, the renewal alert and the capacity balance, each for the view its page opens with. Somebody who asks sooner is answered by the server, which works the report out itself. A whole number from 0 to 3,600; 0, not by day, and they are worked out when the second process starts and at five minutes past midnight alone (P-276) |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
@@ -1851,6 +1852,27 @@ What a person last saw of the renewal alert (D-179): `user_hid`, unique, `seen_a
 the list of the HIDs of the contracts that were on that list then. A person is shown
 the alert again the next day, in the application's time zone, while any of its counts
 is more than none. Keeping it is a change of their own, audited on their user.
+
+### `kept_answers`
+
+The long reports worked out ahead (P-275), a row to each: `report`, which is the key,
+one of `coverage`, `renewals`, `renewal_alert` and `capacity`; `request`, the request
+whole that the answer is of, which is the view the report's page opens with;
+`newest_event_hid`, the newest audit event of a change of the inventory or its
+settings when it was worked out, null where there was none yet, and `day`, the day in
+the application's time zone, the two that it is good for (D-184); `version`, the
+version of `hirdir` that worked it out; `answer`, as JSON, in the form the route gives
+it or, for the capacity balance and the alert, the form they are worked with; and
+`kept_at`, when it was worked out. A row is given only for its request, event, day and
+version, by the server that reads it, and is otherwise passed over; the second process
+of the service writes it over when it works the report out again, so the table holds
+four rows at the most.
+
+It is no record and has no HID: it is referred to by nothing, it is worked out again
+from the records, and writing it is no audit event. It is no copy of an inherited
+value either: an answer that a change could have made wrong is never read. It is in a
+backup with the inventory it was worked out of, and a reset clears it. See "Answers
+that are kept" in [architecture.md](architecture.md#answers-that-are-kept).
 
 ### `idempotency_keys`
 

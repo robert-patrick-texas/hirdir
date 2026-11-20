@@ -107,6 +107,7 @@ out, these decide it:
 | `count_kinds` | the kinds of model whose major items are components, managed nodes and carry weight in the summary and the reports. Its default holds `hardware`, `virtual_machine`, `virtual_context` and `container` from 0.9.8 (P-246); an installation that has set it itself keeps what it set, and adds the two new kinds to count them |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 | `busy_response_ms`, `busy_cpu_percent`, `busy_over_seconds` | the health of the server and what it answers `503` Busy for it, and `ceiling` of `GET /about/load`: the thirds of `busy_response_ms` are the bounds of `health`, of `X-Hirdir-Health` and of `totals.bands`. Each holds from the moment it is saved, and no request reads the database to learn it. `busy_response_ms` or `busy_cpu_percent` at 0 refuses nothing, and both at 0 is no ceiling (P-265). See [The server's own measures](#the-servers-own-measures) |
+| `reports_ahead_after_seconds` | how long after the newest change of the inventory or its settings the second process works out again the long reports that the change left stale, each for the view its page opens with; until then, and where it is 0, the first to ask for one is answered by the server, which works it out itself. It changes no answer, only which process works it out and when (P-276). See [Kept answers](#kept-answers) |
 
 The fixed values are these. What was decided:
 
@@ -1727,9 +1728,10 @@ of the contracts on a list were not on it when the person last dismissed it.
 `POST /renewals/alert/seen` keeps, for the person who sends it, that they have seen it
 that day, with the contracts on each list then; `version` may be sent and is not
 required. It is an audit event on their own user, `alert_seen`; any role may send it,
-and it changes no contract. The answer is worked out just after midnight in the
-application's time zone and when the server starts, and kept as the reports are, so
-that the first sign-in of the day is not kept waiting.
+and it changes no contract. The answer is worked out ahead as the long reports are,
+by the second process of the service, just after midnight in the application's time
+zone, when that process starts and once nothing has changed for a while (P-275,
+P-276), and kept as they are, so that the first sign-in of the day is not kept waiting.
 
 **An agreement renewed with its members.** `POST /agreements/{hid}/renew` takes,
 beside what a contract's renewal takes, `members`: for each contract that shares the
@@ -2027,12 +2029,36 @@ takes has none (P-151).
 ## Kept answers
 
 The coverage report, the renewal worklist, the summary of the renewal alert and the
-capacity report are kept as D-184 has it, and each is worked out just after midnight in
-the application's time zone and when the server starts, for the view its page opens
-with. `GET /kept-answers`, for an Admin, lists what is kept: `report`, `request`, the
-request whole, `kept_at`, when it was worked out, and `uses`, how many times it has been
-given since. `POST /kept-answers/check`, for an Admin, works out each kept answer anew,
-compares it with what was kept, and keeps the new one:
+capacity report are kept as D-184 has it, and each is worked out ahead for the view its
+page opens with, by the second process of the service and not by the server (P-275):
+when that process starts, just after midnight in the application's time zone, and by
+day once nothing has changed for `reports_ahead_after_seconds`, 30 unless set (P-276).
+What it works out it keeps in the database, where the server finds it; every other
+view, and one of these that is asked for before the second process has come to it, the
+server works out itself and keeps in its own memory. No answer differs for it: what a
+route answers is the same whoever worked it out, and no route waits for the second
+process.
+
+`GET /kept-answers`, for an Admin, lists what is kept and would be given now: `report`,
+`request`, the request whole, `kept_at`, when it was worked out, `uses`, how many times
+the server has given it since it had it, and `ahead`, whether the database holds it,
+worked out ahead. Those the server has given come first, the most recently given last,
+and then what the database holds that nobody has asked for yet, with `uses` of 0:
+
+```json
+[
+  { "report": "coverage", "request": "[\"\", false, 90, null, null, 100, 0]",
+    "kept_at": "2027-03-02T05:05:02Z", "uses": 12, "ahead": true },
+  { "report": "coverage", "request": "[\"\", false, 30, null, null, 100, 0]",
+    "kept_at": "2027-03-02T14:01:44Z", "uses": 1, "ahead": false },
+  { "report": "capacity", "request": "[]",
+    "kept_at": "2027-03-02T05:05:04Z", "uses": 0, "ahead": true }
+]
+```
+
+`POST /kept-answers/check`, for an Admin, works out each of them anew, those the
+database holds among them, compares it with what was kept, in the server's memory and
+in its row, keeps the new one, and writes again a row that was not the same:
 
 ```json
 { "checked_at": "2027-03-02T14:05:09Z", "checked": 7, "differed": [] }
