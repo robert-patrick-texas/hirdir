@@ -249,7 +249,7 @@ test("the Import page lists every table in the order of loading, and exports one
   await expectClean(page, seen);
 });
 
-test("a table that holds nothing is exported as its template, filled in, and loaded back as one record", async ({
+test("a table is exported as the list counts it, the header row alone where it counts none, and its header row filled in loads back as one record", async ({
   page,
   account,
 }, testInfo) => {
@@ -258,32 +258,31 @@ test("a table that holds nothing is exported as its template, filled in, and loa
   await page.goto("./import");
   const row = tableRow(page, "networks");
   await expect(row).toHaveAttribute("data-count", /^\d+$/);
-  const empty = (await row.getAttribute("data-count")) === "0";
-  let header: string;
-  if (empty) {
-    // The page says so, and that its CSV is the template: the header row alone.
-    await expect(row.getByTestId("table-count")).toHaveText("None");
-    const template = await exported(
-      page,
-      row.getByRole("button", { name: "Export the CSV template of Networks" }),
-      testInfo,
-    );
-    expect(template.name).toMatch(serverName("networks", "csv"));
-    expect(template.content.toString("utf8")).toBe(`${HEADERS.networks}\n`);
-    header = HEADERS.networks;
-  } else {
-    // Another file, or an earlier run, made one: its header row is the template.
-    testInfo.annotations.push({ type: "note", description: "Networks held records already" });
-    const file = await exported(
-      page,
-      row.getByRole("button", { name: "Export Networks as CSV" }),
-      testInfo,
-    );
-    header = file.content.toString("utf8").split("\n")[0] ?? "";
-    expect(header).toBe(HEADERS.networks);
-  }
+  // What the file holds is what the list says the table holds, whatever that is now:
+  // the header row alone where it is none, which the words above the list call its
+  // template; the header row and a row to each network where there are some (review X3).
+  const held = Number(await row.getAttribute("data-count"));
+  await expect(row.getByTestId("table-count")).toHaveText(
+    held === 0 ? "None" : held.toLocaleString("en-US"),
+  );
+  await expect(page.getByTestId("export-tables-said")).toContainText(
+    "A table that holds nothing gives its CSV template: its header row alone.",
+  );
+  const file = await exported(
+    page,
+    row.getByRole("button", { name: "Export Networks as CSV" }),
+    testInfo,
+  );
+  expect(file.name).toMatch(serverName("networks", "csv"));
+  const text = file.content.toString("utf8");
+  const [head = [], ...networks] = parseCsv(text);
+  const header = head.join(",");
+  expect(header).toBe(HEADERS.networks);
+  expect(networks).toHaveLength(held);
+  if (held === 0) expect(text).toBe(`${HEADERS.networks}\n`);
 
-  // One row is added to the template, and the file is loaded back: it makes one network.
+  // One row is added to the header row, the template, and the file is loaded back: it
+  // makes one network.
   await preview(page, `networks-${id}.csv`, `${header}\n,${network},vrf\n`, "networks");
   await expect(count(page, "created")).toHaveText("1");
   await expect(count(page, "rejected")).toHaveText("0");
@@ -383,9 +382,7 @@ test("an export a busy server refuses says so beside its button, and is pressed 
     { times: 1 },
   );
   const row = tableRow(page, "sites");
-  const button = row.getByRole("button", {
-    name: /^Export (the CSV template of )?Sites( as CSV)?$/,
-  });
+  const button = row.getByRole("button", { name: "Export Sites as CSV" });
   await button.click();
   await expect(row.locator(".alert-error")).toHaveText(
     "The server is busy and did not answer this. Try again in 5 seconds.",
