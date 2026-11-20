@@ -1950,7 +1950,10 @@ For whoever operates the host:
   reset` clears it.
 - Admin, Settings, Check kept reports lists what the database holds as well, marked
   as worked out ahead, and checks it with the rest. A check that a change overtakes
-  says how many it compared before the change, and is asked again.
+  says so, with how many it compared before the change, and is asked again.
+- A report or an export asked for with a service token no longer holds up the saves
+  of everybody else while it is worked out: when the token was last used is stored at
+  once, where it was stored with the request.
 - The first page counts the cover that runs out within the days of
   `renewal_warning_days`, and says how many they are, where it said 90 whatever the
   setting was. With the setting at its default nothing differs.

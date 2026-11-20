@@ -320,7 +320,11 @@ upload, by its extension and by its first bytes.
   and PostgreSQL uses `now()` in the zone.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent, and the worker's at the end of each batch. Every update of a
-  row names the `row_version` it was read at.
+  row names the `row_version` it was read at. One thing is written by a request that
+  only reads: when a service token was last used, once a minute for each token. It is
+  stored at once, in a transaction of its own as the request is recognised, and is not
+  kept where the writer's place cannot be had in time (P-277): stored with the
+  request, it held the writer's place for as long as the request took.
 - **What is done by the clock.** A few things are done at set times, and not by a
   request: the record of the capacity balance each Monday a minute after midnight, and
   each night five minutes after midnight the long reports worked out ahead and kept,
@@ -489,10 +493,11 @@ asked for yet, each with `ahead`, whether the database holds it; and may check i
 was kept, in memory and in its row, and the check says which report and which request
 had differed, which none should, and writes again a row that did. It writes as working
 ahead does, when everything is compared, with the writer's place taken for those
-writes alone and the stamp read again, so that no save waits for a report to be
-worked out; and it reads the stamp again after each answer, and stops comparing at
-the first for which a change has moved it, since an answer worked out across a change
-is no defect of what was kept (P-277). It is audited and
+writes and the check's own event, which are one transaction, and the stamp read
+again, so that no save waits for a report to be worked out; and it reads the stamp
+again after each answer, and stops comparing at the first for which a change has
+moved it, since an answer worked out across a change is no defect of what was kept,
+and says that it was overtaken (P-277). It is audited and
 leaves the kept answers good, since it changes no record. `src/hirdir/io/kept.py`
 keeps them, and a report is one of the four where its module says so there, with the
 form of its answer.

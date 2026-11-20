@@ -17570,6 +17570,7 @@
         "description": "What a check of the kept answers found: none should have differed.",
         "properties": {
           "checked": {
+            "description": "How many kept answers were compared.",
             "title": "Checked",
             "type": "integer"
           },
@@ -17584,12 +17585,18 @@
             },
             "title": "Differed",
             "type": "array"
+          },
+          "overtaken": {
+            "description": "Whether a change was stored while the check worked. It then stopped there: what it had not compared yet is given no more, and is neither counted nor named. Ask again (P-277).",
+            "title": "Overtaken",
+            "type": "boolean"
           }
         },
         "required": [
           "checked_at",
           "checked",
-          "differed"
+          "differed",
+          "overtaken"
         ],
         "title": "KeptCheck",
         "type": "object"
