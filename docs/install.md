@@ -2013,9 +2013,12 @@ What an Admin sees that is new:
   the other record, and Show narrows each list to its gaps: the users with no contact
   and those with no operator, the contacts that are no user and those behind no
   operator, the operators with no user behind them. A service account is in no gap; a
-  user that is disabled is, until it is put right or removed.
+  user that is disabled is, until it is put right or removed; and a user whose contact
+  is retired is among those with no contact and no operator, so that what is left of
+  somebody who left is found.
 - **A user's notes**: what the account is for, who asked for it, when it is to end. They
-  are blank for every user after the upgrade, and a change of them is audited.
+  are blank for every user after the upgrade, and a change of them is audited. They
+  are an Admin's to read as to write: a person's own sign-in does not give them.
 - **A new person in one step.** The New user form makes the user, the contact it is and
   the operator it works as, with its role and its groups, in one Create; Also a contact
   and Also an operator are ticked from the start, and the operator's label is the
@@ -2040,7 +2043,10 @@ For a script that reads the API: a user answers `operators` and `notes`, and a c
 `some` or `none`; `POST /users` takes `notes`, `group_hids` and `operator`, and answers
 the operator it made; `PATCH /users/{hid}` takes `notes`. `GET /colours`,
 `GET /exports/tables`, `POST /exports/all` and `POST /users/export` are new, and so is
-`hirdir export --all`. Nothing is taken away.
+`hirdir export --all`; `POST /exports` takes `whole`, the whole table in the form that
+loads back. Nothing is taken away. One thing is newly refused: the name of a user group
+may hold no semicolon, which separates the groups of a user in the users' file; a
+group that has one keeps its name until it is renamed.
 
 Going back to 0.9.12 is by the backup the upgrade took, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the
