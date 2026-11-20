@@ -295,13 +295,14 @@ def export_tables(_: Viewer, db: Db) -> list[r.ExportTable]:
     response_class=StreamingResponse,
     responses={200: {"description": "One zip, a file to each table.", "content": {ZIP: {}}}},
 )
-def export_all(body: r.ExportAllRequest, _: Viewer, request: Request, db: Db) -> StreamingResponse:
+def export_all(
+    body: r.ExportAllRequest, _: Viewer, context: Audit, request: Request, db: Db
+) -> StreamingResponse:
     """Export every table at once: one zip, a file to each table, named as `examples/`
     names it, in the order files are loaded, each the whole table in the form that loads
     back, its stored values and its retired and drafts among them (P-286). The users are
-    not in it."""
-    wanted = exports.everything(db, body.format)
-    name = exports.zip_name(db, body.format)
+    not in it. Audited: that the whole inventory was taken out, by whom and when."""
+    wanted, name = exports.taken(db, context, body.format)
     return StreamingResponse(
         exports.stream_zip(request.app.state.sessions, wanted),
         media_type=ZIP,

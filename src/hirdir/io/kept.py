@@ -96,7 +96,16 @@ _noted: ContextVar[dict[str, tuple[tuple[Any, ...], Kept]] | None] = ContextVar(
 # accounts (the role of the person asking is applied to a kept answer, never kept in it).
 CHECKED = "kept_answers_checked"
 # A download of a reference file changes nothing (P-162).
-UNKEPT_ACTIONS = ("sign_in", "sign_in_failed", "alert_seen", "preview", "download", CHECKED)
+# Nor does an export, of every table or of the users, which is only noted (P-286, P-288).
+UNKEPT_ACTIONS = (
+    "sign_in",
+    "sign_in_failed",
+    "alert_seen",
+    "preview",
+    "download",
+    "export",
+    CHECKED,
+)
 UNKEPT_RECORDS = ("user", "user_group", "role_grant", "service_token")
 
 
