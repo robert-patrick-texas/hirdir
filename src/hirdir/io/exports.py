@@ -4,11 +4,14 @@ The rows are chosen first, in one statement, and then read and written a piece a
 time, so an export of every item never holds them all at once.
 """
 
+import io
+import zipfile
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError, OperationalError, StatementError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -17,9 +20,9 @@ from hirdir.db import dialect
 from hirdir.domain import geography, product, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import columns as cells
-from hirdir.io import files, filters
+from hirdir.io import examples, files, filters
 from hirdir.io.columns import Column
-from hirdir.io.entities import Entity, entity
+from hirdir.io.entities import LABELS, LOAD_ORDER, Entity, entity
 from hirdir.io.fields import Listing, default_view
 
 MAX_HIDS = 10_000
@@ -204,3 +207,119 @@ def stream(sessions: sessionmaker[Session], export: Export) -> Iterator[bytes]:
 def text_of(db: Session, export: Export) -> str:
     """Return the whole file of an export as text."""
     return b"".join(write(db, export)).decode("utf-8")
+
+
+# --- every table, as the Import page lists them (P-286) -------------------------------
+
+# The order of a table exported whole, where the order of its list is not the one its
+# file is loaded in: an item stands before the minor items that are in it.
+WHOLE_SORT: dict[str, list[str]] = {"items": ["depth", "name"]}
+
+
+@dataclass(frozen=True)
+class Table:
+    """One table that a file is taken for: what it is called, how many records it holds,
+    and the columns of its file."""
+
+    entity: str
+    label: str
+    file: str
+    count: int
+    columns: list[str]
+
+
+def whole(db: Session, which: str, format_: str = "csv") -> Export:
+    """Return the export of a whole table in the form that loads back: the stored values,
+    the retired and the drafts among them (P-286)."""
+    return plan(
+        db,
+        which,
+        format_=format_,
+        sort=WHOLE_SORT.get(which),
+        own_values=True,
+        include_archived=True,
+        include_drafts=True,
+    )
+
+
+def tables(db: Session) -> list[Table]:
+    """Return every table that a file is taken for, in the order files are loaded, each
+    with how many records it holds, counted once each, and the columns of its file."""
+    found = []
+    for name in LOAD_ORDER:
+        which = entity(name)
+        count = db.scalar(select(func.count()).select_from(which.listing.model)) or 0
+        found.append(
+            Table(
+                entity=name,
+                label=LABELS[name],
+                file=examples.stem(name),
+                count=count,
+                columns=[column.name for column in _columns(which, None, False)],
+            )
+        )
+    return found
+
+
+def everything(db: Session, format_: str) -> list[Export]:
+    """Return the export of every table, whole, in the order files are loaded."""
+    if format_ not in files.FORMATS:
+        raise Invalid(
+            "the format is not acceptable", {"format": f"one of {', '.join(files.FORMATS)}"}
+        )
+    return [whole(db, name, format_) for name in LOAD_ORDER]
+
+
+def zip_name(db: Session, format_: str) -> str:
+    """Return a name for the file of every table, named as any download is (P-168)."""
+    zone = str(settings.value(db, "time_zone"))
+    stem = product.file_stem(product.name(db))
+    return f"{stem}-all-{format_}-{clock.stamp(clock.now(), zone)}.zip"
+
+
+class _Taken(io.RawIOBase):
+    """Where a zip is written to: what is written is kept until it is taken."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._held: list[bytes] = []
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, data: Any) -> int:
+        self._held.append(bytes(data))
+        return len(data)
+
+    def take(self) -> bytes:
+        taken = b"".join(self._held)
+        self._held.clear()
+        return taken
+
+
+def write_zip(db: Session, wanted: Sequence[Export]) -> Iterator[bytes]:
+    """Yield one zip of the files of some exports, each named as `examples/` names it, a
+    piece at a time: no file is held whole, and a piece goes out as soon as it is read."""
+    out = _Taken()
+    # A zip dates its files in no zone: in the application's, as a file name is.
+    now = clock.now().astimezone(ZoneInfo(settings.time_zone(db)))
+    moment = (now.year, now.month, now.day, now.hour, now.minute, now.second)
+    with zipfile.ZipFile(out, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for export in wanted:
+            name = examples.file_name(export.entity.name, export.format)
+            member = zipfile.ZipInfo(name, date_time=moment)
+            member.compress_type = zipfile.ZIP_DEFLATED
+            with archive.open(member, mode="w") as file:
+                for piece in write(db, export):
+                    file.write(piece)
+                    yield out.take()
+            yield out.take()
+    yield out.take()
+
+
+def stream_zip(sessions: sessionmaker[Session], wanted: Sequence[Export]) -> Iterator[bytes]:
+    """Yield the zip of some exports through a session of its own, as `stream` does."""
+    with sessions() as db:
+        for piece in write_zip(db, wanted):
+            if piece:
+                yield piece

@@ -43,10 +43,14 @@ REPORTS = "/reports/"
 # What is asked for with `POST`, stores nothing of the inventory and is long by nature.
 # An export and a report with other values tried take no audit context; a preview and
 # the check of the kept answers take one, and can wait all the same: nothing of the
-# inventory changes until a preview is applied, and applying is never turned away.
+# inventory changes until a preview is applied, and applying is never turned away. The
+# export of every table and that of the users are exports too (P-286, P-288); the
+# users' takes the audit context only to note that it was made.
 LONG_POSTS = frozenset(
     {
         "/exports",
+        "/exports/all",
+        "/users/export",
         "/reports/capacity/try",
         "/imports/preview",
         "/items/bulk-update",

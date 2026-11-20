@@ -5289,6 +5289,42 @@ LOAD_ORDER = (
     "circuit_contacts",
     "circuit_devices",
 )
+# What each table is called for people, as the Import page lists them (P-286).
+LABELS = {
+    "tags": "Tags",
+    "vendors": "Vendors",
+    "catalog_entries": "Catalog entries",
+    "contacts": "Contacts",
+    "vendor_contacts": "Contacts of vendors",
+    "operators": "Operators",
+    "regions": "Regions",
+    "sites": "Sites",
+    "locations": "Locations",
+    "contact_assignments": "Contacts of places",
+    "owners": "Owners",
+    "owner_members": "People of owners",
+    "networks": "Networks",
+    "external_systems": "External systems",
+    "agreements": "Support agreements",
+    "contracts": "Contracts",
+    "contract_contacts": "Contacts of agreements and contracts",
+    "purchase_requests": "Purchase requests",
+    "purchase_lines": "Lines of purchase requests",
+    "items": "Items",
+    "device_groups": "Device groups",
+    "device_group_members": "Members of device groups",
+    "item_replacements": "Replacements of items",
+    "addresses": "Addresses",
+    "contract_coverage": "Coverage of items under contracts",
+    "registrations": "Registrations with external systems",
+    "capacity_lines": "Capacity lines",
+    "circuit_groups": "Circuit groups",
+    "circuits": "Circuits",
+    "circuit_carriers": "Carriers of circuits",
+    "circuit_costs": "Cost lines of circuits",
+    "circuit_contacts": "Contacts of circuits",
+    "circuit_devices": "Devices of circuits",
+}
 
 
 def entity(name: Any) -> Entity:

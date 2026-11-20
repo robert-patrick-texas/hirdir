@@ -50,7 +50,7 @@ and CLI's types are generated from it.
 | References | `GET` and `POST /reference-files`, `POST /reference-files/links`, `GET`, `PATCH` and `DELETE /reference-files/{hid}`, `GET` and `PUT /reference-files/{hid}/content`, `POST /reference-files/{hid}/attachments`, `DELETE /reference-files/{hid}/attachments/{attachment_hid}`; `GET /catalog-entries/{hid}/references`, `GET /regions/{hid}/references`, `GET /sites/{hid}/references`, `GET /locations/{hid}/references`, `GET /circuits/{hid}/references` and `GET /items/{hid}/references` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
-| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports` |
+| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports`, `GET /exports/tables`, `POST /exports/all`; `POST /users/export` (Admin) |
 | Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/circuit-costs`, `/reports/duplicates` |
 | Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
@@ -775,7 +775,7 @@ its method alone:
 
 | A request | In the measure of time | Refused |
 |---|:-:|---|
-| Long by nature: everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check`. Seconds of one say nothing of the server | no | while the health is `very_slow` or `busy` |
+| Long by nature: everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`, `POST /exports/all` and `POST /users/export`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check`. Seconds of one say nothing of the server | no | while the health is `very_slow` or `busy` |
 | A read: every other `GET` of the API, the pages of lists among them, and the `POST .../query` that asks for a page of a list | yes | while the health is `busy` |
 | Kept: `POST /auth/sign-in` and the rest of `/auth`, and every request that stores a change, which is every other `POST`, `PUT`, `PATCH` and `DELETE`, applying a preview among them. A save that takes four seconds is a slow server | yes | never |
 | Apart: `/health/live` and `/health/ready`; `GET /about` and `GET /about/load`; `GET /settings`, so that an Admin who set the ceiling too low can set it again; `GET /openapi.json`; and a request that no route answers. They are asked for by the clock and answered at once | no | never |
@@ -1358,28 +1358,42 @@ Since 0.9.13 every table that a file is taken for is exported from one place (P-
 `GET /exports/tables`, for every role, lists them in the order in which their files
 are loaded, each with `entity`, the name an import and an export know it by; `label`;
 `file`, the name its file has in `examples/` without the extension; `count`, how many
-records the table holds, the retired among them; and `columns`, the columns of its
-file, those an import reads, in their order. `POST /exports` of a table that holds
-nothing gives the header row and no more as CSV, which is the template of its import,
-and the envelope with no rows as JSON.
+records the table holds, the retired and the drafts among them, each table counted
+once; and `columns`, the columns of its file, those an import reads, in their order,
+which are the header row an export writes when it is not asked for other columns.
+`POST /exports` of a table that holds nothing gives the header row and no more as CSV,
+which is the template of its import, and the envelope with no rows as JSON.
 
-`POST /exports/all` takes `format`, `csv` or `json`, and answers one zip: a file to
-each table, named as `examples/` names it, in the order of loading, each the export of
-the whole table in the form that loads back, the stored values and the retired
-included. The users are not in it. It is audited as an export is, once.
+`POST /exports/all`, for every role, takes `format`, `csv` or `json`, and answers one
+zip, `Example-Inventory-all-csv-20261120T101500-0500.zip`, named as any download is: a
+file to each table, named as `examples/` names it, `tags.csv` to `circuit-devices.csv`,
+in the order of loading, each the export of the whole table in the form that loads
+back, the stored values and the retired and the drafts included, the items by depth so
+that an item stands before the minor items in it. Each file is written as it is read,
+a piece at a time, and the zip goes out as it is written; the tables are read one
+after another, each in statements of its own, so an export of everything taken while
+somebody is changing records holds each table as it was when it was read. The users
+are not in it. Like `POST /exports`, it changes nothing and is not audited.
 
 What is exported loads back. The file of any table, as `POST /exports` gives it with
 `own_values`, the archived and the drafts included, previewed as an import into the
 inventory it came from, changes nothing: every row is `unchanged` and none is
 rejected, in both formats, for every table. A test holds it over all of them.
 
-`POST /users/export`, for an Admin, answers the users as CSV (P-288): a row to each
-user, by username, with `username`, `name`, `email`, `phone`, `phone2`, `role`, the
-role in force, `groups`, `operators`, the labels of those that are not retired, `kind`,
-`person` or `service`, `state`, `enabled` or `disabled`, `last_sign_in_at` and `notes`;
-several groups or operators stand in one cell, separated as the other files separate
-several values. It holds no access code, no token and no hash of either. It is audited
-as an export is. No file makes or changes a user.
+`POST /users/export`, for an Admin, answers the users as CSV (P-288),
+`Example-Inventory-users-20261120T101500-0500.csv`: a row to each user, by username,
+with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a user
+with no contact, `role`, the role in force, granted to the user or to a group it is in,
+blank where it has none, `groups`, by name, `operators`, the labels of those behind
+which its contact stands and that are not retired, `kind`, `person` or `service`,
+`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC, and `notes`; several
+groups or operators stand in one cell, separated by `;` as the other files separate
+several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
+are. It holds no access code, no token and no hash of either, and no column beyond
+these twelve. It is audited: an event `export` of the record type `user`, with no
+record of its own, whose `changes` hold `file_name` and `users`, how many rows the
+file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
+a user.
 
 ### The records an import made
 
