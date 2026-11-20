@@ -33,6 +33,7 @@ from hirdir.db.models import (
     VendorContact,
 )
 from hirdir.domain import audit, choices, contracts, geography, records, tags
+from hirdir.domain import operators as label_rules
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -479,6 +480,30 @@ def users_of(db: Session, hids: list[str]) -> dict[str, User]:
         return {}
     found = db.scalars(select(User).where(User.contact_hid.in_(hids)))
     return {user.contact_hid: user for user in found if user.contact_hid is not None}
+
+
+def operators_of(db: Session, hids: list[str]) -> dict[str, list[Operator]]:
+    """Return the operators each of the contacts stands behind, retired ones among them,
+    in the order of their labels, read in one query for them all (P-280)."""
+    found: dict[str, list[Operator]] = {hid: [] for hid in hids}
+    if not hids:
+        return found
+    for operator in db.scalars(
+        select(Operator)
+        .where(Operator.contact_hid.in_(set(hids)))
+        .order_by(Operator.label_key, Operator.hid)
+    ):
+        found[operator.contact_hid or ""].append(operator)
+    return found
+
+
+def is_operator(contact: Contact, operators: list[Operator]) -> bool:
+    """Say whether a contact stands behind an operator, of those it stands behind, that
+    is not retired: one that is retired stands for nobody. A contact that is retired
+    stands behind none, as nobody is behind its labels (P-280)."""
+    return label_rules.behind(contact) and any(
+        operator.record_status != "retired" for operator in operators
+    )
 
 
 # --- assignments ---------------------------------------------------------------------

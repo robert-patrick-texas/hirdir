@@ -100,6 +100,9 @@ test("P-172: a user is made with its person, and shows the contact's name, email
   await person.getByLabel("Phone", { exact: true }).fill("+1 555 0142");
   await person.getByLabel("Second phone").fill("+1 555 0143");
   await form.getByLabel("Role").selectOption({ label: "View-only" });
+  // 0.9.13: no operator for this one, so that the labels the later scenarios count are
+  // theirs alone; onboarding.spec.ts makes one with a user (P-283).
+  await form.getByRole("checkbox", { name: "Also an operator" }).uncheck();
   await form.getByRole("button", { name: "Create user" }).click();
   const secret = page.getByRole("region", { name: `Access code for ${username}` });
   await expect(secret).toBeVisible();
@@ -113,7 +116,7 @@ test("P-172: a user is made with its person, and shows the contact's name, email
   await expect(row.getByTestId("user-phone2")).toHaveText("+1 555 0143");
 
   // The page of the user shows them, and changes them on the contact.
-  await row.getByRole("link", { name: username, exact: true }).click();
+  await row.getByRole("rowheader").getByRole("link", { name: username, exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: username })).toBeVisible();
   made.page = new URL(page.url()).pathname;
   made.hid = decodeURIComponent(made.page.split("/").at(-1) ?? "");
@@ -193,7 +196,8 @@ test("P-172: a user is given another contact, a new one, or none", async ({
   await expect(facts).toHaveText(
     `${username} has no contact: it is shown by its username until it is given one.`,
   );
-  await expect((await userRow(page, username)).getByTestId("user-name")).toHaveText("No contact");
+  // 0.9.13: no contact, said plainly, as a gap the list is narrowed to (P-280).
+  await expect((await userRow(page, username)).getByTestId("user-name")).toHaveText("no contact");
   await expectClean(page, seen);
 });
 

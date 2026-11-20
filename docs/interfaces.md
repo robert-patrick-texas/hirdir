@@ -28,7 +28,7 @@ and CLI's types are generated from it.
 | A busy server | A server refuses where there is load to shed, by how long its reads take: nothing while they are good or slow; what is long by nature, the reports, the exports and the previews, while they are very slow; and every other read of the API as well while they are past the ceiling, with twenty-one reads or more in the measure. What it refuses it answers `503` with the title `Busy`, `Retry-After` and the member `busy`, at once and with nothing of the request done. A change that is stored, a sign-in, the health routes and About are never so answered, and no read is refused because a change was slow. It is told from the `503` of a change that waited for another to be stored by `busy`, which only it has (P-265). See [The server's own measures](#the-servers-own-measures) |
 | Health | Every answer of the API carries `X-Hirdir-Health`, the health of the server in a word and what it refuses, as they are when the answer begins, the request's own time counted: `good`, `slow`, `very_slow` or `busy`, then `; refusing=` and `nothing`, `long` or `reads`, as in `busy; refusing=nothing`. An answer that was slow says so itself. The health is the 95th percentile of how long requests take against the thirds of `busy_response_ms`, under 1, 2 and 3 seconds unless set, for a mark that is green, yellow, orange or red. A request that is refused carries what it was refused by. The page's own files carry none. See [The server's own measures](#the-servers-own-measures) |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
+| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere; `POST /users/export`, whose file holds neither, is one of them and refuses it as they do |
 
 ### Routes
 
@@ -48,7 +48,7 @@ and CLI's types are generated from it.
 | Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity`, `POST /reports/capacity/try`, `GET` and `POST /capacity-records`, `GET`, `PATCH` and `DELETE /capacity-records/{hid}` |
 | Circuits | `/circuits`, `POST /circuits/query`, `POST /circuits/{hid}/retire`; `GET` and `POST /circuits/{hid}/carriers`, `PATCH` and `DELETE /circuits/{hid}/carriers/{link_hid}`; `GET` and `POST /circuits/{hid}/costs`, `PATCH` and `DELETE /circuits/{hid}/costs/{line_hid}`; `GET` and `POST /circuits/{hid}/devices`, `PATCH` and `DELETE /circuits/{hid}/devices/{link_hid}`; `GET` and `POST /circuits/{hid}/contacts`, `PATCH` and `DELETE /circuits/{hid}/contacts/{link_hid}`; `/circuit-groups`, `POST /circuit-groups/query`, `POST /circuit-groups/{hid}/retire`, `GET` and `POST /circuit-groups/{hid}/members`, `DELETE /circuit-groups/{hid}/members/{member_hid}` |
 | References | `GET` and `POST /reference-files`, `POST /reference-files/links`, `GET`, `PATCH` and `DELETE /reference-files/{hid}`, `GET` and `PUT /reference-files/{hid}/content`, `POST /reference-files/{hid}/attachments`, `DELETE /reference-files/{hid}/attachments/{attachment_hid}`; `GET /catalog-entries/{hid}/references`, `GET /regions/{hid}/references`, `GET /sites/{hid}/references`, `GET /locations/{hid}/references`, `GET /circuits/{hid}/references` and `GET /items/{hid}/references` |
-| Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
+| Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules`, `GET /colours` (P-285) |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports`, `GET /exports/tables`, `POST /exports/all`; `POST /users/export` (Admin) |
 | Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/circuit-costs`, `/reports/duplicates` |
@@ -184,33 +184,58 @@ add up to it: both are counted from one list of what names a contact.
 Since 0.9.13 each of the three lists says which of the other two a person is, and
 finds those that are not (P-280). A user answers `operators`, the operators whose
 contact is the user's, in the order of their labels, each with `hid`, `label`, `colour`
-and `record_status`; a user with no contact has none. A contact answers `operators`,
-the same of the contact, beside `is_user` and `user`. One contact may stand behind
-several operators. `GET /users` takes `contact` and `operator`, each `any`, which is
-the same as leaving it out, `some` or `none`: `contact=none` gives the users that are
-no contact, and `operator=none` those behind no operator that is not retired. A
-service account is no person and is in neither `none`. `GET /contacts` filters and
-sorts by `is_operator`, true where the contact stands behind an operator that is not
-retired, as it does by `is_user`; `GET /operators` finds those with nobody behind them
-by `scope`, as before.
+and `record_status`, a retired one among them, marked so; a user with no contact has
+none. A contact answers `operators`, the same of the contact, and `is_operator`, beside
+`is_user` and `user`. One contact may stand behind several operators. `GET /users`
+takes `contact` and `operator`, each `any`, which is the same as leaving it out, `some`
+or `none`: `contact=some` gives the users that are a contact and `contact=none` those
+that are none; `operator=some` those whose contact stands behind an operator that is
+not retired, and `operator=none` those behind none, a user with no contact among them.
+A contact that is retired is as no contact for these: its user is in `contact=none`,
+and, since nobody is behind the operators of a retired contact, as `GET /operators`
+says with `scope` null, in `operator=none`, and in neither `some`; the user still
+answers its `contact`, with `record_status` `retired`, and its `operators`, so that a
+page shows what is left over. The three lists follow the one rule of who is behind a
+label, in `hirdir.domain.operators`. A service account is no person and is in neither
+`none`, so that `any` is `some`, `none` and the service accounts. What a page of users
+shows of each, its contact, its role in force, its groups and its operators, is read
+once for the whole page and never for a row, and so are the size and the roles of each
+group of `GET /user-groups`: a page costs the same statements whatever its size. The
+users are sorted by `notes` and by `operators`, the first of their labels, as by their
+other columns. `GET /contacts` filters and sorts by `is_operator`, true where the
+contact is not retired and stands behind an operator that is not retired, as it does by
+`is_user`; `GET /operators` finds those with nobody behind them by `scope`, as before.
 
 A user has `notes` (P-281): free text, at most as long as the notes of a contact,
-`null` unless given. `POST /users` and `PATCH /users/{hid}` take it, and a change of it
-is audited as any change of a user is.
+10,000 characters, `null` unless given, and blank is none. `POST /users` and
+`PATCH /users/{hid}` take it, `null` or blank clearing it, and a change of it is
+audited as any change of a user is, with its old and new text. The notes on an account
+are for an Admin: they are answered by `GET /users`, `GET /users/{hid}` and the routes
+that make and change a user, and never to the person themselves: `GET /auth/me` and
+the user in the answer of `POST /auth/sign-in` give `notes` as `null`, to anybody, an
+Admin too, in the one shape of a user, and `hirdir whoami` prints none.
 
 `POST /users` makes, in the one change, what a new person needs (P-282, P-283). It takes
 `group_hids`, the user groups the new user is put into, each membership audited as
 `PUT /user-groups/{hid}/members/{user_hid}` audits it; a group that is not there
 refuses the whole with a `422` on `group_hids`. And it takes `operator`, an object with
 `label`, `colour` and `description`, each optional: an operator is made whose contact
-is the user's, with the username as its label where none is given and the next unused
-colour where none is given (`next_for_operators`, below). `operator` needs a contact
+is the user's, with the username as its label where none is given, or a blank one, and
+the next unused colour where none is given (`next_for_operators`, below); a colour
+given as blank or `null` is none, as on `POST /operators`. `operator` needs a contact
 in the same request, `contact` or `contact_hid`, and is refused with a `422` on
-`operator` without one, as it is for a service account; a label that another operator
-has is refused with a `409` on `operator.label`. The answer has `operator`, the
-operator made, or `null`. The user, the contact, the operator, the grant of the role
-and the memberships are one transaction, each audited as if it were made by itself:
-where any part is refused, nothing is made.
+`operator` without one, as it is for a service account. The label is held to the rules
+of any label, at most 40 characters with no semicolon: a username that is no acceptable
+label is refused with a `422` on `operator.label`, and never shortened; a label that
+another operator has is refused with a `409` on `operator.label` that names that
+operator as `existing`. A colour that is not `#rrggbb` is a `422` on `operator.colour`.
+The answer has `operator`, the operator made, as `GET /operators/{hid}` answers it, or
+`null`. The user, the contact, the operator, the grant of the role and the memberships
+are one transaction, each audited as if it were made by itself, with the events of
+`POST /contacts`, `POST /operators`, `POST /role-grants` and
+`PUT /user-groups/{hid}/members/{user_hid}`: where any part is refused, nothing is made
+and no event is kept. Each refusal names the field it is for, as `contact.name`,
+`operator.label`, `group_hids` or `role`, so that a form shows it there.
 
 `GET /colours`, which every role reads, gives the colours a form offers (P-285):
 `grid`, eight rows of eight, a row to each shade from the lightest to the darkest and
@@ -1294,7 +1319,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Observation | `observed_status` is `online`, `degraded`, `unreachable` or `present`, and `observed_at` the moment it was seen: left out, the moment of the change, and with no zone named, in the application's time zone. A row that states a status as it is, with no moment, changes nothing, where a person who does so on a page or by a bulk edit has looked again and sets the moment to now. `!clear` in `observed_status` clears both, and a moment is not cleared by itself. What a preview tells of a row leaves out a moment that the clock will set, since the apply is made later. A site that reads the status of its devices from another tool, or walks its store room, loads the result as a file of `hostname`, `observed_status` and `observed_at` |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
-| Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
+| Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list. `'!clear` is the text `!clear`, which is how an export writes a value that is that text (see Export) |
 | Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155) |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
@@ -1346,6 +1371,13 @@ a spreadsheet does not run it as a formula. Import removes that apostrophe again
 value that itself begins with an apostrophe before such a character is written with one
 more, so that it comes back as it was.
 
+A stored text that is the very mark that clears, `!clear`, is a value and not the mark:
+an export writes it `'!clear`, in CSV and in JSON alike, and an import reads `'!clear`
+as the text `!clear`, so that it loads back and clears nothing. A value that is the mark
+behind apostrophes of its own is written with one more, as above: `'!clear` is written
+`''!clear` and comes back as `'!clear`. A JSON file guards nothing else, since it runs no
+formula. A cell or a value that is `!clear` alone clears, as before.
+
 Device groups export `serial_number`, which for a stack is that of the master seen or
 else of the one intended, `members`, the number of current ones, and `health`. None
 of them can be set.
@@ -1373,10 +1405,22 @@ that an item stands before the minor items in it. Each file is written as it is 
 a piece at a time, and the zip goes out as it is written; the tables are read one
 after another, each in statements of its own, so an export of everything taken while
 somebody is changing records holds each table as it was when it was read. The users
-are not in it. Like `POST /exports`, it changes nothing and is not audited.
+are not in it. It changes nothing, and it is audited, as the export of one table is
+not: an event `export` of the record type `inventory`, with no record, that holds the
+name of the file, the `format` and how many `tables`, so that the trail says who took
+the whole inventory out and when. The event is stored before the first piece of the
+file is sent. An export is no change of the inventory, and no kept answer is worked
+out again for one.
+
+`POST /exports` with `whole` gives one table as the zip holds it: the whole table in the
+form that loads back, its stored values, the retired and the drafts among them, the
+items with each before the minor items in it. A whole table is the same for whoever
+asks: a filter, a sort, columns, HIDs, `include_sources` and `place_codes` beside it are
+refused with a `422` on `whole`. The Import page and Geography ask for a table so, and
+hold no copy of what whole means.
 
 What is exported loads back. The file of any table, as `POST /exports` gives it with
-`own_values`, the archived and the drafts included, previewed as an import into the
+`whole`, previewed as an import into the
 inventory it came from, changes nothing: every row is `unchanged` and none is
 rejected, in both formats, for every table. A test holds it over all of them.
 
@@ -1386,10 +1430,14 @@ with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a 
 with no contact, `role`, the role in force, granted to the user or to a group it is in,
 blank where it has none, `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person` or `service`,
-`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC, and `notes`; several
+`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC in the form the API gives
+it, `2026-11-20T15:04:05.123456Z`, and `notes`; several
 groups or operators stand in one cell, separated by `;` as the other files separate
 several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
-are. It holds no access code, no token and no hash of either, and no column beyond
+are. So that a cell of groups is read as it was written, the name of a user group holds
+no semicolon, as a tag's label and an operator's do not: `POST /user-groups` and a
+rename by `PATCH /user-groups/{hid}` refuse one with a `422` on `name`, and a group
+that holds one from before 0.9.13 keeps its name until it is renamed. It holds no access code, no token and no hash of either, and no column beyond
 these twelve. It is audited: an event `export` of the record type `user`, with no
 record of its own, whose `changes` hold `file_name` and `users`, how many rows the
 file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
@@ -2651,7 +2699,7 @@ refused leaves the others as they went.
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
-| Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, filter, sort or columns: each table is whole, in the form that loads back (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
+| Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, `--filter`, `--sort`, `--columns`, `--own-values`, `--include-sources`, `--place-codes`, `--include-archived` or `--include-drafts`, and refuses each with exit `2`, writing nothing: each table is whole, in the form that loads back, with its stored values and its retired and drafts (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
@@ -3041,42 +3089,82 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
 - **Users.** Each row shows the contact the user is and the operators it works as, each
   a link to that record's page, the operator as its label with its colour, and plain
   words where there is none, `no contact` and `no operator`; and the notes of the
-  account. Above the list, Show narrows it to the users with no contact, and to those
-  with no operator, by `contact=none` and `operator=none`. Export CSV saves the file
-  of `POST /users/export`.
+  account; a service account says neither, being no person. Above the list, Show has
+  a link to every user, one to the users with no contact and one to those with no
+  operator, each an address of its own, `contact=none` and `operator=none` beside the
+  search, so that a link to a gap can be sent; the one on show is marked. The Operators
+  and Notes columns sort as the others do. Export CSV saves the file of
+  `POST /users/export` under the name the server gives it.
 - **New user.** One form makes the user, the contact and the operator (P-283). It has
   Also a contact, ticked from the start, with the name, the email and the numbers, or a
   contact there is already; Also an operator, ticked from the start, with the label,
-  which follows the username until it is typed over, and the colour, the next unused,
-  in the picker; the role; the groups, a box each (P-282); and the notes. A service
-  account has neither box. Unticking the contact unticks the operator, which needs
-  one. One Create sends one `POST /users`; a refusal is shown at its field, with
-  nothing typed lost, and the access code is shown with links to the three records.
-- **A user's page.** Its groups, each with the role the group grants, as a box to each
+  which follows the username while it is blank or still what the form filled in, and
+  the colour, the next unused, in the picker; the role; the groups, a box each with
+  the roles the group grants (P-282); and the notes. A service account has neither box.
+  Unticking the contact unticks the operator, which needs one, and ticking the operator
+  ticks the contact. A label left blank is the username and a colour not chosen the
+  next unused, which the server gives, as it does where the colours had not yet been
+  read when Create was pressed; a colour chosen blank is none. One
+  Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
+  the label, `operator` at its box, `group_hids` at the groups, the contact's at the
+  person's, with nothing typed lost, and the access code is shown with links to the
+  three records.
+- **A user's page.** Its groups, each with the roles the group grants, as a box to each
   group there is: ticking and unticking add and remove the user at once, each by its
-  own request, and a refusal is said beside the box, which goes back. Its notes are
-  changed in its form. Its operators are listed as links; where it is behind none and
-  has a contact, Make an operator makes one in one press, with the username as its
-  label and the next unused colour, and leads to it (P-284).
+  own request, and a refusal is said beside the box, which goes back. A box pressed
+  again while its request is out sends nothing more. Its notes are changed in its form.
+  Its operators are listed as links, released ones marked so; where it is behind none
+  that is not retired and has a contact, Make an operator makes one in one press, with
+  the username as its label and the next unused colour, read when it is pressed, and
+  leads to it (P-284). A label the server does not take, too long or
+  another operator's, opens the label and the colour in place, with the refusal at
+  the field, to be put right and made from there.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
-  stands behind, as links; Show narrows the list to the contacts that are no user and
-  to those behind no operator. The page of a contact behind no operator has Make an
-  operator, as a user's has, with the username as the label where the contact is a
-  user and the contact's name where it is not.
-- **Operators.** The list shows the user behind each operator as a link, for an Admin,
-  and Show narrows it to those with nobody behind them. In the New operator form,
-  choosing a person who is a user fills the label with the username while the label is
-  blank or is still what the form filled in. On the page of an operator, Details stands
-  above The person's email and numbers.
+  stands behind, as links, in the column Operators, which filters and sorts by
+  `is_operator`; Show has a link to every contact and one to each gap, the contacts
+  that are no user and those behind no operator, each starting the grid with its
+  filter (`is_user:eq:false`, `is_operator:eq:false`). The page of a contact lists the
+  operators it stands behind, released ones marked so, and where it stands behind none
+  that is not retired, and is not retired itself, has Make an operator for an
+  Inventory role or above, as a user's has, with the username as the label where the
+  contact is a user and the contact's name where it is not.
+- **Operators.** The list has a column User: the user behind each operator by its
+  username, a link to the user's page for an Admin and plain words for the other roles,
+  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  the list, Show leads, as the lists of users and of contacts do, by a link one press
+  away whose address holds the grid's own filter, to every operator, to those with no
+  user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
+  nobody behind them at all, `is_open:eq:true`; the one on show is marked as the
+  current page. In the New operator form the colour starts at `next_for_operators`
+  of a read of `GET /colours` begun as the form opened, until one is chosen; choosing a
+  person who is a user fills the label with the username while the label is blank or is
+  still what the form filled in, and a label typed by hand is kept. A Create pressed
+  before the username or the colour has come waits for them, says so, and then makes
+  the operator with them. On the page of an operator, Details stands above The person's
+  email and numbers, and the colour is shown on its chip.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
-  one picker (P-285): the grid of `GET /colours`, 64 swatches, each a button named by
-  its value, reached by Tab and moved through by the arrow keys; above it a slider of
-  the 32, whose steps move the choice in the grid; and the text box, which takes any
-  `#rrggbb`. The three are one value: pressing a swatch moves the slider and fills the
-  box, and a value typed that is of the grid marks its swatch, while one that is not
-  marks none and is kept as typed. The value is shown on a chip filled with the colour,
-  its text black or white, whichever has the greater contrast with it, and beside it
-  the label as the lists will show it. A blank value is no colour, as before.
+  one picker (P-285), a group named as the field is: the text box, which takes any
+  `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and
+  the grid of `GET /colours`, 64 swatches, each a button named by its hue, its shade
+  and its value (`orange, shade 3 of 8, #fb9d59`), the one chosen pressed, ringed and
+  ticked. The grid is one stop of Tab, at the swatch chosen or the first; the arrow
+  keys move within it, Home and End to the ends of a row and with Control to the
+  first and the last, and Enter or Space chooses. The three are one value: pressing a
+  swatch moves the slider and fills the box, and a value typed that is of the grid
+  marks its swatch, in either case, while one that is not marks none and is kept as
+  typed. The slider is a range input of 32 steps over a track that shows them, its
+  step said in words (`Step 5 of 32: orange, shade 3 of 8, #fb9d59`). A range input
+  always stands at a step: where the value is none of the 32, the slider rests at the
+  step nearest to it (of the same hue for a swatch of the grid, else nearest in red,
+  green and blue, the first for no colour), its thumb is drawn hollow and dashed, it
+  says `No step: #eeaa00 is not one of the 32`, and the first move, by a key or a press,
+  takes the value to the step it comes to. A value that is no colour is said at the box
+  once it is left or seven characters long, and the form sends nothing. The value is
+  shown on a chip filled with the colour, its text black or white, whichever has the
+  greater WCAG contrast with it, and beside it the label being typed as the lists will
+  show it, with an operator's dot or a tag's square. A blank value is no colour, as
+  before. The colours are read once for every picker on the page; until they come, the
+  text box takes a colour by itself. Admin › Tags shows each tag's colour on its chip.
 - **Import.** Beside the upload, on its right, What can be loaded and exported lists
   every table of `GET /exports/tables` in the order of loading, each with how many
   records it holds and its export as CSV and as JSON, one press each, the whole table in

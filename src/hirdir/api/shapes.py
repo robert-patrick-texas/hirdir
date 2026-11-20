@@ -608,19 +608,26 @@ def place_out(db: Session, level: str, record: Any) -> Any:
 
 
 def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
-    """Return contacts, each with its tags, the number of its assignments, and the user it
-    is, where it is one (P-172)."""
+    """Return contacts, each with its tags, the number of its assignments, the user it
+    is, where it is one (P-172), and the operators it stands behind (P-280)."""
     hids = [contact.hid for contact in found]
     labels = tags.labels_of(db, contacts.RECORD_TYPE, hids)
     uses = contacts.uses(db, hids)
     users = contacts.users_of(db, hids)
+    behind = contacts.operators_of(db, hids)
     return [
         shapes.ContactOut(
-            **_own(contact, shapes.ContactOut, ("tags", "uses", "user", "is_user")),
+            **_own(
+                contact,
+                shapes.ContactOut,
+                ("tags", "uses", "user", "is_user", "operators", "is_operator"),
+            ),
             tags=labels[contact.hid],
             uses=uses[contact.hid],
             is_user=contact.hid in users,
             user=_user_brief(users.get(contact.hid)),
+            is_operator=contacts.is_operator(contact, behind[contact.hid]),
+            operators=[shapes.OperatorBrief.model_validate(one) for one in behind[contact.hid]],
         )
         for contact in found
     ]

@@ -5,15 +5,20 @@
 
 import type { SortFields } from "./sort";
 
-/** `GET /users`. Kind is whether it is a service account, State whether it is disabled. */
+/**
+ * `GET /users`. Kind is whether it is a service account, State whether it is disabled.
+ * 0.9.13: Operators by the first of their labels, and the notes (P-280, P-281).
+ */
 export const USERS_SORT: SortFields = {
   username: "username",
   display_name: "display_name",
+  operators: "operators",
   role: "role",
   groups: "groups",
   kind: "is_service_account",
   state: "disabled",
   last_sign_in: "last_sign_in_at",
+  notes: "notes",
 };
 
 /** `GET /audit-events`. A record is sorted by its type and then by its HID, as it is shown. */

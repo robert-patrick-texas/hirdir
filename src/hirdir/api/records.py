@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, PlainSerializer, WithJsonSchema
 
-from hirdir.api.schemas import Model
+from hirdir.api.schemas import Model, OperatorBrief, UserOut
 from hirdir.domain import purchases, removal, settings
 from hirdir.domain.inheritance import Source
 from hirdir.io import listing
@@ -765,6 +765,14 @@ class ContactOut(Model):
     tags: list[str]
     is_user: bool = Field(description="The contact is the person a user is.")
     user: UserBrief | None = Field(description="The user this contact is, where it is one.")
+    is_operator: bool = Field(
+        description="The contact, not retired, stands behind an operator that is not "
+        "retired: nobody is behind the operators of a retired contact (P-280)."
+    )
+    operators: list[OperatorBrief] = Field(
+        description="The operators it stands behind, retired ones among them, in the order "
+        "of their labels (P-280)."
+    )
     uses: int = Field(
         description=(
             "How many records name it: the places and owners it is assigned to, the "
@@ -825,6 +833,18 @@ class OperatorOut(Model):
     row_version: int
     created_at: datetime
     updated_at: datetime
+
+
+class UserCreated(Model):
+    """A user just created, with the access code that is shown this once, and the
+    operator made with it (P-283)."""
+
+    user: UserOut
+    access_code: str | None
+    operator: OperatorOut | None = Field(
+        description="The operator made in the same change, as `GET /operators/{hid}` "
+        "answers it, or null."
+    )
 
 
 class OperatorCreate(Model):
@@ -4791,6 +4811,13 @@ class ExportRequest(Model):
     )
     include_archived: bool = False
     include_drafts: bool = False
+    whole: bool = Field(
+        default=False,
+        description="The whole table in the form that loads back, as the file of every "
+        "table holds it: the stored values, the retired and the drafts among them, in "
+        "the order its file is loaded in. A filter, a sort, columns, HIDs, the sources "
+        "and the codes of places are refused beside it (P-286).",
+    )
 
 
 class ExportTable(Model):

@@ -31,11 +31,13 @@ describe("the sort fields of the paged tables", () => {
     expect(USERS_SORT).toEqual({
       username: "username",
       display_name: "display_name",
+      operators: "operators",
       role: "role",
       groups: "groups",
       kind: "is_service_account",
       state: "disabled",
       last_sign_in: "last_sign_in_at",
+      notes: "notes",
     });
     expect(IMPORTS_SORT).toEqual({
       made: "created_at",

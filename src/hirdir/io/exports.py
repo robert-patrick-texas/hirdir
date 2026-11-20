@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hirdir import clock
 from hirdir.db import dialect
-from hirdir.domain import geography, product, settings
+from hirdir.domain import audit, geography, product, settings
+from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid
 from hirdir.io import columns as cells
 from hirdir.io import examples, files, filters
@@ -261,6 +262,29 @@ def tables(db: Session) -> list[Table]:
     return found
 
 
+def asked(db: Session, which: str, format_: str, whole_: bool, **narrowed: Any) -> Export:
+    """Return the export a request asks for: a list as it is narrowed, or, with `whole`,
+    the whole table in the form that loads back, as the file of every table holds it.
+
+    A whole table is one thing, the same for whoever asks: with it a filter, a sort,
+    columns, HIDs, the sources and the codes of places are refused, and not passed over.
+    """
+    if not whole_:
+        return plan(db, which, format_=format_, **narrowed)
+    names = {"filter_": "filter"}
+    beside = sorted(
+        names.get(name, name)
+        for name, value in narrowed.items()
+        if value and name not in ("own_values", "include_archived", "include_drafts")
+    )
+    if beside:
+        raise Invalid(
+            "a whole table is exported as it is",
+            {"whole": f"leave out {', '.join(beside)}: the whole table takes none of them"},
+        )
+    return whole(db, which, format_)
+
+
 def everything(db: Session, format_: str) -> list[Export]:
     """Return the export of every table, whole, in the order files are loaded."""
     if format_ not in files.FORMATS:
@@ -268,6 +292,37 @@ def everything(db: Session, format_: str) -> list[Export]:
             "the format is not acceptable", {"format": f"one of {', '.join(files.FORMATS)}"}
         )
     return [whole(db, name, format_) for name in LOAD_ORDER]
+
+
+# How the audit trail names the taking of every table at once: it is of no one record.
+TAKEN_ACTION = "export"
+TAKEN_RECORD = "inventory"
+
+
+def taken(db: Session, context: AuditContext, format_: str) -> tuple[list[Export], str]:
+    """Return the export of every table and the name of its file, and record in the
+    audit trail that the whole inventory was taken out, by whom and in which format
+    (P-286). One table exported by itself is not recorded: it is what a list shows.
+
+    The event is the request's only write, stored when the route returns and before the
+    first piece of the file is sent, so the one writer's place is not held while the
+    file is read.
+    """
+    wanted = everything(db, format_)
+    name = zip_name(db, format_)
+    audit.record(
+        db,
+        context,
+        TAKEN_ACTION,
+        TAKEN_RECORD,
+        None,
+        [
+            change("file_name", None, name),
+            change("format", None, format_),
+            change("tables", None, len(wanted)),
+        ],
+    )
+    return wanted, name
 
 
 def zip_name(db: Session, format_: str) -> str:

@@ -136,9 +136,33 @@ def test_export_all_writes_the_zip_of_every_table(
     assert named.startswith("hirdir-all-csv-")
     assert named.endswith(".zip")
     assert zipfile.ZipFile(tmp_path / named).namelist()[0] == "tags.csv"
-    run("export", "--all", "items", expect=2)
-    run("export", "--all", "--filter", "name:eq:x", expect=2)
     run("export", expect=2)
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        ("items",),
+        ("--filter", "name:eq:x"),
+        ("--sort", "name"),
+        ("--columns", "name"),
+        ("--own-values",),
+        ("--include-sources",),
+        ("--place-codes",),
+        ("--include-archived",),
+        ("--include-drafts",),
+    ],
+)
+def test_export_all_refuses_what_it_would_not_do(
+    run, tmp_path: Path, given: tuple[str, ...]
+) -> None:
+    """The zip is always every table whole, in the form that loads back: an option that
+    would change one table is refused, and nothing is written, where it was passed over."""
+    target = tmp_path / "everything.zip"
+    refused = run("export", "--all", *given, "--output", str(target), expect=2)
+    assert "the zip is always every table whole" in refused.stderr
+    assert (given[0] if given[0].startswith("--") else "a table") in refused.stderr
+    assert not target.exists()
 
 
 def test_an_item_is_shown_by_whatever_it_is_known_by(run, make: Maker, switches: list) -> None:

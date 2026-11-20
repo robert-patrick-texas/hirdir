@@ -6,17 +6,17 @@ it signs in. It holds no access code, no token and no hash of either, ever: none
 is read here. No file makes or changes a user, so this file is written and never read.
 """
 
-from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
+from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir import clock
-from hirdir.auth.roles import highest
-from hirdir.db.models import Contact, Operator, RoleGrant, User, UserGroup, UserGroupMember
-from hirdir.domain import audit, product, settings
+from hirdir.db.models import User
+from hirdir.domain import accounts, audit, product, settings
 from hirdir.domain.audit import AuditContext, change
 from hirdir.io import files
 
@@ -35,6 +35,8 @@ COLUMNS = (
     "last_sign_in_at",
     "notes",
 )
+# A time is written in the one form the API gives it, in UTC: 2026-11-20T15:04:05.123456Z.
+_TIME: TypeAdapter[datetime | None] = TypeAdapter(datetime | None)
 # The audit trail names what was exported so.
 RECORD = "user"
 ACTION = "export"
@@ -49,60 +51,12 @@ class UsersFile:
     rows: int
 
 
-def _groups(db: Session) -> dict[str, list[str]]:
-    """Return the names of the groups each user is in, by name, by the user's HID."""
-    found: dict[str, list[str]] = defaultdict(list)
-    for user_hid, name in db.execute(
-        select(UserGroupMember.user_hid, UserGroup.name)
-        .join(UserGroup, UserGroup.hid == UserGroupMember.group_hid)
-        .order_by(UserGroup.name_key)
-    ):
-        found[user_hid].append(name)
-    return found
-
-
-def _roles(db: Session) -> dict[str, str]:
-    """Return the role in force of each user that has one, by its HID: the highest granted
-    to the user or to a group it is in."""
-    granted: dict[str, list[str]] = defaultdict(list)
-    members: dict[str, list[str]] = defaultdict(list)
-    for user_hid, group_hid in db.execute(
-        select(UserGroupMember.user_hid, UserGroupMember.group_hid)
-    ):
-        members[group_hid].append(user_hid)
-    for role, user_hid, group_hid in db.execute(
-        select(RoleGrant.role, RoleGrant.user_hid, RoleGrant.group_hid)
-    ):
-        for hid in [user_hid] if user_hid else members.get(group_hid or "", []):
-            granted[hid].append(role)
-    return {hid: str(highest(roles)) for hid, roles in granted.items() if roles}
-
-
-def _operators(db: Session) -> dict[str, list[str]]:
-    """Return the labels of the operators behind which each contact stands, by label, by
-    the contact's HID, of those that are not retired."""
-    found: dict[str, list[str]] = defaultdict(list)
-    for contact_hid, label in db.execute(
-        select(Operator.contact_hid, Operator.label)
-        .where(Operator.contact_hid.is_not(None), Operator.record_status != "retired")
-        .order_by(Operator.label_key)
-    ):
-        found[str(contact_hid)].append(label)
-    return found
-
-
 def rows(db: Session) -> list[dict[str, Any]]:
     """Return a row to each user, by username, in plain values."""
     users = list(db.scalars(select(User).order_by(User.username_key)))
-    contacts = {
-        one.hid: one
-        for one in db.scalars(
-            select(Contact).where(
-                Contact.hid.in_({user.contact_hid for user in users if user.contact_hid})
-            )
-        )
-    }
-    groups, roles, operators = _groups(db), _roles(db), _operators(db)
+    contacts = accounts.contacts_of(db, users)
+    groups, roles = accounts.groups_of_users(db, users), accounts.roles_of(db, users)
+    operators = accounts.operators_of(db, users)
     written: list[dict[str, Any]] = []
     for user in users:
         contact = contacts.get(user.contact_hid or "")
@@ -113,14 +67,17 @@ def rows(db: Session) -> list[dict[str, Any]]:
                 "email": contact.email if contact else None,
                 "phone": contact.phone if contact else None,
                 "phone2": contact.phone2 if contact else None,
-                "role": roles.get(user.hid),
-                "groups": groups.get(user.hid, []),
-                "operators": operators.get(contact.hid, []) if contact else [],
+                "role": role.value if (role := roles[user.hid]) else None,
+                "groups": [group.name for group in groups[user.hid]],
+                # Those that are not retired: a retired label stands for nothing.
+                "operators": [
+                    operator.label
+                    for operator in operators.get(user.hid, [])
+                    if operator.record_status != "retired"
+                ],
                 "kind": "service" if user.is_service_account else "person",
                 "state": "disabled" if user.disabled else "enabled",
-                "last_sign_in_at": (
-                    user.last_sign_in_at.isoformat() if user.last_sign_in_at else None
-                ),
+                "last_sign_in_at": _TIME.dump_python(user.last_sign_in_at, mode="json"),
                 "notes": user.notes,
             }
         )

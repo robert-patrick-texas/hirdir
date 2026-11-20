@@ -639,7 +639,10 @@ export interface paths {
     };
   };
   "/api/v1/auth/me": {
-    /** Return the signed-in user, with the role they hold right now. */
+    /**
+     * Return the signed-in user, with the role they hold right now. Its `notes` are
+     * null: the notes on an account are answered by the routes of users alone (P-281).
+     */
     get: {
       parameters: {
         query?: never;
@@ -3777,7 +3780,7 @@ export interface paths {
      * Export every table at once: one zip, a file to each table, named as `examples/`
      * names it, in the order files are loaded, each the whole table in the form that loads
      * back, its stored values and its retired and drafts among them (P-286). The users are
-     * not in it.
+     * not in it. Audited: that the whole inventory was taken out, by whom and when.
      */
     post: {
       parameters: {
@@ -8205,13 +8208,17 @@ export interface paths {
   "/api/v1/users": {
     /**
      * List users, by username unless a sort says otherwise. `q` matches part of a
-     * username or of the name of its contact.
+     * username or of the name of its contact; `contact` and `operator` find the gaps.
      */
     get: {
       parameters: {
         query?: {
           q?: string;
-          /** What to sort by: `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
+          /** `some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280). */
+          contact?: "any" | "some" | "none";
+          /** `some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280). */
+          operator?: "any" | "some" | "none";
+          /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
@@ -8235,7 +8242,12 @@ export interface paths {
         };
       };
     };
-    /** Create a user. The access code in the answer is not shown again. */
+    /**
+     * Create a user, and in the same change the contact it is, the operator it works
+     * as, its role and its groups, each audited as if made by itself: where any part is
+     * refused, nothing is made (P-282, P-283). The access code in the answer is not shown
+     * again.
+     */
     post: {
       parameters: {
         query?: never;
@@ -8313,9 +8325,9 @@ export interface paths {
       };
     };
     /**
-     * Change a user: its username, its contact, or whether it is disabled. Disabling a
-     * user ends every session they have; a new username keeps them. The name, email and
-     * numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.
+     * Change a user: its username, its contact, its notes, or whether it is disabled.
+     * Disabling a user ends every session they have; a new username keeps them. The name,
+     * email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.
      */
     patch: {
       parameters: {
@@ -9971,10 +9983,14 @@ export interface components {
       created_at: string;
       email: string | null;
       hid: string;
+      /** The contact, not retired, stands behind an operator that is not retired: nobody is behind the operators of a retired contact (P-280). */
+      is_operator: boolean;
       /** The contact is the person a user is. */
       is_user: boolean;
       name: string;
       notes: string | null;
+      /** The operators it stands behind, retired ones among them, in the order of their labels (P-280). */
+      operators: components["schemas"]["OperatorBrief"][];
       organization: string | null;
       phone: string | null;
       phone2: string | null;
@@ -10817,6 +10833,8 @@ export interface components {
       /** Write each place the short way, by the codes of its site and its own: `S2 > R102`, with names where a place has no code (P-235). */
       place_codes?: boolean;
       sort?: string[];
+      /** The whole table in the form that loads back, as the file of every table holds it: the stored values, the retired and the drafts among them, in the order its file is loaded in. A filter, a sort, columns, HIDs, the sources and the codes of places are refused beside it (P-286). */
+      whole?: boolean;
     };
     /** One table that a file is taken for, as the Import page lists it (P-286). */
     ExportTable: {
@@ -12193,6 +12211,14 @@ export interface components {
       hid: string;
       label: string;
     };
+    /** A new operator, made with the user whose contact stands behind it (P-283). */
+    NewOperator: {
+      /** In the form #1f6feb. Left out, the next that no operator has, as `next_for_operators` of `GET /colours` gives it; blank or null, none. */
+      colour?: string | null;
+      description?: string | null;
+      /** Left out or blank, the username of the new user, which must then be an acceptable label: it is never shortened. */
+      label?: string | null;
+    };
     /** A new contact, made with the user that it is. */
     NewPerson: {
       email?: string | null;
@@ -12258,6 +12284,13 @@ export interface components {
       places: components["schemas"]["OperatorPlace"][];
       /** Every item it is in force for. */
       totals: components["schemas"]["ItemCount"];
+    };
+    /** An operator a person stands behind, as a user and a contact name it (P-280). */
+    OperatorBrief: {
+      colour: string | null;
+      hid: string;
+      label: string;
+      record_status: "draft" | "active" | "retired";
     };
     /** A new operator: a label, with somebody behind it or open. */
     OperatorCreate: {
@@ -13857,15 +13890,26 @@ export interface components {
       contact?: components["schemas"]["NewPerson"] | null;
       /** The contact the user is. */
       contact_hid?: string | null;
+      /** The user groups to put the new user in, in the same change (P-282). */
+      group_hids?: string[];
       is_service_account?: boolean;
+      /** Blank is none. */
+      notes?: string | null;
+      /** An operator to make in the same change, whose contact is the user's: it needs `contact` or `contact_hid` (P-283). */
+      operator?: components["schemas"]["NewOperator"] | null;
       /** A role to grant at once. */
       role?: string | null;
       /** What the person signs in with. An Admin can change it later. */
       username: string;
     };
-    /** A user just created, with the access code that is shown this once. */
+    /**
+     * A user just created, with the access code that is shown this once, and the
+     * operator made with it (P-283).
+     */
     UserCreated: {
       access_code: string | null;
+      /** The operator made in the same change, as `GET /operators/{hid}` answers it, or null. */
+      operator: components["schemas"]["OperatorOut"] | null;
       user: components["schemas"]["UserOut"];
     };
     /** A user: the part of a person who signs in, or a service account (P-172). */
@@ -13883,6 +13927,10 @@ export interface components {
       hid: string;
       is_service_account: boolean;
       last_sign_in_at: string | null;
+      /** What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody. */
+      notes: string | null;
+      /** The operators whose contact is the user's, retired ones among them, in the order of their labels; none for a user with no contact (P-280). */
+      operators: components["schemas"]["OperatorBrief"][];
       /** The highest role held directly or through a group. */
       role: string | null;
       row_version: number;
@@ -13894,6 +13942,8 @@ export interface components {
       /** Another contact; null for none. A service account has none. */
       contact_hid?: string | null;
       disabled?: boolean | null;
+      /** Null or blank clears them (P-281). */
+      notes?: string | null;
       row_version: number;
       /** Another username (P-173). */
       username?: string | null;

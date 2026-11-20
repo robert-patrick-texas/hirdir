@@ -3122,6 +3122,84 @@ table.load-table th.load-band {
   user-select: all;
 }
 
+/* 0.9.13, lane w-people-0.9.13 */
+
+/* A user's groups (P-282): a group to a line, its box, its name and what it grants, and
+   what was refused of it under them. */
+.group-boxes .group-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin-right: 0;
+}
+
+.group-boxes .group-box .field-error {
+  flex-basis: 100%;
+  margin-left: 1.6rem;
+}
+
+.group-box-state {
+  color: var(--muted);
+}
+
+/* The New user form (P-283): the contact and the operator, each its box with what it
+   asks under it, set in from the edge so that what belongs to a box is seen as its. */
+.onboard-part {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.onboard-part > .person-chooser,
+.onboard-part > .fields {
+  margin-left: 1.6rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+
+/* The operator's label above its colour, which takes the width the picker needs. */
+.onboard-part > .fields.onboard-operator {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 40rem;
+}
+
+/* Who is what on the lists and pages of people (P-280): plain words where there is none. */
+.people-gap {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Show, and the gaps of a list beside it, as the pages of a menu are: the one on show
+   is filled. */
+.gap-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.gap-links-label {
+  font-weight: 600;
+}
+
+.gap-links ul {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem;
+}
+
+.people-marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+}
+
+/* Make an operator (P-284): the label and the colour, opened in place by a refusal. */
+.make-operator-form {
+  margin-top: 0.5rem;
+  max-width: 40rem;
+}
+
 /* 0.9.13, lane w-export-0.9.13 */
 
 /* The Import page: the upload, and beside it every table a file is taken for (P-286).
@@ -3237,4 +3315,186 @@ table.load-table th.load-band {
   display: inline-flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+/* 0.9.13, lane w-operators-0.9.13 */
+
+/* A colour, chosen from the grid of 64, by the slider of 32, or typed (P-285). It fits a
+   form 360 pixels wide: the swatches shrink, and nothing scrolls sideways. */
+fieldset.colour-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 24rem;
+}
+
+fieldset.colour-picker > p {
+  margin: 0;
+}
+
+.colour-typed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  align-items: center;
+}
+
+.colour-typed input[type="text"] {
+  width: 7.5rem;
+  font-family: var(--mono);
+}
+
+/* The value on a chip filled with the colour, its text black or white as reckoned. */
+.colour-chip {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.colour-chip-none {
+  border-style: dashed;
+  background: var(--bg);
+  color: var(--muted);
+  font-family: var(--font);
+}
+
+.colour-sample {
+  white-space: nowrap;
+}
+
+.colour-part {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.colour-part-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 0.75rem;
+  font-size: 0.87rem;
+}
+
+.field .colour-part-head label {
+  display: inline;
+  margin: 0;
+}
+
+/* The slider: a range input over a track of its 32 steps, the centre of each step under
+   the centre of the thumb that stands at it. */
+.colour-slider {
+  --thumb: 1rem;
+  position: relative;
+  height: 1.7rem;
+}
+
+.colour-track {
+  position: absolute;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  left: calc(var(--thumb) / 2 - (100% - var(--thumb)) / 62);
+  right: calc(var(--thumb) / 2 - (100% - var(--thumb)) / 62);
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.colour-track > span {
+  flex: 1 1 0;
+}
+
+.colour-slider input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.colour-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+
+.colour-slider input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.colour-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: 1.7rem;
+  border: 3px solid var(--text);
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.colour-slider input[type="range"]::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: 1.7rem;
+  border: 3px solid var(--text);
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* Resting at no step of its own: the thumb is hollow and dashed, and the words say so. */
+.colour-slider[data-none="true"] input[type="range"]::-webkit-slider-thumb {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.colour-slider[data-none="true"] input[type="range"]::-moz-range-thumb {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+/* The grid: a row to each shade, a column to each hue, none of a table's lines. */
+table.colour-grid {
+  width: calc(100% + 0.5rem);
+  max-width: 19.5rem;
+  border-collapse: separate;
+  border-spacing: 0.25rem;
+  margin: -0.25rem;
+  table-layout: fixed;
+}
+
+.colour-cell {
+  padding: 0;
+  border: 0;
+}
+
+.colour-grid-row:hover {
+  background: none;
+}
+
+.colour-swatch {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* The one chosen is pressed, ringed in the colour of the text, and ticked. */
+.colour-swatch[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 1px var(--bg),
+    0 0 0 3px var(--text);
 }
