@@ -141,7 +141,14 @@ the people who met them on About, P-270 to P-274. The long reports of the day st
 with the server until the release after (P-269). What the walk through hosts costs, what the first
 page asks at every sign-in, and what one process on one processor can carry, are
 notes for the timing of 1.0.0: the numbers are in P-261 and in
-[Architecture](architecture.md#testing).
+[Architecture](architecture.md#testing). 0.9.11 follows it, as the owner
+had put it on 2026-11-19 ("reports move in the release after 0.9.10") and asked for on
+2026-11-20 ("start 0.9.11"), with the long reports of the day moved to the second
+process: it works out the coverage report, the renewal worklist, the summary of the
+renewal alert and the capacity balance ahead and keeps them in the database, a row to
+each, where the server finds them (P-275); and it works them out again by day, once
+nothing has changed for half a minute, which a setting says (P-276). Its migration,
+`0015`, adds the table of what is kept and changes no record.
 
 ## From 0.6.1 to 0.9.0
 

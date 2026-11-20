@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.10, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.11, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -57,6 +57,10 @@ stays as it was when its person comes back to the tab.
 every page, its last ten minutes on About with the slowest requests and who met them,
 and past a ceiling an answer at once to wait in place of a request that times out; and
 the imports and bulk edits applied by a second process, a service of its own.
+0.9.11 gives that second process the long reports as well: it works out the coverage
+report, the renewal worklist, the renewal alert and the capacity balance ahead, at
+night and again once the inventory has been quiet for half a minute after a change,
+and keeps them in the database, where the server finds them.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are
