@@ -1,6 +1,7 @@
 import { type FormEvent, Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
+import { ColourPicker, useColours } from "../components/ColourPicker";
 import {
   CheckField,
   CheckGroupField,
@@ -389,7 +390,8 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
   const groups = useLoad("user-groups", (signal) =>
     api.request("get", "/api/v1/user-groups", { signal }),
   );
-  const colours = useLoad("colours", (signal) => api.request("get", "/api/v1/colours", { signal }));
+  // Read afresh for the form: another operator may have taken a colour since the page was.
+  const colours = useColours(true);
   // Until one is chosen the colour shows the next no operator has, and is left to the
   // server, which gives the same, and gives it too where the colours have not yet come.
   const colour = chosenColour ?? colours.data?.next_for_operators ?? "";
@@ -502,7 +504,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
               error={fields.operator}
             />
             {alsoOperator && (
-              <div className="fields">
+              <div className="fields onboard-operator">
                 <TextField
                   label="Label"
                   name="operator_label"
@@ -514,14 +516,14 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
                   error={fields.label}
                   disabled={action.busy}
                 />
-                <TextField
+                <ColourPicker
+                  id="new-user-colour"
                   label="Colour"
                   name="operator_colour"
                   value={colour}
                   onChange={setChosenColour}
-                  maxLength={7}
-                  autoComplete="off"
-                  hint="In the form #1f6feb: the next colour that no operator has, unless another is chosen. Blank is no colour."
+                  sample={label.label.trim() || username.trim()}
+                  hint="The next colour that no operator has, unless another is chosen. Blank is no colour."
                   error={fields.colour}
                   disabled={action.busy}
                 />

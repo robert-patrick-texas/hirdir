@@ -13,6 +13,7 @@ import { ApiError } from "../api/client";
 import { useAction } from "../lib/hooks";
 import { refusedField } from "../lib/onboarding";
 import { operatorPath } from "../lib/operators";
+import { ColourField, readColours } from "./ColourPicker";
 import { createdState } from "./Created";
 import { TextField } from "./Field";
 import { Problem } from "./Problem";
@@ -48,7 +49,7 @@ export function MakeOperator({ contactHid, label: proposed, who }: MakeOperatorP
       // one there was when the page was read.
       let chosen = colour;
       if (chosen === null) {
-        chosen = (await api.request("get", "/api/v1/colours", {})).next_for_operators;
+        chosen = (await readColours(performance.now())).next_for_operators;
         setColour(chosen);
       }
       try {
@@ -92,14 +93,13 @@ export function MakeOperator({ contactHid, label: proposed, who }: MakeOperatorP
             error={fields.label}
             disabled={action.busy}
           />
-          <TextField
+          <ColourField
             label="Colour"
             name="colour"
             value={colour ?? ""}
             onChange={setColour}
-            maxLength={7}
-            autoComplete="off"
-            hint="In the form #1f6feb. Blank is no colour."
+            sample={label}
+            hint="The next colour that no operator has, unless another is chosen. Blank is no colour."
             error={fields.colour}
             disabled={action.busy}
           />

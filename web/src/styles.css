@@ -3156,6 +3156,12 @@ table.load-table th.load-band {
   border-left: 2px solid var(--border);
 }
 
+/* The operator's label above its colour, which takes the width the picker needs. */
+.onboard-part > .fields.onboard-operator {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 40rem;
+}
+
 /* Who is what on the lists and pages of people (P-280): plain words where there is none. */
 .people-gap {
   color: var(--muted);
