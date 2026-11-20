@@ -3047,11 +3047,20 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   to those behind no operator. The page of a contact behind no operator has Make an
   operator, as a user's has, with the username as the label where the contact is a
   user and the contact's name where it is not.
-- **Operators.** The list shows the user behind each operator as a link, for an Admin,
-  and Show narrows it to those with nobody behind them. In the New operator form,
-  choosing a person who is a user fills the label with the username while the label is
-  blank or is still what the form filled in. On the page of an operator, Details stands
-  above The person's email and numbers.
+- **Operators.** The list has a column User: the user behind each operator by its
+  username, a link to the user's page for an Admin and plain words for the other roles,
+  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  the list, Show leads, as the lists of users and of contacts do, by a link one press
+  away whose address holds the grid's own filter, to every operator, to those with no
+  user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
+  nobody behind them at all, `is_open:eq:true`; the one on show is marked as the
+  current page. In the New operator form the colour starts at `next_for_operators`
+  of a read of `GET /colours` begun as the form opened, until one is chosen; choosing a
+  person who is a user fills the label with the username while the label is blank or is
+  still what the form filled in, and a label typed by hand is kept. A Create pressed
+  before the username or the colour has come waits for them, says so, and then makes
+  the operator with them. On the page of an operator, Details stands above The person's
+  email and numbers, and the colour is shown on its chip.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
   one picker (P-285), a group named as the field is: the text box, which takes any
   `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and

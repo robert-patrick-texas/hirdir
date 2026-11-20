@@ -1,8 +1,9 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, Fragment, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { BoxTree } from "../components/BoxTree";
+import { ColourShown, useNextColour } from "../components/ColourPicker";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
@@ -17,6 +18,7 @@ import { formatTime, plural } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY } from "../lib/lists";
+import { isGapShown, labelFor, OPERATOR_GAPS, operatorsAddress } from "../lib/operatorPage";
 import {
   markOf,
   type Operator,
@@ -44,31 +46,55 @@ import {
   scopeHint,
   scopeLabel,
 } from "../lib/people";
+import { kindPath } from "../lib/preview";
 import { allows } from "../lib/roles";
 import { oneLink, page } from "../lib/valueLinks";
 
+/**
+ * The columns of the list. 0.9.13: the user behind each operator, by its username, a link
+ * to the user's page for an Admin, whose page it is, and plain words for others (P-280).
+ */
+function operatorColumns(admin: boolean): GridColumn<Operator>[] {
+  return [
+    {
+      id: "label",
+      header: "Label",
+      kind: "text",
+      value: (operator) => operator.label,
+      chip: (operator) => ({
+        colour: safeColour(operator.colour),
+        path: operatorPath(operator.hid),
+      }),
+      width: 180,
+    },
+    {
+      // The person behind the label: the list is filtered and sorted by that name.
+      id: "contact.name",
+      header: "Person behind it",
+      kind: "text",
+      column: "contact",
+      value: (operator) => operator.contact?.name,
+      links: (operator) => oneLink(operator.contact?.name, page("contact", operator.contact?.hid)),
+      width: 240,
+    },
+    {
+      // The server neither filters nor sorts by it: Show narrows the list to the gaps.
+      id: "user",
+      header: "User",
+      kind: "text",
+      field: null,
+      sortField: null,
+      column: null,
+      value: (operator) => operator.user?.username ?? "no user",
+      links: (operator) =>
+        oneLink(operator.user?.username, kindPath("user", operator.user?.hid, admin)),
+      width: 150,
+    },
+    ...COLUMNS,
+  ];
+}
+
 const COLUMNS: GridColumn<Operator>[] = [
-  {
-    id: "label",
-    header: "Label",
-    kind: "text",
-    value: (operator) => operator.label,
-    chip: (operator) => ({
-      colour: safeColour(operator.colour),
-      path: operatorPath(operator.hid),
-    }),
-    width: 180,
-  },
-  {
-    // The person behind the label: the list is filtered and sorted by that name.
-    id: "contact.name",
-    header: "Person behind it",
-    kind: "text",
-    column: "contact",
-    value: (operator) => operator.contact?.name,
-    links: (operator) => oneLink(operator.contact?.name, page("contact", operator.contact?.hid)),
-    width: 240,
-  },
   // 0.9.3: internal where the person behind it is a user, external where not, and the
   // person's email and numbers, which are the contact's (P-172).
   {
@@ -184,12 +210,15 @@ function operatorSpecs(): FieldSpec[] {
       maxLength: 40,
       hint: "Short, and of your choosing: initials, a surname, a code such as Op2. It is what lists and reports show.",
     },
+    // 0.9.13: chosen from the grid, by the slider or typed, beside the label as it will
+    // show (P-285).
     {
       name: "colour",
       label: "Colour",
-      kind: "text",
-      maxLength: 7,
-      hint: "In the form #1f6feb. A dot in this colour stands beside the label.",
+      kind: "colour",
+      hint: "Press a colour, move the slider, or type one in the form #1f6feb. A dot in this colour stands beside the label. Blank is no colour.",
+      sample: (values) => (typeof values.label === "string" ? values.label : ""),
+      sampleAs: "operator",
     },
     { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
     { name: "description", label: "Description", kind: "longtext", maxLength: 10000 },
@@ -208,6 +237,8 @@ export function Operators() {
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
+  const admin = allows(user.role, "admin");
+  const columns = useMemo(() => operatorColumns(admin), [admin]);
 
   return (
     <>
@@ -224,12 +255,28 @@ export function Operators() {
           onCancel={() => setAdding(false)}
         />
       )}
+      {/* 0.9.13: the gaps, each one press away and an address of its own, as on the lists
+          of users and of contacts (P-280). */}
+      <nav className="gap-links" aria-label="Show operators" data-testid="gap-links">
+        <span className="gap-links-label">Show</span>{" "}
+        {OPERATOR_GAPS.map((gap, index) => (
+          <Fragment key={gap.filter}>
+            {index > 0 && <span aria-hidden="true"> · </span>}
+            <Link
+              to={operatorsAddress(gap.filter)}
+              aria-current={isGapShown(gap.filter, startFilter) ? "page" : undefined}
+            >
+              {gap.label}
+            </Link>
+          </Fragment>
+        ))}
+      </nav>
       <DataGrid<Operator>
         key={startFilter ?? ""}
         id="operators"
         noun={["operator", "operators"]}
         entity="operators"
-        columns={COLUMNS}
+        columns={columns}
         load={(request, signal) =>
           api.request("get", "/api/v1/operators", { query: queryParams(request), signal })
         }
@@ -353,7 +400,9 @@ export function OperatorDetail() {
             <dt>Description</dt>
             <dd>{record.description || <span className="muted">—</span>}</dd>
             <dt>Colour</dt>
-            <dd className="mono">{record.colour || <span className="muted">—</span>}</dd>
+            <dd>
+              <ColourShown colour={record.colour} testId="operator-colour" />
+            </dd>
             <dt>Record status</dt>
             <dd>
               {record.record_status === "retired"
@@ -368,6 +417,25 @@ export function OperatorDetail() {
             <dd className="mono">{record.hid}</dd>
           </dl>
           <On operator={record} />
+          {/* 0.9.13: Details first, above the person's email and numbers (P-284). */}
+          {mayEdit && record.record_status !== "retired" && (
+            <section aria-labelledby="details">
+              <h2 id="details">Details</h2>
+              <EditForm<Operator, Schemas["OperatorPatch"]>
+                key={`${record.hid} ${record.row_version}`}
+                specs={specs}
+                record={record}
+                save={(body) =>
+                  api.request("patch", "/api/v1/operators/{hid}", {
+                    path: { hid: record.hid },
+                    body,
+                  })
+                }
+                onSaved={() => changed("The operator was saved.")}
+                onReload={operator.reload}
+              />
+            </section>
+          )}
           {mayEdit && record.record_status !== "retired" && record.contact && (
             <section aria-labelledby="person-details">
               <h2 id="person-details">The person&apos;s email and numbers</h2>
@@ -390,24 +458,6 @@ export function OperatorDetail() {
               onChanged={changed}
               onReload={operator.reload}
             />
-          )}
-          {mayEdit && record.record_status !== "retired" && (
-            <section aria-labelledby="details">
-              <h2 id="details">Details</h2>
-              <EditForm<Operator, Schemas["OperatorPatch"]>
-                key={`${record.hid} ${record.row_version}`}
-                specs={specs}
-                record={record}
-                save={(body) =>
-                  api.request("patch", "/api/v1/operators/{hid}", {
-                    path: { hid: record.hid },
-                    body,
-                  })
-                }
-                onSaved={() => changed("The operator was saved.")}
-                onReload={operator.reload}
-              />
-            </section>
           )}
           {mayEdit && (
             <Release
@@ -568,6 +618,13 @@ interface NewOperatorProps {
   onCancel: () => void;
 }
 
+/** The username asked for of a user chosen, and the label the form had filled in before. */
+interface Naming {
+  hid: string;
+  username: Promise<string | null>;
+  filled: string;
+}
+
 /**
  * A new operator: its label, colour, status and description, and the person behind it,
  * a user, another contact, a new person whose name, email and numbers make a new
@@ -585,14 +642,76 @@ function NewOperator({ onCreated, onCancel }: NewOperatorProps) {
   const action = useAction();
   const names = [...specs.map((spec) => spec.name), ...PERSON_FIELDS];
   const errors: Record<string, string> = { ...action.error?.fields, ...found };
+  // 0.9.13: the colour starts at the next that no operator has, until one is chosen; a
+  // colour chosen blank is no colour (P-285).
+  const nextColour = useNextColour();
+  const [colourChosen, setColourChosen] = useState(false);
+  const shown =
+    colourChosen || nextColour.next === null ? values : { ...values, colour: nextColour.next };
+  // 0.9.13: a user chosen as the person behind it names the label with its username,
+  // while the label is blank or still what the form filled in (P-284).
+  const naming = useRef<Naming | null>(null);
+  const filled = useRef("");
+  // Create waits for what has not come yet, the username and the colour, and is pressed once.
+  const [waiting, setWaiting] = useState(false);
+  const busy = action.busy || waiting;
 
   function change(name: string, value: FormValue) {
+    if (name === "colour") setColourChosen(true);
     setValues((was) => ({ ...was, [name]: value }));
+  }
+
+  /** Read the username of the user chosen, and fill the label with it when it comes. */
+  function nameFrom(choice: PersonChoice) {
+    if (choice.way !== "user" || choice.contactHid === "") {
+      naming.current = null;
+      return;
+    }
+    if (naming.current?.hid === choice.contactHid) return;
+    const hid = choice.contactHid;
+    const username = api.request("get", "/api/v1/contacts/{hid}", { path: { hid } }).then(
+      (contact) => contact.user?.username ?? null,
+      // A contact that is not read names nothing: the label is typed.
+      () => null,
+    );
+    const asked: Naming = { hid, username, filled: filled.current };
+    naming.current = asked;
+    void username.then((name) => {
+      if (naming.current !== asked || name === null) return;
+      setValues((was) => ({
+        ...was,
+        label: labelFor(typeof was.label === "string" ? was.label : "", asked.filled, name),
+      }));
+      filled.current = name;
+    });
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const built = buildCreate<Schemas["OperatorCreate"]>(specs, values);
+    if (busy) return;
+    let ready = shown;
+    const asked = naming.current;
+    const colourPending = !colourChosen && nextColour.next === null;
+    if (asked || colourPending) {
+      setWaiting(true);
+      try {
+        const [name, colour] = await Promise.all([
+          asked ? asked.username : null,
+          colourPending ? nextColour.wait() : null,
+        ]);
+        const typed = typeof ready.label === "string" ? ready.label : "";
+        ready = {
+          ...ready,
+          ...(asked && naming.current === asked
+            ? { label: labelFor(typed, asked.filled, name) }
+            : {}),
+          ...(colour ? { colour } : {}),
+        };
+      } finally {
+        setWaiting(false);
+      }
+    }
+    const built = buildCreate<Schemas["OperatorCreate"]>(specs, ready);
     const read = readPerson(person);
     const wrong = { ...built.errors, ...(read.ok ? {} : { [read.field]: read.error }) };
     setFound(wrong);
@@ -624,10 +743,10 @@ function NewOperator({ onCreated, onCancel }: NewOperatorProps) {
         )}
         <FormFields
           specs={specs}
-          values={values}
+          values={shown}
           onChange={change}
           errors={errors}
-          disabled={action.busy}
+          disabled={busy}
         />
         <PersonChooser
           legend="Person behind it"
@@ -638,20 +757,26 @@ function NewOperator({ onCreated, onCancel }: NewOperatorProps) {
           onChange={(next) => {
             setFound({});
             setPerson(next);
+            nameFrom(next);
           }}
           errors={errors}
           known={made ? [made] : []}
-          hint="The member of the team the label stands for: internal where that person is a user, external where not."
-          disabled={action.busy}
+          hint="The member of the team the label stands for: internal where that person is a user, external where not. A user chosen gives the label its username, unless one is typed."
+          disabled={busy}
         />
         <p className="actions">
-          <button type="submit" className="primary" disabled={action.busy}>
+          <button type="submit" className="primary" disabled={busy}>
             Create operator
           </button>
-          <button type="button" onClick={onCancel} disabled={action.busy}>
+          <button type="button" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
         </p>
+        {waiting && (
+          <p role="status" className="muted">
+            Waiting for what the form fills in, the username or the colour…
+          </p>
+        )}
       </form>
     </section>
   );
