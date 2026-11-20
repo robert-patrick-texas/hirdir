@@ -25,9 +25,10 @@ from hirdir.auth.roles import Role
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.db.models import CatalogEntry
-from hirdir.domain import audit, contacts, items, operators
+from hirdir.domain import audit, catalog, contacts, items, operators, tags
 from hirdir.ids import new_hid
 from hirdir.io import examples, imports
+from hirdir.io.columns import CLEAR_MARK
 from hirdir.io.entities import LOAD_ORDER
 from tests.api.inventory import API
 
@@ -137,6 +138,22 @@ def _richer(db: Any) -> None:
         items.create_item(db, context, {"catalog_entry_hid": model, "name": "ex-twin", **more})
         for more in ({}, {"record_status": "draft"})
     ]
+    # Text that is the very mark a file clears a value with, stored as it was given, and
+    # the same behind an apostrophe of its own: each is a value, and comes back as one.
+    tags.create_tag(db, context, {"label": "ex-clear", "description": CLEAR_MARK})
+    catalog.create_vendor(db, context, {"name": "Example Clear", "aliases": [CLEAR_MARK]})
+    contacts.create_contact(db, context, {"name": "Example Clear", "notes": CLEAR_MARK})
+    operators.create_operator(db, context, {"label": "ex-clear", "description": f"'{CLEAR_MARK}"})
+    items.create_item(
+        db,
+        context,
+        {
+            "catalog_entry_hid": model,
+            "name": "ex-clear",
+            "description": CLEAR_MARK,
+            "comments": f"''{CLEAR_MARK}",
+        },
+    )
     db.commit()
     _load(
         db,
