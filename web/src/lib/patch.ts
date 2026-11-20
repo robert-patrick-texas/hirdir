@@ -3,6 +3,8 @@
 // which clears a field and makes one that inherits do so again. An amount is sent as the
 // text that was typed: it never passes through a JavaScript number.
 
+import { colourProblem } from "./colour";
+
 export type FieldKind =
   /** One line of text. */
   | "text"
@@ -42,7 +44,12 @@ export type FieldKind =
   /** 0.9.8: an item, found by its name, serial number or asset tag. Its HID. */
   | "item"
   /** 0.9.8: a moment, a day and a time of day where the person is. Sent with its zone. */
-  | "moment";
+  | "moment"
+  /**
+   * 0.9.13: a colour, `#rrggbb`, chosen from the grid of 64, by the slider of 32 or typed
+   * (P-285). Sent in lower case, as the server keeps it; blank is no colour.
+   */
+  | "colour";
 
 export interface Option {
   value: string;
@@ -110,6 +117,13 @@ export interface FieldSpec {
    * that has a host is its host's (P-251).
    */
   shownAs?: (values: FormValues) => string | undefined;
+  /**
+   * 0.9.13: for a colour, the label shown beside its chip, as the lists will show it,
+   * from what the form holds now: the label being typed (P-285).
+   */
+  sample?: (values: FormValues) => string;
+  /** 0.9.13: for a colour, whether the sample is shown as an operator (the default) or a tag. */
+  sampleAs?: "operator" | "tag";
 }
 
 export type FormValue = string | boolean | string[];
@@ -267,6 +281,10 @@ export function read(spec: FieldSpec, value: FormValue | undefined): Read {
       };
     }
     return { value: typed };
+  }
+  if (spec.kind === "colour") {
+    const problem = colourProblem(typed);
+    return problem === null ? { value: typed.toLowerCase() } : { error: problem };
   }
   if (spec.kind === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(typed)) {
     return { error: "A date, as YYYY-MM-DD." };
