@@ -1993,6 +1993,59 @@ Going back to 0.9.11 needs no backup, because the schema is the same:
 sudo apt install --allow-downgrades ./hirdir_0.9.11_amd64.deb
 ```
 
+### From 0.9.12 to 0.9.13
+
+The schema goes from revision `0015` to `0016`. One column is added, `notes` of the
+users, blank for every user; no table is added, nothing that is held is changed, and the
+upgrade writes no audit event. It takes its backup and stops and starts the service as
+every upgrade does. `/etc/hirdir/config.toml` gains no setting, so the upgrade says
+nothing of it.
+
+Every user from before is as it was: it signs in with its access code, its sessions and
+its service tokens go on, and it keeps its contact, its role and its groups. What 0.9.13
+says of who is which is worked out when it is read, so it holds for the users from
+before at once: each answers the operators that its contact stands behind, and a contact
+whether it stands behind one.
+
+What an Admin sees that is new:
+
+- **Who is a user, a contact and an operator**, on each of the three lists, as a link to
+  the other record, and Show narrows each list to its gaps: the users with no contact
+  and those with no operator, the contacts that are no user and those behind no
+  operator, the operators with no user behind them. A service account is in no gap; a
+  user that is disabled is, until it is put right or removed.
+- **A user's notes**: what the account is for, who asked for it, when it is to end. They
+  are blank for every user after the upgrade, and a change of them is audited.
+- **A new person in one step.** The New user form makes the user, the contact it is and
+  the operator it works as, with its role and its groups, in one Create; Also a contact
+  and Also an operator are ticked from the start, and the operator's label is the
+  username and its colour the next that no operator has. A user's groups are changed
+  from its page. The page of a user or a contact behind no operator has Make an
+  operator, and the page of an operator has Details first.
+- **A colour from a grid of 64 or a slider of 32**, or typed, wherever a colour is
+  entered, an operator's and a tag's. A colour from before that is none of them is kept
+  as it is, and is as good as one that is.
+- **Every table exported from the Import page**, each with how many records it holds,
+  as CSV and as JSON, in the form that loads back; a table that holds nothing gives the
+  header row of its file, the template of its import. Export everything is one zip of
+  every table, in the order of loading, and is audited. Geography exports its regions,
+  sites and locations.
+- **The users as a file**, for an Admin, under Admin, Users: a row to each user with its
+  person, its role, its groups, its operators, its kind, its state, when it last signed
+  in and its notes, and no access code, no token and no hash of either. It is audited.
+  No file makes or changes a user.
+
+For a script that reads the API: a user answers `operators` and `notes`, and a contact
+`operators` and `is_operator`; `GET /users` takes `contact` and `operator`, each `any`,
+`some` or `none`; `POST /users` takes `notes`, `group_hids` and `operator`, and answers
+the operator it made; `PATCH /users/{hid}` takes `notes`. `GET /colours`,
+`GET /exports/tables`, `POST /exports/all` and `POST /users/export` are new, and so is
+`hirdir export --all`. Nothing is taken away.
+
+Going back to 0.9.12 is by the backup the upgrade took, as
+[Going back to the release before](#going-back-to-the-release-before) says, since the
+schema changed: what was entered since is lost, the notes of the users with it.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
