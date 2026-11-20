@@ -28,7 +28,9 @@
 #                      of the capacity balance, links and the renewal alert seen; from
 #                      0.8.0 circuits of each shape with their carriers, cost lines,
 #                      devices and contacts, the contacts of a carrier, a circuit
-#                      group, the weights of places and the six weights set
+#                      group, the weights of places and the six weights set; and every
+#                      table of what was carried over is exported whole by the new
+#                      version and previewed back as nothing to change
 #   --failed-upgrade   install the previous release, with the same inventory, and make
 #                      the migration of the new one fail, in the database: by a table in
 #                      the way of one it creates, or, where it creates none, by a
@@ -43,29 +45,31 @@
 #                      pair of older releases, whose package cannot do what the fresh
 #                      pass asks of this tree's. It says in a SKIP line what it left out,
 #                      and is not the release check
-#   --fresh            install on a system that never had hirdir, as a new
-#                      installation does, and exercise it: the examples imported and
-#                      exported through nginx, minor items, a stack, a replacement and
-#                      addresses made beside them, condition, observation and health,
-#                      a cluster counted in its three ways, regions, sites, locations
-#                      and contacts with what a place has in force, a site moved, an
-#                      item with an owner outside the team, operators, deliveries to
-#                      a street address, planned locations and a site made active,
-#                      what a group gives its members, contracts and what they
-#                      cover, a purchase received, a stack registered, a draft site
-#                      and an archived item, reference files uploaded and downloaded
-#                      through nginx and a backup of them restored on a second, clean
-#                      host, then the inventory made by hand, and the capacity balance
-#                      of the worked example; and, where the package has the unit of
-#                      the background work, the two units of the service: an import
-#                      applied by the second process, the server answering alone while
-#                      that unit is stopped, and a stop, a start and a restart of
-#                      hirdir acting on both; and, where the second process keeps the
-#                      long reports in the database, that it works them out by itself,
-#                      again after a change when the setting says and not with the
-#                      setting at 0, that the server answers a long report without
-#                      it, and that a reset clears what is kept and a restore brings
-#                      it back
+#   --fresh            install on a system that never had hirdir, as a new installation
+#                      does, and exercise it: the examples imported and exported through
+#                      nginx, minor items, a stack, a replacement and addresses made
+#                      beside them, condition, observation and health, a cluster counted
+#                      in its three ways, regions, sites, locations and contacts with what
+#                      a place has in force, a site moved, an item with an owner outside
+#                      the team, operators, deliveries to a street address, planned
+#                      locations and a site made active, what a group gives its members,
+#                      contracts and what they cover, a purchase received, a stack
+#                      registered, a draft site and an archived item, every table exported
+#                      whole, at once as a zip and one by one, an empty one as its
+#                      template, and previewed back as nothing to change, a person made a
+#                      user, a contact and an operator in one request, the gaps of the
+#                      users, the colours and the users as a file, reference files
+#                      uploaded and downloaded through nginx and a backup of them restored
+#                      on a second, clean host, then the inventory made by hand, and the
+#                      capacity balance of the worked example; and, where the package has
+#                      the unit of the background work, the two units of the service: an
+#                      import applied by the second process, the server answering alone
+#                      while that unit is stopped, and a stop, a start and a restart of
+#                      hirdir acting on both; and, where the second process keeps the long
+#                      reports in the database, that it works them out by itself, again
+#                      after a change when the setting says and not with the setting at 0,
+#                      that the server answers a long report without it, and that a reset
+#                      clears what is kept and a restore brings it back
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -3443,6 +3447,10 @@ carried_inventory() {
         expect "pkg GET /reports/duplicates lists the address that is twice under one network as it did" \
             "$(duplicates 192.0.2.101)" "$duplicates_before"
     fi
+    # What was carried over, which is the inventory most like a site's that this test
+    # has, exported whole by the new version, every table of it, loads back as nothing to
+    # change, before anything is written to it.
+    loads_back "after the upgrade, of what was carried over:"
     # Last, what is new is tried on what was carried over, by the files that have it.
     particular after
 }
@@ -4132,6 +4140,205 @@ if sys.argv[3:]:
 print(json.dumps(body))' "$@"
 }
 
+# ---- every table, exported whole --------------------------------------------------------
+#
+# From 0.9.13 every table that a file is taken for is listed by GET /exports/tables, in
+# the order of loading, with how many records it holds and the columns of its file; POST
+# /exports gives the whole of each in the form that loads back, an empty one as its
+# template; and POST /exports/all gives them all at once, as one zip, which is audited
+# (P-286). What is exported loads back: previewed into the inventory it came from, the
+# file of any table changes nothing. Nothing here names a release: an installation whose
+# version lists no tables is asked none of it.
+
+# whole_body ENTITY FORMAT: the body of POST /exports for a whole table in the form that
+# loads back, as the Import page asks for it: the stored values, the retired and the
+# drafts among them.
+whole_body() {
+    printf '{"entity": "%s", "format": "%s", "own_values": true, "include_archived": true, "include_drafts": true}' "$1" "$2"
+}
+
+# whole_zip FORMAT: POST /exports/all, with the token in $token, through nginx under
+# $prefix. Sets $status, and keeps the zip in $work/all.FORMAT.zip.
+whole_zip() {
+    authorized POST "$prefix/api/v1/exports/all" --header 'Content-Type: application/json' \
+        --data "{\"format\": \"$1\"}" --max-time 120
+    cp "$work/body" "$work/all.$1.zip"
+}
+
+# zip_names ZIP: the names of the files in a zip, in their order, on one line.
+zip_names() {
+    python3 -c '
+import sys, zipfile
+
+try:
+    print(*zipfile.ZipFile(sys.argv[1]).namelist())
+except Exception as error:
+    print(f"<{type(error).__name__}: {error}>")' "$1"
+}
+
+# zips_same ZIP ZIP: "same" where two zips hold the same files in the same order, each
+# byte for byte, whenever each was written; otherwise what differs.
+zips_same() {
+    python3 -c '
+import sys, zipfile
+
+try:
+    first, second = (zipfile.ZipFile(path) for path in sys.argv[1:3])
+except Exception as error:
+    print(f"<{type(error).__name__}: {error}>")
+    sys.exit()
+if first.namelist() != second.namelist():
+    print("other files:", *second.namelist())
+else:
+    print(" ".join(n for n in first.namelist() if first.read(n) != second.read(n)) or "same")' "$1" "$2"
+}
+
+# beside_zip FILE ZIP NAME: how many records an export holds, CSV or JSON as its name
+# says, and whether the file of that name in a zip of every table holds the same, as "N
+# rows, as in the zip": the same header and the same rows, or the same envelope and the
+# same records, in whatever order, since the zip writes the items by depth.
+beside_zip() {
+    python3 -c '
+import csv, io, json, sys, zipfile
+
+def read(text):
+    if sys.argv[3].endswith(".json"):
+        document = json.loads(text)
+        records = document["records"]
+        return [document.get("schema"), document.get("entity")], sorted(json.dumps(r, sort_keys=True) for r in records)
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    return (rows[0] if rows else []), sorted(rows[1:])
+
+try:
+    head, rows = read(open(sys.argv[1], encoding="utf-8", newline="").read())
+except Exception as error:
+    print(f"<{type(error).__name__}: {error}>")
+    sys.exit()
+try:
+    held = read(zipfile.ZipFile(sys.argv[2]).read(sys.argv[3]).decode("utf-8"))
+except Exception as error:
+    held = (None, [f"<{type(error).__name__}: {error}>"])
+if held == (head, rows):
+    print(len(rows), "rows, as in the zip")
+elif held[0] != head:
+    print(len(rows), "rows, and the zip has another head:", held[0])
+else:
+    print(len(rows), "rows, and the zip has", len(held[1]), "of which", len(set(held[1]) ^ set(rows)), "differ")' "$1" "$2" "$3"
+}
+
+# rows_changed: where the preview in the last response finds a row that is not
+# unchanged, the first three such rows, each with how it names its record, what it would
+# change or why it is rejected; nothing where every row is unchanged.
+rows_changed() {
+    local hid
+    if [ "$(json '(lambda j: j["unchanged"] == j["row_count"] and not j["rejected"])(d["job"])')" = true ]; then
+        return 0
+    fi
+    hid=$(json 'd["job"]["hid"]')
+    api GET "/imports/$hid/rows?limit=500"
+    printf ' %s' "$(json '[[r["row"], r["outcome"], r["key"], r["changes"], r["reasons"]] for r in d["items"] if r["outcome"] != "unchanged"][:3]')"
+}
+
+# count_of TABLES ENTITY: how many records GET /exports/tables, kept in the file TABLES,
+# says that the table holds.
+count_of() {
+    python3 -c '
+import json, sys
+
+print({t["entity"]: t["count"] for t in json.load(open(sys.argv[1], encoding="utf-8"))}.get(sys.argv[2], "none"))' "$1" "$2"
+}
+
+# tables_listed BEFORE: what the last response, GET /exports/tables, says of each table,
+# beside examples/ and an earlier answer kept in the file BEFORE: its entity, the name of
+# its file, whether its columns are the header of that file in examples/, and how many
+# records it holds more than it did then. With "wanted" for BEFORE, what that is to be
+# once every row of the examples is loaded, each a record of its own table: every table
+# in the order of load_order, named by its file, the header its columns, and as many
+# records more as the file has rows.
+tables_listed() {
+    python3 -c '
+import csv, json, sys
+
+def header(name):
+    with open(f"examples/{name}.csv", encoding="utf-8", newline="") as source:
+        return next(csv.reader(source))
+
+def rows(name):
+    with open(f"examples/{name}.csv", encoding="utf-8", newline="") as source:
+        return len(list(csv.DictReader(source)))
+
+if sys.argv[1] == "wanted":
+    print(json.dumps([[name.replace("-", "_"), name, True, rows(name)] for name in sys.argv[3:]]))
+    sys.exit()
+try:
+    before = {t["entity"]: t["count"] for t in json.load(open(sys.argv[1], encoding="utf-8"))}
+    now = json.load(open(sys.argv[2], encoding="utf-8"))
+    print(json.dumps([[t["entity"], t["file"], t["columns"] == header(t["file"]), t["count"] - before.get(t["entity"], 0)] for t in now]))
+except Exception as error:
+    print(f"<{type(error).__name__}: {error}>")' "$1" "$work/body" "${load_order[@]}"
+}
+
+# templates TABLES: each table that GET /exports/tables, kept in the file TABLES, says
+# holds nothing exports as its template: as CSV the header row of its file, the columns
+# that list gives, and no more, which is read as an import with nothing to do; and as
+# JSON the envelope with no records (P-286).
+templates() {
+    local entity name empty="" differing="" said
+    for entity in $(python3 -c 'import json, sys; print(*(t["entity"] for t in json.load(open(sys.argv[1], encoding="utf-8")) if t["count"] == 0))' "$1"); do
+        name=${entity//_/-}
+        empty="$empty $name"
+        api POST /exports "{\"entity\": \"$entity\", \"format\": \"csv\", \"own_values\": true}"
+        cp "$work/body" "$work/template.csv"
+        said="$status $(python3 -c '
+import json, sys
+
+columns = {t["entity"]: t["columns"] for t in json.load(open(sys.argv[1], encoding="utf-8"))}[sys.argv[3]]
+print(open(sys.argv[2], encoding="utf-8", newline="").read() == ",".join(columns) + "\n")' "$1" "$work/template.csv" "$entity")"
+        send "/imports/preview?entity=$entity&file_name=$name.csv" "$work/template.csv"
+        said="$said $status $(job_counts)"
+        api POST /exports "$(whole_body "$entity" json)"
+        said="$said $status $(json '[d["entity"], d["records"]]')"
+        [ "$said" = "200 True 201 [\"previewed\", 0, 0, 0, 0, 0] 200 [\"$entity\", []]" ] || differing="$differing$name: $said. "
+    done
+    expect "pkg each of the $(echo "$empty" | wc -w) tables that hold nothing exports as its template: as CSV the header row of its file, the columns that GET $prefix/api/v1/exports/tables gives, and no more, which previewed as an import is read with nothing to do; as JSON the envelope with no records (${empty# })" \
+        "$differing" ""
+}
+
+# loads_back WHEN: every table that a file is taken for, exported whole as CSV and as
+# JSON, holds the records that GET /exports/tables counts, as its file in the zip of
+# every table does, and previewed as an import into this installation, the one it came
+# from, changes nothing: every row unchanged and none rejected (P-286). WHEN begins its
+# lines. It changes no record: each preview is kept as a job, and each zip is audited.
+loads_back() {
+    local when=$1 name entity format count file got wanted
+    api GET /exports/tables
+    [ "$status" = 200 ] || return 0
+    cp "$work/body" "$work/tables-whole.json"
+    whole_zip csv
+    whole_zip json
+    for name in "${load_order[@]}"; do
+        entity=${name//-/_}
+        count=$(count_of "$work/tables-whole.json" "$entity")
+        got=""
+        wanted=""
+        for format in csv json; do
+            file="$work/whole-$name.$format"
+            api POST /exports "$(whole_body "$entity" "$format")"
+            cp "$work/body" "$file"
+            got="$got$format: $status $(beside_zip "$file" "$work/all.$format.zip" "$name.$format")"
+            if [ "$format" = csv ]; then
+                send "/imports/preview?entity=$entity&file_name=$name.csv" "$file"
+            else
+                send "/imports/preview?file_name=$name.json" "$file" application/json
+            fi
+            got="$got, previewed $status $(job_counts)$(rows_changed); "
+            wanted="$wanted$format: 200 $count rows, as in the zip, previewed 201 [\"previewed\", $count, 0, 0, $count, 0]; "
+        done
+        expect "pkg $when the $name table, exported whole as CSV and as JSON in the form that loads back, holds the $count records that GET /exports/tables counts, as the zip of every table does, and previewed back into this installation changes nothing: every row is unchanged, none rejected" \
+            "$got" "$wanted"
+    done
+}
+
 # The examples are imported into an inventory that does not hold them, as scenario S12
 # has it, and the checks that follow this section make records of the same names by
 # hand. So the database is backed up first and put back at the end, with the commands
@@ -4168,6 +4375,11 @@ files() {
     groups_before=$(json_field total)
     places_before=$(people_and_places)
     cover_before=$(records_of)
+    # Every table, as it is before the examples: what holds nothing exports as the
+    # template of its import (P-286).
+    api GET /exports/tables
+    cp "$work/body" "$work/tables-before.json"
+    templates "$work/tables-before.json"
 
     for name in "${load_order[@]}"; do
         entity=${name//-/_}
@@ -4180,6 +4392,9 @@ files() {
         expect "S12 POST $prefix/api/v1/imports/{hid}/apply creates the $rows" \
             "$status $(job_counts)" "202 [\"applied\", $rows, $rows, 0, 0, 0]"
     done
+    api GET /exports/tables
+    expect "pkg GET $prefix/api/v1/exports/tables lists every table that a file is taken for, in the order of loading, each by the name of its file in examples/ and with the header of that file as its columns, and counts in each, beside the records it held before, the rows of its file: each row of the examples is a record of its own table" \
+        "$status $(tables_listed "$work/tables-before.json")" "200 $(tables_listed wanted)"
     item_rows=$(table 'len(rows)' examples/items.csv)
     api GET '/items?include_archived=true&include_drafts=true&limit=1'
     expect "S12 the item list holds the $item_rows items of the examples, beside the $items_before there were" \
@@ -4355,7 +4570,13 @@ files() {
     cover_and_purchases
     first_file
     multiplied_and_seen
+    # From 0.9.13: every table exported whole and loaded back, while the inventory holds
+    # the examples and everything that the checks made beside them; and a person made in
+    # one request, which the restore below takes away again with the rest.
+    every_table
+    people_at_once
 
+    section "files: the examples taken out again by hirdir admin reset, and the inventory from before them restored, under $prefix/"
     # A file and a link on a location of the examples, from 0.9.0, for the reset to clear
     # with the content of the file.
     api GET '/locations?limit=1'
@@ -4459,6 +4680,196 @@ files() {
     made=$(json_field total)
     api GET "${every_address/limit=1000/limit=1}"
     expect "pkg and no device group and no address but those there were before" "$status $made $(json_field total)" "200 $groups_before 0"
+}
+
+# every_table: the tables that a file is taken for, all at once and one by one, through
+# nginx, while files() has the examples loaded and what the checks made beside them
+# (P-286, R11.9): the zip of every table, as CSV and as JSON, named as a download is and
+# holding a file to each table in the order of loading, audited as the export of one
+# table is not; hirdir export --all, which writes the same files; and each table loaded
+# back as nothing to change.
+every_table() {
+    section "every table that a file is taken for, exported whole through nginx under $prefix/: one zip of them all, each table by itself, and each loaded back"
+    local events format name made
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+    api POST /exports "$(whole_body tags csv)"
+    made=$status
+    api GET '/audit-events?limit=1'
+    expect "pkg POST $prefix/api/v1/exports of one table writes no audit event, as before" \
+        "$made $(json_field total)" "200 $events"
+    for format in csv json; do
+        whole_zip "$format"
+        name=$(header content-disposition | sed -n 's/^attachment; filename="\(.*\)"$/\1/p')
+        expect "pkg POST $prefix/api/v1/exports/all as $format answers one zip, named for the product, the whole, the format and the moment, which holds a file to each table, named as examples/ names it, in the order of loading" \
+            "$status $(header content-type) $(printf '%s\n' "$name" | grep -cE "^hirdir-all-$format-[0-9]{8}T[0-9]{6}[-+][0-9]{4}\.zip\$") $(zip_names "$work/all.$format.zip")" \
+            "200 application/zip 1 $(printf "%s.$format " "${load_order[@]}" | sed 's/ $//')"
+        api GET '/audit-events?limit=1'
+        expect "pkg and it is audited, as the export of one table is not: one event more, an export of the inventory, of no record, by $admin through the API, which names that file, the format and the ${#load_order[@]} tables" \
+            "$(json_field total) $(json '(lambda e: [e["action"], e["record_type"], e["record_hid"], e["actor_name"], e["via"], {c["field"]: str(c["new"]) for c in e["changes"]}])(d["items"][0])')" \
+            "$((events + 1)) [\"export\", \"inventory\", null, \"$admin\", \"api\", {\"file_name\": \"$name\", \"format\": \"$format\", \"tables\": \"${#load_order[@]}\"}]"
+        events=$((events + 1))
+    done
+    inside rm -f /tmp/package-test-all.zip
+    cli_run "$work/cli-all.out" export --all --output /tmp/package-test-all.zip
+    # Read through the container's own view: its /tmp is a tmpfs that docker cp does not see.
+    inside cat /tmp/package-test-all.zip >"$work/cli-all.zip" 2>/dev/null || true
+    api GET '/audit-events?limit=1'
+    expect "pkg hirdir export --all writes the zip of every table, as CSV, to the file it is given, with the very files that POST /exports/all gave, and is audited as made through the command line" \
+        "$code $(zips_same "$work/all.csv.zip" "$work/cli-all.zip") $(json_field total) $(json '[d["items"][0]["action"], d["items"][0]["record_type"], d["items"][0]["via"]]')" \
+        "0 same $((events + 1)) [\"export\", \"inventory\", \"cli\"]"
+    loads_back "with the examples and what the checks made beside them,"
+}
+
+# people_held: how many users, contacts, operators, grants of a role, memberships of a
+# group and audit events there are, on one line.
+people_held() {
+    local held
+    api GET '/users?limit=1'
+    held="$(json_field total) users"
+    api GET /exports/tables
+    held="$held, $(json '[t["count"] for t in d if t["entity"] == "contacts"]') contacts, $(json '[t["count"] for t in d if t["entity"] == "operators"]') operators"
+    api GET /role-grants
+    held="$held, $(json 'len(d)') grants"
+    api GET /user-groups
+    held="$held, $(json 'sum(g["member_count"] for g in d)') memberships"
+    api GET '/audit-events?limit=1'
+    echo "$held, $(json_field total) events"
+}
+
+# people_at_once: R12.8 and R11.10, which have no scenario of their own yet (P-280 to
+# P-283, P-285, P-288), through nginx: the colours that a form offers, read with a
+# View-only token; a person made in one request a user, the contact it is and the
+# operator it works as, with a role and two groups, each part audited under that
+# request, and a request refused in its last part that makes nothing; the gaps of the
+# users; and the users as a file for an Admin, with no access code and no token in it,
+# audited, and refused to the others. files() runs it before the restore that takes it
+# all away again.
+people_at_once() {
+    section "a person made a user, a contact and an operator in one request, the gaps of the users, the colours and the users as a file, through nginx under $prefix/"
+    local admin_token=$token made got held request reader secret first second colour contact
+    local onboarded_code name events looked=0 found=0 value usernames gap
+
+    # A View-only service account, which has neither a contact nor an operator, and reads
+    # the colours.
+    api POST /users '{"username": "pkg-desk-reader", "is_service_account": true, "role": "viewer"}'
+    made="$status $(json '[d["operator"], d["user"]["operators"], d["user"]["notes"]]')"
+    reader=$(json 'd["user"]["hid"]')
+    api POST "/users/$reader/service-tokens" '{"name": "package test, the users file"}'
+    made="$made $status"
+    secret=$(json_field secret)
+    token=$secret
+    api GET /colours
+    cp "$work/body" "$work/colours.json"
+    made="$made $status"
+    token=$admin_token
+    api GET '/operators?include_drafts=true&limit=1000'
+    expect "pkg GET $prefix/api/v1/colours, read with a View-only token, gives the grid of 64, eight rows of eight, and the slider of 32, each of them a colour of the grid, every one written #rrggbb; and the next colour for an operator, one of the slider that no operator that is not retired has" \
+        "$made $(python3 -c '
+import json, sys
+
+colours = json.load(open(sys.argv[1], encoding="utf-8"))
+held = {(o["colour"] or "").lower() for o in json.load(open(sys.argv[2], encoding="utf-8"))["items"] if o["record_status"] != "retired"}
+grid, slider, after = colours["grid"], colours["slider"], colours["next_for_operators"]
+every = [c for row in grid for c in row]
+written = all(len(c) == 7 and c[0] == "#" and all(x in "0123456789abcdef" for x in c[1:]) for c in every + slider)
+print(json.dumps([len(grid), sorted({len(row) for row in grid}), len(set(every)), len(slider), len(set(slider)), set(slider) <= set(every), written, after in slider, after not in held or set(slider) <= held]))' "$work/colours.json" "$work/body" 2>&1)" \
+        "201 [null, [], null] 201 200 [8, [8], 64, 32, 32, true, true, true, true]"
+    colour=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["next_for_operators"])' "$work/colours.json")
+
+    # One request: the user, its contact, its operator with the label and the colour left
+    # to the server, its role, two groups and its notes.
+    api POST /user-groups '{"name": "Package Test Engineers"}'
+    first=$(json_field hid)
+    api POST /user-groups '{"name": "Package Test Night Shift"}'
+    second=$(json_field hid)
+    api POST /users "{\"username\": \"pkg-onboarded\", \"contact\": {\"name\": \"Example Onboarded Person\", \"email\": \"onboarded.person@example.net\", \"phone\": \"+1 555 0171\"}, \"operator\": {}, \"role\": \"inventory\", \"group_hids\": [\"$second\", \"$first\"], \"notes\": \"Made in one step by the package test\"}"
+    request=$(header x-request-id)
+    onboarded_code=$(json_field access_code)
+    contact=$(json 'd["user"]["contact_hid"]')
+    expect "pkg POST $prefix/api/v1/users makes in one request a user, the contact it is, the operator it works as, with the username as its label and the next colour, $colour, its role, two memberships and its notes; and answers the access code, the operator, which is internal and names the user, and the user with that operator" \
+        "$status $(json '(lambda u, o: [bool(d["access_code"]), u["username"], u["contact"]["name"], u["contact"]["email"], u["role"], sorted(g["name"] for g in u["groups"]), u["notes"], o["label"], o["colour"], o["contact_hid"] == u["contact_hid"], o["scope"], o["user"]["username"], [[b["hid"] == o["hid"], b["label"], b["colour"], b["record_status"]] for b in u["operators"]]])(d["user"], d["operator"])')" \
+        "201 [true, \"pkg-onboarded\", \"Example Onboarded Person\", \"onboarded.person@example.net\", \"inventory\", [\"Package Test Engineers\", \"Package Test Night Shift\"], \"Made in one step by the package test\", \"pkg-onboarded\", \"$colour\", true, \"internal\", \"pkg-onboarded\", [[true, \"pkg-onboarded\", \"$colour\", \"active\"]]]"
+    api GET "/audit-events?request_id=$request&limit=100"
+    expect "pkg and each part is audited as if it were made by itself, all under that one request: the contact, made and given the user, the user, the grant of its role, its two memberships and the operator" \
+        "$status $(json 'sorted([e["action"], e["record_type"]] for e in d["items"])')" \
+        '200 [["add_member", "user_group"], ["add_member", "user_group"], ["create", "contact"], ["create", "operator"], ["create", "user"], ["grant_role", "user"], ["update", "contact"]]'
+    sign_in pkg-onboarded "$onboarded_code"
+    made=$status
+    api GET /auth/me
+    made="$made $(json_field role)"
+    api GET "/contacts/$contact"
+    made="$made $status $(json '[d["is_user"], d["is_operator"], [o["label"] for o in d["operators"]]]')"
+    token=$admin_token
+    expect "pkg the person signs in with that access code, holds Inventory, and reads of the contact it is that it is a user and stands behind its operator" \
+        "$made" '200 inventory 200 [true, true, ["pkg-onboarded"]]'
+
+    # A second request, refused in its last part: everything before the operator was
+    # made by then, and all of it is undone.
+    held=$(people_held)
+    api POST /users "{\"username\": \"pkg-refused\", \"contact\": {\"name\": \"Example Refused Person\"}, \"role\": \"viewer\", \"group_hids\": [\"$first\", \"$second\"], \"notes\": \"Never made\", \"operator\": {\"label\": \"pkg-onboarded\"}}"
+    made="$status $(json '[[e["field"] for e in d.get("errors", [])], (d.get("existing") or {}).get("label")]')"
+    api GET '/users?q=pkg-refused'
+    made="$made $(json_field total)"
+    authorized GET "$prefix/api/v1/contacts" --get --data-urlencode 'filter=name:eq:Example Refused Person'
+    made="$made $(json_field total)"
+    expect "pkg a second such request, refused in its last part, an operator of a label that the first one's has, is a 409 that names that field and that operator, and leaves nothing: no user, no contact, no operator, no grant, no membership and no event more ($held)" \
+        "$made $(people_held)" "409 [[\"operator.label\"], \"pkg-onboarded\"] 0 0 $held"
+
+    # The gaps of the list of users, among those of this pass.
+    api POST /users '{"username": "pkg-plain", "contact": {"name": "Example Plain Person"}}'
+    made="$status $(json '[d["operator"], d["user"]["operators"]]')"
+    got=""
+    for gap in contact=none contact=some operator=none operator=some; do
+        api GET "/users?$gap&limit=1000"
+        got="$got $status $(json '[u["username"] for u in d["items"] if u["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]')"
+    done
+    expect "pkg GET $prefix/api/v1/users finds the gaps: with no contact, $admin, whom hirdir admin made with none; with one, the two persons made here; behind no operator, $admin and the person made without one; behind one, the person made with its operator; and the service account in none of them" \
+        "$made$got" "201 [null, []] 200 [\"$admin\"] 200 [\"pkg-onboarded\", \"pkg-plain\"] 200 [\"$admin\", \"pkg-plain\"] 200 [\"pkg-onboarded\"]"
+
+    # The users as a file, for an Admin.
+    api GET '/users?limit=1000'
+    usernames=$(json '[u["username"] for u in d["items"]]')
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+    authorized POST "$prefix/api/v1/users/export"
+    cp "$work/body" "$work/users.csv"
+    name=$(header content-disposition | sed -n 's/^attachment; filename="\(.*\)"$/\1/p')
+    expect "pkg POST $prefix/api/v1/users/export gives an Admin the users as CSV, named for the product and the moment, a row to each user, by username, in the twelve columns of R11.10" \
+        "$status $(header content-type | cut -d';' -f1) $(printf '%s\n' "$name" | grep -cE '^hirdir-users-[0-9]{8}T[0-9]{6}[-+][0-9]{4}\.csv$') $(table head "$work/users.csv") $(table '[r["username"] for r in rows]' "$work/users.csv")" \
+        "200 text/csv 1 [\"username\", \"name\", \"email\", \"phone\", \"phone2\", \"role\", \"groups\", \"operators\", \"kind\", \"state\", \"last_sign_in_at\", \"notes\"] $usernames"
+    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact alone; the service account its role and its kind; and $admin its role, and that it has signed in" \
+        "$(table '[[r["username"], r["name"], r["email"], r["phone"], r["role"], r["groups"], r["operators"], r["kind"], r["state"], bool(r["last_sign_in_at"]), r["notes"]] for r in rows if r["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]' "$work/users.csv")" \
+        "$(python3 -c '
+import json, sys
+
+print(json.dumps([
+    [sys.argv[1], "", "", "", "admin", "", "", "person", "enabled", True, ""],
+    ["pkg-desk-reader", "", "", "", "viewer", "", "", "service", "enabled", False, ""],
+    ["pkg-onboarded", "Example Onboarded Person", "onboarded.person@example.net", "'"'"'+1 555 0171", "inventory", "Package Test Engineers;Package Test Night Shift", "pkg-onboarded", "person", "enabled", True, "Made in one step by the package test"],
+    ["pkg-plain", "Example Plain Person", "", "", "", "", "", "person", "enabled", False, ""],
+]))' "$admin")"
+    for value in "$admin_code" "$onboarded_code" "$secret" "$first_token" \
+        $(sqlite_text 'SELECT access_code_hash FROM users WHERE access_code_hash IS NOT NULL UNION ALL SELECT token_hash FROM service_tokens'); do
+        [ -n "$value" ] || continue
+        looked=$((looked + 1))
+        if grep -qF -- "$value" "$work/users.csv"; then found=$((found + 1)); fi
+    done
+    expect "pkg and it holds no access code, no token and nothing that the database keeps of either: the codes of $admin and of the person made here, the token of the service account, the session of $admin, and the hash of every code and every token there is, $looked looked for" \
+        "$found $((looked >= 6))" "0 1"
+    api GET '/audit-events?limit=1'
+    expect "pkg and it is audited: one event more, an export of the users, of no record, by $admin, which names the file and how many rows it holds" \
+        "$(json_field total) $(json '(lambda e: [e["action"], e["record_type"], e["record_hid"], e["actor_name"], {c["field"]: str(c["new"]) for c in e["changes"]}])(d["items"][0])')" \
+        "$((events + 1)) [\"export\", \"user\", null, \"$admin\", {\"file_name\": \"$name\", \"users\": \"$(table 'len(rows)' "$work/users.csv")\"}]"
+    sign_in pkg-onboarded "$onboarded_code"
+    authorized POST "$prefix/api/v1/users/export"
+    made=$status
+    token=$secret
+    authorized POST "$prefix/api/v1/users/export"
+    made="$made $status"
+    token=$admin_token
+    expect "pkg the file is refused to the person made here, who holds Inventory, and to the View-only token" \
+        "$made" "403 403"
 }
 
 # ---- reference files --------------------------------------------------------------------

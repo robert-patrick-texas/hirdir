@@ -389,13 +389,16 @@ def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_t
     it: migration 0016 adds `users.notes`, blank, creates no table and writes no event,
     and the file of the package test declares the column as the model does (P-281); the
     routes and the command that the page names are those of the contract and of the
-    command line (P-286, P-288)."""
+    command line; and the package test looks for the columns of the users file and the
+    events of the two exports that are audited by the names that the code gives them
+    (P-286, P-288)."""
     import json
 
     from sqlalchemy import inspect
     from sqlalchemy.dialects import sqlite
 
     from hirdir.db.models import User
+    from hirdir.io import exports, users_file
 
     versions = ROOT / "src/hirdir/db/migrations/versions"
     revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
@@ -439,6 +442,13 @@ def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_t
         assert f"`{method.upper()} {path}`" in page
     assert "`hirdir export --all`" in page
     assert '"--all"' in (ROOT / "src/hirdir/cli/inventory.py").read_text(encoding="utf-8")
+
+    # What the package test looks for in the users file and in the audit trail.
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (header,) = re.findall(r'\[(\\"username\\", .*?)\]', script)
+    assert json.loads("[" + header.replace('\\"', '"') + "]") == list(users_file.COLUMNS)
+    assert f'[\\"{exports.TAKEN_ACTION}\\", \\"{exports.TAKEN_RECORD}\\", null' in script
+    assert f'[\\"{users_file.ACTION}\\", \\"{users_file.RECORD}\\", null' in script
 
 
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
