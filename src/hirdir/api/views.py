@@ -166,6 +166,8 @@ def load_out(picture: load.Picture, host: Host, worker: Any) -> schemas.Load:
         measures=schemas.LoadMeasures(
             response_ms=_tenth(reading.response_ms),
             requests=reading.requests,
+            reads_ms=_tenth(reading.reads_ms),
+            reads=reading.reads,
             cpu_percent=round(reading.cpu_percent, 1),
         ),
         window_seconds=load.WINDOW_SECONDS,

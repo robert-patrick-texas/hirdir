@@ -32,10 +32,11 @@ STEP_SECONDS = 5
 STEPS = WINDOW_SECONDS // STEP_SECONDS
 # How long requests take is this percentile of their times, at any count of them: the
 # colour is there to catch slow pages on a quiet server, where one slow answer is what
-# a person met. What is refused follows the colour only where there are this many
-# requests in the time the measures look back: fewer are no load to shed (P-265).
+# a person met. What is refused is decided by the reads alone, and only where there are
+# this many of them in the time the measures look back: fewer are no load to shed, and
+# of twenty or fewer the percentile is one request alone (P-265).
 PERCENTILE = 95
-FEWEST_REQUESTS = 20
+FEWEST_REQUESTS = 21
 # The measures are read again this often at the most, however many requests ask.
 READ_EVERY_SECONDS = 1.0
 # The answers whose times are kept for the measure, at the most: the last given.
@@ -362,6 +363,10 @@ class Reading:
     cpu_percent: float = 0.0
     # How many requests `response_ms` is of.
     requests: int = 0
+    # The same of the reads alone, by which what is refused is decided: a change that
+    # is stored is in the colour, and is never what a read is refused for.
+    reads_ms: float | None = None
+    reads: int = 0
 
 
 # What a meter says before anything has asked.
@@ -499,6 +504,9 @@ class _Flight:
     # Whether it is long by nature, and whether it is of the API at all.
     long: bool = False
     api: bool = True
+    # Whether it is a sign-in or a change that is stored: in the measure of time, and
+    # not among the reads, by which what is refused is decided.
+    kept: bool = False
 
 
 @dataclass
@@ -522,9 +530,9 @@ class Meter:
     _origin: float = field(init=False, repr=False)
     _flights: dict[int, _Flight] = field(default_factory=dict, repr=False)
     _tokens: int = 0
-    # When the server had each request of the measure that it has answered, and how
-    # long the answer took, in the order they were answered.
-    _times: deque[tuple[float, float]] = field(
+    # When the server had each request of the measure that it has answered, how long
+    # the answer took and whether it was a read, in the order they were answered.
+    _times: deque[tuple[float, float, bool]] = field(
         default_factory=lambda: deque(maxlen=MOST_TIMES), repr=False
     )
     # When the server last refused its reads, while that is no longer ago than the
@@ -554,17 +562,19 @@ class Meter:
         whole: bool = True,
         long: bool = False,
         api: bool = True,
+        kept: bool = False,
     ) -> int:
         """Note that a request arrived, and return what to end it with. `measured` says
         whether its time is in the measure of time, as that of a read or a change of
         the API is, and `whole` whether the server has all of it: a request that
         declares a body is not whole until the body has come. `long` says that it is
-        long by nature, and `api` that it is of the API, whose requests are counted
-        for who asked them."""
+        long by nature, `api` that it is of the API, whose requests are counted for
+        who asked them, and `kept` that it is a sign-in or a change that is stored,
+        which is never refused and is not among the reads."""
         with self._lock:
             now = self._advance(now, cpu)
             self._tokens += 1
-            self._flights[self._tokens] = _Flight(now, measured, whole, long, api)
+            self._flights[self._tokens] = _Flight(now, measured, whole, long, api, kept)
             return self._tokens
 
     def heard(self, token: int, now: float, cpu: float, whole: bool) -> None:
@@ -600,7 +610,7 @@ class Meter:
             step = self._steps[-1]
             step.count(status, taken_ms, flight.measured)
             if flight.measured:
-                self._times.append((flight.began, taken_ms))
+                self._times.append((flight.began, taken_ms, not flight.kept))
                 self._forget(now)
             if not flight.api:
                 return
@@ -652,6 +662,24 @@ class Meter:
             if self._read_at is not None and 0 <= now - self._read_at < READ_EVERY_SECONDS:
                 return self._reading
             return self._read(self._advance(now, cpu))
+
+    def answering(self, token: int, now: float, cpu: float) -> Reading:
+        """Return what the measures say as the answer to a request begins, the
+        request's own time counted: an answer that was slow says so itself, and not
+        only the one after it. What is held in memory is given, unless it is a second
+        old, or the time this request has taken so far is in a higher band than the
+        health it says: only then are the measures read again, with this request in
+        them, which is in flight still."""
+        with self._lock:
+            if self._read_at is None or not 0 <= now - self._read_at < READ_EVERY_SECONDS:
+                return self._read(self._advance(now, cpu))
+            flight = self._flights.get(token)
+            if flight is not None and flight.measured and flight.whole:
+                taken_ms = (now - flight.began) * 1000
+                band = band_of(taken_ms, bounds_of(self.ceiling.response_ms))
+                if band > HEALTHS.index(self._reading.health):
+                    return self._read(self._advance(now, cpu))
+            return self._reading
 
     def picture(self, now: float, cpu: float, but: int | None = None) -> Picture:
         """Return everything the meter says now, the measures read afresh. `but` is the
@@ -806,54 +834,71 @@ class Meter:
                 )
         return used / over * 100
 
-    def _response(self, now: float) -> tuple[float | None, int]:
-        """Return how long requests take, and of how many it is read: the 95th
-        percentile of the time taken by the requests of the measure that came in the
-        last `over_seconds`, whatever each took, and of the time waited so far by those
-        in flight, however long ago they came; None of none. A request is in it from
-        when the server had the whole of it, so one leaves the measure `over_seconds`
-        after it came and not after it was answered: a stall that is over is not read
-        as one that lasts. Those in flight are in it so that a server from which
-        nothing comes back is not taken for an idle one."""
+    def _response(self, now: float) -> tuple[list[float], list[float]]:
+        """Return the times that how long requests take is read of, in order: of the
+        requests of the measure that came in the last `over_seconds`, whatever each
+        took, with the time waited so far by those in flight, however long ago they
+        came; and the same of the reads alone. A request is in them from when the
+        server had the whole of it, so one leaves `over_seconds` after it came and not
+        after it was answered: a stall that is over is not read as one that lasts.
+        Those in flight are in them so that a server from which nothing comes back is
+        not taken for an idle one."""
         since = now - self.ceiling.over_seconds
-        times = [taken for began, taken in self._times if began > since]
-        times += [
-            (now - flight.began) * 1000
-            for flight in self._flights.values()
-            if flight.measured and flight.whole
-        ]
-        times.sort()
-        return percentile(times, PERCENTILE), len(times)
+        every: list[float] = []
+        reads: list[float] = []
+        for began, taken, read in self._times:
+            if began > since:
+                every.append(taken)
+                if read:
+                    reads.append(taken)
+        for flight in self._flights.values():
+            if flight.measured and flight.whole:
+                waited = (now - flight.began) * 1000
+                every.append(waited)
+                if not flight.kept:
+                    reads.append(waited)
+        every.sort()
+        reads.sort()
+        return every, reads
 
     def _read(self, now: float) -> Reading:
-        """Read the two measures, and say the health of the server and what it refuses.
+        """Read the measures, and say the health of the server and what it refuses.
 
-        How long requests take says the health by the band it is in, against the thirds
-        of its ceiling, at any count of requests: good with none. The processor past
-        its ceiling makes it very slow at the least, and never busy by itself.
+        The health is of everything a person meets. How long requests take, reads and
+        changes alike, says it by the band it is in, against the thirds of its ceiling,
+        at any count of requests: good with none. The processor past its ceiling makes
+        it very slow at the least, and never busy by itself.
 
-        What is refused follows the health where there is load to shed. Time refuses
-        by its colour only where `response_ms` has a ceiling and twenty or more
-        requests are in the measure: fewer are a quiet server whose pages are slow,
-        which the colour says and refusing would not mend. The processor refuses what
-        is long whatever the count. And a server that refused its reads refuses what is
-        long, and is very slow at the best, until `over_seconds` have passed since it
-        last did: what is long does not come back in the same moment as the reads.
-        Nothing else of before is remembered.
+        What is refused is decided by the reads alone, which are what can be refused.
+        A change that waits for another to be stored is slow, and the mark says so; no
+        read waits for it, and to refuse the reads for it would shed nothing and, the
+        reads once gone from the measure, keep the server red on the changes alone. So
+        the same percentile is read of the reads of the same time, and it refuses by
+        its band only where `response_ms` has a ceiling and there are twenty-one reads
+        or more: fewer are a quiet server whose pages are slow, and of twenty the
+        percentile is one request alone. The health is never better than what is
+        refused says. The processor refuses what is long whatever the count. And a
+        server that refused its reads refuses what is long, and is very slow at the
+        best, until `over_seconds` have passed since it last did: what is long does not
+        come back in the same moment as the reads. Nothing else of before is
+        remembered.
         """
         ceiling = self.ceiling
+        bounds = bounds_of(ceiling.response_ms)
         self._forget(now)
-        (response, requests), processor = self._response(now), self._processor(now)
-        by_time = 0 if response is None else band_of(response, bounds_of(ceiling.response_ms))
-        loaded = bool(ceiling.response_ms) and requests >= FEWEST_REQUESTS
-        time_refuses = by_time if loaded else 0
+        every, reads = self._response(now)
+        response, reads_ms = percentile(every, PERCENTILE), percentile(reads, PERCENTILE)
+        processor = self._processor(now)
+        loaded = bool(ceiling.response_ms) and len(reads) >= FEWEST_REQUESTS
+        time_refuses = band_of(reads_ms, bounds) if loaded and reads_ms is not None else 0
         if time_refuses == RED:
             self._busy_at = now
         elif self._busy_at is not None:
             if ceiling.response_ms and now - self._busy_at < ceiling.over_seconds:
-                by_time, time_refuses = max(by_time, ORANGE), max(time_refuses, ORANGE)
+                time_refuses = max(time_refuses, ORANGE)
             else:
                 self._busy_at = None
+        by_time = max(0 if response is None else band_of(response, bounds), time_refuses)
         by_processor = ORANGE if ceiling.cpu_percent and processor > ceiling.cpu_percent else 0
         level = max(by_time, by_processor)
         because: tuple[Measure, ...] = tuple(
@@ -862,6 +907,8 @@ class Meter:
             if level and its == level
         )
         refusing = REFUSINGS[max(time_refuses, by_processor)]
-        self._reading = Reading(HEALTHS[level], because, refusing, response, processor, requests)
+        self._reading = Reading(
+            HEALTHS[level], because, refusing, response, processor, len(every), reads_ms, len(reads)
+        )
         self._read_at = now
         return self._reading

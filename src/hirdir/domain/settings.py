@@ -477,9 +477,10 @@ SPECS: dict[str, Spec] = {
         "last busy_over_seconds, with the wait of those still in flight, which of "
         "twenty or fewer is the slowest. Its thirds are the health of the server: good "
         "under a third, slow to two thirds, very slow to the whole and busy past it. "
-        "With twenty or more requests in that time, reports, exports and previews are "
-        "answered 503 Busy from very slow on, and every read while it is busy. 0: "
-        "nothing is refused for it, and the health is said by the thirds of 3000",
+        "What is refused is decided by the reads alone, where twenty-one or more of "
+        "them came in that time: reports, exports and previews are answered 503 Busy "
+        "where the reads are very slow, and every read where they are busy. 0: nothing "
+        "is refused for it, and the health is said by the thirds of 3000",
         _whole(load.RESPONSE_SETTING, 0, load.MOST_RESPONSE_MS, " of milliseconds"),
     ),
     load.PROCESSOR_SETTING: Spec(
@@ -778,9 +779,10 @@ def fixed_values() -> dict[str, Fixed]:
         Fixed(
             "busy_fewest_requests",
             load.FEWEST_REQUESTS,
-            "the requests, answered and in flight over the last busy_over_seconds, "
-            "from which on what is refused follows the health: with fewer, nothing is "
-            "refused for how long requests take, whatever the health says",
+            "the reads, answered and in flight over the last busy_over_seconds, from "
+            "which on what is refused follows how long they take: with fewer, nothing "
+            "is refused for it, whatever the health says, and the percentile is never "
+            "one request alone",
             DECIDED,
             "P-265",
         ),

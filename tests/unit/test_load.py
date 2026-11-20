@@ -25,10 +25,12 @@ def answer(
     status: int = 200,
     counted: bool = True,
     cpu: float = 0.0,
+    kept: bool = False,
 ) -> None:
     """Have a request arrive and be answered `took` seconds later. `counted` says
-    whether its time is in the measure of time."""
-    token = measured.began(began, cpu, measured=counted)
+    whether its time is in the measure of time, and `kept` that it is a change that is
+    stored and not a read."""
+    token = measured.began(began, cpu, measured=counted, kept=kept)
     measured.ended(token, began + took, cpu, status=status)
 
 
@@ -38,11 +40,13 @@ def at_once(
     took_ms: list[float],
     counted: bool = True,
     answered: bool = True,
+    kept: bool = False,
 ) -> list[int]:
     """Have requests come at one moment, each answered after its own time, told to the
-    meter in the order it all happens. Unless `answered`, they stay in flight. Return
-    what each is ended with."""
-    tokens = [measured.began(at, 0.0, measured=counted) for _ in took_ms]
+    meter in the order it all happens. Unless `answered`, they stay in flight. Reads,
+    unless `kept` says that they are changes that are stored. Return what each is ended
+    with."""
+    tokens = [measured.began(at, 0.0, measured=counted, kept=kept) for _ in took_ms]
     if answered:
         for token, taken in sorted(zip(tokens, took_ms, strict=True), key=lambda one: one[1]):
             measured.ended(token, at + taken / 1000, 0.0, status=200)
@@ -243,25 +247,30 @@ def test_one_slow_answer_among_five_is_the_colour_and_refuses_nothing() -> None:
         assert said(reading) == (health, (load.RESPONSE,), load.NOTHING)
 
 
-def test_one_slow_answer_among_twenty_is_the_colour_and_refuses_by_it() -> None:
-    for slow_ms, health, refusing in (
-        (500.0, load.SLOW, load.NOTHING),
-        (800.0, load.VERY_SLOW, load.THE_LONG),
-        (5000.0, load.BUSY, load.THE_READS),
-    ):
+def test_one_slow_answer_among_twenty_is_the_colour_and_refuses_nothing() -> None:
+    # Of twenty the percentile is the slowest of them, one request alone: the colour is
+    # its, and no read is refused for one answer.
+    for slow_ms, health in ((500.0, load.SLOW), (800.0, load.VERY_SLOW), (5000.0, load.BUSY)):
         reading = slow_among(19, slow_ms)
         assert (reading.response_ms, reading.requests) == (pytest.approx(slow_ms), 20)
-        assert said(reading) == (health, (load.RESPONSE,), refusing)
+        assert (reading.reads_ms, reading.reads) == (pytest.approx(slow_ms), 20)
+        assert said(reading) == (health, (load.RESPONSE,), load.NOTHING)
 
 
-def test_one_slow_answer_among_twenty_one_is_not_the_measure_and_two_are() -> None:
+def test_one_slow_answer_among_twenty_one_is_not_the_measure_and_two_refuse_by_it() -> None:
     # Of twenty-one the measure is the second slowest: one may take as long as it likes.
     reading = slow_among(20, 5000.0)
     assert (reading.response_ms, reading.requests) == (pytest.approx(10.0), 21)
     assert said(reading) == (load.GOOD, (), load.NOTHING)
-    reading = slow_among(19, 2000.0, 5000.0)
-    assert reading.response_ms == pytest.approx(2000.0)
-    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
+    # Two slow among twenty-one are the measure, and there are reads enough to refuse.
+    for slow_ms, health, refusing in (
+        (500.0, load.SLOW, load.NOTHING),
+        (800.0, load.VERY_SLOW, load.THE_LONG),
+        (2000.0, load.BUSY, load.THE_READS),
+    ):
+        reading = slow_among(19, slow_ms, 5000.0)
+        assert (reading.reads_ms, reading.reads) == (pytest.approx(slow_ms), 21)
+        assert said(reading) == (health, (load.RESPONSE,), refusing)
     # And of sixty the third: two past the ceiling are not, three are.
     assert slow_among(58, 2000.0, 5000.0).health == load.GOOD
     assert said(slow_among(57, 1500.0, 2000.0, 5000.0)) == (
@@ -280,7 +289,7 @@ def test_a_single_request_in_flight_past_the_ceiling_is_busy_and_refuses_nothing
     assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
 
 
-def test_what_is_refused_follows_the_colour_from_twenty_requests_on() -> None:
+def test_what_is_refused_follows_the_reads_from_twenty_one_of_them_on() -> None:
     measured = meter(SLOW)
     at_once(measured, 0.0, [3000.0] * 19)
     reading = measured.picture(4.0, 0.0).reading
@@ -288,22 +297,26 @@ def test_what_is_refused_follows_the_colour_from_twenty_requests_on() -> None:
     assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
     answer(measured, 4.0, 1.5)
     reading = measured.picture(6.0, 0.0).reading
-    assert (reading.response_ms, reading.requests) == (pytest.approx(3000.0), 20)
+    assert (reading.reads_ms, reading.reads) == (pytest.approx(3000.0), 20)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
+    answer(measured, 6.0, 0.5)
+    reading = measured.picture(7.0, 0.0).reading
+    assert (reading.reads_ms, reading.reads) == (pytest.approx(3000.0), 21)
     assert said(reading) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
 
 
 def test_the_wait_of_the_requests_in_flight_is_in_the_percentile() -> None:
     measured = meter(SLOW)
-    # Two requests from which nothing comes back, among eighteen quick answers.
+    # Two requests from which nothing comes back, among nineteen quick answers.
     at_once(measured, 0.0, [0.0, 0.0], answered=False)
-    at_once(measured, 0.0, [10.0] * 18)
+    at_once(measured, 0.0, [10.0] * 19)
     reading = measured.reading(0.5, 0.0)
     assert reading.response_ms == pytest.approx(500.0)
     assert said(reading) == (load.SLOW, (load.RESPONSE,), load.NOTHING)
     reading = measured.reading(2.5, 0.0)
     assert reading.response_ms == pytest.approx(2500.0)
     assert said(reading) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
-    # The eighteen that were answered came longer ago than the measure looks back. Two
+    # The nineteen that were answered came longer ago than the measure looks back. Two
     # in flight alone are the colour, and no load; it refused its reads eight seconds
     # ago, and so refuses what is long for two more.
     reading = measured.reading(10.5, 0.0)
@@ -365,7 +378,7 @@ def test_a_request_leaves_the_measure_a_while_after_it_came_not_after_its_answer
 
 def test_requests_from_which_nothing_comes_back_are_a_busy_server_for_as_long() -> None:
     measured = meter(SLOW)
-    at_once(measured, 0.0, [0.0] * 20, answered=False)
+    at_once(measured, 0.0, [0.0] * 21, answered=False)
     assert measured.reading(0.5, 0.0).health == load.SLOW
     assert measured.reading(2.0, 0.0).health == load.BUSY
     assert said(measured.reading(3600.0, 0.0)) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
@@ -373,19 +386,187 @@ def test_requests_from_which_nothing_comes_back_are_a_busy_server_for_as_long() 
 
 def test_a_few_requests_left_in_flight_are_the_colour_and_no_load() -> None:
     measured = meter(SLOW)
-    at_once(measured, 0.0, [0.0] * 20, answered=False)
+    at_once(measured, 0.0, [0.0] * 21, answered=False)
     assert measured.reading(2.0, 0.0).refusing == load.THE_READS
-    # Fifteen of them are answered. Five in flight are load with them for as long as
+    # Fifteen of them are answered. Six in flight are load with them for as long as
     # the fifteen are in the measure, and none alone.
     for token in range(1, 16):
         measured.ended(token, 3.0, 0.0, status=200)
     assert measured.reading(9.0, 0.0).refusing == load.THE_READS
     reading = measured.reading(12.0, 0.0)
-    assert (reading.response_ms, reading.requests) == (pytest.approx(12_000.0), 5)
-    # Red still, by the five that wait. It refused its reads three seconds ago, and so
+    assert (reading.response_ms, reading.requests) == (pytest.approx(12_000.0), 6)
+    # Red still, by the six that wait. It refused its reads three seconds ago, and so
     # refuses what is long; ten seconds after it last did, nothing.
     assert said(reading) == (load.BUSY, (load.RESPONSE,), load.THE_LONG)
     assert said(measured.reading(19.0, 0.0)) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
+
+
+# --- what is refused is decided by the reads alone -----------------------------------
+
+
+def served(measured: Meter, seconds: int, save_every: int) -> tuple[int, int, set[str]]:
+    """Three reads of ten milliseconds a second for so long, and beside them a save
+    every so many seconds that waits three and a half for another to be stored. A read
+    that the server refuses is refused. Return how many reads were answered and how
+    many refused, and every health that was said."""
+    events: list[tuple[float, int, str, int]] = []
+    for second in range(seconds):
+        events += [(second + third / 3, 2, "read", 0) for third in range(3)]
+        if second % save_every == 0:
+            events += [(float(second), 1, "save", second), (second + 3.5, 0, "saved", second)]
+    saves: dict[int, int] = {}
+    answered = refused = 0
+    healths: set[str] = set()
+    for at, _, what, which in sorted(events):
+        if what == "save":
+            saves[which] = measured.began(at, 0.0, measured=True, kept=True)
+        elif what == "saved":
+            measured.ended(saves.pop(which), at, 0.0, status=200)
+        else:
+            reading = measured.reading(at, 0.0)
+            healths.add(reading.health)
+            if load.refuses(reading.refusing, load.READ):
+                measured.turned_away(at, 0.0)
+                refused += 1
+            else:
+                answer(measured, at, 0.010)
+                answered += 1
+    return answered, refused, healths
+
+
+def test_saves_that_wait_for_another_refuse_no_read() -> None:
+    """The first sequence of the second review: something holds the one writer, and a
+    save every four seconds waits three and a half. The mark is red for it, and no read
+    is refused: no read waits for a writer."""
+    answered, refused, healths = served(meter(Ceiling()), 300, save_every=4)
+    assert (answered, refused) == (900, 0)
+    assert load.BUSY in healths
+
+
+def test_saves_that_all_wait_refuse_no_read_and_are_red_for_as_long() -> None:
+    """The second: a save a second, each waiting three and a half. Red without end, as
+    it is; and every read is answered."""
+    measured = meter(Ceiling())
+    answered, refused, healths = served(measured, 300, save_every=1)
+    assert (answered, refused) == (900, 0)
+    assert load.BUSY in healths
+    reading = measured.reading(303.0, 0.0)
+    assert reading.response_ms == pytest.approx(3500.0)
+    assert reading.reads_ms == pytest.approx(10.0)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
+
+
+def test_changes_that_are_slow_with_no_read_at_all_refuse_nothing() -> None:
+    measured = meter(Ceiling())
+    at_once(measured, 0.0, [3500.0] * 25, kept=True)
+    reading = measured.reading(4.0, 0.0)
+    assert (reading.response_ms, reading.requests) == (pytest.approx(3500.0), 25)
+    assert (reading.reads_ms, reading.reads) == (None, 0)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
+
+
+def test_the_health_is_never_better_than_what_is_refused_says() -> None:
+    measured = meter(Ceiling())
+    # Two slow reads among twenty-one, and a hundred quick saves beside them: of all of
+    # them the percentile is a quarter of a second, and of the reads it is not.
+    reads = at_once(measured, 0.0, [0.0] * 21, answered=False)
+    at_once(measured, 0.0, [10.0] * 100, kept=True)
+    for token in reads[:19]:
+        measured.ended(token, 0.25, 0.0, status=200)
+    for token in reads[19:]:
+        measured.ended(token, 3.5, 0.0, status=200)
+    reading = measured.reading(4.0, 0.0)
+    assert (reading.response_ms, reading.requests) == (pytest.approx(250.0), 121)
+    assert (reading.reads_ms, reading.reads) == (pytest.approx(3500.0), 21)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
+
+
+def test_reads_that_are_slow_are_refused_and_refused_do_not_hold_the_server_red() -> None:
+    measured = meter(Ceiling())
+    at_once(measured, 0.0, [3500.0] * 25)
+    told = {}
+    answered = refused = 0
+    for second in range(4, 100):
+        reading = measured.reading(float(second), 0.0)
+        told[second] = (reading.health, reading.refusing)
+        if load.refuses(reading.refusing, load.READ):
+            measured.turned_away(float(second), 0.0)
+            refused += 1
+        else:
+            answer(measured, float(second), 0.010)
+            answered += 1
+    # Refused for as long as the slow reads are reads that came in the last half minute.
+    assert {told[second] for second in range(4, 30)} == {(load.BUSY, load.THE_READS)}
+    assert refused == 26
+    # They are out half a minute after they came, and with them the red: what was
+    # refused is in no measure, and holds nothing. What is long waits a window more.
+    assert {told[second] for second in range(30, 59)} == {(load.VERY_SLOW, load.THE_LONG)}
+    assert {told[second] for second in range(59, 100)} == {(load.GOOD, load.NOTHING)}
+    assert answered == 70
+
+
+def test_slow_reads_and_slow_saves_together_and_then_the_saves_alone() -> None:
+    measured = meter(Ceiling())
+    reads = at_once(measured, 0.0, [0.0] * 25, answered=False)
+    saves = at_once(measured, 0.0, [0.0] * 25, answered=False, kept=True)
+    for token in (*reads, *saves):
+        measured.ended(token, 3.5, 0.0, status=200)
+    # Both are slow: the reads are refused, by themselves.
+    reading = measured.reading(20.0, 0.0)
+    assert (reading.requests, reading.reads) == (50, 25)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
+    # Half a minute after they came all are out. It refused its reads eleven seconds
+    # ago: what is long is refused, and nothing else.
+    assert said(measured.reading(31.0, 0.0)) == (load.VERY_SLOW, (load.RESPONSE,), load.THE_LONG)
+    # Slow saves again, and no read: red by them, and they refuse nothing; what is long
+    # is refused until half a minute after the reads last were.
+    at_once(measured, 31.0, [3500.0] * 25, kept=True)
+    assert said(measured.reading(35.0, 0.0)) == (load.BUSY, (load.RESPONSE,), load.THE_LONG)
+    reading = measured.reading(50.0, 0.0)
+    assert (reading.reads_ms, reading.reads) == (None, 0)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
+
+
+# --- the health as an answer begins --------------------------------------------------
+
+
+def test_an_answer_that_was_slow_says_so_itself() -> None:
+    """The case of the second review: one request on a server that has seen nothing,
+    answered after three and a third seconds."""
+    measured = meter(Ceiling())
+    token = measured.began(0.0, 0.0, measured=True)
+    assert said(measured.reading(0.0, 0.0)) == (load.GOOD, (), load.NOTHING)
+    reading = measured.answering(token, 3.3, 0.0)
+    assert (reading.response_ms, reading.requests) == (pytest.approx(3300.0), 1)
+    assert said(reading) == (load.BUSY, (load.RESPONSE,), load.NOTHING)
+
+
+def test_a_quick_answer_is_given_what_is_held_in_memory() -> None:
+    measured = meter(Ceiling())
+    token = measured.began(0.0, 0.0, measured=True)
+    held = measured.reading(0.0, 0.0)
+    # Within the second, and its own time in no higher band than the health held.
+    assert measured.answering(token, 0.5, 0.0) is held
+    assert measured.answering(token, 0.99, 0.0) is held
+    # A second on, the measures are read again as for any request.
+    assert measured.answering(token, 1.0, 0.0) is not held
+
+
+def test_an_answer_whose_own_time_is_in_a_higher_band_is_read_again_for() -> None:
+    measured = meter(Ceiling())
+    token = measured.began(0.0, 0.0, measured=True)
+    held = measured.reading(0.95, 0.0)
+    assert held.health == load.GOOD
+    # A tenth of a second later it has taken more than a second: slow, by itself.
+    reading = measured.answering(token, 1.05, 0.0)
+    assert reading is not held
+    assert said(reading) == (load.SLOW, (load.RESPONSE,), load.NOTHING)
+    # What is in no measure is given what is held, however long it took.
+    report = measured.began(1.05, 0.0, measured=False, long=True)
+    held = measured.reading(9.5, 0.0)
+    assert measured.answering(report, 9.9, 0.0) is held
+    # And so is a request that is gone.
+    assert measured.answering(12345, 9.9, 0.0) is held
 
 
 # --- a stall, and coming back from it -------------------------------------------------
@@ -465,9 +646,9 @@ def test_a_stall_that_is_over_with_the_longest_while_the_setting_takes() -> None
 
 def test_after_refusing_its_reads_the_server_refuses_what_is_long_for_a_while() -> None:
     measured = meter(Ceiling(response_ms=3000, cpu_percent=0, over_seconds=30))
-    at_once(measured, 0.0, [3500.0] * 20)
+    at_once(measured, 0.0, [3500.0] * 21)
     assert said(measured.reading(4.0, 0.0)) == (load.BUSY, (load.RESPONSE,), load.THE_READS)
-    # Quick answers from there: of forty the measure is the second slowest, still slow.
+    # Quick answers from there: of forty-one the measure is the third slowest, still slow.
     at_once(measured, 4.0, [10.0] * 20)
     assert measured.reading(20.0, 0.0).refusing == load.THE_READS
     # The slow ones are out at 30, and what is left is quick. It last refused its reads
@@ -493,7 +674,7 @@ def test_nothing_else_of_before_is_remembered() -> None:
     measured = meter(Ceiling(response_ms=3000, cpu_percent=0, over_seconds=30))
     # Very slow for an hour is very slow, and never busy for having lasted.
     for minute in range(60):
-        at_once(measured, minute * 60.0, [2500.0] * 20)
+        at_once(measured, minute * 60.0, [2500.0] * 21)
         assert said(measured.reading(minute * 60.0 + 3, 0.0)) == (
             load.VERY_SLOW,
             (load.RESPONSE,),
@@ -644,7 +825,7 @@ def test_the_health_is_how_long_requests_take_against_the_thirds_of_the_ceiling(
     took_ms: float, health: load.Health, refusing: load.Refusing
 ) -> None:
     measured = meter(Ceiling())
-    at_once(measured, 0.0, [took_ms] * 20)
+    at_once(measured, 0.0, [took_ms] * 21)
     reading = measured.reading(10.0, 0.0)
     # Nothing is refused until orange; what is long at orange; every read at red.
     assert said(reading) == (health, () if health == load.GOOD else (load.RESPONSE,), refusing)
@@ -660,7 +841,7 @@ def test_the_colour_is_the_same_with_few_requests_and_nothing_is_refused_for_it(
 
 def test_the_health_follows_the_ceiling_that_is_set() -> None:
     measured = meter(Ceiling(response_ms=600, cpu_percent=0))
-    at_once(measured, 0.0, [250.0] * 20)
+    at_once(measured, 0.0, [250.0] * 21)
     assert measured.reading(1.0, 0.0).health == load.SLOW
     measured.hold(Ceiling(response_ms=6000))
     assert measured.reading(1.0, 0.0).health == load.GOOD
@@ -918,7 +1099,7 @@ def test_which_kinds_of_request_are_in_the_measure_of_time() -> None:
 def test_the_ceiling_unless_set_and_what_the_meter_keeps() -> None:
     assert Ceiling() == Ceiling(response_ms=3000, cpu_percent=95, over_seconds=30)
     assert (load.WINDOW_SECONDS, load.STEP_SECONDS) == (600, 5)
-    assert (load.PERCENTILE, load.FEWEST_REQUESTS) == (95, 20)
+    assert (load.PERCENTILE, load.FEWEST_REQUESTS) == (95, 21)
     assert load.bounds_of(3000) == load.bounds_of(0) == (1000.0, 2000.0, 3000.0)
     # Nothing is refused until orange; what is long at orange; every read at red.
     assert dict(zip(load.HEALTHS, load.REFUSINGS, strict=True)) == {
