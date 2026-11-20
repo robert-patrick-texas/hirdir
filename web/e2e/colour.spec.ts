@@ -85,6 +85,8 @@ test("a tag's colour is pressed, slid and typed, as one value, and saved", async
 }) => {
   test.setTimeout(120_000);
   const seen = await watch(page.context());
+  // A colour is pasted into the box: Chromium lets a page write the clipboard once asked.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await signIn(page, account);
   await page.goto("./admin/tags");
   await expect(page.getByRole("heading", { level: 1, name: "Tags" })).toBeVisible();
@@ -141,6 +143,15 @@ test("a tag's colour is pressed, slid and typed, as one value, and saved", async
   await expect(colour.locator(".colour-slider")).toHaveAttribute("data-none", "false");
   await pressStep(colour, 0);
   await expect(box(colour)).toHaveValue("#ff968a");
+  // A paste is taken whole, without the blanks around it, and is a colour.
+  await box(colour).fill("");
+  await page.evaluate(() => navigator.clipboard.writeText(" #1f6feb "));
+  await box(colour).focus();
+  await page.keyboard.press("ControlOrMeta+V");
+  await expect(box(colour)).toHaveValue("#1f6feb");
+  await expect(chip(colour)).toHaveText("#1f6feb");
+  await form.getByLabel("Label (required)").focus();
+  await expect(colour.locator(".field-error")).toHaveCount(0);
   // Typed, of the grid, in capitals: its swatch is chosen, and the box keeps the capitals.
   await box(colour).fill("#00480E");
   await expect(pressed(colour)).toHaveAttribute("data-colour", "#00480e");

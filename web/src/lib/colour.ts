@@ -33,6 +33,14 @@ export function colourProblem(typed: string): string | null {
   return "In the form #1f6feb: a # and six of the digits 0 to 9 and the letters a to f.";
 }
 
+/**
+ * The box once something is pasted into it: the pasted text, without the blanks around
+ * it, in place of what was selected. A paste is never cut short: it is judged whole.
+ */
+export function pasted(value: string, text: string, start: number, end: number): string {
+  return `${value.slice(0, start)}${text.trim()}${value.slice(end)}`.trim();
+}
+
 /** Where a swatch is in the grid: its row, which is its shade, and its column, its hue. */
 export interface Place {
   row: number;
