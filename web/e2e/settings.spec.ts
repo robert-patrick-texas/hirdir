@@ -158,13 +158,40 @@ test("P-171: a setting is changed in a form beneath its row, which the focus mov
   expect(first).not.toBe(last);
   await expect(page.getByTestId("setting-form")).toHaveCount(0);
 
-  // The first setting and the last: each opens beneath its own row, and Cancel closes
-  // it, with the focus back on its Change button.
-  for (const setting of [first, last]) {
+  // 0.9.12 (P-278): the setting whose row is the tallest, its description the longest. Its
+  // row is taller than what the window has left beside the form, so its Change button, at
+  // the head of the row, went out of sight above the window when the form opened.
+  const heights = await rows.evaluateAll((all) =>
+    all.map((row) => row.getBoundingClientRect().height),
+  );
+  const tallest = keys[heights.indexOf(Math.max(...heights))] ?? "";
+  expect(Math.max(...heights), `the row of ${tallest}`).toBeGreaterThan(400);
+
+  // The first setting, the last and the tallest: each opens beneath its own row, and
+  // Cancel closes it, with the focus back on its Change button.
+  for (const setting of [first, last, tallest]) {
     const form = await openBeneath(page, setting);
     await form.getByRole("button", { name: "Cancel", exact: true }).click();
     await closedTo(page, setting);
   }
+
+  // While its form is open the buttons of the tallest row stand at its foot, directly
+  // above the form, and at its head again once the form is closed.
+  const opener = changeOf(page, tallest);
+  const tallRow = rowOf(page, tallest);
+  const headOf = async () => {
+    const [row, button] = [await tallRow.boundingBox(), await opener.boundingBox()];
+    return row && button ? button.y - row.y : Number.NaN;
+  };
+  expect(await headOf(), "closed, Change is at the head of its row").toBeLessThan(40);
+  const tallForm = await openBeneath(page, tallest);
+  const [button, panel] = [await opener.boundingBox(), await tallForm.boundingBox()];
+  const above = button && panel ? panel.y - (button.y + button.height) : Number.NaN;
+  expect(above, "open, Change is directly above the form").toBeGreaterThanOrEqual(0);
+  expect(above, "open, Change is directly above the form").toBeLessThan(120);
+  await tallForm.getByRole("button", { name: "Cancel", exact: true }).click();
+  await closedTo(page, tallest);
+  expect(await headOf(), "closed again, Change is at the head of its row").toBeLessThan(40);
 
   // One form at a time: Change on another setting closes the first, and what was typed
   // in it and not set is let go.

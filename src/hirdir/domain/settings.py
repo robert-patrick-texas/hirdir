@@ -508,8 +508,6 @@ SPECS: dict[str, Spec] = {
     # it at each look.
     AHEAD_SETTING: Spec(
         DEFAULT_AHEAD_AFTER_SECONDS,
-        # Kept short: a long meaning makes a tall row, and the form of a tall row opens
-        # with its Change button out of view.
         "how long after the newest change the background work works the long reports "
         "out again, in seconds. 0: when it starts and at five past midnight alone",
         _whole(AHEAD_SETTING, 0, MOST_AHEAD_AFTER_SECONDS, " of seconds"),

@@ -777,6 +777,17 @@ tbody tr.row-form:hover {
   background: none;
 }
 
+/*
+ * 0.9.12: while the form of a row is open, the row's buttons stand at the foot of the row,
+ * directly above the form (P-278). A row taller than the window has left, as that of a
+ * setting with a long description, cannot be in view whole with the form's first field,
+ * and the button that opened the form, at the head of the row, was what went out of
+ * sight. Closed, the buttons are at the head of the row again, where the focus goes.
+ */
+tbody tr:has(+ tr.row-form) > td.row-actions {
+  vertical-align: bottom;
+}
+
 .scroll:has(> table > tbody > tr.row-form) {
   container-type: inline-size;
 }
