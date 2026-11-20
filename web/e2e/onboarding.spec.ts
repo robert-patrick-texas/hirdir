@@ -213,6 +213,10 @@ test("P-283: a new engineer is made by one Create, and read on the three lists",
     "style",
     new RegExp(`background-color: ${rgbOf(chosen)}`),
   );
+  // The operator's page, reached from there, says it was just made.
+  await operator.getByRole("link").click();
+  await expect(page.getByTestId("operator-heading")).toContainText(engineer.username);
+  await expect(page.getByText(`Operator ${engineer.username} was created.`)).toBeVisible();
 
   // The Users list: the contact and the operator, each a link, the role, both groups, the
   // notes; every column in view on a screen 1280 pixels wide, Notes cut short to its
@@ -641,6 +645,7 @@ test("P-284: an operator is made in one press, from a user's page and from a con
   await expect(marks).toContainText("no operator");
   await marks.getByRole("button", { name: "Make an operator" }).click();
   await expect(page.getByTestId("operator-heading")).toContainText(hal);
+  await expect(page.getByText(`Operator ${hal} was created.`)).toBeVisible();
   await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "external");
   await page.unroute("**/api/v1/colours");
 

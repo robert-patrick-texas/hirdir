@@ -2,6 +2,7 @@ import { type FormEvent, Fragment, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { ColourPicker, useColours } from "../components/ColourPicker";
+import { createdState } from "../components/Created";
 import {
   CheckField,
   CheckGroupField,
@@ -38,7 +39,7 @@ import {
   usersGapOf,
   usersGapQuery,
 } from "../lib/onboarding";
-import { markOf } from "../lib/operators";
+import { markOf, operatorPath } from "../lib/operators";
 import { type PersonChoice, personChoice } from "../lib/people";
 import { ROLES, roleLabel } from "../lib/roles";
 import { USERS_SORT } from "../lib/tableSorts";
@@ -388,8 +389,11 @@ function CreatedUser({ created, onDone }: { created: Created; onDone: () => void
 
 /** 0.9.13: what one Create made, each a link to its page: the user, its contact, its operator. */
 function MadeWithUser({ created }: { created: Created }) {
-  const { user } = created;
-  const mark = markOf(created.operator);
+  const { user, operator } = created;
+  const mark = markOf(operator);
+  // The page each link leads to says that the record was just made (P-204, P-284).
+  const contactTo = user.contact ? `/contacts/${encodeURIComponent(user.contact.hid)}` : "";
+  const operatorTo = mark ? operatorPath(mark.hid) : "";
   return (
     <p data-testid="user-made">
       Made: the user{" "}
@@ -397,13 +401,31 @@ function MadeWithUser({ created }: { created: Created }) {
       {user.contact && (
         <>
           {mark ? ", " : " and "}the contact{" "}
-          <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>{user.contact.name}</Link>
+          <Link
+            to={contactTo}
+            state={createdState({ kind: "Contact", name: user.contact.name, to: contactTo })}
+          >
+            {user.contact.name}
+          </Link>
         </>
       )}
       {mark && (
         <>
           {" "}
-          and the operator <OperatorMark mark={mark} />
+          and the operator{" "}
+          <span className="operator-mark" data-operator={mark.hid}>
+            <Link
+              to={operatorTo}
+              state={createdState({ kind: "Operator", name: mark.label, to: operatorTo })}
+            >
+              <span
+                className="swatch operator-dot"
+                aria-hidden="true"
+                {...(mark.colour ? { style: { backgroundColor: mark.colour } } : {})}
+              />
+              {mark.label}
+            </Link>
+          </span>
         </>
       )}
       .

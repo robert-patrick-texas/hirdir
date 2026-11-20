@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { BoxTree } from "../components/BoxTree";
 import { ColourShown, useNextColour } from "../components/ColourPicker";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { Created, useCreated } from "../components/Created";
 import { FormFields } from "../components/FormFields";
 import { GapLinks, useGridGaps } from "../components/GapLinks";
 import type { GridColumn } from "../components/grid/columns";
@@ -306,6 +307,8 @@ export function OperatorDetail() {
     api.request("get", "/api/v1/operators/{hid}", { path: { hid }, signal }),
   );
   const [done, setDone] = useState("");
+  // 0.9.13: the operator just made, by Make an operator or the New user form (P-284).
+  const created = useCreated();
   const record = operator.data;
   const mark = markOf(record);
   useTitle(record ? record.label : "Operator");
@@ -324,6 +327,7 @@ export function OperatorDetail() {
       <h1>{mark ? <OperatorMark mark={mark} testId="operator-heading" /> : "Operator"}</h1>
       <Problem error={operator.error} />
       <Notice text={done} />
+      <Created made={created} />
       {operator.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>

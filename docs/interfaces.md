@@ -3114,7 +3114,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
   the label, `operator` at its box, `group_hids` at the groups, the contact's at the
   person's, with nothing typed lost, and the access code is shown with links to the
-  three records.
+  three records, the pages of the contact and of the operator saying, as a page reached
+  by a create does, that each was just made (P-204).
 - **A user's page.** Its groups, each with the roles the group grants, as a box to each
   group there is: ticking and unticking add and remove the user at once, each by its
   own request, and a refusal is said beside the box, which goes back. A box pressed
@@ -3156,7 +3157,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   still what the form filled in, and a label typed by hand is kept. A Create pressed
   before the username or the colour has come waits for them, says so, and then makes
   the operator with them. On the page of an operator, Details stands above The person's
-  email and numbers, and the colour is shown on its chip.
+  email and numbers, and the colour is shown on its chip. Reached by Make an operator,
+  or from the operator's link after a New user, it says that the operator was created.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
   one picker (P-285), a group named as the field is: the text box, which takes any
   `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and
