@@ -232,7 +232,7 @@ def revoke_service_token(hid: str, _: Admin, context: Audit, db: Db) -> schemas.
 @groups.get("")
 def list_groups(_: Admin, db: Db) -> list[schemas.GroupOut]:
     """List user groups by name."""
-    return [views.group_out(db, group) for group in accounts.list_groups(db)]
+    return views.groups_out(db, accounts.list_groups(db))
 
 
 @groups.post("", status_code=201)

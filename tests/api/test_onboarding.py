@@ -351,6 +351,54 @@ def test_the_operators_of_a_page_are_read_in_one_statement(client: TestClient, a
         event.remove(_engine(client), "before_cursor_execute", note)
 
 
+def test_a_page_of_users_or_of_groups_costs_the_same_statements_whatever_its_size(
+    client: TestClient, admin: dict
+) -> None:
+    """The role, the groups, the contact and the operators of the users of a page, and the
+    roles and the size of each group, are each read once for the page, never for a row."""
+    desk = Maker(client, admin)
+    groups = _groups(desk, *(f"Example Group {number}" for number in range(8)))
+    for number, group in enumerate(groups):
+        made = desk.post(
+            "/users",
+            {"username": f"ex-{number}", "contact": {"name": f"N{number}"}, "operator": {}},
+        )["user"]
+        desk.post("/role-grants", {"role": "viewer", "group_hid": group["hid"]})
+        assert (
+            client.put(
+                f"{API}/user-groups/{group['hid']}/members/{made['hid']}", headers=admin
+            ).status_code
+            == 204
+        )
+    statements: list[str] = []
+
+    def note(_connection: object, _cursor: object, statement: str, *_more: object) -> None:
+        statements.append(statement)
+
+    def cost(path: str, **params: Any) -> int:
+        statements.clear()
+        desk.get(path, **params)
+        return len(statements)
+
+    event.listen(_engine(client), "before_cursor_execute", note)
+    try:
+        assert cost("/users", limit=2) == cost("/users", limit=11)
+        assert cost("/users", limit=11, sort="role,groups,operators") == cost(
+            "/users", limit=2, sort="role,groups,operators"
+        )
+        few = cost("/user-groups")
+        _groups(desk, *(f"Example Other {number}" for number in range(6)))
+        assert cost("/user-groups") == few
+    finally:
+        event.remove(_engine(client), "before_cursor_execute", note)
+    found = {one["username"]: one for one in desk.get("/users")["items"]}
+    assert (found["ex-3"]["role"], [g["name"] for g in found["ex-3"]["groups"]]) == (
+        "viewer",
+        ["Example Group 3"],
+    )
+    assert found["ada"]["role"] == "admin"
+
+
 def test_the_gaps_are_found_by_the_index_of_the_operators_contact(
     client: TestClient, admin: dict
 ) -> None:

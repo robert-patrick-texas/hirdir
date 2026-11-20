@@ -1,6 +1,7 @@
 """Accounts: users, user groups, role grants, access codes, tokens and signing in."""
 
 import re
+from collections import defaultdict
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -171,24 +172,7 @@ def list_users(
     return list(page), total
 
 
-def groups_of(db: Session, user: User) -> list[UserGroup]:
-    """Return the groups user is in, by name."""
-    return list(
-        db.scalars(
-            select(UserGroup)
-            .join(UserGroupMember, UserGroupMember.group_hid == UserGroup.hid)
-            .where(UserGroupMember.user_hid == user.hid)
-            .order_by(UserGroup.name_key)
-        )
-    )
-
-
-def contact_of(db: Session, user: User) -> Contact | None:
-    """Return the contact a user is, or None: a service account, or a user not given one."""
-    return db.get(Contact, user.contact_hid) if user.contact_hid else None
-
-
-def contacts_of(db: Session, users: list[User]) -> dict[str, Contact]:
+def contacts_of(db: Session, users: Sequence[User]) -> dict[str, Contact]:
     """Return the contact of each of the users that has one, by its HID."""
     hids = {user.contact_hid for user in users if user.contact_hid}
     if not hids:
@@ -196,7 +180,72 @@ def contacts_of(db: Session, users: list[User]) -> dict[str, Contact]:
     return {one.hid: one for one in db.scalars(select(Contact).where(Contact.hid.in_(hids)))}
 
 
-def operators_of(db: Session, users: list[User]) -> dict[str, list[Operator]]:
+def roles_of(db: Session, users: Sequence[User]) -> dict[str, Role | None]:
+    """Return the role in force of each of the users, by its HID, as `effective_role`
+    gives it for one: the highest granted to the user or to a group it is in. Read in two
+    statements for them all, however many they are."""
+    hids = [user.hid for user in users]
+    if not hids:
+        return {}
+    members: dict[str, list[str]] = defaultdict(list)
+    for user_hid, group_hid in db.execute(
+        select(UserGroupMember.user_hid, UserGroupMember.group_hid).where(
+            UserGroupMember.user_hid.in_(hids)
+        )
+    ):
+        members[group_hid].append(user_hid)
+    granted: dict[str, list[str]] = {hid: [] for hid in hids}
+    for role, user_hid, group_hid in db.execute(
+        select(RoleGrant.role, RoleGrant.user_hid, RoleGrant.group_hid).where(
+            or_(RoleGrant.user_hid.in_(hids), RoleGrant.group_hid.in_(list(members)))
+        )
+    ):
+        for hid in [user_hid] if user_hid else members.get(group_hid or "", []):
+            granted[hid].append(role)
+    return {hid: highest(roles) for hid, roles in granted.items()}
+
+
+def groups_of_users(db: Session, users: Sequence[User]) -> dict[str, list[UserGroup]]:
+    """Return the groups each of the users is in, by name, by the user's HID, read in one
+    statement for them all."""
+    found: dict[str, list[UserGroup]] = {user.hid: [] for user in users}
+    if not found:
+        return found
+    for user_hid, group in db.execute(
+        select(UserGroupMember.user_hid, UserGroup)
+        .join(UserGroup, UserGroup.hid == UserGroupMember.group_hid)
+        .where(UserGroupMember.user_hid.in_(list(found)))
+        .order_by(UserGroup.name_key)
+    ):
+        found[user_hid].append(group)
+    return found
+
+
+def roles_of_groups(db: Session, groups: Sequence[UserGroup]) -> dict[str, list[str]]:
+    """Return the roles granted to each of the groups, by name, read in one statement."""
+    found: dict[str, list[str]] = {group.hid: [] for group in groups}
+    if found:
+        for group_hid, role in db.execute(
+            select(RoleGrant.group_hid, RoleGrant.role).where(RoleGrant.group_hid.in_(list(found)))
+        ):
+            found[group_hid or ""].append(role)
+    return {hid: sorted(roles) for hid, roles in found.items()}
+
+
+def sizes_of(db: Session, groups: Sequence[UserGroup]) -> dict[str, int]:
+    """Return how many users are in each of the groups, read in one statement."""
+    found = {group.hid: 0 for group in groups}
+    if found:
+        for group_hid, count in db.execute(
+            select(UserGroupMember.group_hid, func.count())
+            .where(UserGroupMember.group_hid.in_(list(found)))
+            .group_by(UserGroupMember.group_hid)
+        ):
+            found[group_hid] = count
+    return found
+
+
+def operators_of(db: Session, users: Sequence[User]) -> dict[str, list[Operator]]:
     """Return the operators each of the users works as, by the user's HID: those whose
     contact is the user's, retired ones among them, in the order of their labels, read
     in one query for them all. A user with no contact has none (P-280)."""

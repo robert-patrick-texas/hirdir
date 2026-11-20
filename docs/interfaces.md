@@ -191,8 +191,10 @@ takes `contact` and `operator`, each `any`, which is the same as leaving it out,
 or `none`: `contact=some` gives the users that are a contact and `contact=none` those
 that are none; `operator=some` those whose contact stands behind an operator that is
 not retired, and `operator=none` those behind none, a user with no contact among them.
-A service account is no person and is in neither `none`. Each of a page's lists is read
-in one query for the page. The users are sorted by `notes` and by `operators`, the
+A service account is no person and is in neither `none`. What a page of users shows of
+each, its contact, its role in force, its groups and its operators, is read once for the
+whole page and never for a row, and so are the size and the roles of each group of
+`GET /user-groups`: a page costs the same statements whatever its size. The users are sorted by `notes` and by `operators`, the
 first of their labels, as by their other columns. `GET /contacts` filters and sorts by
 `is_operator`, true where the contact stands behind an operator that is not retired, as
 it does by `is_user`; `GET /operators` finds those with nobody behind them by `scope`,

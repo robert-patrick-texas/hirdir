@@ -1,9 +1,9 @@
 """Turning records into the shapes the API returns."""
 
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir import clock
@@ -32,48 +32,53 @@ def operator_brief(operator: Operator) -> schemas.OperatorBrief:
     return schemas.OperatorBrief.model_validate(operator)
 
 
-def user_out(
-    db: Session,
-    user: User,
-    contact: Contact | None = None,
-    operators: list[Operator] | None = None,
-) -> schemas.UserOut:
-    """Return user with the role and groups they hold right now, the contact it is, whose
-    name and email are the contact's, read now (P-172), and the operators it works as
-    (P-280). A page of users passes the contacts and the operators it read for them all."""
-    role = accounts.effective_role(db, user)
-    if contact is None or contact.hid != user.contact_hid:
-        contact = accounts.contact_of(db, user)
-    if operators is None:
-        operators = accounts.operators_of(db, [user])[user.hid]
-    return schemas.UserOut(
-        hid=user.hid,
-        username=user.username,
-        contact_hid=user.contact_hid,
-        contact=person_ref(contact),
-        display_name=contact.name if contact is not None else "",
-        email=(contact.email or "") if contact is not None else "",
-        operators=[operator_brief(one) for one in operators],
-        notes=user.notes,
-        is_service_account=user.is_service_account,
-        disabled=user.disabled,
-        role=role.value if role else None,
-        groups=[schemas.GroupRef(hid=g.hid, name=g.name) for g in accounts.groups_of(db, user)],
-        last_sign_in_at=user.last_sign_in_at,
-        row_version=user.row_version,
-        created_at=user.created_at,
-        updated_at=user.updated_at,
-    )
+def user_out(db: Session, user: User) -> schemas.UserOut:
+    """Return one user, as `users_out` returns each of a page."""
+    return users_out(db, [user])[0]
 
 
-def _group_fields(db: Session, group: UserGroup, member_count: int) -> dict:
-    roles = db.scalars(select(RoleGrant.role).where(RoleGrant.group_hid == group.hid))
+def users_out(db: Session, users: Sequence[User]) -> list[schemas.UserOut]:
+    """Return users with the role and groups each holds right now, the contact each is,
+    whose name and email are the contact's, read now (P-172), and the operators each works
+    as (P-280). Each of these is read once for them all, never for a row."""
+    people = accounts.contacts_of(db, users)
+    behind = accounts.operators_of(db, users)
+    roles = accounts.roles_of(db, users)
+    groups = accounts.groups_of_users(db, users)
+    out = []
+    for user in users:
+        contact = people.get(user.contact_hid or "")
+        role = roles[user.hid]
+        out.append(
+            schemas.UserOut(
+                hid=user.hid,
+                username=user.username,
+                contact_hid=user.contact_hid,
+                contact=person_ref(contact),
+                display_name=contact.name if contact is not None else "",
+                email=(contact.email or "") if contact is not None else "",
+                operators=[operator_brief(one) for one in behind[user.hid]],
+                notes=user.notes,
+                is_service_account=user.is_service_account,
+                disabled=user.disabled,
+                role=role.value if role else None,
+                groups=[schemas.GroupRef(hid=g.hid, name=g.name) for g in groups[user.hid]],
+                last_sign_in_at=user.last_sign_in_at,
+                row_version=user.row_version,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+            )
+        )
+    return out
+
+
+def _group_fields(group: UserGroup, member_count: int, roles: list[str]) -> dict:
     return {
         "hid": group.hid,
         "name": group.name,
         "description": group.description,
         "member_count": member_count,
-        "roles": sorted(roles),
+        "roles": roles,
         "row_version": group.row_version,
         "created_at": group.created_at,
         "updated_at": group.updated_at,
@@ -81,26 +86,27 @@ def _group_fields(db: Session, group: UserGroup, member_count: int) -> dict:
 
 
 def group_out(db: Session, group: UserGroup) -> schemas.GroupOut:
-    """Return group with its size and the roles granted to it."""
-    return schemas.GroupOut(**_group_fields(db, group, len(group.memberships)))
+    """Return one group, as `groups_out` returns each."""
+    return groups_out(db, [group])[0]
+
+
+def groups_out(db: Session, groups: Sequence[UserGroup]) -> list[schemas.GroupOut]:
+    """Return groups with the size of each and the roles granted to it, each read once
+    for them all."""
+    sizes, roles = accounts.sizes_of(db, groups), accounts.roles_of_groups(db, groups)
+    return [
+        schemas.GroupOut(**_group_fields(group, sizes[group.hid], roles[group.hid]))
+        for group in groups
+    ]
 
 
 def group_detail(db: Session, group: UserGroup) -> schemas.GroupDetail:
     """Return group with its members."""
     members = accounts.members_of(db, group)
     return schemas.GroupDetail(
-        **_group_fields(db, group, len(members)),
+        **_group_fields(group, len(members), accounts.roles_of_groups(db, [group])[group.hid]),
         members=users_out(db, members),
     )
-
-
-def users_out(db: Session, users: list[User]) -> list[schemas.UserOut]:
-    """Return a page of users, their contacts and their operators read once for them all."""
-    people = accounts.contacts_of(db, users)
-    behind = accounts.operators_of(db, users)
-    return [
-        user_out(db, user, people.get(user.contact_hid or ""), behind[user.hid]) for user in users
-    ]
 
 
 def grant_out(db: Session, grant: RoleGrant) -> schemas.GrantOut:
