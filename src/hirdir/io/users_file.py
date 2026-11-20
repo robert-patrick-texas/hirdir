@@ -7,8 +7,10 @@ is read here. No file makes or changes a user, so this file is written and never
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
+from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -33,6 +35,8 @@ COLUMNS = (
     "last_sign_in_at",
     "notes",
 )
+# A time is written in the one form the API gives it, in UTC: 2026-11-20T15:04:05.123456Z.
+_TIME: TypeAdapter[datetime | None] = TypeAdapter(datetime | None)
 # The audit trail names what was exported so.
 RECORD = "user"
 ACTION = "export"
@@ -73,9 +77,7 @@ def rows(db: Session) -> list[dict[str, Any]]:
                 ],
                 "kind": "service" if user.is_service_account else "person",
                 "state": "disabled" if user.disabled else "enabled",
-                "last_sign_in_at": (
-                    user.last_sign_in_at.isoformat() if user.last_sign_in_at else None
-                ),
+                "last_sign_in_at": _TIME.dump_python(user.last_sign_in_at, mode="json"),
                 "notes": user.notes,
             }
         )

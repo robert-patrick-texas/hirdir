@@ -187,7 +187,10 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "kind": "service",
         "state": "enabled",
     }
-    assert rows["ada"]["last_sign_in_at"].endswith("+00:00")
+    # A time is written in the one form the API gives it, in UTC: ...Z.
+    ada = next(one for one in people.get("/users")["items"] if one["username"] == "ada")
+    assert rows["ada"]["last_sign_in_at"] == ada["last_sign_in_at"]
+    assert rows["ada"]["last_sign_in_at"].endswith("Z")
 
 
 def test_the_users_file_holds_no_access_code_token_or_hash_and_is_audited(

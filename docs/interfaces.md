@@ -1407,7 +1407,8 @@ with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a 
 with no contact, `role`, the role in force, granted to the user or to a group it is in,
 blank where it has none, `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person` or `service`,
-`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC, and `notes`; several
+`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC in the form the API gives
+it, `2026-11-20T15:04:05.123456Z`, and `notes`; several
 groups or operators stand in one cell, separated by `;` as the other files separate
 several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
 are. So that a cell of groups is read as it was written, the name of a user group holds
