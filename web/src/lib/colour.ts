@@ -33,6 +33,30 @@ export function colourProblem(typed: string): string | null {
   return "In the form #1f6feb: a # and six of the digits 0 to 9 and the letters a to f.";
 }
 
+/** What a picker's value sends: the colour in lower case, null for none, or what is wrong. */
+export type ColourRead = { ok: true; colour: string | null } | { ok: false; error: string };
+
+/**
+ * The value of a picker as a form sends it, read before anything is sent: blank is no
+ * colour, null; a colour is sent in lower case, as the server keeps it; anything else is
+ * not sent, and its error is shown at the box (the picker's `error`). A form built of
+ * fields does this itself (the kind `colour`); a form written by hand calls this.
+ */
+export function readColour(typed: string): ColourRead {
+  const problem = colourProblem(typed);
+  if (problem !== null) return { ok: false, error: problem };
+  const colour = typed.trim().toLowerCase();
+  return { ok: true, colour: colour === "" ? null : colour };
+}
+
+/**
+ * The box once something is pasted into it: the pasted text, without the blanks around
+ * it, in place of what was selected. A paste is never cut short: it is judged whole.
+ */
+export function pasted(value: string, text: string, start: number, end: number): string {
+  return `${value.slice(0, start)}${text.trim()}${value.slice(end)}`.trim();
+}
+
 /** Where a swatch is in the grid: its row, which is its shade, and its column, its hue. */
 export interface Place {
   row: number;

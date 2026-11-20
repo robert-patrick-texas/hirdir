@@ -12,6 +12,7 @@ import {
   colourProblem,
   colourWords,
   type Place,
+  pasted,
   placeIn,
   restingStep,
   sameColour,
@@ -193,7 +194,8 @@ export function ColourPicker(props: ColourPickerProps) {
           type="text"
           {...(name === undefined ? {} : { name })}
           value={value}
-          maxLength={7}
+          // 0.9.13: no length is set: a paste is taken whole, without the blanks around it,
+          // and judged as it is (`pasted`).
           spellCheck={false}
           autoCapitalize="none"
           autoComplete="off"
@@ -204,6 +206,14 @@ export function ColourPicker(props: ColourPickerProps) {
           onFocus={() => setTyping(true)}
           onBlur={() => setTyping(false)}
           onChange={(event) => onChange(event.target.value)}
+          onPaste={(event) => {
+            const text = event.clipboardData.getData("text");
+            if (text === "") return;
+            event.preventDefault();
+            const box = event.currentTarget;
+            const at = box.selectionStart ?? box.value.length;
+            onChange(pasted(box.value, text, at, box.selectionEnd ?? at));
+          }}
         />
         <ColourChip value={value} testId={`${id}-chip`} />
         <Sample text={sample} colour={colour} as={sampleAs} />

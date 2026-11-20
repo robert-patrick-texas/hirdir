@@ -57,6 +57,20 @@ async function chipText(colour: Locator): Promise<string> {
   return chip(colour).evaluate((element) => getComputedStyle(element).color);
 }
 
+/**
+ * Press the slider at one of its steps: the thumb's centre travels from half its width
+ * to the width less half of it, in 31 equal steps.
+ */
+async function pressStep(colour: Locator, step: number): Promise<void> {
+  const range = slider(colour);
+  const { width, height, thumb } = await range.evaluate((element) => {
+    const area = element.getBoundingClientRect();
+    const size = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return { width: area.width, height: area.height, thumb: size };
+  });
+  await range.click({ position: { x: thumb / 2 + (step * (width - thumb)) / 31, y: height / 2 } });
+}
+
 const BLACK = "rgb(0, 0, 0)";
 const WHITE = "rgb(255, 255, 255)";
 
@@ -71,6 +85,8 @@ test("a tag's colour is pressed, slid and typed, as one value, and saved", async
 }) => {
   test.setTimeout(120_000);
   const seen = await watch(page.context());
+  // A colour is pasted into the box: Chromium lets a page write the clipboard once asked.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await signIn(page, account);
   await page.goto("./admin/tags");
   await expect(page.getByRole("heading", { level: 1, name: "Tags" })).toBeVisible();
@@ -120,6 +136,22 @@ test("a tag's colour is pressed, slid and typed, as one value, and saved", async
   await expect(colour.locator(".colour-slider")).toHaveAttribute("data-none", "true");
   await expect(chip(colour)).toHaveText("#eeaa00");
   expect(await chipText(colour)).toBe(BLACK);
+  // A press on the slider where it rests, at the step nearest #eeaa00, takes that step,
+  // though the input does not move; a press elsewhere takes the step pressed.
+  await pressStep(colour, 5);
+  await expect(box(colour)).toHaveValue("#ec7c0e");
+  await expect(colour.locator(".colour-slider")).toHaveAttribute("data-none", "false");
+  await pressStep(colour, 0);
+  await expect(box(colour)).toHaveValue("#ff968a");
+  // A paste is taken whole, without the blanks around it, and is a colour.
+  await box(colour).fill("");
+  await page.evaluate(() => navigator.clipboard.writeText(" #1f6feb "));
+  await box(colour).focus();
+  await page.keyboard.press("ControlOrMeta+V");
+  await expect(box(colour)).toHaveValue("#1f6feb");
+  await expect(chip(colour)).toHaveText("#1f6feb");
+  await form.getByLabel("Label (required)").focus();
+  await expect(colour.locator(".field-error")).toHaveCount(0);
   // Typed, of the grid, in capitals: its swatch is chosen, and the box keeps the capitals.
   await box(colour).fill("#00480E");
   await expect(pressed(colour)).toHaveAttribute("data-colour", "#00480e");
