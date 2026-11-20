@@ -1307,7 +1307,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Observation | `observed_status` is `online`, `degraded`, `unreachable` or `present`, and `observed_at` the moment it was seen: left out, the moment of the change, and with no zone named, in the application's time zone. A row that states a status as it is, with no moment, changes nothing, where a person who does so on a page or by a bulk edit has looked again and sets the moment to now. `!clear` in `observed_status` clears both, and a moment is not cleared by itself. What a preview tells of a row leaves out a moment that the clock will set, since the apply is made later. A site that reads the status of its devices from another tool, or walks its store room, loads the result as a file of `hostname`, `observed_status` and `observed_at` |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
-| Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
+| Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list. `'!clear` is the text `!clear`, which is how an export writes a value that is that text (see Export) |
 | Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155) |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
@@ -1358,6 +1358,13 @@ A CSV cell that begins with `=`, `+`, `-` or `@` is written with a leading apost
 a spreadsheet does not run it as a formula. Import removes that apostrophe again. A
 value that itself begins with an apostrophe before such a character is written with one
 more, so that it comes back as it was.
+
+A stored text that is the very mark that clears, `!clear`, is a value and not the mark:
+an export writes it `'!clear`, in CSV and in JSON alike, and an import reads `'!clear`
+as the text `!clear`, so that it loads back and clears nothing. A value that is the mark
+behind apostrophes of its own is written with one more, as above: `'!clear` is written
+`''!clear` and comes back as `'!clear`. A JSON file guards nothing else, since it runs no
+formula. A cell or a value that is `!clear` alone clears, as before.
 
 Device groups export `serial_number`, which for a stack is that of the master seen or
 else of the one intended, `members`, the number of current ones, and `health`. None
