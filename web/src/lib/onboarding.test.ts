@@ -9,6 +9,8 @@ import {
   followedLabel,
   followUsername,
   gapShown,
+  goneGroups,
+  goneWords,
   groupGrants,
   labelProblem,
   NEW_USER_FIELDS,
@@ -36,6 +38,27 @@ describe("a group's box says what the group grants (P-282)", () => {
     for (const roles of [[], ["admin"], ["viewer", "inventory"]]) {
       expect(groupGrants(roles)).not.toMatch(/role/i);
     }
+  });
+});
+
+describe("a group deleted under an open form is said so by its name (P-282)", () => {
+  const listed = [
+    { hid: "G1", name: "ex-network" },
+    { hid: "G2", name: "ex-servers" },
+    { hid: "G3", name: "ex-lab" },
+  ];
+
+  it("names the groups asked for that the server no longer has", () => {
+    expect(goneGroups(listed, [{ hid: "G1" }], ["G1", "G2"])).toEqual(["ex-servers"]);
+    expect(goneGroups(listed, [{ hid: "G1" }], ["G1"])).toEqual([]);
+    expect(goneGroups(listed, [], ["G2", "G3"])).toEqual(["ex-servers", "ex-lab"]);
+  });
+
+  it("says it in words, one group or several", () => {
+    expect(goneWords(["ex-lab"])).toBe(
+      "The group ex-lab is gone: it was deleted after this was read, and its box is taken away.",
+    );
+    expect(goneWords(["ex-lab", "ex-servers"])).toMatch(/^The groups ex-lab, ex-servers are gone/);
   });
 });
 

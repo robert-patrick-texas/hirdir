@@ -1,6 +1,7 @@
 import { type FormEvent, Fragment, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
+import { ApiError } from "../api/client";
 import { ColourPicker, useColours } from "../components/ColourPicker";
 import { createdState } from "../components/Created";
 import {
@@ -28,6 +29,8 @@ import {
   type FollowedLabel,
   followedLabel,
   followUsername,
+  goneGroups,
+  goneWords,
   groupGrants,
   NEW_USER_FIELDS,
   newUserBody,
@@ -463,6 +466,8 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
   const [notes, setNotes] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [found, setFound] = useState<Record<string, string>>({});
+  // The groups deleted since the form was read, by name, said at the groups.
+  const [gone, setGone] = useState<readonly string[]>([]);
   const groups = useLoad("user-groups", (signal) =>
     api.request("get", "/api/v1/user-groups", { signal }),
   );
@@ -501,10 +506,42 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
       return;
     }
     setFound({});
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/users", { body: read.body }),
-    );
-    if (result.ok) onCreated(result.value);
+    setGone([]);
+    let groupRefused = false;
+    const result = await action.run(async () => {
+      try {
+        return await api.request("post", "/api/v1/users", { body: read.body });
+      } catch (thrown) {
+        groupRefused =
+          thrown instanceof ApiError &&
+          Object.keys(thrown.fields).some((field) => field.startsWith("group_hids"));
+        throw thrown;
+      }
+    });
+    if (result.ok) {
+      onCreated(result.value);
+      return;
+    }
+    if (groupRefused) await groupsGone();
+  }
+
+  /**
+   * A group was refused as not there: the groups are read again, and one deleted since
+   * the form was read is said so by its name, its box taken away and unticked, so that
+   * Create can be pressed again with what else is on the form.
+   */
+  async function groupsGone() {
+    try {
+      const now = await api.request("get", "/api/v1/user-groups", {});
+      const names = goneGroups(groups.data ?? [], now, groupHids);
+      if (names.length === 0) return;
+      const there = new Set(now.map((group) => group.hid));
+      setGroupHids((was) => was.filter((hid) => there.has(hid)));
+      setGone(names);
+      groups.reload();
+    } catch {
+      // Not read: the server's refusal stands at the groups.
+    }
   }
 
   return (
@@ -629,7 +666,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           onChange={setGroupHids}
           empty={groups.data ? "There are no groups." : "Loading…"}
           hint="The user is put in each group ticked, and holds the roles it grants."
-          error={fields.group_hids}
+          error={gone.length > 0 ? goneWords(gone) : fields.group_hids}
           disabled={action.busy}
         />
         <TextAreaField

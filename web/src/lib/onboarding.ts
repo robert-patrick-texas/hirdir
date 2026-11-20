@@ -19,6 +19,29 @@ export function groupGrants(roles: readonly string[]): string {
 }
 
 /**
+ * The groups that are gone (P-282): those a form listed, of the ones asked for, that the
+ * server no longer has, by name, as a deletion under an open form leaves them.
+ */
+export function goneGroups(
+  listed: readonly { hid: string; name: string }[],
+  now: readonly { hid: string }[],
+  asked: readonly string[],
+): string[] {
+  const there = new Set(now.map((group) => group.hid));
+  return listed
+    .filter((group) => asked.includes(group.hid) && !there.has(group.hid))
+    .map((group) => group.name);
+}
+
+/** What a form says of groups deleted since it was read, by their names. */
+export function goneWords(names: readonly string[]): string {
+  const named = names.join(", ");
+  return names.length === 1
+    ? `The group ${named} is gone: it was deleted after this was read, and its box is taken away.`
+    : `The groups ${named} are gone: they were deleted after this was read, and their boxes are taken away.`;
+}
+
+/**
  * The label of a new operator, and what the form last filled it with. The label follows
  * the username as it is typed while it is blank or still what the form filled in, and
  * keeps what was typed over it (P-283), as the New operator form does with the username

@@ -2,13 +2,15 @@
 // is, with the roles the group grants; ticking it puts the user in the group at once,
 // and unticking takes the user out, each by its own request, as the page of the group
 // does. A refusal is said beside the box, which goes back to what the server holds. A
-// box pressed again while its request is out sends nothing more.
+// box pressed again while its request is out sends nothing more. A group deleted since
+// the page was read is said so, by its name, and its box taken away.
 
 import { useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
+import { ApiError } from "../api/client";
 import { useAction, useLoad } from "../lib/hooks";
-import { groupGrants } from "../lib/onboarding";
+import { goneGroups, goneWords, groupGrants } from "../lib/onboarding";
 import { Problem } from "./Problem";
 
 type Group = Schemas["GroupOut"];
@@ -29,6 +31,24 @@ export function GroupBoxes({ user, onChanged }: GroupBoxesProps) {
     () => new Set(user.groups.map((group) => group.hid)),
   );
   const id = useId();
+  // 0.9.13: the groups deleted since the page was read, by name.
+  const [gone, setGone] = useState<readonly string[]>([]);
+
+  /**
+   * A change was refused as of a group that is not there: where the group was deleted,
+   * the list is read again, without its box, and the page says so by the group's name.
+   */
+  async function missing(group: Group) {
+    try {
+      const now = await api.request("get", "/api/v1/user-groups", {});
+      const names = goneGroups(groups.data ?? [], now, [group.hid]);
+      if (names.length === 0) return;
+      setGone((was) => [...was.filter((name) => !names.includes(name)), ...names]);
+      groups.reload();
+    } catch {
+      // Not read: the refusal beside the box says what there is to say.
+    }
+  }
 
   function changed(group: Group, now: boolean) {
     setMember((was) => {
@@ -56,6 +76,13 @@ export function GroupBoxes({ user, onChanged }: GroupBoxesProps) {
           aria-describedby={`${id}-hint`}
         >
           <legend>The groups {user.username} is in</legend>
+          <div className="live" role="status">
+            {gone.length > 0 && (
+              <p className="field-error" data-testid="groups-gone">
+                {goneWords(gone)}
+              </p>
+            )}
+          </div>
           <p className="hint" id={`${id}-hint`}>
             A box puts {user.username} in the group, or takes them out of it, at once. A member
             holds the roles the group grants.
@@ -72,6 +99,7 @@ export function GroupBoxes({ user, onChanged }: GroupBoxesProps) {
               group={group}
               member={member.has(group.hid)}
               onChanged={changed}
+              onMissing={(missed) => void missing(missed)}
             />
           ))}
         </fieldset>
@@ -85,9 +113,11 @@ interface GroupBoxProps {
   group: Group;
   member: boolean;
   onChanged: (group: Group, member: boolean) => void;
+  /** A change was refused as of a group or a user that is not there. */
+  onMissing: (group: Group) => void;
 }
 
-function GroupBox({ user, group, member, onChanged }: GroupBoxProps) {
+function GroupBox({ user, group, member, onChanged, onMissing }: GroupBoxProps) {
   const id = useId();
   const action = useAction();
   // What was asked for while its request is out; null when none is.
@@ -101,14 +131,22 @@ function GroupBox({ user, group, member, onChanged }: GroupBoxProps) {
     out.current = true;
     setWanted(next);
     const path = { hid: group.hid, user_hid: user.hid };
-    const result = await action.run(() =>
-      next
-        ? api.request("put", "/api/v1/user-groups/{hid}/members/{user_hid}", { path })
-        : api.request("delete", "/api/v1/user-groups/{hid}/members/{user_hid}", { path }),
-    );
+    let notThere = false;
+    const result = await action.run(async () => {
+      try {
+        return await (next
+          ? api.request("put", "/api/v1/user-groups/{hid}/members/{user_hid}", { path })
+          : api.request("delete", "/api/v1/user-groups/{hid}/members/{user_hid}", { path }));
+      } catch (thrown) {
+        // Not there: the group may have been deleted since the page was read.
+        notThere = thrown instanceof ApiError && thrown.status === 404;
+        throw thrown;
+      }
+    });
     out.current = false;
     setWanted(null);
     if (result.ok) onChanged(group, next);
+    else if (notThere) onMissing(group);
   }
 
   const refusal = action.error && !action.error.aborted ? action.error.message : "";

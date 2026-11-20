@@ -154,15 +154,17 @@ test("P-282: a user's groups are ticked and unticked on its page, each at once",
   expect(sent).toBe(1);
   await page.unroute(held);
 
-  // Refused, as for a group deleted since the page was read: said beside the box, which
-  // goes back.
+  // Refused, as for a group deleted since the page was read: the page says by its name
+  // that the group is gone, and its box is taken away, without a reload.
   const answer = await request.delete(`./api/v1/user-groups/${gone.hid}`, { headers });
   expect(answer.status()).toBe(204);
   await box(goneName).click();
-  const refused = boxes.locator(`[data-group="${goneName}"] .field-error`);
-  await expect(refused).toContainText(`Not added to ${goneName}`);
-  await expect(box(goneName)).not.toBeChecked();
-  await expect(box(goneName)).toHaveAttribute("aria-invalid", "true");
+  await expect(boxes.getByTestId("groups-gone")).toHaveText(
+    `The group ${goneName} is gone: it was deleted after this was read, and its box is taken away.`,
+  );
+  await expect(box(goneName)).toHaveCount(0);
+  await expect(boxes).not.toContainText(gone.hid);
+  await expect(box(serversName)).toBeChecked();
   // The page read again has no box for it, and the user is in the one group ticked.
   await page.reload();
   await expect(box(serversName)).toBeChecked();
@@ -360,13 +362,17 @@ test("P-283: each refusal is shown at its field, with nothing typed lost", async
   await intact();
   await label.fill("");
 
-  // A group deleted since the form was read: at the groups, the whole refused.
+  // A group deleted since the form was read: the whole refused, and the form says by its
+  // name that the group is gone, its box taken away, the other group still ticked.
   const gone = await request.delete(`./api/v1/user-groups/${late.hid}`, { headers });
   expect(gone.status()).toBe(204);
   await create.click();
-  await expect(form.getByRole("group", { name: "Groups" }).locator(".field-error")).toBeVisible();
+  const groups = form.getByRole("group", { name: "Groups" });
+  await expect(groups.locator(".field-error")).toHaveText(
+    `The group ${lateName} is gone: it was deleted after this was read, and its box is taken away.`,
+  );
+  await expect(groupBox(form, lateName)).toHaveCount(0);
   await intact();
-  await groupBox(form, lateName).uncheck();
 
   // Nothing of the refused was made: no such user, no operator of its name.
   const users = await request.get(`./api/v1/users?q=${encodeURIComponent(username)}`, { headers });

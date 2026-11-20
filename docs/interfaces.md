@@ -3115,13 +3115,17 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   none. One
   Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
   the label, `operator` at its box, `group_hids` at the groups, the contact's at the
-  person's, with nothing typed lost, and the access code is shown with links to the
+  person's, with nothing typed lost; a group deleted since the form was read is named
+  at the groups by its name, read again, and its box taken away and unticked, so that
+  Create can be pressed again; and the access code is shown with links to the
   three records, the pages of the contact and of the operator saying, as a page reached
   by a create does, that each was just made (P-204).
 - **A user's page.** Its groups, each with the roles the group grants, as a box to each
   group there is: ticking and unticking add and remove the user at once, each by its
   own request, and a refusal is said beside the box, which goes back. A box pressed
-  again while its request is out sends nothing more. Its notes are changed in its form.
+  again while its request is out sends nothing more. A group deleted since the page was
+  read, refused as not there, is said gone by its name, and the groups are read again
+  without its box. Its notes are changed in its form.
   Its operators are listed as links, released ones marked so. Where its contact is
   retired, no operator is offered, the page says that the contact is retired, the
   contact a link, as such a user is one of both gaps; where it is behind none that is
