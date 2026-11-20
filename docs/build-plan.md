@@ -148,7 +148,10 @@ process: it works out the coverage report, the renewal worklist, the summary of 
 renewal alert and the capacity balance ahead and keeps them in the database, a row to
 each, where the server finds them (P-275); and it works them out again by day, once
 nothing has changed for half a minute, which a setting says (P-276). Its migration,
-`0015`, adds the table of what is kept and changes no record.
+`0015`, adds the table of what is kept and changes no record. 0.9.12 follows it with
+what the owner answered when it was published, and changes nothing that is held: while
+the form of a row is open, the row's buttons stand at its foot, beside the form, so
+that a setting with a long description opens with its Change button in view (P-278).
 
 ## From 0.6.1 to 0.9.0
 
