@@ -3122,6 +3122,201 @@ table.load-table th.load-band {
   user-select: all;
 }
 
+/* 0.9.13, lane w-people-0.9.13 */
+
+/* A user's groups (P-282): a group to a line, its box, its name and what it grants, and
+   what was refused of it under them. */
+.group-boxes .group-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin-right: 0;
+}
+
+.group-boxes .group-box .field-error {
+  flex-basis: 100%;
+  margin-left: 1.6rem;
+}
+
+.group-box-state {
+  color: var(--muted);
+}
+
+/* The New user form (P-283): the contact and the operator, each its box with what it
+   asks under it, set in from the edge so that what belongs to a box is seen as its. */
+.onboard-part {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.onboard-part > .person-chooser,
+.onboard-part > .fields {
+  margin-left: 1.6rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+
+/* The operator's label above its colour, which takes the width the picker needs. */
+.onboard-part > .fields.onboard-operator {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 40rem;
+}
+
+/* Who is what on the lists and pages of people (P-280): plain words where there is none. */
+.people-gap {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Show, and the gaps of a list beside it, as the pages of a menu are: the one on show
+   is filled. */
+.gap-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.gap-links-label {
+  font-weight: 600;
+}
+
+.gap-links ul {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem;
+}
+
+.people-marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+}
+
+/* Make an operator (P-284): the label and the colour, opened in place by a refusal. */
+.make-operator-form {
+  margin-top: 0.5rem;
+  max-width: 40rem;
+}
+
+/* 0.9.13, lane w-export-0.9.13 */
+
+/* The Import page: the upload, and beside it every table a file is taken for (P-286).
+   Side by side where there is room, the list no taller than the upload, scrolled in its
+   own box; one under the other on a narrow screen, the upload first. */
+.import-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem 1.25rem;
+  align-items: stretch;
+  margin: 1rem 0 1.5rem;
+}
+
+.import-top > section,
+.import-top > p {
+  margin: 0;
+}
+
+.table-exports {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.table-exports-all {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.table-exports-lead {
+  font-weight: 600;
+}
+
+.table-exports-all .table-export-said {
+  flex-basis: 100%;
+}
+
+.table-exports-list {
+  max-height: 24rem;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.table-exports-list > table > thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* The upload keeps two of its fields to a row, as wide as it needs for that, and the list
+   has the rest. */
+@media (min-width: 72rem) {
+  .import-top.import-beside {
+    grid-template-columns: minmax(0, 11fr) minmax(0, 9fr);
+  }
+
+  /* The list takes the height the upload gives the row, and no more: its own size
+     counts for nothing, so a long list never pushes the upload or the preview down. */
+  .import-beside .table-exports-list {
+    flex: 1 1 0;
+    min-height: 14rem;
+    max-height: none;
+    contain: size;
+  }
+}
+
+/* The two buttons of one export, and what became of the last press of them. */
+.table-export-buttons {
+  display: inline-flex;
+  flex-wrap: nowrap;
+}
+
+.table-export-buttons button {
+  padding: 0.1rem 0.55rem;
+}
+
+.table-export-said [role="status"]:not(:empty) {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.87rem;
+  overflow-wrap: anywhere;
+}
+
+.table-export-said .alert {
+  margin: 0.3rem 0 0;
+}
+
+/* Geography's three tables, on one line where there is room (P-287). */
+.geography-export {
+  margin: 0 0 1rem;
+}
+
+.geography-export-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  align-items: center;
+  margin: 0;
+}
+
+.geography-export-lead {
+  font-weight: 600;
+}
+
+.geography-export-table {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 /* 0.9.13, lane w-operators-0.9.13 */
 
 /* A colour, chosen from the grid of 64, by the slider of 32, or typed (P-285). It fits a

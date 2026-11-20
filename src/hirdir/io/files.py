@@ -222,6 +222,7 @@ def write_json(entity_name: str, chunks: Iterable[list[dict[str, Any]]]) -> Iter
     first = True
     for chunk in chunks:
         for row in chunk:
-            yield ("\n  " if first else ",\n  ") + json.dumps(row, ensure_ascii=False)
+            written = {name: cells.to_json(value) for name, value in row.items()}
+            yield ("\n  " if first else ",\n  ") + json.dumps(written, ensure_ascii=False)
             first = False
     yield "\n]}\n"

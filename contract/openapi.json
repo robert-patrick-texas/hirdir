@@ -8411,6 +8411,11 @@
             "title": "Hid",
             "type": "string"
           },
+          "is_operator": {
+            "description": "The contact, not retired, stands behind an operator that is not retired: nobody is behind the operators of a retired contact (P-280).",
+            "title": "Is Operator",
+            "type": "boolean"
+          },
           "is_user": {
             "description": "The contact is the person a user is.",
             "title": "Is User",
@@ -8430,6 +8435,14 @@
               }
             ],
             "title": "Notes"
+          },
+          "operators": {
+            "description": "The operators it stands behind, retired ones among them, in the order of their labels (P-280).",
+            "items": {
+              "$ref": "#/components/schemas/OperatorBrief"
+            },
+            "title": "Operators",
+            "type": "array"
           },
           "organization": {
             "anyOf": [
@@ -8518,6 +8531,8 @@
           "tags",
           "is_user",
           "user",
+          "is_operator",
+          "operators",
           "uses",
           "row_version",
           "created_at",
@@ -13546,6 +13561,23 @@
         "title": "EndOfLifeReport",
         "type": "object"
       },
+      "ExportAllRequest": {
+        "additionalProperties": false,
+        "description": "The format of every file in the zip of every table.",
+        "properties": {
+          "format": {
+            "default": "csv",
+            "enum": [
+              "csv",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "title": "ExportAllRequest",
+        "type": "object"
+      },
       "ExportRequest": {
         "additionalProperties": false,
         "description": "What to export. The filter and the sort are those of a list.",
@@ -13684,12 +13716,96 @@
             "maxItems": 50,
             "title": "Sort",
             "type": "array"
+          },
+          "whole": {
+            "default": false,
+            "description": "The whole table in the form that loads back, as the file of every table holds it: the stored values, the retired and the drafts among them, in the order its file is loaded in. A filter, a sort, columns, HIDs, the sources and the codes of places are refused beside it (P-286).",
+            "title": "Whole",
+            "type": "boolean"
           }
         },
         "required": [
           "entity"
         ],
         "title": "ExportRequest",
+        "type": "object"
+      },
+      "ExportTable": {
+        "additionalProperties": false,
+        "description": "One table that a file is taken for, as the Import page lists it (P-286).",
+        "properties": {
+          "columns": {
+            "description": "The columns of its file, those an import reads, in their order: the header row of its template.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "count": {
+            "description": "How many records it holds, the retired and the drafts among them.",
+            "title": "Count",
+            "type": "integer"
+          },
+          "entity": {
+            "description": "The name an import and an export know it by.",
+            "enum": [
+              "tags",
+              "vendors",
+              "catalog_entries",
+              "contacts",
+              "vendor_contacts",
+              "operators",
+              "regions",
+              "sites",
+              "locations",
+              "contact_assignments",
+              "owners",
+              "owner_members",
+              "networks",
+              "external_systems",
+              "agreements",
+              "contracts",
+              "contract_contacts",
+              "purchase_requests",
+              "purchase_lines",
+              "items",
+              "device_groups",
+              "device_group_members",
+              "item_replacements",
+              "addresses",
+              "contract_coverage",
+              "registrations",
+              "capacity_lines",
+              "circuit_groups",
+              "circuits",
+              "circuit_carriers",
+              "circuit_costs",
+              "circuit_contacts",
+              "circuit_devices"
+            ],
+            "title": "Entity",
+            "type": "string"
+          },
+          "file": {
+            "description": "The name its file has in `examples/` and in the zip of every table, without the extension.",
+            "title": "File",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is called for people.",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "label",
+          "file",
+          "count",
+          "columns"
+        ],
+        "title": "ExportTable",
         "type": "object"
       },
       "ExternalSystemCreate": {
@@ -21674,6 +21790,52 @@
         "title": "NetworkRef",
         "type": "object"
       },
+      "NewOperator": {
+        "additionalProperties": false,
+        "description": "A new operator, made with the user whose contact stands behind it (P-283).",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In the form #1f6feb. Left out, the next that no operator has, as `next_for_operators` of `GET /colours` gives it; blank or null, none.",
+            "title": "Colour"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out or blank, the username of the new user, which must then be an acceptable label: it is never shortened.",
+            "title": "Label"
+          }
+        },
+        "title": "NewOperator",
+        "type": "object"
+      },
       "NewPerson": {
         "additionalProperties": false,
         "description": "A new contact, made with the user that it is.",
@@ -22042,6 +22204,48 @@
           "totals"
         ],
         "title": "OperatorAssignments",
+        "type": "object"
+      },
+      "OperatorBrief": {
+        "additionalProperties": false,
+        "description": "An operator a person stands behind, as a user and a contact name it (P-280).",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "colour",
+          "record_status"
+        ],
+        "title": "OperatorBrief",
         "type": "object"
       },
       "OperatorCreate": {
@@ -31395,10 +31599,44 @@
             "description": "The contact the user is.",
             "title": "Contact Hid"
           },
+          "group_hids": {
+            "default": [],
+            "description": "The user groups to put the new user in, in the same change (P-282).",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Group Hids",
+            "type": "array"
+          },
           "is_service_account": {
             "default": false,
             "title": "Is Service Account",
             "type": "boolean"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank is none.",
+            "title": "Notes"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewOperator"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An operator to make in the same change, whose contact is the user's: it needs `contact` or `contact_hid` (P-283)."
           },
           "role": {
             "anyOf": [
@@ -31428,7 +31666,7 @@
       },
       "UserCreated": {
         "additionalProperties": false,
-        "description": "A user just created, with the access code that is shown this once.",
+        "description": "A user just created, with the access code that is shown this once, and the\noperator made with it (P-283).",
         "properties": {
           "access_code": {
             "anyOf": [
@@ -31441,13 +31679,25 @@
             ],
             "title": "Access Code"
           },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The operator made in the same change, as `GET /operators/{hid}` answers it, or null."
+          },
           "user": {
             "$ref": "#/components/schemas/UserOut"
           }
         },
         "required": [
           "user",
-          "access_code"
+          "access_code",
+          "operator"
         ],
         "title": "UserCreated",
         "type": "object"
@@ -31524,6 +31774,26 @@
             ],
             "title": "Last Sign In At"
           },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody.",
+            "title": "Notes"
+          },
+          "operators": {
+            "description": "The operators whose contact is the user's, retired ones among them, in the order of their labels; none for a user with no contact (P-280).",
+            "items": {
+              "$ref": "#/components/schemas/OperatorBrief"
+            },
+            "title": "Operators",
+            "type": "array"
+          },
           "role": {
             "anyOf": [
               {
@@ -31557,6 +31827,8 @@
           "contact",
           "display_name",
           "email",
+          "operators",
+          "notes",
           "is_service_account",
           "disabled",
           "role",
@@ -31596,6 +31868,19 @@
               }
             ],
             "title": "Disabled"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null or blank clears them (P-281).",
+            "title": "Notes"
           },
           "row_version": {
             "title": "Row Version",
@@ -33324,7 +33609,7 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Return the signed-in user, with the role they hold right now.",
+        "description": "Return the signed-in user, with the role they hold right now. Its `notes` are\nnull: the notes on an account are answered by the routes of users alone (P-281).",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
@@ -39611,6 +39896,70 @@
           }
         },
         "summary": "Export",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/exports/all": {
+      "post": {
+        "description": "Export every table at once: one zip, a file to each table, named as `examples/`\nnames it, in the order files are loaded, each the whole table in the form that loads\nback, its stored values and its retired and drafts among them (P-286). The users are\nnot in it. Audited: that the whole inventory was taken out, by whom and when.",
+        "operationId": "export_all_api_v1_exports_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAllRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {}
+            },
+            "description": "One zip, a file to each table."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export All",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/exports/tables": {
+      "get": {
+        "description": "List every table that a file is taken for, in the order files are loaded, each\nwith how many records it holds and the columns of its file (P-286).\n\nA table that holds nothing is exported all the same: as CSV it is its header row and\nno more, the template of its import.",
+        "operationId": "export_tables_api_v1_exports_tables_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExportTable"
+                  },
+                  "title": "Response Export Tables Api V1 Exports Tables Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Tables",
         "tags": [
           "Files"
         ]
@@ -48825,7 +49174,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "description": "List users, by username unless a sort says otherwise. `q` matches part of a\nusername or of the name of its contact.",
+        "description": "List users, by username unless a sort says otherwise. `q` matches part of a\nusername or of the name of its contact; `contact` and `operator` find the gaps.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
@@ -48839,7 +49188,41 @@
             }
           },
           {
-            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+            "description": "`some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280).",
+            "in": "query",
+            "name": "contact",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "description": "`some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280).",
+              "enum": [
+                "any",
+                "some",
+                "none"
+              ],
+              "title": "Contact",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280).",
+            "in": "query",
+            "name": "operator",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "description": "`some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280).",
+              "enum": [
+                "any",
+                "some",
+                "none"
+              ],
+              "title": "Operator",
+              "type": "string"
+            }
+          },
+          {
+            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -48855,7 +49238,7 @@
                   "type": "null"
                 }
               ],
-              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
               "title": "Sort"
             }
           },
@@ -48912,7 +49295,7 @@
         ]
       },
       "post": {
-        "description": "Create a user. The access code in the answer is not shown again.",
+        "description": "Create a user, and in the same change the contact it is, the operator it works\nas, its role and its groups, each audited as if made by itself: where any part is\nrefused, nothing is made (P-282, P-283). The access code in the answer is not shown\nagain.",
         "operationId": "create_user_api_v1_users_post",
         "requestBody": {
           "content": {
@@ -48947,6 +49330,24 @@
           }
         },
         "summary": "Create User",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/users/export": {
+      "post": {
+        "description": "Export the users as CSV, a row to each, by username (P-288): its person, the role\nin force, its groups and operators, its kind and state, when it last signed in, and\nits notes. No access code, token or hash of either is in it. Audited.",
+        "operationId": "export_users_api_v1_users_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The file, as an attachment."
+          }
+        },
+        "summary": "Export Users",
         "tags": [
           "Accounts"
         ]
@@ -48995,7 +49396,7 @@
         ]
       },
       "patch": {
-        "description": "Change a user: its username, its contact, or whether it is disabled. Disabling a\nuser ends every session they have; a new username keeps them. The name, email and\nnumbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.",
+        "description": "Change a user: its username, its contact, its notes, or whether it is disabled.\nDisabling a user ends every session they have; a new username keeps them. The name,\nemail and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.",
         "operationId": "update_user_api_v1_users__hid__patch",
         "parameters": [
           {

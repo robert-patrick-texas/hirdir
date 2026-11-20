@@ -125,6 +125,12 @@ def test_the_routes_of_accounts_refuse_a_key(client: TestClient, admin: dict[str
         f"{API}/auth/sign-in", json={"username": "ada", "access_code": "x"}, headers={KEY: "k"}
     )
     assert signing_in.status_code == 422
+    # The users' file holds no code, but it is an account route, and refuses one as they do.
+    exported = client.post(f"{API}/users/export", headers={**admin, KEY: "k-2"})
+    assert exported.status_code == 422
+    assert KEY in errors(exported.json())
+    events = client.get(f"{API}/audit-events", params={"action": "export"}, headers=admin)
+    assert events.json()["total"] == 0
 
 
 # --- fields --------------------------------------------------------------------------

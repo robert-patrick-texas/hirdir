@@ -1,4 +1,4 @@
-"""Scenarios S12 to S17 of docs/build-plan.md, against a real server process.
+"""Scenarios S12 to S17 and S55 of docs/build-plan.md, against a real server process.
 
 The browser's part of S15 and S16, changing a row and copying rows on the page, is run
 by `make e2e`. Here the same steps are taken through the API and the command line.
@@ -10,6 +10,7 @@ import io
 import json
 import subprocess
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -476,3 +477,58 @@ def test_s17_the_second_of_two_overlapping_bulk_edits_is_shown_the_conflict(
     assert other.applied(f"/items/bulk-update/{again['job']['hid']}/apply")["status"] == "applied"
     kept = desk.get("/items", filter="comments:prefix:Checked")["items"]
     assert {item["owner"]["label"] for item in kept} == {"Voice Services"}
+
+
+def test_s55_every_table_is_exported_as_its_template_or_whole_and_loads_back(desk: Desk) -> None:
+    """S55 (P-286): from an empty inventory every table exports as the header row of its
+    file, the template of its import; with the examples loaded, every table exported
+    whole, by itself and in the zip of all of them, loads back as nothing to change;
+    and taking everything out is in the audit trail, once."""
+    tables = desk.get("/exports/tables")
+    assert [table["entity"] for table in tables] == list(LOAD_ORDER)
+    assert {table["count"] for table in tables} == {0}
+
+    def whole(entity: str, format_: str) -> str:
+        body = {
+            "entity": entity,
+            "format": format_,
+            "own_values": True,
+            "include_archived": True,
+            "include_drafts": True,
+        }
+        response = desk.client.post("/exports", json=body)
+        assert response.status_code == 200, response.text
+        return response.text
+
+    for table in tables:
+        template = whole(table["entity"], "csv")
+        assert next(csv.reader(io.StringIO(template))) == table["columns"], table["entity"]
+        assert len(template.splitlines()) == 1, table["entity"]
+
+    desk.load_examples()
+    seed = seed_counts()
+    counted = {table["entity"]: table["count"] for table in desk.get("/exports/tables")}
+    assert counted == {entity: seed[entity] for entity in LOAD_ORDER}
+
+    events = desk.get("/audit-events", limit=1)["total"]
+    for format_ in ("csv", "json"):
+        taken = desk.client.post("/exports/all", json={"format": format_})
+        assert taken.status_code == 200, taken.text
+        archive = zipfile.ZipFile(io.BytesIO(taken.content))
+        assert archive.namelist() == [example(entity, format_).name for entity in LOAD_ORDER]
+        for entity, name in zip(LOAD_ORDER, archive.namelist(), strict=True):
+            text = archive.read(name).decode()
+            assert text == whole(entity, format_), entity
+            job = desk.preview(entity, text, format_)["job"]
+            assert (job["created"], job["updated"], job["rejected"]) == (0, 0, 0), entity
+            assert job["unchanged"] == job["row_count"] == seed[entity], entity
+    # Two zips taken, two events; a table by itself and a preview that is not applied
+    # leave none that says the inventory changed.
+    taken_events = desk.get("/audit-events", action="export", record_type="inventory")
+    assert taken_events["total"] == 2
+    since = desk.get("/audit-events", limit=200)
+    assert since["total"] > events
+    assert {event["action"] for event in since["items"][: since["total"] - events]} <= {
+        "export",
+        "preview",
+    }

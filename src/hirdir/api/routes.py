@@ -3,13 +3,14 @@
 import platform
 import sqlite3
 from dataclasses import asdict
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select, text
 
 import hirdir
-from hirdir.api import schemas, views
+from hirdir.api import records as r
+from hirdir.api import schemas, shapes, views
 from hirdir.api.deps import Admin, Audit, Db, SignedIn, Viewer, request_id, via
 from hirdir.api.idempotent import refused
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset
@@ -80,13 +81,14 @@ def sign_in(body: schemas.SignIn, request: Request, db: Db) -> schemas.SessionOu
         signing_key=state.signing_key,
         session_hours=state.config.session_hours,
     )
-    return schemas.SessionOut(token=token, expires_at=expires_at, user=views.user_out(db, user))
+    return schemas.SessionOut(token=token, expires_at=expires_at, user=views.me_out(db, user))
 
 
 @auth.get("/me")
 def me(principal: SignedIn, db: Db) -> schemas.UserOut:
-    """Return the signed-in user, with the role they hold right now."""
-    return views.user_out(db, principal.user)
+    """Return the signed-in user, with the role they hold right now. Its `notes` are
+    null: the notes on an account are answered by the routes of users alone (P-281)."""
+    return views.me_out(db, principal.user)
 
 
 @auth.post("/sign-out-everywhere", status_code=204)
@@ -98,31 +100,54 @@ def sign_out_everywhere(principal: SignedIn, context: Audit, db: Db) -> None:
 # --- users -------------------------------------------------------------------------
 
 
+Which = Literal["any", "some", "none"]
+
+
 @users.get("/users")
 def list_users(
     _: Admin,
     db: Db,
     q: str = "",
+    contact: Annotated[
+        Which,
+        Query(
+            description="`some`, the users that are a contact that is not retired; `none`, "
+            "the people that are none, or whose contact is retired. A service account is in "
+            "neither `none` (P-280)."
+        ),
+    ] = "any",
+    operator: Annotated[
+        Which,
+        Query(
+            description="`some`, the users whose contact, not retired, stands behind an "
+            "operator that is not retired; `none`, the people behind none (P-280)."
+        ),
+    ] = "any",
     sort: Annotated[list[str] | None, Query(description=tables.USERS.help)] = None,
     limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.UserOut]:
     """List users, by username unless a sort says otherwise. `q` matches part of a
-    username or of the name of its contact."""
-    page, total = accounts.list_users(db, q, limit, offset, tables.arrange(tables.USERS, sort))
-    people = accounts.contacts_of(db, page)
-    return schemas.Page(
-        items=[views.user_out(db, user, people.get(user.contact_hid or "")) for user in page],
-        total=total,
-        limit=limit,
-        offset=offset,
+    username or of the name of its contact; `contact` and `operator` find the gaps."""
+    page, total = accounts.list_users(
+        db,
+        q,
+        limit,
+        offset,
+        tables.arrange(tables.USERS, sort),
+        contact=contact,
+        operator=operator,
     )
+    return schemas.Page(items=views.users_out(db, page), total=total, limit=limit, offset=offset)
 
 
 @users.post("/users", status_code=201)
-def create_user(body: schemas.UserCreate, _: Admin, context: Audit, db: Db) -> schemas.UserCreated:
-    """Create a user. The access code in the answer is not shown again."""
-    user, code = accounts.create_user(
+def create_user(body: schemas.UserCreate, _: Admin, context: Audit, db: Db) -> r.UserCreated:
+    """Create a user, and in the same change the contact it is, the operator it works
+    as, its role and its groups, each audited as if made by itself: where any part is
+    refused, nothing is made (P-282, P-283). The access code in the answer is not shown
+    again."""
+    made = accounts.onboard(
         db,
         context,
         username=body.username,
@@ -130,10 +155,16 @@ def create_user(body: schemas.UserCreate, _: Admin, context: Audit, db: Db) -> s
         access_code=body.access_code,
         contact_hid=body.contact_hid,
         contact=body.contact.model_dump(exclude_unset=True) if body.contact else None,
+        role=body.role,
+        group_hids=body.group_hids,
+        operator=body.operator.model_dump(exclude_unset=True) if body.operator else None,
+        notes=body.notes,
     )
-    if body.role:
-        accounts.grant_role(db, context, role=body.role, user_hid=user.hid)
-    return schemas.UserCreated(user=views.user_out(db, user), access_code=code)
+    return r.UserCreated(
+        user=views.user_out(db, made.user),
+        access_code=made.access_code,
+        operator=shapes.operators_out(db, [made.operator])[0] if made.operator else None,
+    )
 
 
 @users.get("/users/{hid}")
@@ -146,9 +177,9 @@ def get_user(hid: str, _: Admin, db: Db) -> schemas.UserOut:
 def update_user(
     hid: str, body: schemas.UserPatch, _: Admin, context: Audit, db: Db
 ) -> schemas.UserOut:
-    """Change a user: its username, its contact, or whether it is disabled. Disabling a
-    user ends every session they have; a new username keeps them. The name, email and
-    numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`."""
+    """Change a user: its username, its contact, its notes, or whether it is disabled.
+    Disabling a user ends every session they have; a new username keeps them. The name,
+    email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     return views.user_out(db, accounts.update_user(db, context, hid, body.row_version, fields))
 
@@ -203,7 +234,7 @@ def revoke_service_token(hid: str, _: Admin, context: Audit, db: Db) -> schemas.
 @groups.get("")
 def list_groups(_: Admin, db: Db) -> list[schemas.GroupOut]:
     """List user groups by name."""
-    return [views.group_out(db, group) for group in accounts.list_groups(db)]
+    return views.groups_out(db, accounts.list_groups(db))
 
 
 @groups.post("", status_code=201)

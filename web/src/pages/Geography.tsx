@@ -6,6 +6,7 @@ import { Created, createdState, useCreated } from "../components/Created";
 import { FindPlace } from "../components/FindPlace";
 import { NewPlace, PlaceDetail } from "../components/PlaceParts";
 import { Problem } from "../components/Problem";
+import { GeographyExport } from "../components/TableExports";
 import { ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
 import { itemsAndCondition } from "../lib/filter";
 import { useLoad, useReloadOn, useTitle } from "../lib/hooks";
@@ -85,6 +86,8 @@ export function Geography() {
         shows the items and the components at or beneath it, and a place that is chosen shows what
         it has in force: its contacts and where deliveries go, each with the level it came from.
       </p>
+      {/* 0.9.13: the three tables, each as CSV and as JSON, to be corrected and loaded back (P-287). */}
+      <GeographyExport />
       <ItemViewForm
         key={view.filter}
         view={view}

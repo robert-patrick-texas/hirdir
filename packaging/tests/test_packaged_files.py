@@ -382,6 +382,75 @@ def test_the_install_page_and_the_package_test_say_of_the_long_reports_what_the_
     assert "\nwrites_no_event=yes\n" in hook
 
 
+def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_the_code_says() -> (
+    None
+):
+    """The notes of the upgrade to 0.9.13, the newest, and what the package test asks for
+    it: migration 0016 adds `users.notes`, blank, creates no table and writes no event,
+    and the file of the package test declares the column as the model does (P-281); the
+    routes and the command that the page names are those of the contract and of the
+    command line; and the package test looks for the columns of the users file and the
+    events of the two exports that are audited by the names that the code gives them
+    (P-286, P-288)."""
+    import json
+
+    from sqlalchemy import inspect
+    from sqlalchemy.dialects import sqlite
+
+    from hirdir.db.models import User
+    from hirdir.io import exports, users_file
+
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
+    assert revision == "0016"
+    (migration,) = versions.glob(f"{revision}_*.py")
+    source = migration.read_text(encoding="utf-8")
+    assert 'down_revision = "0015"' in source
+    # A column and no table: the pass whose migration fails puts the trigger in its way.
+    assert "op.create_table" not in source
+    assert 'add_column(sa.Column("notes", sa.Text))' in source
+
+    assert "### From 0.9.12 to 0.9.13" in INSTALL
+    notes = INSTALL.split("### From 0.9.12 to 0.9.13\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    column = inspect(User).columns["notes"]
+    assert (
+        f"from revision `0015` to `{revision}`. One column is added, `{column.name}` of the "
+        f"{User.__tablename__}, blank for every user; no table is added, nothing that is "
+        "held is changed, and the upgrade writes no audit event" in page
+    )
+    assert "Going back to 0.9.12 is by the backup the upgrade took" in page
+
+    # The file of the package test says so, and declares the column as SQLite has it.
+    hook = (PACKAGING / "package-test.d" / f"migration-{revision}.sh").read_text(encoding="utf-8")
+    assert "\nwrites_no_event=yes\n" in hook
+    declared = column.type.compile(dialect=sqlite.dialect())
+    nullable = "NULL" if column.nullable else "NOT NULL"
+    said = f"{column.name} {declared} {nullable} -"
+    assert f"\nalso new_columns {User.__tablename__} '{said}'\n" in hook
+    assert f'*) more_tables="${{more_tables:+$more_tables }}{User.__tablename__}" ;;' in hook
+
+    # The routes and the command that the page names.
+    contract = json.loads((ROOT / "contract" / "openapi.json").read_text(encoding="utf-8"))
+    for method, path in (
+        ("get", "/colours"),
+        ("get", "/exports/tables"),
+        ("post", "/exports/all"),
+        ("post", "/users/export"),
+    ):
+        assert method in contract["paths"][f"/api/v1{path}"]
+        assert f"`{method.upper()} {path}`" in page
+    assert "`hirdir export --all`" in page
+    assert '"--all"' in (ROOT / "src/hirdir/cli/inventory.py").read_text(encoding="utf-8")
+
+    # What the package test looks for in the users file and in the audit trail.
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (header,) = re.findall(r'\[(\\"username\\", .*?)\]', script)
+    assert json.loads("[" + header.replace('\\"', '"') + "]") == list(users_file.COLUMNS)
+    assert f'[\\"{exports.TAKEN_ACTION}\\", \\"{exports.TAKEN_RECORD}\\", null' in script
+    assert f'[\\"{users_file.ACTION}\\", \\"{users_file.RECORD}\\", null' in script
+
+
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
     """The way back in docs/install.md is the one the package prints, word for word."""
     postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")

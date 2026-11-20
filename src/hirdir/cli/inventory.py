@@ -144,6 +144,17 @@ def _export(
             sys.stdout.write(text)
 
 
+def _export_all(target: Target, format_: str, output: Path | None) -> None:
+    """Fetch the zip of every table and write it to a file: a zip is not for a terminal."""
+    with client.download(target, "/exports/all", {"format": format_}) as answer:
+        named = answer.headers.get("content-disposition", "").partition('filename="')[2]
+        path = output or Path(Path(named.rstrip('"')).name or f"hirdir-all-{format_}.zip")
+        with path.open("wb") as handle:
+            for piece in answer.iter_bytes():
+                handle.write(piece)
+    typer.echo(f"wrote {path}", err=True)
+
+
 def _lists(entity: str, plural: str) -> typer.Typer:
     """Return the command group of one kind of record, with its `list` command."""
     group = typer.Typer(no_args_is_help=True, help=f"{plural.capitalize()}.")
@@ -1220,7 +1231,18 @@ def import_file(
 
 
 def export(
-    entity: Annotated[str, typer.Argument(help="items, vendors, catalog_entries, owners or tags")],
+    entity: Annotated[
+        str | None,
+        typer.Argument(help="items, vendors, catalog_entries, owners, tags or any other table"),
+    ] = None,
+    all_tables: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Every table, whole, as one zip of a file to each, in the order of loading. "
+            "Written to --output, or to the name the server gives it.",
+        ),
+    ] = False,
     filter_: Filter = None,
     sort: Sort = None,
     columns: Columns = None,
@@ -1244,9 +1266,37 @@ def export(
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Export records as CSV or JSON, to the terminal or to a file."""
+    """Export records as CSV or JSON, to the terminal or to a file; or with --all every
+    table at once, as a zip."""
     if format_ not in ("csv", "json"):
         raise client.fail("--format is one of csv, json", 2)
+    if all_tables:
+        given = [
+            option
+            for option, value in (
+                ("a table", entity is not None),
+                ("--filter", filter_),
+                ("--sort", sort),
+                ("--columns", columns),
+                ("--own-values", own_values),
+                ("--include-sources", include_sources),
+                ("--place-codes", place_codes),
+                ("--include-archived", include_archived),
+                ("--include-drafts", include_drafts),
+            )
+            if value
+        ]
+        if given:
+            raise client.fail(
+                f"--all takes no {', '.join(given)}: the zip is always every table whole, "
+                "in the form that loads back, with its stored values and its retired and "
+                "drafts",
+                2,
+            )
+        _export_all(client.load_target(url, token), format_, output)
+        return
+    if entity is None:
+        raise client.fail("name the table to export, or give --all", 2)
     _export(
         client.load_target(url, token),
         entity.replace("-", "_"),

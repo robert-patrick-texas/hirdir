@@ -1,0 +1,100 @@
+import { describe, expect, it } from "vitest";
+import { ENTITIES } from "./imports";
+import {
+  countWords,
+  type ExportTable,
+  everythingName,
+  exportLabel,
+  holdsNothing,
+  tableRows,
+  tablesText,
+  wholeExport,
+} from "./tables";
+
+const TABLES: ExportTable[] = [
+  { entity: "tags", label: "Tags", file: "tags", count: 4, columns: ["hid", "name"] },
+  { entity: "regions", label: "Regions", file: "regions", count: 0, columns: ["hid", "name"] },
+  { entity: "sites", label: "Sites", file: "sites", count: 1250, columns: ["hid", "name"] },
+];
+
+describe("wholeExport", () => {
+  it("asks for the whole table in the form that loads back", () => {
+    expect(wholeExport("sites", "csv")).toEqual({
+      entity: "sites",
+      format: "csv",
+      own_values: true,
+      include_archived: true,
+      include_drafts: true,
+    });
+    expect(wholeExport("regions", "json").format).toBe("json");
+  });
+
+  it("puts an item before the minor items in it, as the export of everything does", () => {
+    expect(wholeExport("items", "csv").sort).toEqual(["depth", "name"]);
+    expect(wholeExport("locations", "csv").sort).toBeUndefined();
+  });
+});
+
+describe("tableRows", () => {
+  it("lists the tables as the server gives them, in its order", () => {
+    expect(tableRows(TABLES)).toEqual([
+      { entity: "tags", label: "Tags", count: 4 },
+      { entity: "regions", label: "Regions", count: 0 },
+      { entity: "sites", label: "Sites", count: 1250 },
+    ]);
+  });
+
+  it("lists every table this build knows, with no count, until the server has said", () => {
+    const rows = tableRows(undefined);
+    expect(rows.map((row) => row.entity)).toEqual(ENTITIES.map((entity) => entity.value));
+    expect(rows.every((row) => row.count === null)).toBe(true);
+  });
+
+  it("keeps only the tables asked for, in the order of loading", () => {
+    const only = ["sites", "regions"] as const;
+    expect(tableRows(TABLES, only).map((row) => row.entity)).toEqual(["regions", "sites"]);
+    expect(tableRows(undefined, ["locations", "sites", "regions"]).map((row) => row.label)).toEqual(
+      ["Regions", "Sites", "Locations"],
+    );
+  });
+});
+
+describe("the words of a table", () => {
+  const [tags, regions, sites] = tableRows(TABLES);
+  const unknown = { entity: "tags" as const, label: "Tags", count: null };
+
+  it("says how many records a table holds, and none where it holds nothing", () => {
+    expect(countWords(sites?.count ?? null)).toBe("1,250");
+    expect(countWords(0)).toBe("None");
+    expect(countWords(null)).toBe("…");
+  });
+
+  it("knows a table holds nothing only when the server said so", () => {
+    expect(regions && holdsNothing(regions)).toBe(true);
+    expect(tags && holdsNothing(tags)).toBe(false);
+    expect(holdsNothing(unknown)).toBe(false);
+  });
+
+  it("names the CSV of a table that holds nothing as its template", () => {
+    expect(regions && exportLabel(regions, "csv")).toBe("Export the CSV template of Regions");
+    expect(regions && exportLabel(regions, "json")).toBe("Export Regions as JSON");
+    expect(sites && exportLabel(sites, "csv")).toBe("Export Sites as CSV");
+    expect(exportLabel(unknown, "csv")).toBe("Export Tags as CSV");
+  });
+
+  it("says how many tables there are and how many hold nothing", () => {
+    expect(tablesText(tableRows(TABLES))).toBe("3 tables, 1 holding nothing yet");
+    expect(tablesText(tableRows(TABLES, ["tags", "sites"]))).toBe("2 tables");
+    expect(tablesText(tableRows(TABLES, ["regions"]))).toBe("1 table, holding nothing yet");
+    const empty = TABLES.map((table) => ({ ...table, count: 0 }));
+    expect(tablesText(tableRows(empty))).toBe("3 tables, all holding nothing yet");
+    expect(tablesText(tableRows(undefined))).toBe(`${ENTITIES.length} tables`);
+  });
+});
+
+describe("everythingName", () => {
+  it("names the zip after the product, as the server names one", () => {
+    expect(everythingName("csv", "hirdir")).toBe("hirdir-all-csv.zip");
+    expect(everythingName("json", "Example Inventory")).toBe("Example-Inventory-all-json.zip");
+  });
+});
