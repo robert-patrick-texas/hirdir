@@ -888,8 +888,15 @@ accounts of its files, in `web/e2e/support.ts`, it first sets `busy_response_ms`
 they are not 0 already; so a run leaves the installation it ran on with no ceiling. One
 file tests the ceiling, `busy.spec.ts`, in a project of its own, "the ceiling alone",
 after the name's and with one worker, since every request of every other file would
-feel it: it sets the three settings to the smallest values they take, keeps the server
-past them with requests of its own, and puts each back as it found it, however it ends.
+feel it: it sets a ceiling of time that any request is past, looks at the mark and at
+About while the server is quiet, which is slow and refuses nothing, then makes load
+with reads of its own until the reads are refused, and puts each setting back as it
+found it, however it ends. A server that refuses its reads takes none into its measure,
+so it refuses only for as long as the measure reaches back: the file sets
+`busy_over_seconds` to two minutes for that part, so that all it looks at falls within
+one stretch of refusing. `health-mark.spec.ts` and `about-load.spec.ts` run beside the
+others: the health is of the whole server, so they compare no word of it with a word,
+and the first shows what a header makes of the mark with answers it writes itself.
 
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
 but `weights.spec.ts`, `product.spec.ts` and `busy.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a

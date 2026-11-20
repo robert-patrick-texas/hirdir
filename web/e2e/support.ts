@@ -94,13 +94,16 @@
 // allows, which is what the ceiling is there to refuse, so a run has none. Each worker
 // sets `busy_response_ms` and `busy_cpu_percent` to 0 where they are not, as the Admin
 // of the environment, before it makes the account of its first file: `withoutCeiling`,
-// below. No file but one changes the three settings of the ceiling. busy.spec.ts sets
-// them to the smallest values they take and keeps the server past them, which every
-// request of every other file would feel. It runs in the project "the ceiling alone" of
-// playwright.config.ts, by itself, after "the name alone"; it notes the three settings
-// as it found them and puts them back however it ends. about-load.spec.ts reads the
-// server's measures on About, changes nothing, and runs beside the others: it compares
-// no number of the whole server with another.
+// below. No file but one changes the three settings of the ceiling. busy.spec.ts sets a
+// ceiling that any request is past and makes load until the reads are refused, which
+// every request of every other file would feel. It runs in the project "the ceiling
+// alone" of playwright.config.ts, by itself, after "the name alone"; it notes the three
+// settings as it found them and puts them back however it ends. about-load.spec.ts
+// reads the server's measures on About and health-mark.spec.ts the mark of health in the
+// menu bar (P-270); they change nothing and run beside the others: the health and the
+// measures are of the whole server, so neither compares a word or a number of them with
+// another. A file that counts on what its page answers may find the mark on it: it is
+// in the menu bar, of the test id health-mark, and asks the server nothing.
 
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";

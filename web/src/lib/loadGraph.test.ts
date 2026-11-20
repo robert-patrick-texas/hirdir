@@ -9,8 +9,8 @@ import {
   TIME_SERIES,
 } from "./loadGraph";
 
-const CEILING = { response_ms: 5000, cpu_percent: 95, over_seconds: 30 };
-const NONE = { response_ms: 0, cpu_percent: 0, over_seconds: 30 };
+const CEILING = { response_ms: 5000, cpu_percent: 95, over_seconds: 30, fewest_requests: 20 };
+const NONE = { response_ms: 0, cpu_percent: 0, over_seconds: 30, fewest_requests: 20 };
 // 12:00:00 by a clock in UTC: a whole minute.
 const NOON = "2026-01-15T12:00:00Z";
 const noon = Date.parse(NOON);
@@ -20,6 +20,9 @@ function points(
   count: number,
   step: (place: number) => Partial<{
     requests: number;
+    /** The 95th percentile of the step, which is the line, and its median, behind it. */
+    line: number | null;
+    behind: number | null;
     average: number | null;
     high: number | null;
     cpu: number | null;
@@ -31,6 +34,8 @@ function points(
   return {
     at,
     requests: all.map((one) => one.requests ?? 0),
+    p95_ms: all.map((one) => one.line ?? null),
+    p50_ms: all.map((one) => one.behind ?? null),
     average_ms: all.map((one) => one.average ?? null),
     high_ms: all.map((one) => one.high ?? null),
     cpu_percent: all.map((one) => (one.cpu === undefined ? 1 : one.cpu)),
@@ -140,7 +145,7 @@ describe("loadGraph", () => {
       points(6, (place) =>
         place === 2 || place === 3
           ? { cpu: place === 2 ? 40 : null }
-          : { requests: 3, average: 10, high: 40, cpu: 40 },
+          : { requests: 3, line: 10, behind: 40, cpu: 40 },
       ),
       600,
       5,
@@ -163,7 +168,7 @@ describe("loadGraph", () => {
 
   it("stands each value at its height on the scale of its own plot", () => {
     const graph = loadGraph(
-      points(120, () => ({ requests: 2, average: 50, high: 100, cpu: 50 })),
+      points(120, () => ({ requests: 2, line: 50, behind: 100, cpu: 50 })),
       600,
       5,
       CEILING,
@@ -208,22 +213,31 @@ describe("loadGraph", () => {
   });
 
   it("draws the two lists of times it is told to, where it is told others", () => {
-    const given = points(4, (place) => ({ requests: 1, average: 10 + place, high: 80 }));
+    const given = points(4, (place) => ({
+      requests: 1,
+      line: 60 + place,
+      behind: 20,
+      average: 30 + place,
+      high: 90,
+    }));
+    // As it is told unless told otherwise: the 95th percentile, and the median behind it.
+    expect(TIME_SERIES.line.list).toBe("p95_ms");
+    expect(TIME_SERIES.behind.list).toBe("p50_ms");
     const usual = loadGraph(given, 600, 5, CEILING);
-    expect(usual.steps.map((one) => one.line)).toEqual([10, 11, 12, 13]);
-    expect(usual.steps.map((one) => one.behind)).toEqual([80, 80, 80, 80]);
-    // The other way about: the longest as the line, and the average behind it.
-    const other = loadGraph(given, 600, 5, CEILING, GRAPH, {
+    expect(usual.steps.map((one) => one.line)).toEqual([60, 61, 62, 63]);
+    expect(usual.steps.map((one) => one.behind)).toEqual([20, 20, 20, 20]);
+    // Another pair: the longest as the line, and the average behind it.
+    const other = loadGraph(given, 600, 5, CEILING, [], GRAPH, {
       line: { list: "high_ms", legend: "the longest of each", said: "longest" },
       behind: { list: "average_ms", legend: "the average of each", said: "average" },
     });
-    expect(other.steps.map((one) => one.line)).toEqual([80, 80, 80, 80]);
-    expect(other.steps.map((one) => one.behind)).toEqual([10, 11, 12, 13]);
+    expect(other.steps.map((one) => one.line)).toEqual([90, 90, 90, 90]);
+    expect(other.steps.map((one) => one.behind)).toEqual([30, 31, 32, 33]);
     expect(other.timeLine.path).not.toBe(usual.timeLine.path);
     expect(other.timeBars).not.toBe(usual.timeBars);
     // A list the answer does not hold is a gap at every step, and nothing fails.
-    const absent = loadGraph(given, 600, 5, CEILING, GRAPH, {
-      line: { list: "p95_ms" as "high_ms", legend: "", said: "" },
+    const absent = loadGraph(given, 600, 5, CEILING, [], GRAPH, {
+      line: { list: "p99_ms" as "p95_ms", legend: "", said: "" },
       behind: TIME_SERIES.behind,
     });
     expect(absent.steps.map((one) => one.line)).toEqual([null, null, null, null]);
@@ -245,29 +259,80 @@ describe("loadGraph", () => {
 
   it("draws a ceiling that is looked at and on the scale, and no other", () => {
     const slow = loadGraph(
-      points(120, () => ({ requests: 1, average: 3000, high: 6000 })),
+      points(120, () => ({ requests: 1, line: 3000, behind: 6000 })),
       600,
       5,
       CEILING,
     );
-    expect(slow.times.ceiling).toBe(heightOn(slow.times, 5000));
-    expect(slow.cpu.ceiling).toBe(heightOn(slow.cpu, 95));
+    expect(slow.times.lines).toEqual([{ y: heightOn(slow.times, 5000), ceiling: true }]);
+    expect(slow.cpu.lines).toEqual([{ y: heightOn(slow.cpu, 95), ceiling: true }]);
     // Quick answers: a ceiling of five seconds is far above the scale.
     const quick = loadGraph(
-      points(120, () => ({ requests: 1, average: 8, high: 30 })),
+      points(120, () => ({ requests: 1, line: 8, behind: 30 })),
       600,
       5,
       CEILING,
     );
-    expect(quick.times.ceiling).toBeNull();
+    expect(quick.times.lines).toEqual([]);
     const none = loadGraph(
-      points(120, () => ({ requests: 1, average: 3000, high: 6000 })),
+      points(120, () => ({ requests: 1, line: 3000, behind: 6000 })),
       600,
       5,
       NONE,
     );
-    expect(none.times.ceiling).toBeNull();
-    expect(none.cpu.ceiling).toBeNull();
+    expect(none.times.lines).toEqual([]);
+    expect(none.cpu.lines).toEqual([]);
+  });
+
+  it("draws the bounds of the bands of time that are on the scale, the last as the ceiling", () => {
+    const bounds = [1000, 2000, 3000];
+    const ceiling = { ...CEILING, response_ms: 3000 };
+    const slow = loadGraph(
+      points(120, () => ({ requests: 1, line: 2400, behind: 900 })),
+      600,
+      5,
+      ceiling,
+      bounds,
+    );
+    // The scale reaches 3,000: a third and two thirds are faint, the ceiling is the ceiling.
+    expect(slow.times.lines).toEqual([
+      { y: heightOn(slow.times, 1000), ceiling: false },
+      { y: heightOn(slow.times, 2000), ceiling: false },
+      { y: heightOn(slow.times, 3000), ceiling: true },
+    ]);
+    // A scale that ends below the ceiling holds only the bounds that are on it.
+    const slower = loadGraph(
+      points(120, () => ({ requests: 1, line: 1200, behind: 300 })),
+      600,
+      5,
+      ceiling,
+      bounds,
+    );
+    expect(slower.times.ticks.at(-1)?.value).toBe(1500);
+    expect(slower.times.lines).toEqual([{ y: heightOn(slower.times, 1000), ceiling: false }]);
+    // With no ceiling set for time the bounds are those of the ceiling unless set: the
+    // last of them is a bound like the others, since no ceiling is in force.
+    const unset = loadGraph(
+      points(120, () => ({ requests: 1, line: 2400, behind: 900 })),
+      600,
+      5,
+      NONE,
+      bounds,
+    );
+    expect(unset.times.lines.map((line) => line.ceiling)).toEqual([false, false, false]);
+    expect(unset.cpu.lines).toEqual([]);
+  });
+
+  it("holds a share of the processor past 100 on its scale, with its ceiling", () => {
+    const graph = loadGraph(
+      points(120, () => ({ cpu: 310 })),
+      600,
+      5,
+      { ...CEILING, cpu_percent: 380 },
+    );
+    expect(graph.cpu.ticks.at(-1)?.value).toBeGreaterThanOrEqual(380);
+    expect(graph.cpu.lines).toEqual([{ y: heightOn(graph.cpu, 380), ceiling: true }]);
+    expect(heightOn(graph.cpu, 310)).toBeGreaterThan(graph.cpu.top);
   });
 
   it("names each whole minute of the clock on the axis of time", () => {
@@ -289,7 +354,7 @@ describe("loadGraph", () => {
 
   it("draws what it can of an answer whose time does not read, or that is of another shape", () => {
     const graph = loadGraph(
-      points(4, () => ({ requests: 1, average: 5, high: 9 }), "soon"),
+      points(4, () => ({ requests: 1, line: 5, behind: 9 }), "soon"),
       600,
       5,
       {

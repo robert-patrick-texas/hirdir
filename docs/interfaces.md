@@ -2645,7 +2645,8 @@ Accounts and settings are not touched.
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on. A file chosen before the page has read the kinds of file is given its first kind when they are read, a picture a photograph, unless the person has chosen one |
 | Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
-| About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin. Under it, for everyone signed in, the server's own measures, from `GET /about/load` (P-266): whether the server is busy, and what a busy server does not answer; the two measures the ceiling reads, each with its ceiling, or that it is not looked at, and marked where it is past it; over the last ten minutes the lowest, the average and the highest time of an answer and share of one processor; how many requests were answered well, not taken as asked, failed, and answered as busy; the requests in flight and how long the oldest has waited; when the server started; the memory of the server's process, the memory of the host used and free, the space free where the inventory is kept, the processors of the host and its load; whether the background work is being done, by a process of its own or by the server itself, and where it is not, that imports and bulk edits wait; and one graph. A value the host does not say is "not known", never 0. See [The server's measures on About](#the-servers-measures-on-about) |
+| About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin. Under it, for everyone signed in, the server's own measures, from `GET /about/load` (P-266, P-270 to P-273): its health in words, of speed where nothing is refused and of a busy server with what it does not answer where something is, with the measure it is read from, and, where answers are very slow or past the ceiling and nothing is refused, why not; the two measures the health is read from, the 95th percentile of the time of a request with how many requests it is of, and the processor time, each with its ceiling or that it is not looked at; over the last ten minutes the lowest, the average and the highest time of an answer with its 50th, 95th and 99th percentile, and the lowest, the average and the highest processor time; the reads and changes counted by band of time, each band named from `bounds_ms` and marked with the shape and colour of its level; how many requests were answered well, not taken as asked, failed, and answered as busy; the requests in flight and how long the oldest has waited; one graph; when the server started; the memory of the server's process, the memory of the host used and free, the space free where the inventory is kept, the processors of the host and its load; whether the background work is being done, by a process of its own or by the server itself, and where it is not, that imports and bulk edits wait; the slowest requests, and those long by nature apart; and who is active. A value the host does not say is "not known", never 0. See [The server's measures on About](#the-servers-measures-on-about) |
+| The mark of health | In the menu bar of every page, before the name of who is signed in, for everyone signed in (P-270, P-272): what the newest answer of the server said in `X-Hirdir-Health`, as a mark that is green, yellow, orange or red and a circle, a triangle, a diamond or a square, with its words as its name and where it is pointed at, and a link to About. It asks the server nothing. See [The mark of health](#the-mark-of-health) |
 
 What 0.9.5 adds to these pages, for the work of each day:
 
@@ -3163,6 +3164,39 @@ and is announced politely; the page never loads again by itself, so that what is
 into a form is not lost. A request that fails, or an answer without a version, says
 nothing, and nothing is asked while nobody is signed in.
 
+### The mark of health
+
+The menu bar of every page holds the health of the server, for everyone signed in
+(P-270, P-272). The mark shows what the newest answer the page got said in
+`X-Hirdir-Health`, the health and what is refused: the page reads the header of every
+answer of the API as it arrives, whatever the request was, and keeps the two words in
+one place, so the mark asks the server nothing by itself, by no timer and with no
+request of its own, and is as new as the last thing the page asked. A change of either
+word draws the mark again and nothing else of the page; an answer that says the same
+draws nothing. Before any answer has come, and when nobody is signed in, there is no
+mark; an answer that carries no such header, as one from something in front of the
+server, or one that is not in its form, or with a word the page does not know, leaves
+no mark either, and no fault.
+
+| `health` | The mark | Its words, where nothing is refused |
+|---|---|---|
+| `good` | green, a circle | Answers are quick. |
+| `slow` | yellow, a triangle | Answers are slow. |
+| `very_slow` | orange, a diamond | Answers are very slow. |
+| `busy` | red, a square | Answers are slower than the server's ceiling. |
+
+The words are of speed where `refusing` is `nothing`, and say busy only where something
+is refused, with what: "The server is busy: reports, exports and previews are not
+answered for now." for `long`, and "The server is busy: lists and everything else that
+only reads are not answered for now." for `reads`; the mark is then framed in its red.
+So red on a quiet server, which is one slow answer, is said as slow and never as busy.
+The words are the mark's name for a reader of the page aloud, after "Server health:",
+and what pointing at it shows, where they are followed, while answers are very slow or
+past the ceiling and nothing is refused, by "Nothing is refused.", and always by "About
+shows the server's measures." The mark is a link to About. Each shape has an outline in
+the colour of the text, since a yellow is light on a light ground, and the four colours
+are the page's own in light and in dark.
+
 ### The server's measures on About
 
 About asks `GET /about/load` when it opens and every five seconds after, while it is on
@@ -3174,25 +3208,61 @@ with no answer in fifteen seconds is given up. Under the heading the page says w
 numbers were read, by the server's clock in the application's time zone, and where the
 last request failed, that it did, when, and that the numbers are those of the earlier
 time; they stay on show. Nothing else on the page is read again by the clock, and what
-is the same in a new answer is left as it is drawn.
+is the same in a new answer is left as it is drawn: a part of the page whose numbers are
+the same, and a row of a table that is the same, known by its request ID or by its
+person.
+
+**The health** is said first, with the shape of the mark: the words of the mark, and,
+where the server refuses, how quick its answers are and what it still takes, sign-ins
+and every change. Then the measure it is read from, `because`. Where the health is
+`very_slow` or `busy` and `refusing` is `nothing`, the page says why nothing is refused
+in one sentence that is true whichever it is: "Nothing is refused for it: it is not the
+reads that are slow, or there are too few of them for it to be load."; and where
+`busy_response_ms` is 0, that no ceiling is set for how long requests take. With both
+ceilings at 0 it says that no ceiling is set and the server refuses nothing.
+
+**The bands** of `totals.bands` are a table of four counts, each band named from
+`bounds_ms` and never from a number the page holds: "Under 1 second", "1 to 2 seconds",
+"2 to 3 seconds" and "Over 3 seconds" of `[1000, 2000, 3000]`, in seconds where a bound
+is a whole tenth of one and in milliseconds otherwise. Each has the shape and the colour
+of its level, as the mark has them.
 
 The graph is drawn by the page, in SVG, with no library. It is the ten minutes on one
 axis of time, the newest at the right, with the minutes of the clock beneath, and two
 plots one above the other, each with a scale of its own, named with its unit: the time
-of an answer in milliseconds, the average of each step of five seconds as a line and the
-longest as a lighter bar behind it, and the share of one processor in percent as a line
-over its shaded area. A step in which nothing was answered is a gap in the line, not a 0, and so is one whose
-share of the processor is not known yet. Each ceiling that is looked at and lies within
-its scale is a dashed line across its plot. A step in which an answer of busy was given
-has a band down both plots and a triangle above them. Each line has another colour, from
-the page's own in light and in dark, and they are told apart without colour by the plot
-each is in, by the legend under the graph, which shows each line as it is drawn, and by
-the shape of the mark of busy. The graph is named for a reader of the page aloud by
-what it shows and from when to when, and under it the page says in words in how many
-steps an answer of busy was given, and when the last was; the lowest, the average and the
-highest of the ten minutes are in the table above it. Pointing at a step shows its time
-and its numbers. On a narrow window the graph is drawn smaller, all of it in view, and
-the page is no wider than the window.
+of an answer in milliseconds, the 95th percentile of each step of five seconds as a line,
+which is what the health is read from, and the median as a lighter bar behind it; and
+the processor time the server uses, in percent of one processor, as a line over its
+shaded area, on a scale that reaches whatever it reads, past 100 as well. A step in
+which nothing of the measure was answered is a gap in the line, not a 0, and so is one
+whose processor time is not known yet. The ceiling of each, where it is looked at and
+lies within its scale, is a dashed line across its plot, and a third and two thirds of
+the ceiling of time, the bounds of the bands, are fainter dotted lines. A step in which
+an answer of busy was given has a band down both plots and a triangle above them. Each
+line has another colour, from the page's own in light and in dark, and they are told
+apart without colour by the plot each is in, by the legend under the graph, which shows
+each line as it is drawn, and by the shape of the mark of busy. The graph is named for a
+reader of the page aloud by what it shows and from when to when, and under it the page
+says in words in how many steps an answer of busy was given, and when the last was; the
+percentiles of the ten minutes, with the lowest, the average and the highest, are in the
+table above it. Pointing at a step shows its time and its numbers. On a narrow window
+the graph is drawn smaller, all of it in view, and the page is no wider than the window.
+
+**The slowest requests** and **who is active** (P-273) are plain tables, last on the
+page, so that a row more or less at a reading moves nothing above them, and each scrolls
+sideways within its own box on a narrow window. The slowest requests, `slowest`, the
+slowest first: when it came, who asked, its method and its route as a pattern, or that
+no route answers it, how long it took, its status, and its request ID, which one click
+selects whole, to be copied and looked for in the log. Under the heading Long by nature
+the same of `slowest_long`, with the words that these take long by what they are and
+are in neither the health nor the percentiles. Who is active, `people`, in the order
+the server gives, whoever had it worst first: who, the number of requests, the count in
+each band, named as the bands above are, the slowest, how many were answered as busy
+and how many failed, and when the last came. Who asked is the username, a link to the
+account for an Admin and text for anyone else, as the audit trail names who made a
+change (P-240); a service account is its username with "(service token)"; the row of
+kind `unnamed` reads "Nobody named: not signed in, or signing in", and that of kind
+`others` "Everyone else, counted together".
 
 ### Times
 

@@ -8,7 +8,7 @@ describe("asking again of a busy server", () => {
       status: 503,
       title: "Busy",
       retryAfter: 5,
-      busy: { state: "busy", because: ["cpu_percent"], retry_after: 5 },
+      busy: { health: "busy", because: ["cpu_percent"], refusing: "reads", retry_after: 5 },
     });
 
   it("is offered under the refusal of a read that a busy server did not answer", () => {

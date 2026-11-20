@@ -2943,6 +2943,13 @@ table.load-table {
   stroke-dasharray: 5 4;
 }
 
+/* A third and two thirds of the ceiling of time: fainter than the ceiling itself. */
+.load-bound {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 1 5;
+}
+
 .load-busy-band {
   fill: var(--danger);
   fill-opacity: 0.16;
@@ -3001,6 +3008,11 @@ table.load-table {
   border-top: 1px dashed var(--muted);
 }
 
+.load-key-bound {
+  height: 0;
+  border-top: 1px dotted var(--muted);
+}
+
 /* The triangle of a step in which an answer of busy was given. */
 .load-key-busy {
   width: 0;
@@ -3013,4 +3025,88 @@ table.load-table {
 .load-busy-steps {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* === 0.9.10: the health of the server, in the menu bar and on About (P-270) =========== */
+
+/* Green, yellow, orange and red, each on the page's ground in light and in dark. The
+   yellow is no darker than a yellow is, so every shape has an outline in the colour of
+   the text, and each health has a shape of its own. */
+:root {
+  --health-good: #1f7a43;
+  --health-slow: #f0c000;
+  --health-very-slow: #e2600a;
+  --health-busy: #b0182b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --health-good: #6fcf8f;
+    --health-slow: #f5d547;
+    --health-very-slow: #f58a1f;
+    --health-busy: #ff5c8a;
+  }
+}
+
+.health-shape {
+  width: 0.95rem;
+  height: 0.95rem;
+  vertical-align: -0.12em;
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.health-good {
+  fill: var(--health-good);
+}
+
+.health-slow {
+  fill: var(--health-slow);
+}
+
+.health-very_slow {
+  fill: var(--health-very-slow);
+}
+
+.health-busy {
+  fill: var(--health-busy);
+}
+
+/* The mark of the menu bar: as tall as a button of it, and no wider than it is tall. */
+.health-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.health-mark .health-shape {
+  width: 1.05rem;
+  height: 1.05rem;
+  vertical-align: 0;
+}
+
+/* A server that refuses something: the mark is framed in the colour of its red. */
+.health-mark[data-refusing="long"],
+.health-mark[data-refusing="reads"] {
+  border: 2px solid var(--health-busy);
+}
+
+/* The name of a band of time may be long: it is wrapped, under its shape. */
+table.load-table th.load-band {
+  white-space: normal;
+  min-width: 5.5rem;
+}
+
+/* A request ID is taken whole by one click, to be copied. */
+.load-request-id {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  user-select: all;
 }

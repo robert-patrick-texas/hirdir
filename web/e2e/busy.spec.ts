@@ -1,27 +1,38 @@
-// The browser scenario of a server past its ceiling, of 0.9.10 (P-262, P-265, P-266):
+// The browser scenario of a server past its ceiling, of 0.9.10 (P-262, P-265, P-266,
+// P-270 to P-273):
 //
-//   An Admin sets the ceiling to the smallest values it takes, and requests keep the
-//   server past it. A list then says that the server is busy and to try again in five
-//   seconds, in the page's own words, with its button Try again; so do a report and the
-//   first page, each refusal with a Try again of its own; and none of them is a page
-//   that could not be drawn. About still answers: it says that the server is busy and by
-//   which measure, with the ceiling in force, counts the answers of busy, and marks on
-//   its graph the steps in which they were given. A save still goes through: the Admin
-//   sets one measure of the ceiling to 0 on the Settings page, which a busy server still
-//   shows. With the ceiling put back, one press of Try again loads the list and takes
-//   every refusal off the page; past the ceiling once more and back, one press under a
-//   refusal of the scoreboard fills its tables. About then says the server is not busy,
-//   the marks of when it was still on its graph.
+//   An Admin sets a ceiling of time that any request is past. On a quiet server the mark
+//   of the menu bar then turns to its red, a square, and says that answers are slower
+//   than the ceiling: not that the server is busy, since with few requests nothing is
+//   refused. About says the same, and that the requests are too few to be load; it lists
+//   the slowest requests, each by its route as a pattern with who asked, and the people
+//   who are active; and a list still loads.
+//   With requests enough to be load, the list says that the server is busy and to try
+//   again in five seconds, in the page's own words, with its button Try again; so do a
+//   report and the first page, each refusal with a Try again of its own; and none of
+//   them is a page that could not be drawn. The mark says that the server is busy and
+//   what it does not answer. About still answers: it says what is refused, with the
+//   ceiling in force, counts the answers of busy, and marks on its graph the steps in
+//   which they were given. A save still goes through: the Admin changes a setting of the
+//   ceiling on the Settings page, which a busy server still shows. With the ceiling put
+//   back, one press of Try again loads the list and takes every refusal off the page;
+//   past the ceiling once more and back, one press under a refusal of the scoreboard
+//   fills its tables. About then refuses nothing, the marks of when it did still on its
+//   graph.
 //
 // How this file keeps to rule 5 of support.ts: it changes `busy_response_ms`,
 // `busy_cpu_percent` and `busy_over_seconds`, which every request of every file feels,
 // and keeps the server past them. So it runs in the project "the ceiling alone" of
 // playwright.config.ts, by itself, when every other project has ended. It notes the
 // three settings as it found them, and puts them back however it ends. The requests that
-// keep the server busy are real ones, of its own account, for the settings: a route a
-// busy server always answers, so each is answered and measured.
+// make the load are real ones, of its own account, reading its own vendor: a read, which
+// is what the server decides by. A server that refuses its reads takes none of them
+// into its measure, so it refuses for as long as the reads it took before stay in it,
+// which is the time the measure reaches back: the scenario makes that two minutes, so
+// that all it looks at while the server refuses falls within one such stretch.
 
 import { type APIRequestContext, expect, type Page } from "@playwright/test";
+import { main as menuBar } from "./structure";
 import { type Account, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -33,10 +44,19 @@ const hostname = `site7-sw-${suffix}`;
 const list = `./items?filter=${encodeURIComponent(`hostname:eq:${hostname}`)}`;
 
 const BUSY = "The server is busy and did not answer this. Try again in 5 seconds.";
-// The smallest values the settings take: any request takes longer than a millisecond,
-// and a server that answers ten a second uses more than a hundredth of a processor.
-const LOWEST = { busy_over_seconds: 5, busy_response_ms: 1, busy_cpu_percent: 1 } as const;
-const SETTINGS = Object.keys(LOWEST) as Array<keyof typeof LOWEST>;
+const SLOWER = "Answers are slower than the server's ceiling.";
+const BUSY_READS =
+  "The server is busy: lists and everything else that only reads are not answered for now.";
+const UNREFUSED =
+  "Nothing is refused for it: it is not the reads that are slow, or there are too few of them for it to be load.";
+// A ceiling of a millisecond, which any request is past; the processor is not looked at,
+// so that what is refused is for time alone. The measure reaches back ten seconds while
+// the server is quiet, so that a short rest empties it, and two minutes under load.
+const QUIET_SECONDS = 10;
+const LOAD_SECONDS = 120;
+const lowest = (over: number) =>
+  ({ busy_over_seconds: over, busy_response_ms: 1, busy_cpu_percent: 0 }) as const;
+const SETTINGS = ["busy_over_seconds", "busy_response_ms", "busy_cpu_percent"] as const;
 
 type Headers = { Authorization: string };
 
@@ -89,20 +109,31 @@ async function put(request: APIRequestContext, headers: Headers, key: string, va
   await send(request, headers, "put", `/settings/${key}`, { row_version, value });
 }
 
-/** Whether the server says it is busy: `ok`, `busy` or `very_busy`. */
-async function stateOf(request: APIRequestContext, headers: Headers): Promise<string> {
-  return (await read<{ state: string }>(request, headers, "/about/load")).state;
+/** What the server refuses now: `nothing`, `long` or `reads`. */
+async function refusing(request: APIRequestContext, headers: Headers): Promise<string> {
+  return (await read<{ refusing: string }>(request, headers, "/about/load")).refusing;
 }
 
+/** Give the three settings of the ceiling its lowest, read over so many seconds. */
+async function setCeiling(request: APIRequestContext, headers: Headers, over: number) {
+  const values = lowest(over);
+  for (const key of SETTINGS) await put(request, headers, key, values[key]);
+}
+
+// The vendor this file makes, which its load reads.
+let vendorHid = "";
+
 /**
- * Keep the server answering: ten requests a second for the settings, which a busy server
- * always answers, so that each is measured. Returns the means to stop, which waits for
- * those that are out.
+ * Make load: ten reads a second of this file's own vendor, each answered while the
+ * server takes reads and refused at once while it does not. Returns the means to stop,
+ * which waits for those that are out.
  */
 function drive(request: APIRequestContext, headers: Headers): () => Promise<void> {
   const out = new Set<Promise<unknown>>();
   const timer = setInterval(() => {
-    const one = request.get("./api/v1/settings", { headers }).catch(() => undefined);
+    const one = request
+      .get(`./api/v1/vendors/${encodeURIComponent(vendorHid)}`, { headers })
+      .catch(() => undefined);
     out.add(one);
     void one.finally(() => out.delete(one));
   }, 100);
@@ -152,6 +183,7 @@ test.beforeAll(async ({ request, accounts }) => {
   }
   // One item of its own, for a list to hold.
   const maker = await send(request, headers, "post", "/vendors", { name: vendor });
+  vendorHid = maker.hid;
   const model = await send(request, headers, "post", "/catalog-entries", {
     vendor_hid: maker.hid,
     pid,
@@ -173,27 +205,106 @@ test.afterAll(async ({ request, accounts }) => {
   await putBack(request, await session(request, await accounts.of("busy")));
 });
 
-test("a server past its ceiling says so on a list and on About, still takes a save, and answers the list again with the ceiling put back", async ({
+test("past its ceiling a quiet server is said to be slow and a loaded one busy: the mark, About, a list refused, a save taken, and Try again once the ceiling is put back", async ({
   page,
   account,
   request,
 }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
   const seen = await watch(page.context());
   const headers = await session(request, account);
   await signIn(page, account);
+  const healthMark = page.getByTestId("health-mark");
 
-  // With no ceiling, as the run has it, the list is answered.
+  // With no ceiling, as the run has it, the list is answered and nothing is refused.
   await page.goto(list);
   await expect(page.getByTestId("grid-total")).toHaveText("1 item", { timeout: 20_000 });
+  await expect(healthMark).toHaveAttribute("data-refusing", "nothing");
 
-  // The ceiling at the lowest it goes, and requests that keep the server past it.
-  for (const key of SETTINGS) await put(request, headers, key, LOWEST[key]);
+  // ---- few requests: red, and nothing refused ------------------------------------------
+  // A ceiling any request is past. The page then asks nothing for longer than the measure
+  // reaches back, so that what it asks next is all there is in it.
+  await setCeiling(request, headers, QUIET_SECONDS);
+  await page.waitForTimeout((QUIET_SECONDS + 1) * 1000);
+
+  // About is opened: one request of the measure, slower than a millisecond. The next
+  // answer the page gets says so, and the mark with it.
+  await menuBar(page).getByRole("link", { name: "About", exact: true }).click();
+  await expect(healthMark).toHaveAttribute("data-health", "busy", { timeout: 8_000 });
+  await expect(healthMark).toHaveAttribute("data-refusing", "nothing");
+  // It says slow, in words, and not busy: nothing is refused.
+  await expect(healthMark).toHaveAccessibleName(`Server health: ${SLOWER}`);
+  await expect(healthMark).toHaveAttribute(
+    "title",
+    `${SLOWER} Nothing is refused. About shows the server's measures.`,
+  );
+  await expect(healthMark.locator('svg[data-shape="busy"] rect')).toHaveCount(1);
+  const health = page.getByTestId("load-health");
+  await expect(health).toHaveAttribute("data-health", "busy");
+  await expect(health).toHaveAttribute("data-refusing", "nothing");
+  await expect(page.getByTestId("load-health-words")).toHaveText(SLOWER);
+  await expect(health).toContainText("It is read from how long requests take.");
+  await expect(page.getByTestId("load-few")).toHaveText(UNREFUSED);
+  await expect(health).not.toContainText(/server is busy/i);
+  await expect(page.getByTestId("load-ceiling-response_ms")).toHaveText("1 ms");
+  await expect(page.getByTestId("load-ceiling-cpu_percent")).toHaveText("not looked at");
+  // The bands are named from their bounds, which are thirds of that millisecond.
+  await expect(page.getByTestId("load-bands").locator("thead th.load-band")).toHaveText([
+    "Under 0.3 ms",
+    "0.3 to 0.7 ms",
+    "0.7 to 1 ms",
+    "Over 1 ms",
+  ]);
+
+  // The slowest requests, each by its route as a pattern, with who asked: this account
+  // among them, and nothing of what it asked for.
+  const slowest = page.getByTestId("load-slowest");
+  await expect(slowest.locator("thead th")).toHaveText([
+    "When",
+    "Who",
+    "Request",
+    "Time",
+    "Status",
+    "Request ID",
+  ]);
+  const mine = slowest.locator("tbody tr").filter({ hasText: account.username });
+  await expect(mine.first()).toBeVisible();
+  await expect(mine.first().getByTestId("load-slow-who")).toHaveText(account.username);
+  await expect(mine.first().getByTestId("load-slow-id")).toHaveText(/\S{8,}/);
+  const routes = await slowest.getByTestId("load-slow-request").allTextContents();
+  expect(routes.length).toBeGreaterThan(0);
+  expect(routes.length).toBeLessThanOrEqual(10);
+  for (const route of routes) {
+    expect(route).toMatch(/^[A-Z]+ (\/api\/v1\/[a-z0-9/{}_-]*|a path that no route answers)$/);
+    expect(route).not.toContain(suffix);
+  }
+  // An Admin opens the account of who asked from its name.
+  await expect(
+    mine.first().getByRole("link", { name: account.username, exact: true }),
+  ).toHaveAttribute("href", new RegExp(`/admin/users/${account.hid}$`));
+  // Who is active: this account, with what it met.
+  const people = page.getByTestId("load-people");
+  const me = people.locator(`tbody tr[data-person="${account.username}"]`);
+  await expect(me).toHaveCount(1);
+  await expect(me).toHaveAttribute("data-kind", "person");
+  await expect(me.locator("td").first()).toHaveText(/^[1-9][\d,]*$/);
+  await expect(people.locator("thead th.load-band")).toHaveCount(4);
+  await expect(page.getByTestId("fault")).toHaveCount(0);
+
+  // A list still loads: slow is not busy, and nothing says that it is.
+  await menuBar(page).getByRole("link", { name: "Items", exact: true }).click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item", { timeout: 20_000 });
+  await expect(page.locator("main .alert-error")).toHaveCount(0);
+  await expect(healthMark).toHaveAttribute("data-refusing", "nothing");
+
+  // ---- load: the reads are refused -------------------------------------------------------
+  // The measure now reaches back two minutes, and reads come ten a second.
+  await setCeiling(request, headers, LOAD_SECONDS);
   const stop = drive(request, headers);
   try {
     await expect
-      .poll(() => stateOf(request, headers), { timeout: 30_000, intervals: [500] })
-      .not.toBe("ok");
+      .poll(() => refusing(request, headers), { timeout: 30_000, intervals: [500] })
+      .toBe("reads");
 
     // A list says that the server is busy, in the page's words, and offers to try again.
     await page.goto(list);
@@ -201,6 +312,10 @@ test("a server past its ceiling says so on a list and on About, still takes a sa
     const again = listAgain(page);
     await expect(again).toBeVisible();
     await expect(page.locator("main .alert-error").first()).toHaveAttribute("data-status", "503");
+    // And the mark says busy, with what is not answered.
+    await expect(healthMark).toHaveAttribute("data-health", "busy");
+    await expect(healthMark).toHaveAttribute("data-refusing", "reads");
+    await expect(healthMark).toHaveAccessibleName(`Server health: ${BUSY_READS}`);
     // Asked again of a server that is still busy, it says so again.
     await again.click();
     await saysBusy(page, "the list of items, tried again");
@@ -213,33 +328,37 @@ test("a server past its ceiling says so on a list and on About, still takes a sa
     await page.goto("./");
     await saysBusy(page, "the first page");
 
-    // About still answers: the state and by which measure, with the ceiling in force.
+    // About still answers: what is refused, and the ceiling in force.
     await page.goto("./about");
     await expect(page.getByTestId("about-software")).toContainText("hirdir");
-    const state = page.getByTestId("load-state");
-    await expect(state).toHaveAttribute("data-state", /^(busy|very_busy)$/);
-    await expect(state).toContainText(/^(Busy|Very busy)\. /);
-    await expect(state).toContainText("answered at once that the server is busy");
-    await expect(state).toContainText("Past its ceiling:");
-    await expect(state).not.toContainText("No ceiling is set");
+    await expect(health).toHaveAttribute("data-health", "busy");
+    await expect(health).toHaveAttribute("data-refusing", "reads");
+    await expect(page.getByTestId("load-health-words")).toHaveText(BUSY_READS);
+    await expect(health).toContainText(SLOWER);
+    await expect(health).toContainText("Sign-ins are taken and every change is stored.");
+    await expect(health).not.toContainText("No ceiling is set");
+    await expect(page.getByTestId("load-few")).toHaveCount(0);
     const measures = page.getByTestId("load-measures");
-    await expect(measures.locator("thead")).toContainText("over the last 5 seconds");
-    await expect(measures.locator('tr[data-past="true"]').first()).toContainText(
-      "Past its ceiling",
+    await expect(measures.locator("thead")).toContainText(`over the last ${LOAD_SECONDS} seconds`);
+    await expect(measures.locator('tr[data-measure="response_ms"]')).toHaveAttribute(
+      "data-past",
+      "true",
+    );
+    await expect(page.getByTestId("load-measured")).toHaveText(
+      /of [2-9]\d+ requests|of [\d,]{3,} requests/,
     );
     await expect(page.getByTestId("load-ceiling-response_ms")).toHaveText("1 ms");
-    await expect(page.getByTestId("load-ceiling-cpu_percent")).toHaveText("1%");
     // The answers of busy are counted, and the steps they were given in are marked.
     await expect(page.getByTestId("load-count-busy")).toHaveText(/^[1-9][\d,]*$/);
     await expect(page.getByTestId("load-busy-mark").first()).toBeAttached();
     const steps = page.getByTestId("load-busy-steps");
     await expect(steps).toContainText(/An answer of busy was given in [1-9]\d* of the graph's/);
     await expect(steps).toContainText(/the last at \d\d:\d\d:\d\d \S+\./);
-    const marked = Number(await steps.getAttribute("data-steps"));
-    expect(marked).toBeGreaterThan(0);
     await expect(
       page.getByRole("img", { name: /The server's last 10 minutes/ }),
     ).toHaveAccessibleDescription(/An answer of busy was given in [1-9]/);
+    // Whoever met them is told of: this account was answered as busy.
+    await expect(me.locator("td").nth(6)).toHaveText(/^[1-9][\d,]*$/);
     // And it goes on answering: the numbers are read again, and are not stale.
     const since = page.getByTestId("load-since");
     const at = await since.getAttribute("data-at");
@@ -247,35 +366,35 @@ test("a server past its ceiling says so on a list and on About, still takes a sa
     await expect(since).toHaveAttribute("data-stale", "false");
     await expect(page.getByTestId("fault")).toHaveCount(0);
 
-    // A save still goes through: the Admin sets one measure of the ceiling to 0, on the
+    // A save still goes through: the Admin changes a setting of the ceiling, on the
     // Settings page, which a busy server still shows.
     await page.goto("./admin/settings");
-    const row = page.getByTestId("settings").locator('tr[data-setting="busy_cpu_percent"]');
-    await expect(page.getByTestId("value-busy_cpu_percent")).toHaveText("1");
-    expect(await stateOf(request, headers), "the server when the save is sent").not.toBe("ok");
-    await row.getByRole("button", { name: "Change busy_cpu_percent" }).click();
+    const row = page.getByTestId("settings").locator('tr[data-setting="busy_over_seconds"]');
+    await expect(page.getByTestId("value-busy_over_seconds")).toHaveText(String(LOAD_SECONDS));
+    expect(await refusing(request, headers), "refused when the save is sent").toBe("reads");
+    await row.getByRole("button", { name: "Change busy_over_seconds" }).click();
     const form = page.getByTestId("setting-form");
-    await form.getByLabel("New value").fill("0");
+    await form.getByLabel("New value").fill(String(LOAD_SECONDS + 1));
     await form.getByRole("button", { name: "Set", exact: true }).click();
-    await expect(page.getByText("busy_cpu_percent was set to 0.")).toBeVisible();
-    await expect(page.getByTestId("value-busy_cpu_percent")).toHaveText("0");
+    await expect(page.getByText(`busy_over_seconds was set to ${LOAD_SECONDS + 1}.`)).toBeVisible();
+    await expect(page.getByTestId("value-busy_over_seconds")).toHaveText(String(LOAD_SECONDS + 1));
     // Nothing was refused but what a busy server does not answer: the kept reports,
-    // which the page lists beneath the settings, once every read is refused.
+    // which the page lists beneath the settings.
     await expect(page.locator("main .alert-error:not([data-busy])")).toHaveCount(0);
     await expect(page.getByTestId("fault")).toHaveCount(0);
 
-    // Still past the other measure, the list still says busy.
+    // Still past the ceiling, the list still says busy.
     await expect
-      .poll(() => stateOf(request, headers), { timeout: 15_000, intervals: [500] })
-      .not.toBe("ok");
+      .poll(() => refusing(request, headers), { timeout: 15_000, intervals: [500] })
+      .toBe("reads");
     await page.goto(list);
     await saysBusy(page, "the list of items, before the ceiling is put back");
 
     // The ceiling put back: Try again loads the list, and nothing says busy.
     await putBack(request, headers);
     await expect
-      .poll(() => stateOf(request, headers), { timeout: 15_000, intervals: [500] })
-      .toBe("ok");
+      .poll(() => refusing(request, headers), { timeout: 60_000, intervals: [500] })
+      .not.toBe("reads");
     const anyAgain = page.locator("main").getByRole("button", { name: "Try again", exact: true });
     await expect(page.locator("main .alert-error > p:first-child").first()).toHaveText(BUSY);
     // One press asks again for the rows and for whatever else of the page was refused.
@@ -283,20 +402,22 @@ test("a server past its ceiling says so on a list and on About, still takes a sa
     await expect(page.getByTestId("grid-total")).toHaveText("1 item", { timeout: 20_000 });
     await expect(page.locator("main .alert-error")).toHaveCount(0);
     await expect(anyAgain).toHaveCount(0);
+    await expect(healthMark).not.toHaveAttribute("data-refusing", "reads");
 
     // A report is asked again from under its refusal. Past the ceiling once more, the
     // scoreboard says busy; with the ceiling put back, one press fills every table.
-    for (const key of SETTINGS) await put(request, headers, key, LOWEST[key]);
+    await setCeiling(request, headers, LOAD_SECONDS);
     await expect
-      .poll(() => stateOf(request, headers), { timeout: 30_000, intervals: [500] })
-      .not.toBe("ok");
+      .poll(() => refusing(request, headers), { timeout: 30_000, intervals: [500] })
+      .toBe("reads");
     await page.goto("./reports/scoreboard");
     await saysBusy(page, "the scoreboard, once more");
     await expect(readAgain(page).first()).toBeVisible();
     await putBack(request, headers);
+    // What is long comes back a while after the reads do.
     await expect
-      .poll(() => stateOf(request, headers), { timeout: 15_000, intervals: [500] })
-      .toBe("ok");
+      .poll(() => refusing(request, headers), { timeout: 150_000, intervals: [1000] })
+      .toBe("nothing");
     await readAgain(page).first().click();
     await expect(page.locator("main .alert-error")).toHaveCount(0, { timeout: 20_000 });
     await expect(anyAgain).toHaveCount(0);
@@ -306,12 +427,13 @@ test("a server past its ceiling says so on a list and on About, still takes a sa
     await putBack(request, headers);
   }
 
-  // About says the server is not busy, and its graph still marks when it was.
+  // About refuses nothing, and its graph still marks when it did.
   await page.goto("./about");
-  await expect(page.getByTestId("load-state")).toHaveAttribute("data-state", "ok");
-  await expect(page.getByTestId("load-state")).toContainText("Not busy.");
+  await expect(health).toHaveAttribute("data-refusing", "nothing");
+  await expect(page.getByTestId("load-no-ceiling")).toContainText("No ceiling is set");
   await expect(page.getByTestId("load-busy-mark").first()).toBeAttached();
   await expect(page.getByTestId("load-count-busy")).toHaveText(/^[1-9][\d,]*$/);
+  await expect(healthMark).toHaveAttribute("data-refusing", "nothing");
 
   // No cookie, nothing blocked, and nothing went wrong but the answers of busy.
   await Promise.all(seen.pending);

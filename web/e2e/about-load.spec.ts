@@ -1,11 +1,15 @@
-// The browser scenarios of the server's own measures on About, of 0.9.10 (P-266):
+// The browser scenarios of the server's own measures on About, of 0.9.10 (P-266, P-270
+// to P-273):
 //
-//   About shows, under what is running, whether the server is busy and the ceiling in
-//   force, the two measures the ceiling reads, the lowest, the average and the highest
-//   of the last ten minutes, how the requests were answered, what is in flight, the
-//   process and its host, whether the background work is being done, and one graph,
-//   named for a reader of the page aloud, with its legend. A value the host does not say
-//   is "not known". The page is no wider than the window with the graph on it.
+//   About shows, under what is running, the health of the server in words and what it
+//   refuses, with the ceiling in force, the two measures the health is read from, the
+//   lowest, the average and the highest of the last ten minutes with the 50th, 95th and
+//   99th percentile, the requests counted by band of time, each band named from its
+//   bounds with the shape of its level, how the requests were answered, what is in
+//   flight, the process and its host, whether the background work is being done, one
+//   graph, named for a reader of the page aloud, with its legend, the slowest requests
+//   and who is active, this account among them. A value the host does not say is "not
+//   known". The page is no wider than the window with the graph and the tables on it.
 //   The page asks for the measures when it opens and every five seconds after, one
 //   request at a time, and for nothing else by the clock; not while its tab is hidden;
 //   once at once on coming back; and no more when another page is opened.
@@ -36,7 +40,9 @@ interface Host {
 }
 
 interface Load {
-  state: string;
+  health: string;
+  refusing: string;
+  totals: { bands: { bounds_ms: number[] } };
   worker: "running" | "not_running" | "in_process";
   process: { memory_bytes: number | null };
   host: Host;
@@ -109,33 +115,48 @@ test("About shows the server's own measures and one graph, and is no wider than 
   const load = page.getByRole("region", { name: "The server's own measures" });
   await expect(load).toBeVisible();
 
-  // Whether it is busy, and the ceiling in force: this run has none.
-  const state = page.getByTestId("load-state");
-  await expect(state).toHaveAttribute("data-state", "ok");
-  await expect(state).toContainText("Not busy.");
-  await expect(state).toContainText("No ceiling is set");
+  // Its health in words, and the ceiling in force: this run has none, so whatever the
+  // host makes of the answers, nothing is refused and nothing says busy.
+  const health = page.getByTestId("load-health");
+  await expect(health).toHaveAttribute("data-health", /^(good|slow|very_slow|busy)$/);
+  await expect(health).toHaveAttribute("data-refusing", "nothing");
+  await expect(page.getByTestId("load-health-words")).toHaveText(
+    /^Answers are (quick|slow|very slow|slower than the server's ceiling)\.$/,
+  );
+  await expect(health).not.toContainText(/server is busy/i);
+  await expect(page.getByTestId("load-no-ceiling")).toHaveText(
+    "No ceiling is set: the server refuses nothing, however slow it is.",
+  );
+  await expect(health.locator("svg.health-shape")).toHaveCount(1);
   await expect(page.getByTestId("load-since")).toContainText(
     /Read at \d\d:\d\d:\d\d \S+, and again every 5 seconds while this page is in front\./,
   );
   const measures = page.getByTestId("load-measures");
   await expect(measures.locator("thead")).toContainText(/over the last \d+ seconds/);
   await expect(page.getByTestId("load-now-response_ms")).toHaveText(
-    /^([\d,.]+ ms|too few requests to say)$/,
+    /^([\d,.]+ ms|no request to read it from)$/,
   );
+  await expect(page.getByTestId("load-measured")).toHaveText(/^ ?of [\d,]+ requests?$/);
   await expect(page.getByTestId("load-now-cpu_percent")).toHaveText(/^[\d,.]+%$/);
   await expect(page.getByTestId("load-ceiling-response_ms")).toHaveText("not looked at");
   await expect(page.getByTestId("load-ceiling-cpu_percent")).toHaveText("not looked at");
-  await expect(measures.locator('tr[data-past="true"]')).toHaveCount(0);
 
-  // The last ten minutes: the lowest, the average and the highest of each.
+  // The last ten minutes: the lowest, the average and the highest of each, and the
+  // percentiles of the time of an answer.
   const spread = page.getByTestId("load-spread");
   await expect(spread.locator("thead th")).toHaveText([
     "Over the last ten minutes",
     "Lowest",
     "Average",
     "Highest",
+    "p50",
+    "p95",
+    "p99",
   ]);
   await expect(spread.locator('tr[data-measure="response_ms"] td')).toHaveText([
+    /^[\d,.]+ ms$/,
+    /^[\d,.]+ ms$/,
+    /^[\d,.]+ ms$/,
     /^[\d,.]+ ms$/,
     /^[\d,.]+ ms$/,
     /^[\d,.]+ ms$/,
@@ -144,7 +165,26 @@ test("About shows the server's own measures and one graph, and is no wider than 
     /^([\d,.]+%|not known yet)$/,
     /^([\d,.]+%|not known yet)$/,
     /^([\d,.]+%|not known yet)$/,
+    "—",
   ]);
+
+  // The requests by band of time: each band named from its bounds as the server gives
+  // them, with the shape of its level, a circle, a triangle, a diamond and a square.
+  const said = await loadOf(request, account);
+  expect(said.totals.bands.bounds_ms).toEqual([1000, 2000, 3000]);
+  const bands = page.getByTestId("load-bands");
+  await expect(bands.locator("thead th.load-band")).toHaveText([
+    "Under 1 second",
+    "1 to 2 seconds",
+    "2 to 3 seconds",
+    "Over 3 seconds",
+  ]);
+  for (const [place, shape] of ["good", "slow", "very_slow", "busy"].entries()) {
+    await expect(
+      bands.locator(`thead th[data-band="${place}"] svg[data-shape="${shape}"]`),
+    ).toHaveCount(1);
+    await expect(page.getByTestId(`load-band-${place}`)).toHaveText(/^[\d,]+$/);
+  }
 
   // How the requests were answered, and what is in flight.
   const requests = page.getByTestId("load-requests");
@@ -168,7 +208,6 @@ test("About shows the server's own measures and one graph, and is no wider than 
 
   // The process and its host: each as the server says it, and what the host does not
   // say is not known, never 0.
-  const said = await loadOf(request, account);
   const size = /^[\d,.]+ (bytes?|KB|MB|GB|TB)( of [\d,.]+ (bytes?|KB|MB|GB|TB))?$/;
   for (const [id, value, shape] of [
     ["load-process-memory", said.process.memory_bytes, size],
@@ -192,7 +231,7 @@ test("About shows the server's own measures and one graph, and is no wider than 
   // One graph, drawn by the page: named by what it shows, with a legend of how each
   // line is drawn, and the words of what it marks beneath it.
   const graph = page.getByRole("img", {
-    name: /The server's last 10 minutes in steps of 5 seconds: the time of an answer in milliseconds, and beneath it the share of one processor in percent, with a mark at each step in which an answer of busy was given/,
+    name: /The server's last 10 minutes in steps of 5 seconds: the time of an answer in milliseconds, and beneath it the processor time the server uses in percent of one processor, with a mark at each step in which an answer of busy was given/,
   });
   await expect(graph).toBeVisible();
   await expect(graph).toHaveAccessibleDescription(
@@ -200,22 +239,79 @@ test("About shows the server's own measures and one graph, and is no wider than 
   );
   await expect(graph.locator("text.load-plot-name")).toHaveText([
     "Time of an answer, in milliseconds",
-    "Share of one processor, in percent",
+    "Processor time, in percent of one processor",
   ]);
   await expect(graph.locator("path.load-time-line")).toHaveCount(1);
   await expect(graph.locator("path.load-cpu")).toHaveCount(1);
   const legend = page.getByRole("list", { name: "What the graph shows" });
-  await expect(legend.getByRole("listitem")).toHaveText([
-    "Time of an answer: the average of each 5 seconds",
-    "Time of an answer: the longest of each 5 seconds",
-    "Share of one processor",
+  // A bound of the bands is in the legend too where the scale reaches one.
+  for (const [place, words] of [
+    "Time of an answer: the 95th percentile of each 5 seconds",
+    "Time of an answer: the median of each 5 seconds",
+    "Processor time the server uses",
     "A step in which an answer of busy was given",
-  ]);
+  ].entries()) {
+    await expect(legend.getByRole("listitem").nth(place)).toHaveText(words);
+  }
   const steps = page.getByTestId("load-busy-steps");
   await expect(steps).toContainText(/answer of busy was given in/i);
   // As many marks on the graph as the words say steps.
   const marked = Number(await steps.getAttribute("data-steps"));
   await expect(page.getByTestId("load-busy-mark")).toHaveCount(marked);
+
+  // The slowest requests: a plain table, the slowest first, each by its route as a
+  // pattern, with a request ID to copy; and those that are long by nature apart.
+  const slowest = page.getByTestId("load-slowest");
+  await expect(slowest.locator("thead th")).toHaveText([
+    "When",
+    "Who",
+    "Request",
+    "Time",
+    "Status",
+    "Request ID",
+  ]);
+  const rows = slowest.locator("tbody tr");
+  await expect(rows.first()).toBeVisible();
+  expect(await rows.count()).toBeLessThanOrEqual(10);
+  for (const route of await slowest.getByTestId("load-slow-request").allTextContents()) {
+    expect(route).toMatch(/^[A-Z]+ (\/api\/v1\/[a-z0-9/{}_-]*|a path that no route answers)$/);
+  }
+  await expect(rows.first().getByTestId("load-slow-id")).toHaveText(/\S{8,}/);
+  await expect(rows.first().getByTestId("load-slow-id")).toHaveCSS("user-select", "all");
+  await expect(
+    page.getByRole("heading", { level: 4, name: "Long by nature", exact: true }),
+  ).toBeVisible();
+  await expect(load).toContainText("are in neither the health nor the percentiles");
+  await expect(
+    page.getByTestId("load-slowest-long").or(page.getByTestId("load-slowest-long-none")),
+  ).toBeVisible();
+
+  // Who is active: this account, which has just asked, with what it met.
+  const people = page.getByTestId("load-people");
+  await expect(people.locator("thead th")).toHaveText([
+    "Who",
+    "Requests",
+    "Under 1 second",
+    "1 to 2 seconds",
+    "2 to 3 seconds",
+    "Over 3 seconds",
+    "Slowest",
+    "Answered as busy",
+    "Failed",
+    "Last seen",
+  ]);
+  const me = people.locator(`tbody tr[data-person="${account.username}"]`);
+  await expect(me).toHaveCount(1);
+  await expect(me.getByTestId("load-person-name")).toHaveText(account.username);
+  await expect(me.locator("td").first()).toHaveText(/^[1-9][\d,]*$/);
+  await expect(me.locator("td").last()).toHaveText(/^\d\d:\d\d:\d\d \S+$/);
+  // Its row is the one that was drawn, when the measures are read again.
+  await me.evaluate((row) => row.setAttribute("data-kept", "yes"));
+  const since = page.getByTestId("load-since");
+  const read = await since.getAttribute("data-at");
+  await expect(since).not.toHaveAttribute("data-at", read ?? "", { timeout: 8_000 });
+  await expect(people.locator("tbody tr[data-kept]")).toHaveCount(1);
+  await expect(me).toHaveAttribute("data-kept", "yes");
 
   // The page is no wider than the window with the graph on it, at a desk and on a
   // narrow window, where the graph is drawn smaller to fit.
@@ -247,7 +343,7 @@ test("About asks for the measures every five seconds while in front, not while h
   await signIn(page, account);
   const counted = countLoads(page);
   await page.goto("./about");
-  await expect(page.getByTestId("load-state")).toBeVisible();
+  await expect(page.getByTestId("load-health")).toBeVisible();
   // What the page reads as it opens has been read: from here only the clock asks.
   await page.waitForLoadState("networkidle");
   counted.others.length = 0;
@@ -288,7 +384,7 @@ test("About asks for the measures every five seconds while in front, not while h
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Home", exact: true })
     .click();
-  await expect(page.getByTestId("load-state")).toHaveCount(0);
+  await expect(page.getByTestId("load-health")).toHaveCount(0);
   await page.waitForTimeout(500);
   const whenLeft = counted.sent.length;
   await page.waitForTimeout(6_500);
@@ -315,7 +411,7 @@ test("a request for the measures that fails or is slow leaves the numbers, says 
   await expect(since).toContainText("The server's measures could not be read at");
   await expect(since).toContainText("The server could not be reached.");
   await expect(since).toContainText(/These are the numbers of \d\d:\d\d:\d\d \S+\./);
-  await expect(page.getByTestId("load-state")).toBeVisible();
+  await expect(page.getByTestId("load-health")).toBeVisible();
   await expect(page.getByTestId("load-count-requests")).toHaveText(/^[\d,]+$/);
   await expect(page.getByRole("img", { name: /The server's last 10 minutes/ })).toBeVisible();
   // While it fails it is asked no more often than before.

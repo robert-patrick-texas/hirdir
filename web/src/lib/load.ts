@@ -1,15 +1,19 @@
-// The server's own measures as About says them (P-265, P-266): the words of each state,
-// of each measure and of the background work, numbers with their units, and what is kept
-// as it was when a new answer holds the same. A value the server or its host does not
-// say is said as not known, never as 0.
+// The server's own measures as About says them (P-265, P-266, P-270 to P-273): the words
+// of its health and of what it refuses, of each measure and of the background work,
+// numbers with their units, who a request was asked by, and what is kept as it was when a
+// new answer holds the same. A value the server or its host does not say is said as not
+// known, never as 0.
 
 import type { Schemas } from "../api/client";
 import { formatTime } from "./format";
 import { sameAnswer } from "./hooks";
 import { sizeText } from "./references";
+import { HEALTHS, type Health, type Refusing } from "./serverHealth";
 
 export type Load = Schemas["Load"];
 export type Measure = "response_ms" | "cpu_percent";
+export type SlowRequest = Schemas["LoadSlow"];
+export type ActivePerson = Schemas["LoadPerson"];
 
 export const NOT_KNOWN = "not known";
 
@@ -20,9 +24,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const LISTS = ["requests", "average_ms", "high_ms", "cpu_percent", "busy"] as const;
 
 /**
- * The answer of `GET /about/load`, where it has the shape the page draws: its parts, and
- * the lists of the graph. Null for anything else, as an answer from something in front of
- * the server, which the page then says it could not read, where drawing it would fail.
+ * The answer of `GET /about/load`, where it has the shape the page draws: its parts, the
+ * lists of the graph, the bands, and the rows of the slowest requests and of the people.
+ * Null for anything else, as an answer from something in front of the server, which the
+ * page then says it could not read, where drawing it would fail.
  */
 export function loadOf(answer: unknown): Load | null {
   if (!isRecord(answer)) return null;
@@ -31,8 +36,19 @@ export function loadOf(answer: unknown): Load | null {
   if (typeof at !== "string" || !Array.isArray(because)) return null;
   const spreads = totals as Record<string, unknown>;
   if (!isRecord(spreads.response_ms) || !isRecord(spreads.cpu_percent)) return null;
+  const bands = spreads.bands;
+  if (!isRecord(bands) || !Array.isArray(bands.bounds_ms) || !Array.isArray(bands.counts)) {
+    return null;
+  }
   const lists = points as Record<string, unknown>;
   if (!LISTS.every((name) => Array.isArray(lists[name]))) return null;
+  const { slowest, slowest_long, people } = answer;
+  for (const rows of [slowest, slowest_long]) {
+    if (!Array.isArray(rows) || !rows.every((row) => isRecord(row) && isRecord(row.who))) {
+      return null;
+    }
+  }
+  if (!Array.isArray(people) || !people.every(isRecord)) return null;
   return answer as unknown as Load;
 }
 
@@ -117,37 +133,19 @@ export function minuteText(at: number, zone?: string): string {
   return clock === NOT_KNOWN ? "" : clock.slice(0, 5);
 }
 
-export interface StateWords {
-  /** The state in a word or two. */
-  name: string;
-  /** What the server does while it is so. */
-  what: string;
-}
-
-const STATES: Readonly<Record<string, StateWords>> = {
-  ok: { name: "Not busy", what: "Every request is answered." },
-  busy: {
-    name: "Busy",
-    what: "Lists, reports, exports and previews are answered at once that the server is busy, until it eases. Everything else is answered, and every change is stored.",
-  },
-  very_busy: {
-    name: "Very busy",
-    what: "Everything that only reads is answered at once that the server is busy, until it eases. Sign-ins are taken and every change is stored.",
-  },
-};
-
-/** What a state of the server is called, and what the server does in it. */
-export function stateWords(state: unknown): StateWords {
-  if (typeof state === "string" && Object.hasOwn(STATES, state)) {
-    const words = STATES[state];
-    if (words) return words;
-  }
-  return { name: "Not known", what: "The server did not say whether it is busy." };
+/** The health and what is refused, as an answer says them, or null where it says neither that reads. */
+export function healthOfLoad(load: {
+  health?: unknown;
+  refusing?: unknown;
+}): { health: Health; refusing: Refusing } | null {
+  const health = HEALTHS.find((one) => one === load.health);
+  const refusing = (["nothing", "long", "reads"] as const).find((one) => one === load.refusing);
+  return health && refusing ? { health, refusing } : null;
 }
 
 const MEASURES: Readonly<Record<Measure, string>> = {
   response_ms: "how long requests take",
-  cpu_percent: "the share of one processor it uses",
+  cpu_percent: "the processor time the server uses",
 };
 
 /** What a measure of the ceiling is called in a sentence. */
@@ -155,18 +153,91 @@ export function measureWords(measure: Measure): string {
   return MEASURES[measure];
 }
 
-/** Why the server is busy: the measures that are past their ceiling, in words. */
+/** What the health stands on: the measures the server names, in words. */
 export function becauseWords(because: readonly unknown[]): string {
   const named = (["response_ms", "cpu_percent"] as const)
     .filter((measure) => because.includes(measure))
     .map(measureWords);
   if (named.length === 0) return "";
-  return `Past its ceiling: ${named.join(", and ")}.`;
+  return `It is read from ${named.join(", and from ")}.`;
 }
 
 /** Whether no ceiling is in force: neither measure is looked at. */
-export function noCeiling(ceiling: Load["ceiling"]): boolean {
+export function noCeiling(ceiling: Pick<Load["ceiling"], "response_ms" | "cpu_percent">): boolean {
   return !(ceiling.response_ms > 0) && !(ceiling.cpu_percent > 0);
+}
+
+/**
+ * Why a server whose answers are very slow, or past the ceiling, refuses nothing for it
+ * (P-272). What is refused is decided by the reads, where there are enough of them to
+ * be load: so either it is changes that are slow, or the reads are too few, and the
+ * page says the one thing that is true of both. Where no ceiling is set for time, it
+ * says that. Blank where the server does refuse, and where its answers are quicker.
+ */
+export function whyNothingRefused(load: Pick<Load, "health" | "refusing" | "ceiling">): string {
+  if (load.refusing !== "nothing") return "";
+  if (load.health !== "very_slow" && load.health !== "busy") return "";
+  if (!(load.ceiling.response_ms > 0)) {
+    return "Nothing is refused for it: no ceiling is set for how long requests take.";
+  }
+  return "Nothing is refused for it: it is not the reads that are slow, or there are too few of them for it to be load.";
+}
+
+/** What a busy server still answers, said beside what it refuses. */
+export function stillAnswered(refusing: unknown): string {
+  if (refusing === "long") return "Everything else is answered, and every change is stored.";
+  if (refusing === "reads") return "Sign-ins are taken and every change is stored.";
+  return "";
+}
+
+/** The method and the route of a request, as one: `GET /api/v1/items/{hid}`. */
+export function requestText(row: Pick<SlowRequest, "method" | "route">): string {
+  const method = typeof row.method === "string" ? row.method : "";
+  return [method, typeof row.route === "string" ? row.route : "a path that no route answers"]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export interface WhoWords {
+  /** The username, or what the row is of where it is of no one account. */
+  name: string;
+  /** The account's HID, where the name is an account's, for a link to it. */
+  hid: string | null;
+  /** What is said after the name: that the account is a service token. */
+  note: string;
+}
+
+/** Who asked, as the tables of About name them: a person, a service token, or the rest. */
+export function whoWords(who: { kind?: unknown; hid?: unknown; username?: unknown }): WhoWords {
+  const username = typeof who.username === "string" && who.username !== "" ? who.username : null;
+  const hid = typeof who.hid === "string" && who.hid !== "" ? who.hid : null;
+  switch (who.kind) {
+    case "person":
+      return { name: username ?? NOT_KNOWN, hid: username ? hid : null, note: "" };
+    case "service":
+      return {
+        name: username ?? "A service token",
+        hid: username ? hid : null,
+        note: username ? "service token" : "",
+      };
+    case "unnamed":
+      return { name: "Nobody named: not signed in, or signing in", hid: null, note: "" };
+    case "others":
+      return { name: "Everyone else, counted together", hid: null, note: "" };
+    default:
+      return { name: username ?? NOT_KNOWN, hid: null, note: "" };
+  }
+}
+
+/** What tells one row of the people from another: the kind, and the account where there is one. */
+export function personKey(person: { kind?: unknown; hid?: unknown }): string {
+  return `${String(person.kind)} ${typeof person.hid === "string" ? person.hid : ""}`;
+}
+
+/** A count of the bands of a row, in its place, or 0 where the row has none there. */
+export function bandCount(counts: unknown, place: number): number {
+  const count = Array.isArray(counts) ? counts[place] : undefined;
+  return typeof count === "number" && Number.isFinite(count) ? count : 0;
 }
 
 export interface WorkerWords {

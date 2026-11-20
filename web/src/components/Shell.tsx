@@ -13,6 +13,7 @@ import { ITEM_WORDS, itemsPath, parseFilter } from "../lib/filter";
 import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
 import { FaultBoundary } from "./Fault";
+import { HealthMark } from "./HealthMark";
 import { NewVersionNotice, VersionWatch } from "./NewVersion";
 import { RenewalAlert } from "./RenewalAlert";
 
@@ -193,6 +194,8 @@ export function Shell() {
             </li>
           </ul>
         </nav>
+        {/* 0.9.10: the health of the server, from the answers the page gets anyway (P-270). */}
+        <HealthMark />
         <p className="who">
           <span className="who-name">{user.username}</span>
           <span className="who-role">{roleLabel(user.role)}</span>

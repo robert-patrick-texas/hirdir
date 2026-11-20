@@ -250,14 +250,19 @@ describe("503", () => {
     status: 503,
     detail: "the server is busy and this request was not answered; try again shortly",
     errors: [],
-    busy: { state: "busy", because: ["cpu_percent"], retry_after: 5 },
+    busy: { health: "very_slow", because: ["cpu_percent"], refusing: "long", retry_after: 5 },
   };
 
   it("of a busy server is said as that, with the seconds of Retry-After", async () => {
     const { client } = setup(() => json(503, BUSY, { "Retry-After": "5" }));
     const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
     expect(error.status).toBe(503);
-    expect(error.busy).toEqual({ state: "busy", because: ["cpu_percent"], retry_after: 5 });
+    expect(error.busy).toEqual({
+      health: "very_slow",
+      because: ["cpu_percent"],
+      refusing: "long",
+      retry_after: 5,
+    });
     expect(error.retryAfter).toBe(5);
     expect(error.message).toBe(
       "The server is busy and did not answer this. Try again in 5 seconds.",
@@ -266,10 +271,14 @@ describe("503", () => {
 
   it("of a busy server says the seconds the problem repeats where the header is lost", async () => {
     const { client } = setup(() =>
-      json(503, { ...BUSY, busy: { state: "very_busy", because: [], retry_after: 1 } }),
+      json(503, {
+        ...BUSY,
+        busy: { health: "busy", because: [], refusing: "reads", retry_after: 1 },
+      }),
     );
     const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
-    expect(error.busy?.state).toBe("very_busy");
+    expect(error.busy?.health).toBe("busy");
+    expect(error.busy?.refusing).toBe("reads");
     expect(error.message).toBe(
       "The server is busy and did not answer this. Try again in 1 second.",
     );
@@ -277,10 +286,15 @@ describe("503", () => {
 
   it("of a busy server that names no time says shortly", async () => {
     const { client } = setup(() =>
-      json(503, { ...BUSY, busy: { state: "busy", because: ["response_ms", "other"] } }),
+      json(503, { ...BUSY, busy: { refusing: "reads", because: ["response_ms", "other"] } }),
     );
     const error = await thrownBy(() => client.request("get", "/api/v1/vendors"));
-    expect(error.busy).toEqual({ state: "busy", because: ["response_ms"], retry_after: 0 });
+    expect(error.busy).toEqual({
+      health: "busy",
+      because: ["response_ms"],
+      refusing: "reads",
+      retry_after: 0,
+    });
     expect(error.message).toBe("The server is busy and did not answer this. Try again shortly.");
   });
 
@@ -305,7 +319,8 @@ describe("503", () => {
   it("is not busy for a member of another shape, nor on another status", async () => {
     for (const [status, busy] of [
       [503, "yes"],
-      [503, { state: "idle" }],
+      [503, { health: "busy", refusing: "nothing" }],
+      [503, { state: "busy" }],
       [500, BUSY.busy],
     ] as const) {
       const { client } = setup(() => json(status, { ...BUSY, status, busy }));

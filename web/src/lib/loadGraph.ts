@@ -6,8 +6,9 @@
 // `GET /about/load` and says where things go.
 //
 // Which lists the plot of the time of an answer draws is said once, in `TIME_SERIES`,
-// with the words of each: today the average of a step as the line and its longest
-// behind it. Another pair, as two percentiles of a step, is a change of that one table.
+// with the words of each: the 95th percentile of a step as the line, which is what the
+// health is read from (P-270), and its median behind it. Another pair is a change of
+// that one table.
 
 import type { Schemas } from "../api/client";
 import { type At, axisTicks, pathThrough } from "./trend";
@@ -37,8 +38,8 @@ export interface TimeSeriesPair {
 }
 
 export const TIME_SERIES: TimeSeriesPair = {
-  line: { list: "average_ms", legend: "the average of each", said: "average" },
-  behind: { list: "high_ms", legend: "the longest of each", said: "longest" },
+  line: { list: "p95_ms", legend: "the 95th percentile of each", said: "95th percentile" },
+  behind: { list: "p50_ms", legend: "the median of each", said: "median" },
 };
 
 /** The room the graph is drawn in, in the units of its own box. */
@@ -75,14 +76,21 @@ export function graphHeight(layout: GraphLayout = GRAPH): number {
   return layout.top + layout.times + layout.gap + layout.cpu + layout.bottom;
 }
 
-/** One of the two plots: where it stands, its scale, and its ceiling where it shows. */
+/** A line across a plot: a ceiling, or a bound of the bands of time beneath it. */
+export interface PlotLine {
+  y: number;
+  /** The ceiling in force, as against a third or two thirds of it. */
+  ceiling: boolean;
+}
+
+/** One of the two plots: where it stands, its scale, and the lines across it. */
 export interface Plot {
   top: number;
   bottom: number;
   /** The steps of the scale, from nothing up, each with where it stands. */
   ticks: Array<{ value: number; y: number }>;
-  /** Where the ceiling stands, or null where none is looked at or it is off the scale. */
-  ceiling: number | null;
+  /** The ceiling and the bounds beneath it, each that is looked at and on the scale. */
+  lines: PlotLine[];
 }
 
 /** A line with gaps: its runs as one path, and each point that stands alone. */
@@ -120,7 +128,7 @@ export interface LoadGraph {
   timeLine: Line;
   /** The time of an answer drawn behind it: one closed shape of a bar for each step that has one. */
   timeBars: string;
-  /** The share of one processor. */
+  /** The processor time the server uses, in percent of one processor: it may pass 100. */
   processor: Line;
   /** What lies under the line of the processor: closed shapes, one for each run of it. */
   processorArea: string;
@@ -146,15 +154,31 @@ function heightOf(top: number, bottom: number, highest: number, value: number): 
   return round(bottom - (value / (highest || 1)) * (bottom - top));
 }
 
-/** A plot between two heights whose scale reaches `most`, in about four steps. */
-function plotOf(top: number, bottom: number, most: number, ceiling: number): Plot {
+/**
+ * A plot between two heights whose scale reaches `most`, in about four steps. `bounds`
+ * are drawn across it where they are on the scale, the last of them as the ceiling
+ * where `ceiling` says one is in force.
+ */
+function plotOf(
+  top: number,
+  bottom: number,
+  most: number,
+  bounds: readonly number[],
+  ceiling: boolean,
+): Plot {
   const values = axisTicks(most, 4);
   const highest = values.at(-1) ?? 1;
   return {
     top,
     bottom,
     ticks: values.map((value) => ({ value, y: heightOf(top, bottom, highest, value) })),
-    ceiling: ceiling > 0 && ceiling <= highest ? heightOf(top, bottom, highest, ceiling) : null,
+    lines: bounds
+      .map((bound, place) => ({ bound, last: place === bounds.length - 1 }))
+      .filter(({ bound }) => bound > 0 && bound <= highest)
+      .map(({ bound, last }) => ({
+        y: heightOf(top, bottom, highest, bound),
+        ceiling: ceiling && last,
+      })),
   };
 }
 
@@ -222,6 +246,7 @@ export function loadGraph(
   windowSeconds: number,
   stepSeconds: number,
   ceiling: LoadCeiling,
+  bounds: readonly number[] = [],
   layout: GraphLayout = GRAPH,
   series: TimeSeriesPair = TIME_SERIES,
 ): LoadGraph {
@@ -259,8 +284,19 @@ export function loadGraph(
   const timesBottom = timesTop + layout.times;
   const cpuTop = timesBottom + layout.gap;
   const cpuBottom = cpuTop + layout.cpu;
-  const times = plotOf(timesTop, timesBottom, longest, numberOf(ceiling.response_ms) ?? 0);
-  const cpu = plotOf(cpuTop, cpuBottom, busiest, numberOf(ceiling.cpu_percent) ?? 0);
+  // The bounds of the bands of time are a third, two thirds and the whole of the
+  // ceiling, and those of the ceiling unless set where none is: the last is then no
+  // ceiling in force. Without bounds, the ceiling alone.
+  const timeCeiling = numberOf(ceiling.response_ms) ?? 0;
+  const timeBounds = bounds.filter((bound) => numberOf(bound) !== null);
+  const times = plotOf(
+    timesTop,
+    timesBottom,
+    longest,
+    timeBounds.length > 0 ? timeBounds : [timeCeiling],
+    timeCeiling > 0,
+  );
+  const cpu = plotOf(cpuTop, cpuBottom, busiest, [numberOf(ceiling.cpu_percent) ?? 0], true);
 
   const half = stepWidth / 2;
   const timeBars = steps

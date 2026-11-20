@@ -100,7 +100,7 @@ describe("waitAfter", () => {
 });
 
 describe("waitAsTold", () => {
-  const busy = { state: "busy", because: [], retry_after: 5 };
+  const busy = { health: "busy", because: [], refusing: "reads", retry_after: 5 };
 
   it("is the usual wait after an answer, and after a failure that is not a busy server's", () => {
     expect(waitAsTold(1000, null)).toBe(1000);

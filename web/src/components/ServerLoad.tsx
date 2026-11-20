@@ -1,25 +1,35 @@
-// The server's own measures, on About, for everyone signed in (P-265, P-266): whether it
-// is busy and by which measure, with the ceiling in force; the lowest, the average and
-// the highest time of an answer and share of the processor over the last ten minutes;
-// how the requests were answered; what is in flight; the process and its host; whether
-// the background work is being done; and one graph.
+// The server's own measures, on About, for everyone signed in (P-265, P-266, P-270 to
+// P-273): its health in words, what it refuses and why, with the ceiling in force; the
+// percentiles of the time of an answer over the last ten minutes beside the lowest, the
+// average and the highest, and the requests counted by band of time; how the requests
+// were answered; what is in flight; one graph; the process and its host; whether the
+// background work is being done; the slowest requests; and who is active, and what each
+// met.
 //
 // A person watches this while the server is in trouble, so watching it is cheap: one
 // request of `GET /about/load` every five seconds while the page is in front, none while
 // it is hidden, one at once on coming back, and never two at a time (`lib/watch.ts`).
 // What is read is kept here and nowhere above, so nothing else of About is drawn again
 // by the clock; each part below is drawn again only when its own numbers are other than
-// they were, since a part that holds the same in a new answer is kept as it is (P-264).
+// they were, since a part that holds the same in a new answer is kept as it is (P-264),
+// and a row of a table only when that row is another. The tables whose length changes,
+// the slowest requests and the people, come last, so that a row more or less moves
+// nothing that is read above them.
 
 import { memo, useEffect, useState } from "react";
 import { api } from "../api";
 import { ApiError } from "../api/client";
-import { toApiError } from "../lib/hooks";
+import { useAuth } from "../auth";
+import { plural } from "../lib/format";
+import { sameAnswer, toApiError } from "../lib/hooks";
 import {
+  type ActivePerson,
+  bandCount,
   becauseWords,
   bytesText,
   clockText,
   countText,
+  healthOfLoad,
   kept,
   type Load,
   loadAverageText,
@@ -28,15 +38,24 @@ import {
   msText,
   noCeiling,
   percentText,
-  stateWords,
+  personKey,
+  requestText,
+  type SlowRequest,
+  stillAnswered,
   waitText,
+  whoWords,
+  whyNothingRefused,
   workerWords,
 } from "../lib/load";
 import { sentence } from "../lib/problems";
+import { allows } from "../lib/roles";
+import { bandHealth, bandLabels, healthWords, speedWords } from "../lib/serverHealth";
 import { watchEvery } from "../lib/watch";
+import { HealthShape } from "./HealthMark";
 import { LoadGraph } from "./LoadGraph";
 import { Problem } from "./Problem";
 import { Time } from "./Time";
+import { ValueLink } from "./ValueLink";
 
 /** From one request to the next, and how long an answer is waited for, in milliseconds. */
 const EVERY_MS = 5000;
@@ -122,22 +141,23 @@ function Since({ at, failed }: { at: string; failed: Watched["failed"] }) {
 }
 
 const MEASURE_NAMES: ReadonlyArray<{ measure: Measure; name: string }> = [
-  { measure: "response_ms", name: "How long requests take: the median" },
-  { measure: "cpu_percent", name: "Share of one processor the server uses" },
+  { measure: "response_ms", name: "How long requests take: the 95th percentile" },
+  { measure: "cpu_percent", name: "Processor time the server uses, of one processor" },
 ];
 
-/** Whether the server is busy, by which measure, and the ceiling in force. */
-const State = memo(function State({
-  state,
+/** The health in words, what is refused and why, and the two measures with their ceilings. */
+const Health = memo(function Health({
+  health,
+  refusing,
   because,
   ceiling,
   measures,
-}: Pick<Load, "state" | "because" | "ceiling" | "measures">) {
-  const words = stateWords(state);
-  const why = becauseWords(because);
+}: Pick<Load, "health" | "refusing" | "because" | "ceiling" | "measures">) {
+  const said = healthOfLoad({ health, refusing });
+  const few = whyNothingRefused({ health, refusing, ceiling });
   const now = (measure: Measure) =>
     measure === "response_ms"
-      ? msText(measures.response_ms, "too few requests to say")
+      ? msText(measures.response_ms, "no request to read it from")
       : percentText(measures.cpu_percent);
   const limit = (measure: Measure) => {
     if (!(ceiling[measure] > 0)) return "not looked at";
@@ -145,17 +165,32 @@ const State = memo(function State({
   };
   return (
     <>
-      {/* Said aloud when the state becomes another: the words are the same until then. */}
+      {/* Said aloud when the health becomes another: the words are the same until then. */}
       <div role="status">
         <p
-          className={`alert ${state === "ok" ? "alert-ok" : "alert-warn"}`}
-          data-testid="load-state"
-          data-state={state}
+          className={`alert ${said && said.health === "good" && said.refusing === "nothing" ? "alert-ok" : "alert-warn"}`}
+          data-testid="load-health"
+          data-health={health}
+          data-refusing={refusing}
         >
-          <strong>{words.name}.</strong> {words.what}
-          {why && ` ${why}`}
-          {noCeiling(ceiling) &&
-            " No ceiling is set: the server refuses nothing, however busy it is."}
+          {said ? (
+            <>
+              <HealthShape health={said.health} />{" "}
+              <strong data-testid="load-health-words">{healthWords(said)}</strong>
+              {said.refusing !== "nothing" &&
+                ` ${speedWords(said.health)} ${stillAnswered(said.refusing)}`}
+            </>
+          ) : (
+            <strong>The server did not say how it is.</strong>
+          )}
+          {becauseWords(because) && ` ${becauseWords(because)}`}
+          {few && <span data-testid="load-few"> {few}</span>}
+          {noCeiling(ceiling) && (
+            <span data-testid="load-no-ceiling">
+              {" "}
+              No ceiling is set: the server refuses nothing, however slow it is.
+            </span>
+          )}
         </p>
       </div>
       <div className="scroll">
@@ -163,7 +198,7 @@ const State = memo(function State({
           <thead>
             <tr>
               <th scope="col">
-                What the ceiling reads, over the last {ceiling.over_seconds} seconds
+                What the health is read from, over the last {ceiling.over_seconds} seconds
               </th>
               <th scope="col" className="number">
                 Now
@@ -180,7 +215,13 @@ const State = memo(function State({
                 <tr key={measure} data-measure={measure} data-past={past}>
                   <th scope="row">
                     {name}
-                    {past && <span className="badge">Past its ceiling</span>}
+                    {measure === "response_ms" && (
+                      <span className="muted" data-testid="load-measured">
+                        {" "}
+                        of {plural(measures.requests, "request")}
+                      </span>
+                    )}
+                    {past && <span className="badge">The health stands on it</span>}
                   </th>
                   <td className="number" data-testid={`load-now-${measure}`}>
                     {now(measure)}
@@ -198,7 +239,20 @@ const State = memo(function State({
   );
 });
 
-/** The last ten minutes: the spread of the two measures, and how requests were answered. */
+/** The heading of a band of time: the shape and colour of its level, and its name from its bounds. */
+function BandHeads({ labels }: { labels: readonly string[] }) {
+  return (
+    <>
+      {labels.map((label, place) => (
+        <th key={label} scope="col" className="number load-band" data-band={place}>
+          <HealthShape health={bandHealth(place)} /> {label}
+        </th>
+      ))}
+    </>
+  );
+}
+
+/** The last ten minutes: the times, the bands, and how requests were answered. */
 const Totals = memo(function Totals({
   totals,
   inFlight,
@@ -208,6 +262,8 @@ const Totals = memo(function Totals({
 }) {
   const times = totals.response_ms;
   const shares = totals.cpu_percent;
+  const labels = bandLabels(totals.bands.bounds_ms);
+  const none = "no answer yet";
   return (
     <>
       <div className="scroll">
@@ -224,24 +280,73 @@ const Totals = memo(function Totals({
               <th scope="col" className="number">
                 Highest
               </th>
+              <th scope="col" className="number">
+                <abbr title="The 50th percentile, the median: half the requests took no longer">
+                  p50
+                </abbr>
+              </th>
+              <th scope="col" className="number">
+                <abbr title="The 95th percentile: 95 requests in 100 took no longer">p95</abbr>
+              </th>
+              <th scope="col" className="number">
+                <abbr title="The 99th percentile: 99 requests in 100 took no longer">p99</abbr>
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr data-measure="response_ms">
               <th scope="row">Time of an answer</th>
-              <td className="number">{msText(times.low, "no answer yet")}</td>
-              <td className="number">{msText(times.average, "no answer yet")}</td>
-              <td className="number">{msText(times.high, "no answer yet")}</td>
+              <td className="number">{msText(times.low, none)}</td>
+              <td className="number">{msText(times.average, none)}</td>
+              <td className="number">{msText(times.high, none)}</td>
+              <td className="number" data-testid="load-p50">
+                {msText(times.p50, none)}
+              </td>
+              <td className="number" data-testid="load-p95">
+                {msText(times.p95, none)}
+              </td>
+              <td className="number" data-testid="load-p99">
+                {msText(times.p99, none)}
+              </td>
             </tr>
             <tr data-measure="cpu_percent">
-              <th scope="row">Share of one processor</th>
+              <th scope="row">Processor time, of one processor</th>
               <td className="number">{percentText(shares.low, "not known yet")}</td>
               <td className="number">{percentText(shares.average, "not known yet")}</td>
               <td className="number">{percentText(shares.high, "not known yet")}</td>
+              <td colSpan={3} className="muted number">
+                —
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p className="muted">
+        The lowest, the average and the highest are of every answer. The percentiles are of the
+        reads and the changes: reports, exports and previews, which are long by nature, are in none.
+      </p>
+      {labels.length > 0 && (
+        <div className="scroll">
+          <table className="load-table" data-testid="load-bands">
+            <thead>
+              <tr>
+                <th scope="col">Reads and changes, by how long each took</th>
+                <BandHeads labels={labels} />
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Requests in the last ten minutes</th>
+                {labels.map((label, place) => (
+                  <td key={label} className="number" data-testid={`load-band-${place}`}>
+                    {countText(bandCount(totals.bands.counts, place))}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
       <dl className="facts load-facts" data-testid="load-requests">
         <dt>Requests answered</dt>
         <dd data-testid="load-count-requests">{countText(totals.requests)}</dd>
@@ -309,9 +414,192 @@ const Host = memo(function Host({
   );
 });
 
+/**
+ * Who asked: the username, as a link to the account for an Admin and as text for anyone
+ * else, as the audit trail names who made a change (P-240); a service token said as one;
+ * and the rows that are of no one account in words.
+ */
+function Who({ who, admin }: { who: Parameters<typeof whoWords>[0]; admin: boolean }) {
+  const { name, hid, note } = whoWords(who);
+  return (
+    <>
+      {hid ? (
+        <ValueLink kind="user" hid={hid} admin={admin}>
+          {name}
+        </ValueLink>
+      ) : (
+        name
+      )}
+      {note && <span className="muted"> ({note})</span>}
+    </>
+  );
+}
+
+/** One of the slowest requests. It is drawn again only when it is another. */
+const SlowRow = memo(
+  function SlowRow({ row, admin }: { row: SlowRequest; admin: boolean }) {
+    return (
+      <tr data-request={row.request_id}>
+        <td>{clockText(row.at)}</td>
+        <td data-testid="load-slow-who">
+          <Who who={row.who} admin={admin} />
+        </td>
+        <td className="mono" data-testid="load-slow-request">
+          {requestText(row)}
+        </td>
+        <td className="number">{msText(row.ms)}</td>
+        <td className="number">{countText(row.status)}</td>
+        <td>
+          {/* One click takes the whole of it, to be copied and looked for in the log. */}
+          <code className="load-request-id" data-testid="load-slow-id">
+            {row.request_id}
+          </code>
+        </td>
+      </tr>
+    );
+  },
+  (was, now) => was.admin === now.admin && sameAnswer(was.row, now.row),
+);
+
+/** A table of slow requests, the slowest first, or that there is none. */
+const Slowest = memo(function Slowest({
+  rows,
+  admin,
+  testId,
+  none,
+}: {
+  rows: readonly SlowRequest[];
+  admin: boolean;
+  testId: string;
+  none: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="muted" data-testid={`${testId}-none`}>
+        {none}
+      </p>
+    );
+  }
+  return (
+    <div className="scroll">
+      <table className="load-table" data-testid={testId}>
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Who</th>
+            <th scope="col">Request</th>
+            <th scope="col" className="number">
+              Time
+            </th>
+            <th scope="col" className="number">
+              Status
+            </th>
+            <th scope="col">Request ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <SlowRow key={row.request_id} row={row} admin={admin} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+});
+
+/** One of the people. It is drawn again only when what it met is other than it was. */
+const PersonRow = memo(
+  function PersonRow({
+    person,
+    bands,
+    admin,
+  }: {
+    person: ActivePerson;
+    bands: number;
+    admin: boolean;
+  }) {
+    return (
+      <tr data-person={person.username ?? person.kind} data-kind={person.kind}>
+        <th scope="row" data-testid="load-person-name">
+          <Who who={person} admin={admin} />
+        </th>
+        <td className="number">{countText(person.requests)}</td>
+        {Array.from({ length: bands }, (_, place) => place).map((place) => (
+          <td key={place} className="number" data-band={place}>
+            {countText(bandCount(person.bands, place))}
+          </td>
+        ))}
+        <td className="number">{msText(person.slowest_ms, "none")}</td>
+        <td className="number">{countText(person.busy)}</td>
+        <td className="number">{countText(person.failed)}</td>
+        <td>{clockText(person.last_at)}</td>
+      </tr>
+    );
+  },
+  (was, now) =>
+    was.admin === now.admin && was.bands === now.bands && sameAnswer(was.person, now.person),
+);
+
+/** Who asked anything in the ten minutes, and what each met, whoever had it worst first. */
+const People = memo(function People({
+  people,
+  bounds,
+  admin,
+}: {
+  people: readonly ActivePerson[];
+  bounds: readonly number[];
+  admin: boolean;
+}) {
+  const labels = bandLabels(bounds);
+  if (people.length === 0) {
+    return (
+      <p className="muted" data-testid="load-people-none">
+        Nobody asked anything in the last ten minutes.
+      </p>
+    );
+  }
+  return (
+    <div className="scroll">
+      <table className="load-table wrap-heads" data-testid="load-people">
+        <thead>
+          <tr>
+            <th scope="col">Who</th>
+            <th scope="col" className="number">
+              Requests
+            </th>
+            <BandHeads labels={labels} />
+            <th scope="col" className="number">
+              Slowest
+            </th>
+            <th scope="col" className="number">
+              Answered as busy
+            </th>
+            <th scope="col" className="number">
+              Failed
+            </th>
+            <th scope="col">Last seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {people.map((person) => (
+            <PersonRow
+              key={personKey(person)}
+              person={person}
+              bands={labels.length}
+              admin={admin}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+});
+
 /** The server's own measures, and the graph of its last ten minutes. */
 export function ServerLoad() {
   const { load, failed } = useServerLoad();
+  const { user } = useAuth();
+  const admin = allows(user.role, "admin");
   return (
     <section aria-labelledby="server-load" data-testid="load">
       <h2 id="server-load">The server's own measures</h2>
@@ -326,8 +614,9 @@ export function ServerLoad() {
               applied until it is started.
             </p>
           )}
-          <State
-            state={load.state}
+          <Health
+            health={load.health}
+            refusing={load.refusing}
             because={load.because}
             ceiling={load.ceiling}
             measures={load.measures}
@@ -337,6 +626,7 @@ export function ServerLoad() {
           <LoadGraph
             points={load.points}
             ceiling={load.ceiling}
+            bounds={load.totals.bands.bounds_ms}
             windowSeconds={load.window_seconds}
             stepSeconds={load.step_seconds}
           />
@@ -347,6 +637,34 @@ export function ServerLoad() {
             worker={load.worker}
             startedAt={load.started_at}
           />
+          <h3 id="server-load-slowest">The slowest requests</h3>
+          <p className="muted">
+            The slowest reads and changes of the last ten minutes, the slowest first: each by its
+            route, never by what was asked for. The request ID finds it in the server's log.
+          </p>
+          <Slowest
+            rows={load.slowest}
+            admin={admin}
+            testId="load-slowest"
+            none="No read or change was answered in the last ten minutes."
+          />
+          <h4 id="server-load-long">Long by nature</h4>
+          <p className="muted">
+            The slowest reports, exports and previews. They take long by what they are, and are in
+            neither the health nor the percentiles.
+          </p>
+          <Slowest
+            rows={load.slowest_long}
+            admin={admin}
+            testId="load-slowest-long"
+            none="No report, export or preview was answered in the last ten minutes."
+          />
+          <h3 id="server-load-people">Who is active</h3>
+          <p className="muted">
+            Everyone who asked anything in the last ten minutes, and what each met, whoever had it
+            worst first.
+          </p>
+          <People people={load.people} bounds={load.totals.bands.bounds_ms} admin={admin} />
         </>
       )}
     </section>

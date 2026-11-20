@@ -1,7 +1,7 @@
 // The graph of the server's last ten minutes on About (P-266): the ten minutes on one
 // axis of time, and two plots one above the other, each with a scale of its own named
-// with its unit: the time of an answer, the average of each step as a line and the
-// longest as bars behind it, and the share of one processor as a line over its area. A
+// with its unit: the time of an answer, the 95th percentile of each step as a line and
+// the median as bars behind it, and the processor time the server uses as a line over its area. A
 // step in which an answer of busy was given has a band down both plots and a triangle
 // above them. Which two lists of times are drawn, and the words of each in the legend and
 // where a step is pointed at, are `TIME_SERIES` of `lib/loadGraph.ts` and nothing here.
@@ -31,6 +31,8 @@ import {
 interface LoadGraphProps {
   points: LoadPoints;
   ceiling: LoadCeiling;
+  /** The bounds of the bands of time, of which the last is the ceiling. */
+  bounds: readonly number[];
   windowSeconds: number;
   stepSeconds: number;
 }
@@ -47,7 +49,7 @@ function stepTitle(step: Step): string {
   return `${step.at === null ? "" : `${clockText(step.at)}: `}${said.join(", ")}`;
 }
 
-/** The steps of the scale of a plot, its name, and its ceiling where it shows. */
+/** The steps of the scale of a plot, its name, and the lines across it where they show. */
 function Scale({
   plot,
   name,
@@ -72,16 +74,17 @@ function Scale({
           </text>
         </g>
       ))}
-      {plot.ceiling !== null && (
+      {plot.lines.map((line) => (
         <line
-          className="load-ceiling"
-          data-testid="load-ceiling-line"
+          key={line.y}
+          className={line.ceiling ? "load-ceiling" : "load-bound"}
+          data-testid={line.ceiling ? "load-ceiling-line" : "load-bound-line"}
           x1={left}
           x2={right}
-          y1={plot.ceiling}
-          y2={plot.ceiling}
+          y1={line.y}
+          y2={line.y}
         />
-      )}
+      ))}
     </g>
   );
 }
@@ -89,13 +92,14 @@ function Scale({
 export const LoadGraph = memo(function LoadGraph({
   points,
   ceiling,
+  bounds,
   windowSeconds,
   stepSeconds,
 }: LoadGraphProps) {
   const id = useId();
   const graph = useMemo(
-    () => loadGraph(points, windowSeconds, stepSeconds, ceiling),
-    [points, windowSeconds, stepSeconds, ceiling],
+    () => loadGraph(points, windowSeconds, stepSeconds, ceiling, bounds),
+    [points, windowSeconds, stepSeconds, ceiling, bounds],
   );
   const { left, right, times, cpu, stepWidth } = graph;
   const half = stepWidth / 2;
@@ -111,7 +115,9 @@ export const LoadGraph = memo(function LoadGraph({
       : `An answer of busy was given in ${graph.busy.length} of the graph's ${plural(graph.steps.length, "step")} of ${plural(stepSeconds, "second")}${
           lastBusy?.at ? `, the last at ${clockText(lastBusy.at)}` : ""
         }.`;
-  const ceilingDrawn = times.ceiling !== null || cpu.ceiling !== null;
+  const lines = [...times.lines, ...cpu.lines];
+  const ceilingDrawn = lines.some((line) => line.ceiling);
+  const boundDrawn = lines.some((line) => !line.ceiling);
 
   return (
     <div className="load-graph-part" data-testid="load-graph">
@@ -123,10 +129,10 @@ export const LoadGraph = memo(function LoadGraph({
         aria-describedby={`${id}-desc`}
       >
         <title id={`${id}-title`}>
-          {`The server's last ${plural(minutes, "minute")} in steps of ${plural(stepSeconds, "second")}: the time of an answer in milliseconds, and beneath it the share of one processor in percent, with a mark at each step in which an answer of busy was given`}
+          {`The server's last ${plural(minutes, "minute")} in steps of ${plural(stepSeconds, "second")}: the time of an answer in milliseconds, and beneath it the processor time the server uses in percent of one processor, with a mark at each step in which an answer of busy was given`}
         </title>
         <desc id={`${id}-desc`}>
-          {`${span}${busySaid} The lowest, the average and the highest of each are in the table above the graph.`}
+          {`${span}${busySaid} The percentiles of the ten minutes, and the lowest, the average and the highest, are in the table above the graph.`}
         </desc>
         {graph.busy.map((step) => (
           <rect
@@ -139,7 +145,12 @@ export const LoadGraph = memo(function LoadGraph({
           />
         ))}
         <Scale plot={times} name="Time of an answer, in milliseconds" left={left} right={right} />
-        <Scale plot={cpu} name="Share of one processor, in percent" left={left} right={right} />
+        <Scale
+          plot={cpu}
+          name="Processor time, in percent of one processor"
+          left={left}
+          right={right}
+        />
         <path className="load-time-bars" d={graph.timeBars} />
         <path className="load-time-line" d={graph.timeLine.path} />
         {graph.timeLine.dots.map(([x, y]) => (
@@ -200,7 +211,8 @@ export const LoadGraph = memo(function LoadGraph({
           {TIME_SERIES.behind.legend} {plural(stepSeconds, "second")}
         </li>
         <li>
-          <span className="load-key load-key-cpu" aria-hidden="true" /> Share of one processor
+          <span className="load-key load-key-cpu" aria-hidden="true" /> Processor time the server
+          uses
         </li>
         <li>
           <span className="load-key load-key-busy" aria-hidden="true" /> A step in which an answer
@@ -209,6 +221,12 @@ export const LoadGraph = memo(function LoadGraph({
         {ceilingDrawn && (
           <li>
             <span className="load-key load-key-ceiling" aria-hidden="true" /> The ceiling in force
+          </li>
+        )}
+        {boundDrawn && (
+          <li>
+            <span className="load-key load-key-bound" aria-hidden="true" /> A bound between two
+            bands of time
           </li>
         )}
       </ul>

@@ -123,7 +123,8 @@ export type DeletedRecord = Schemas["ProblemDeleted"];
 
 /**
  * 0.9.10: what a server past its ceiling says of itself where it does not take a request
- * (P-265): how busy it is and by which measure. Only its `503` holds one.
+ * (P-265, P-271): its health, by which measure, and what it refuses. Only its `503`
+ * holds one.
  */
 export type BusyServer = Schemas["ProblemBusy"];
 
@@ -255,16 +256,21 @@ export async function problemOf(response: Response): Promise<ApiError> {
 
 const BUSY_MEASURES: readonly string[] = ["response_ms", "cpu_percent"];
 
-/** What a busy server says of itself in its 503, where it says it whole. */
+/**
+ * What a busy server says of itself in its 503, where it says what it refuses: the
+ * reports, exports and previews (`long`), or every read (`reads`). Its health is orange
+ * at the least, and red where the answer does not say.
+ */
 function busyOf(given: unknown): BusyServer | null {
   if (typeof given !== "object" || given === null) return null;
-  const { state, because, retry_after } = given as Partial<BusyServer>;
-  if (state !== "busy" && state !== "very_busy") return null;
+  const { health, because, refusing, retry_after } = given as Partial<BusyServer>;
+  if (refusing !== "long" && refusing !== "reads") return null;
   return {
-    state,
+    health: health === "very_slow" ? health : "busy",
     because: Array.isArray(because)
       ? because.filter((measure) => BUSY_MEASURES.includes(measure))
       : [],
+    refusing,
     retry_after:
       typeof retry_after === "number" && Number.isFinite(retry_after) && retry_after >= 0
         ? retry_after

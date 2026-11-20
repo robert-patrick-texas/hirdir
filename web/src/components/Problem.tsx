@@ -54,7 +54,7 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
         <div
           className="alert alert-error"
           data-status={visible.status}
-          data-busy={visible.busy ? visible.busy.state : undefined}
+          data-busy={visible.busy ? visible.busy.refusing : undefined}
         >
           {visible.stale ? (
             <p>
