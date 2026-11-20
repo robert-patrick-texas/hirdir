@@ -24,6 +24,7 @@ import { ValueLink } from "../components/ValueLink";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   briefMark,
+  colourOnShow,
   type FollowedLabel,
   followedLabel,
   followUsername,
@@ -467,9 +468,11 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
   );
   // Read afresh for the form: another operator may have taken a colour since the page was.
   const colours = useColours(true);
-  // Until one is chosen the colour shows the next no operator has, and is left to the
-  // server, which gives the same, and gives it too where the colours have not yet come.
-  const colour = chosenColour ?? colours.data?.next_for_operators ?? "";
+  // Until one is chosen the colour shows the next no operator has, as it was read for the
+  // form, and what is shown is what is sent; before the colours have come, nothing is
+  // shown, and the server gives the next.
+  const shownColour = colourOnShow(chosenColour, colours.data?.next_for_operators);
+  const colour = shownColour ?? "";
   const action = useAction();
   // What the server refused is said beside the field it names.
   const fields: Readonly<Record<string, string | undefined>> = {
@@ -486,7 +489,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
       person,
       alsoOperator,
       label: label.label,
-      colour: chosenColour,
+      colour: shownColour,
       role,
       groupHids,
       notes,

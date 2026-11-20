@@ -73,14 +73,26 @@ export interface NewUserForm {
   alsoOperator: boolean;
   label: string;
   /**
-   * The colour as chosen, or null where none was: then the server gives the next that no
-   * operator has. Chosen blank, the operator has no colour.
+   * The colour on show, which is sent (`colourOnShow`); null where none is shown yet,
+   * and the server gives the next that no operator has. Shown blank, no colour.
    */
   colour: string | null;
   role: string;
   groupHids: readonly string[];
   notes: string;
   accessCode: string;
+}
+
+/**
+ * The colour a form shows for a new operator, which is the colour it sends: the one
+ * chosen, or else the next that no operator has, as it was read for the form; null only
+ * while nothing is shown, before the colours have come, and the server gives the next.
+ */
+export function colourOnShow(
+  chosen: string | null,
+  next: string | null | undefined,
+): string | null {
+  return chosen ?? next ?? null;
 }
 
 /** What `POST /users` takes since 0.9.13 ("### People" of docs/interfaces.md). */

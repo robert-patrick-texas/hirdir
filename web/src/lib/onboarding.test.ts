@@ -4,6 +4,7 @@ import {
   briefMark,
   briefText,
   CONTACTS_GAPS,
+  colourOnShow,
   contactsAddress,
   followedLabel,
   followUsername,
@@ -111,7 +112,16 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
     });
   });
 
-  it("leaves a blank label and a colour not chosen to the server", () => {
+  it("sends the colour on show: the one chosen, or the next as it was read", () => {
+    expect(colourOnShow(null, "#0169cd")).toBe("#0169cd");
+    expect(colourOnShow("#a35303", "#0169cd")).toBe("#a35303");
+    expect(colourOnShow("", "#0169cd")).toBe("");
+    expect(colourOnShow(null, undefined)).toBeNull();
+    const read = newUserBody({ ...PERSON, colour: colourOnShow(null, "#0169cd") });
+    expect(read.ok && read.body.operator).toEqual({ label: "ex-ops", colour: "#0169cd" });
+  });
+
+  it("leaves a blank label, and a colour while none is shown, to the server", () => {
     const read = newUserBody({ ...PERSON, label: " ", colour: null });
     expect(read.ok && read.body.operator).toEqual({});
   });

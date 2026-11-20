@@ -3108,9 +3108,11 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   the colour, the next unused, in the picker; the role; the groups, a box each with
   the roles the group grants (P-282); and the notes. A service account has neither box.
   Unticking the contact unticks the operator, which needs one, and ticking the operator
-  ticks the contact. A label left blank is the username and a colour not chosen the
-  next unused, which the server gives, as it does where the colours had not yet been
-  read when Create was pressed; a colour chosen blank is none. One
+  ticks the contact. A label left blank is the username, which the server gives. The
+  colour on show is the colour sent: the next unused, as it was read when the form
+  opened, until another is chosen; where the colours have not yet been read when Create
+  is pressed, none is shown and the server gives the next; a colour chosen blank is
+  none. One
   Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
   the label, `operator` at its box, `group_hids` at the groups, the contact's at the
   person's, with nothing typed lost, and the access code is shown with links to the
