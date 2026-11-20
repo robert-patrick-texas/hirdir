@@ -62,6 +62,34 @@ function groupBox(form: Locator, name: string): Locator {
   return form.getByRole("checkbox", { name: new RegExp(`^${name} \\(grants `) });
 }
 
+/**
+ * The gaps of a grid follow its own filter (P-280): on a gap, changed in the Filter box
+ * to another gap's filter, then to one that is no gap's, the mark follows; a press of
+ * the first gap, at the same address, starts the grid on it again.
+ */
+async function gapsFollowTheGrid(
+  page: Page,
+  show: Locator,
+  gaps: { pressed: string; filter: string; other: string; otherFilter: string },
+) {
+  const filterBox = page.getByLabel("Filter", { exact: true });
+  const marked = (name: string) => show.getByRole("link", { name, exact: true });
+  await expect(filterBox).toHaveValue(gaps.filter);
+  await expect(marked(gaps.pressed)).toHaveAttribute("aria-current", "page");
+  const apply = async (filter: string) => {
+    await filterBox.fill(filter);
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+  };
+  await apply(gaps.otherFilter);
+  await expect(marked(gaps.pressed)).not.toHaveAttribute("aria-current", "page");
+  await expect(marked(gaps.other)).toHaveAttribute("aria-current", "page");
+  await apply(`${gaps.otherFilter} ${gaps.filter}`);
+  await expect(show.locator('[aria-current="page"]')).toHaveCount(0);
+  await marked(gaps.pressed).click();
+  await expect(filterBox).toHaveValue(gaps.filter);
+  await expect(marked(gaps.pressed)).toHaveAttribute("aria-current", "page");
+}
+
 /** The rows of the Users list, searched for this file's users and narrowed as asked. */
 async function usersListed(page: Page, query: string): Promise<Locator> {
   await page.goto(`./admin/users?q=${encodeURIComponent(suffix)}${query}`);
@@ -435,6 +463,22 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await expect(
     contactsShow.getByRole("link", { name: "Contacts behind no operator" }),
   ).toHaveAttribute("aria-current", "page");
+  // The grid's own filter changed: the gap is marked only while it is the gap's, and a
+  // press of a gap starts the grid on it again, though the address is the same.
+  await gapsFollowTheGrid(page, contactsShow, {
+    pressed: "Contacts behind no operator",
+    filter: "is_operator:eq:false",
+    other: "Contacts that are no user",
+    otherFilter: "is_user:eq:false",
+  });
+  // The same on the list of operators.
+  await page.goto(`./operators?filter=${encodeURIComponent("is_open:eq:true")}`);
+  await gapsFollowTheGrid(page, page.getByRole("navigation", { name: "Show operators" }), {
+    pressed: "Nobody behind it",
+    filter: "is_open:eq:true",
+    other: "No user behind it",
+    otherFilter: "scope:ne:internal",
+  });
   const grid = page.getByTestId("grid-contacts");
   const narrowed = async (filter: string) => {
     await page.goto(`./contacts?filter=${encodeURIComponent(filter)}`);

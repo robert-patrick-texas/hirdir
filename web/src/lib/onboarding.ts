@@ -4,6 +4,7 @@
 // of a person in one press. This holds what the forms work out from what is typed.
 
 import type { Schemas } from "../api/client";
+import { type FilterNode, formatShort, parseShort } from "./filter";
 import { type Mark, safeColour } from "./operators";
 import { NEW_PERSON_FIELDS, newPersonErrors, type PersonChoice, readPerson } from "./people";
 import { roleLabel } from "./roles";
@@ -193,6 +194,23 @@ export const CONTACTS_GAPS: readonly { label: string; filter: string }[] = [
   { label: "Contacts that are no user", filter: "is_user:eq:false" },
   { label: "Contacts behind no operator", filter: "is_operator:eq:false" },
 ];
+
+/**
+ * Whether a gap of a grid is the one on show (P-280): the filter the grid last asked
+ * the server for is the gap's, or, until it has asked, the one the address started it
+ * with. A filter changed in the grid's own box is no gap's, unless it says the same.
+ */
+export function gapShown(
+  gap: string,
+  asked: FilterNode | null | undefined,
+  startFilter: string | null,
+): boolean {
+  const wanted = parseShort(gap);
+  const shown = asked === undefined ? parseShort(startFilter ?? "") : null;
+  if (!wanted.ok || (shown !== null && !shown.ok)) return false;
+  const filter = shown === null ? (asked ?? null) : shown.ok ? shown.filter : null;
+  return formatShort(wanted.filter) === formatShort(filter);
+}
 
 /** The address of the list of contacts started with a filter. */
 export function contactsAddress(filter: string): string {

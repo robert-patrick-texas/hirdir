@@ -6,6 +6,7 @@ import {
   contactsAddress,
   followedLabel,
   followUsername,
+  gapShown,
   groupGrants,
   NEW_USER_FIELDS,
   type NewUserForm,
@@ -203,6 +204,23 @@ describe("who is what, on the lists of people (P-280)", () => {
       "?q=ex+ops&operator=none&offset=50",
     );
     expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("marks a gap of a grid only while the grid's filter is that gap's", () => {
+    const behindNone = { field: "is_operator", op: "eq", value: "false" } as const;
+    // Before the grid has asked, as the address started it; a plain visit is the whole.
+    expect(gapShown("is_operator:eq:false", undefined, "is_operator:eq:false")).toBe(true);
+    expect(gapShown("", undefined, null)).toBe(true);
+    expect(gapShown("is_operator:eq:false", undefined, null)).toBe(false);
+    // Once it has asked: what it asked, whatever the address still says.
+    expect(gapShown("is_operator:eq:false", behindNone, "is_operator:eq:false")).toBe(true);
+    const noUser = { field: "is_user", op: "eq", value: "false" } as const;
+    expect(gapShown("is_operator:eq:false", noUser, "is_operator:eq:false")).toBe(false);
+    expect(gapShown("is_user:eq:false", noUser, "is_operator:eq:false")).toBe(true);
+    expect(gapShown("", null, "is_operator:eq:false")).toBe(true);
+    expect(gapShown("", behindNone, "")).toBe(false);
+    // A filter the short form cannot say is no gap's.
+    expect(gapShown("", { or: [behindNone, noUser] }, "")).toBe(false);
   });
 
   it("starts the list of contacts at each gap, and the whole with a blank filter", () => {

@@ -3123,7 +3123,11 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   stands behind, as links, in the column Operators, which filters and sorts by
   `is_operator`; Show has a link to every contact and one to each gap, the contacts
   that are no user and those behind no operator, each starting the grid with its
-  filter (`is_user:eq:false`, `is_operator:eq:false`). The page of a contact lists the
+  filter (`is_user:eq:false`, `is_operator:eq:false`). A press of a gap starts the grid
+  on it again even where the address is already its own, after the grid's filter was
+  changed in its box; and a gap is marked as on show only while the filter the grid asks
+  the server for is that gap's, a plain visit with no filter being every contact's
+  while the grid's filter is blank. The page of a contact lists the
   operators it stands behind, released ones marked so, and where it stands behind none
   that is not retired, and is not retired itself, has Make an operator for an
   Inventory role or above, as a user's has, with the username as the label where the
@@ -3135,7 +3139,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   away whose address holds the grid's own filter, to every operator, to those with no
   user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
   nobody behind them at all, `is_open:eq:true`; the one on show is marked as the
-  current page. In the New operator form the colour starts at `next_for_operators`
+  current page, and a press and the mark follow the grid's own filter as on Contacts.
+  In the New operator form the colour starts at `next_for_operators`
   of a read of `GET /colours` begun as the form opened, until one is chosen; choosing a
   person who is a user fills the label with the username while the label is blank or is
   still what the form filled in, and a label typed by hand is kept. A Create pressed
