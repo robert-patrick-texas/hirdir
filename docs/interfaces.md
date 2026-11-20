@@ -204,7 +204,11 @@ as before.
 A user has `notes` (P-281): free text, at most as long as the notes of a contact,
 10,000 characters, `null` unless given, and blank is none. `POST /users` and
 `PATCH /users/{hid}` take it, `null` or blank clearing it, and a change of it is
-audited as any change of a user is, with its old and new text.
+audited as any change of a user is, with its old and new text. The notes on an account
+are for an Admin: they are answered by `GET /users`, `GET /users/{hid}` and the routes
+that make and change a user, and never to the person themselves: `GET /auth/me` and
+the user in the answer of `POST /auth/sign-in` give `notes` as `null`, to anybody, an
+Admin too, in the one shape of a user, and `hirdir whoami` prints none.
 
 `POST /users` makes, in the one change, what a new person needs (P-282, P-283). It takes
 `group_hids`, the user groups the new user is put into, each membership audited as

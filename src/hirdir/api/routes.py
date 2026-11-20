@@ -81,13 +81,14 @@ def sign_in(body: schemas.SignIn, request: Request, db: Db) -> schemas.SessionOu
         signing_key=state.signing_key,
         session_hours=state.config.session_hours,
     )
-    return schemas.SessionOut(token=token, expires_at=expires_at, user=views.user_out(db, user))
+    return schemas.SessionOut(token=token, expires_at=expires_at, user=views.me_out(db, user))
 
 
 @auth.get("/me")
 def me(principal: SignedIn, db: Db) -> schemas.UserOut:
-    """Return the signed-in user, with the role they hold right now."""
-    return views.user_out(db, principal.user)
+    """Return the signed-in user, with the role they hold right now. Its `notes` are
+    null: the notes on an account are answered by the routes of users alone (P-281)."""
+    return views.me_out(db, principal.user)
 
 
 @auth.post("/sign-out-everywhere", status_code=204)

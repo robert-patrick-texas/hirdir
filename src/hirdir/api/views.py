@@ -37,6 +37,13 @@ def user_out(db: Session, user: User) -> schemas.UserOut:
     return users_out(db, [user])[0]
 
 
+def me_out(db: Session, user: User) -> schemas.UserOut:
+    """Return the signed-in user as it reads itself, by `GET /auth/me` and in the answer
+    of signing in: with no notes, for anybody, an Admin too. The notes on an account are
+    an Admin's, read by the routes of users alone (P-281)."""
+    return user_out(db, user).model_copy(update={"notes": None})
+
+
 def users_out(db: Session, users: Sequence[User]) -> list[schemas.UserOut]:
     """Return users with the role and groups each holds right now, the contact each is,
     whose name and email are the contact's, read now (P-172), and the operators each works

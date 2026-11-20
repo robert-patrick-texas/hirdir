@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.db.models import UserGroup
 from tests.api.inventory import API, Maker, errors
+from tests.conftest import ADMIN_CODE, VIEWER_CODE
 
 PERSON = {"name": "Example Person", "email": "example.person@example.net", "phone": "x1"}
 
@@ -482,6 +483,29 @@ def test_a_users_notes_are_set_changed_and_cleared_and_each_change_is_audited(
     assert by_notes == ["ex-a", "ex-b"]
     by_notes = [one for one in _usernames(desk, sort="-notes") if one in {"ex-a", "ex-b"}]
     assert by_notes == ["ex-b", "ex-a"]
+
+
+def test_the_notes_of_an_account_are_answered_to_an_admin_alone(
+    client: TestClient, admin: dict
+) -> None:
+    """A person never reads what an Admin wrote of their account: not from /auth/me, and
+    not from signing in; an Admin reads them by the routes of users alone (P-281)."""
+    desk = Maker(client, admin)
+    found = {one["username"]: one for one in desk.get("/users")["items"]}
+    for name in ("vic", "ada"):
+        desk.patch(
+            f"/users/{found[name]['hid']}",
+            {"row_version": found[name]["row_version"], "notes": f"Of {name}: ends in June."},
+        )
+    for name, code in (("vic", VIEWER_CODE), ("ada", ADMIN_CODE)):
+        signed = client.post(f"{API}/auth/sign-in", json={"username": name, "access_code": code})
+        assert signed.status_code == 200, signed.text
+        assert signed.json()["user"]["notes"] is None
+        token = {"Authorization": f"Bearer {signed.json()['token']}"}
+        assert client.get(f"{API}/auth/me", headers=token).json()["notes"] is None
+        assert desk.get(f"/users/{found[name]['hid']}")["notes"] == f"Of {name}: ends in June."
+    listed = {one["username"]: one["notes"] for one in desk.get("/users")["items"]}
+    assert listed["vic"] == "Of vic: ends in June."
 
 
 # --- roles -------------------------------------------------------------------------------

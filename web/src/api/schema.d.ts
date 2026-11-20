@@ -639,7 +639,10 @@ export interface paths {
     };
   };
   "/api/v1/auth/me": {
-    /** Return the signed-in user, with the role they hold right now. */
+    /**
+     * Return the signed-in user, with the role they hold right now. Its `notes` are
+     * null: the notes on an account are answered by the routes of users alone (P-281).
+     */
     get: {
       parameters: {
         query?: never;
@@ -13922,7 +13925,7 @@ export interface components {
       hid: string;
       is_service_account: boolean;
       last_sign_in_at: string | null;
-      /** What the account is for, who asked for it, when it is to end (P-281). */
+      /** What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody. */
       notes: string | null;
       /** The operators whose contact is the user's, retired ones among them, in the order of their labels; none for a user with no contact (P-280). */
       operators: components["schemas"]["OperatorBrief"][];

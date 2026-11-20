@@ -31777,7 +31777,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the account is for, who asked for it, when it is to end (P-281).",
+            "description": "What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody.",
             "title": "Notes"
           },
           "operators": {
@@ -33603,7 +33603,7 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Return the signed-in user, with the role they hold right now.",
+        "description": "Return the signed-in user, with the role they hold right now. Its `notes` are\nnull: the notes on an account are answered by the routes of users alone (P-281).",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
