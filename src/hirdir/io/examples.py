@@ -40,9 +40,14 @@ class Loaded:
     created: int
 
 
+def stem(entity: str) -> str:
+    """Return the name of the example file of an entity, without its extension."""
+    return entity.replace("_", "-")
+
+
 def file_name(entity: str, format_: str = FORMAT) -> str:
     """Return the name of the example file of an entity."""
-    return f"{entity.replace('_', '-')}.{format_}"
+    return f"{stem(entity)}.{format_}"
 
 
 def folder() -> Path:

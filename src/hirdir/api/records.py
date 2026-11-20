@@ -4793,6 +4793,30 @@ class ExportRequest(Model):
     include_drafts: bool = False
 
 
+class ExportTable(Model):
+    """One table that a file is taken for, as the Import page lists it (P-286)."""
+
+    entity: EntityName = Field(description="The name an import and an export know it by.")
+    label: str = Field(description="What it is called for people.")
+    file: str = Field(
+        description="The name its file has in `examples/` and in the zip of every table, "
+        "without the extension."
+    )
+    count: int = Field(
+        description="How many records it holds, the retired and the drafts among them."
+    )
+    columns: list[str] = Field(
+        description="The columns of its file, those an import reads, in their order: the "
+        "header row of its template."
+    )
+
+
+class ExportAllRequest(Model):
+    """The format of every file in the zip of every table."""
+
+    format: Literal["csv", "json"] = "csv"
+
+
 class BulkUpdate(Model):
     """One change to many items. The rows are named by a filter, by HIDs, or as all."""
 
