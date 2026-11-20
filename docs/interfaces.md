@@ -3060,20 +3060,43 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   to those behind no operator. The page of a contact behind no operator has Make an
   operator, as a user's has, with the username as the label where the contact is a
   user and the contact's name where it is not.
-- **Operators.** The list shows the user behind each operator as a link, for an Admin,
-  and Show narrows it to those with nobody behind them. In the New operator form,
-  choosing a person who is a user fills the label with the username while the label is
-  blank or is still what the form filled in. On the page of an operator, Details stands
-  above The person's email and numbers.
+- **Operators.** The list has a column User: the user behind each operator by its
+  username, a link to the user's page for an Admin and plain words for the other roles,
+  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  the list, Show leads, as the lists of users and of contacts do, by a link one press
+  away whose address holds the grid's own filter, to every operator, to those with no
+  user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
+  nobody behind them at all, `is_open:eq:true`; the one on show is marked as the
+  current page. In the New operator form the colour starts at `next_for_operators`
+  of a read of `GET /colours` begun as the form opened, until one is chosen; choosing a
+  person who is a user fills the label with the username while the label is blank or is
+  still what the form filled in, and a label typed by hand is kept. A Create pressed
+  before the username or the colour has come waits for them, says so, and then makes
+  the operator with them. On the page of an operator, Details stands above The person's
+  email and numbers, and the colour is shown on its chip.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
-  one picker (P-285): the grid of `GET /colours`, 64 swatches, each a button named by
-  its value, reached by Tab and moved through by the arrow keys; above it a slider of
-  the 32, whose steps move the choice in the grid; and the text box, which takes any
-  `#rrggbb`. The three are one value: pressing a swatch moves the slider and fills the
-  box, and a value typed that is of the grid marks its swatch, while one that is not
-  marks none and is kept as typed. The value is shown on a chip filled with the colour,
-  its text black or white, whichever has the greater contrast with it, and beside it
-  the label as the lists will show it. A blank value is no colour, as before.
+  one picker (P-285), a group named as the field is: the text box, which takes any
+  `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and
+  the grid of `GET /colours`, 64 swatches, each a button named by its hue, its shade
+  and its value (`orange, shade 3 of 8, #fb9d59`), the one chosen pressed, ringed and
+  ticked. The grid is one stop of Tab, at the swatch chosen or the first; the arrow
+  keys move within it, Home and End to the ends of a row and with Control to the
+  first and the last, and Enter or Space chooses. The three are one value: pressing a
+  swatch moves the slider and fills the box, and a value typed that is of the grid
+  marks its swatch, in either case, while one that is not marks none and is kept as
+  typed. The slider is a range input of 32 steps over a track that shows them, its
+  step said in words (`Step 5 of 32: orange, shade 3 of 8, #fb9d59`). A range input
+  always stands at a step: where the value is none of the 32, the slider rests at the
+  step nearest to it (of the same hue for a swatch of the grid, else nearest in red,
+  green and blue, the first for no colour), its thumb is drawn hollow and dashed, it
+  says `No step: #eeaa00 is not one of the 32`, and the first move, by a key or a press,
+  takes the value to the step it comes to. A value that is no colour is said at the box
+  once it is left or seven characters long, and the form sends nothing. The value is
+  shown on a chip filled with the colour, its text black or white, whichever has the
+  greater WCAG contrast with it, and beside it the label being typed as the lists will
+  show it, with an operator's dot or a tag's square. A blank value is no colour, as
+  before. The colours are read once for every picker on the page; until they come, the
+  text box takes a colour by itself. Admin › Tags shows each tag's colour on its chip.
 - **Import.** Above the upload, What can be loaded and exported lists every table of
   `GET /exports/tables` in the order of loading, each with how many records it holds
   and Export CSV and Export JSON, the whole table in the form that loads back. A table
