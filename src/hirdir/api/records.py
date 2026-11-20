@@ -766,7 +766,8 @@ class ContactOut(Model):
     is_user: bool = Field(description="The contact is the person a user is.")
     user: UserBrief | None = Field(description="The user this contact is, where it is one.")
     is_operator: bool = Field(
-        description="The contact stands behind an operator that is not retired (P-280)."
+        description="The contact, not retired, stands behind an operator that is not "
+        "retired: nobody is behind the operators of a retired contact (P-280)."
     )
     operators: list[OperatorBrief] = Field(
         description="The operators it stands behind, retired ones among them, in the order "

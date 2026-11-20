@@ -33,6 +33,7 @@ from hirdir.db.models import (
     VendorContact,
 )
 from hirdir.domain import audit, choices, contracts, geography, records, tags
+from hirdir.domain import operators as label_rules
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -496,10 +497,13 @@ def operators_of(db: Session, hids: list[str]) -> dict[str, list[Operator]]:
     return found
 
 
-def is_operator(operators: list[Operator]) -> bool:
+def is_operator(contact: Contact, operators: list[Operator]) -> bool:
     """Say whether a contact stands behind an operator, of those it stands behind, that
-    is not retired: one that is retired stands for nobody (P-280)."""
-    return any(operator.record_status != "retired" for operator in operators)
+    is not retired: one that is retired stands for nobody. A contact that is retired
+    stands behind none, as nobody is behind its labels (P-280)."""
+    return label_rules.behind(contact) and any(
+        operator.record_status != "retired" for operator in operators
+    )
 
 
 # --- assignments ---------------------------------------------------------------------

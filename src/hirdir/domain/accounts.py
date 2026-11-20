@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, exists, func, or_, select
+from sqlalchemy import ColumnElement, and_, exists, func, or_, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -114,26 +114,33 @@ def find_user(db: Session, username: str) -> User | None:
 
 
 def _behind_an_operator() -> ColumnElement[bool]:
-    """Say whether the contact of a user stands behind an operator that is not retired."""
-    return exists().where(
-        Operator.contact_hid == User.contact_hid, Operator.record_status != "retired"
+    """Say whether the contact of a user, the `Contact` the list joins, stands behind an
+    operator that is not retired: a retired contact stands behind none, as nobody is
+    behind its labels, by the rule each of the three lists follows (P-280)."""
+    return and_(
+        ~operators.nobody_behind(Contact),
+        exists().where(
+            Operator.contact_hid == User.contact_hid, Operator.record_status != "retired"
+        ),
     )
 
 
 def _narrowed(query: AnySelect, contact: str, operator: str) -> AnySelect:
-    """Narrow a list of users to those that are, or are not, a contact and an operator.
+    """Narrow a list of users, which joins their contacts, to those that are, or are not,
+    a contact and an operator.
 
     `some` keeps the users that are one, `none` those that are not, and `any` all of
-    them. A service account is no person and is in neither `none` (P-280).
+    them. A contact that is retired is as none. A service account is no person and is in
+    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280).
     """
     for name, value in (("contact", contact), ("operator", operator)):
         if value not in WHICH:
             raise Invalid(f"{name} is not acceptable", {name: "any, some or none"})
     person = User.is_service_account.is_(False)
     if contact == "some":
-        query = query.where(User.contact_hid.is_not(None))
+        query = query.where(~operators.nobody_behind(Contact))
     elif contact == "none":
-        query = query.where(person, User.contact_hid.is_(None))
+        query = query.where(person, operators.nobody_behind(Contact))
     if operator == "some":
         query = query.where(_behind_an_operator())
     elif operator == "none":
