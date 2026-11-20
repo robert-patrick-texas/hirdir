@@ -3200,6 +3200,39 @@ table.load-table th.load-band {
   max-width: 40rem;
 }
 
+/* The Users list in view at 1280 pixels (P-280, P-281): the email beneath the name, the
+   two numbers one above the other, a long word broken where it must be, and the notes
+   cut short to their column, the whole of them on hover and on the user's page. */
+.user-person .user-email,
+.user-numbers > span {
+  display: block;
+}
+
+.user-person .user-email {
+  color: var(--muted);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.user-numbers {
+  white-space: nowrap;
+}
+
+table[data-testid="users"] th[scope="row"],
+.scroll td.user-operators .operator-mark,
+.scroll td.user-operators .operator-mark > a {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.user-notes-text {
+  display: block;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 0.9.13, lane w-export-0.9.13 */
 
 /* The Import page: the upload, and beside it every table a file is taken for (P-286).

@@ -214,8 +214,20 @@ test("P-283: a new engineer is made by one Create, and read on the three lists",
     new RegExp(`background-color: ${rgbOf(chosen)}`),
   );
 
-  // The Users list: the contact and the operator, each a link, the role, both groups, the notes.
+  // The Users list: the contact and the operator, each a link, the role, both groups, the
+  // notes; every column in view on a screen 1280 pixels wide, Notes cut short to its
+  // column with the whole of them on hover.
+  await page.setViewportSize({ width: 1280, height: 800 });
   const rows = await usersListed(page, "");
+  const table = page.getByTestId("users");
+  expect(
+    await table.evaluate((element) => {
+      const box = element.closest(".scroll") ?? element;
+      return box.scrollWidth <= box.clientWidth;
+    }),
+    "the list of users fits its box at 1280 pixels",
+  ).toBe(true);
+  await expect(table.getByRole("columnheader", { name: "Notes" })).toBeInViewport({ ratio: 1 });
   const row = rows.and(page.locator(`[data-user="${engineer.username}"]`));
   await expect(row.getByTestId("user-name").getByRole("link")).toHaveText(engineer.name);
   await expect(row.getByTestId("user-operators").getByRole("link")).toHaveText(engineer.username);
@@ -223,6 +235,8 @@ test("P-283: a new engineer is made by one Create, and read on the three lists",
   await expect(row.getByRole("link", { name: networkName })).toBeVisible();
   await expect(row.getByRole("link", { name: serversName })).toBeVisible();
   await expect(row.getByTestId("user-notes")).toHaveText(engineer.notes);
+  await expect(row.getByTestId("user-notes")).toHaveAttribute("title", engineer.notes);
+  await expect(row.getByTestId("user-email")).toHaveText(engineer.email);
   await row.getByRole("rowheader").getByRole("link").click();
   made.engineer = new URL(page.url()).pathname;
   made.users.push(decodeURIComponent(made.engineer.split("/").at(-1) ?? ""));

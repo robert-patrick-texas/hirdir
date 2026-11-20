@@ -3095,7 +3095,11 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   a link to every user, one to the users with no contact and one to those with no
   operator, each an address of its own, `contact=none` and `operator=none` beside the
   search, so that a link to a gap can be sent; the one on show is marked. The Operators
-  and Notes columns sort as the others do. Export CSV saves the file of
+  and Notes columns sort as the others do. So that every column, Notes among them, is
+  in view on a screen 1280 pixels wide, the email stands beneath the name in the Name
+  cell, the two numbers stand in one cell, Numbers, one above the other, and a long
+  note is cut short to its column, the whole of it shown on hover and on the user's
+  page. Export CSV saves the file of
   `POST /users/export` under the name the server gives it.
 - **New user.** One form makes the user, the contact and the operator (P-283). It has
   Also a contact, ticked from the start, with the name, the email and the numbers, or a

@@ -167,7 +167,8 @@ export function Users() {
           <div className="scroll">
             <table data-testid="users" data-gap={gap || undefined}>
               <caption className="visually-hidden">
-                Users, each with the contact it is and the operators it works as
+                Users, each with the contact it is, its email and numbers, and the operators it
+                works as
                 {gap === "no-contact" && ": those with no contact"}
                 {gap === "no-operator" && ": those with no operator"}
               </caption>
@@ -179,9 +180,7 @@ export function Users() {
                   <SortTh sort={sort.header("display_name", holdsAll)} column="display_name">
                     Name
                   </SortTh>
-                  <th scope="col">Email</th>
-                  <th scope="col">Phone</th>
-                  <th scope="col">Second phone</th>
+                  <th scope="col">Numbers</th>
                   <SortTh sort={sort.header("operators", holdsAll)} column="operators">
                     Operators
                   </SortTh>
@@ -218,27 +217,37 @@ export function Users() {
                       </Link>
                     </th>
                     {/* 0.9.3: the name, email and numbers of its contact (P-172). 0.9.13: the
-                        contact as a link to its page, or no contact said plainly (P-280). */}
-                    <td data-testid="user-name">
-                      {user.contact ? (
-                        <>
-                          <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>
-                            {user.display_name}
-                          </Link>
-                          {user.contact.record_status === "retired" && (
-                            <span className="badge">Retired</span>
-                          )}
-                        </>
-                      ) : user.is_service_account ? (
-                        <span className="muted">Service account</span>
-                      ) : (
-                        <span className="people-gap">no contact</span>
+                        contact as a link to its page, or no contact said plainly (P-280);
+                        the email beneath the name and the two numbers in one cell, one
+                        above the other, so that every column is in view at 1280 pixels. */}
+                    <td className="user-person">
+                      <span data-testid="user-name">
+                        {user.contact ? (
+                          <>
+                            <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>
+                              {user.display_name}
+                            </Link>
+                            {user.contact.record_status === "retired" && (
+                              <span className="badge">Retired</span>
+                            )}
+                          </>
+                        ) : user.is_service_account ? (
+                          <span className="muted">Service account</span>
+                        ) : (
+                          <span className="people-gap">no contact</span>
+                        )}
+                      </span>
+                      {user.email && (
+                        <span className="user-email" data-testid="user-email">
+                          {user.email}
+                        </span>
                       )}
                     </td>
-                    <td data-testid="user-email">{user.email}</td>
-                    <td data-testid="user-phone">{user.contact?.phone}</td>
-                    <td data-testid="user-phone2">{user.contact?.phone2}</td>
-                    <td data-testid="user-operators">
+                    <td className="user-numbers">
+                      <span data-testid="user-phone">{user.contact?.phone}</span>
+                      <span data-testid="user-phone2">{user.contact?.phone2}</span>
+                    </td>
+                    <td className="user-operators" data-testid="user-operators">
                       <UserOperators user={user} />
                     </td>
                     <td>
@@ -259,14 +268,19 @@ export function Users() {
                     <td>
                       <Time at={user.last_sign_in_at} />
                     </td>
-                    <td className="user-notes" data-testid="user-notes">
-                      {user.notes}
+                    {/* Cut short to its column, the whole of it on hover and on the page. */}
+                    <td
+                      className="user-notes"
+                      data-testid="user-notes"
+                      title={user.notes ?? undefined}
+                    >
+                      <span className="user-notes-text">{user.notes}</span>
                     </td>
                   </tr>
                 ))}
                 {users.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="muted">
+                    <td colSpan={10} className="muted">
                       {noUsers(q, gap)}
                     </td>
                   </tr>
