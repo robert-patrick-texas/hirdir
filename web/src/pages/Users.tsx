@@ -342,7 +342,7 @@ function UserOperators({ user }: { user: User }) {
     return (
       <span className="people-marks">
         {user.operators.map((operator) => (
-          <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+          <OperatorMark key={operator.hid} mark={briefMark(operator, user.contact)} />
         ))}
       </span>
     );

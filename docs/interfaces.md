@@ -3089,7 +3089,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
 - **Users.** Each row shows the contact the user is and the operators it works as, each
   a link to that record's page, the operator as its label with its colour, and plain
   words where there is none, `no contact` and `no operator`; and the notes of the
-  account; a service account says neither, being no person. Above the list, Show has
+  account; a service account says neither, being no person. Where the user's contact is
+  retired, its operators' marks say `open`, nobody being behind them, as the Operators
+  list says it, and a released operator is marked released. Above the list, Show has
   a link to every user, one to the users with no contact and one to those with no
   operator, each an address of its own, `contact=none` and `operator=none` beside the
   search, so that a link to a gap can be sent; the one on show is marked. The Operators
@@ -3123,7 +3125,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   the field, to be put right and made from there.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
   stands behind, as links, in the column Operators, which filters and sorts by
-  `is_operator`; Show has a link to every contact and one to each gap, the contacts
+  `is_operator`, a released one written `label (released)`; and plain words where there
+  is none, `no user` and `no operator`, as the other two lists say theirs. Show has a
+  link to every contact and one to each gap, the contacts
   that are no user and those behind no operator, each starting the grid with its
   filter (`is_user:eq:false`, `is_operator:eq:false`). A press of a gap starts the grid
   on it again even where the address is already its own, after the grid's filter was

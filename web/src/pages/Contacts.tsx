@@ -27,8 +27,13 @@ import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useChoices, useTags } from "../lib/lists";
-import { briefMark, CONTACTS_GAPS, contactsAddress, operatorLabelOf } from "../lib/onboarding";
-import { operatorPath } from "../lib/operators";
+import {
+  briefMark,
+  CONTACTS_GAPS,
+  contactsAddress,
+  operatorLabelOf,
+  operatorsCell,
+} from "../lib/onboarding";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { kindPath } from "../lib/preview";
@@ -71,7 +76,8 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "User",
     kind: "boolean",
     column: "user",
-    value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : ""),
+    // 0.9.13: no user, said in plain words, as the lists of users and operators say theirs.
+    value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : "no user"),
     choices: [
       { value: "true", label: "A user: signs in to hirdir" },
       { value: "false", label: "No user" },
@@ -85,12 +91,9 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "Operators",
     kind: "boolean",
     column: null,
-    value: (contact) => contact.operators.map((operator) => operator.label).join(", "),
-    links: (contact) =>
-      contact.operators.map((operator) => ({
-        text: operator.label,
-        path: operatorPath(operator.hid),
-      })),
+    // A released one is marked so; none is said in plain words.
+    value: (contact) => operatorsCell(contact.operators).text,
+    links: (contact) => operatorsCell(contact.operators).links,
     choices: [
       { value: "true", label: "Behind an operator" },
       { value: "false", label: "Behind no operator" },
@@ -364,7 +367,7 @@ export function ContactDetail() {
               {record.operators.length > 0 ? (
                 <span className="people-marks">
                   {record.operators.map((operator) => (
-                    <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+                    <OperatorMark key={operator.hid} mark={briefMark(operator, record)} />
                   ))}
                 </span>
               ) : (

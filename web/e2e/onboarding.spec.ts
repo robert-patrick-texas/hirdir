@@ -496,6 +496,9 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   found = await narrowed(`is_user:eq:false name:contains:${suffix}`);
   await expect(found).toHaveCount(1);
   await expect(names).toHaveText(`Taken Example ${suffix}`);
+  // Neither, said in plain words, as the other two lists say theirs.
+  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
+  await expect(grid.locator('[row-id] [col-id="is_operator"]')).toHaveText("no operator");
   await expectClean(page, seen);
 });
 
@@ -528,8 +531,61 @@ test("P-284: an operator is made in one press, from a user's page and from a con
     data: { row_version: ((await contact.json()) as { row_version: number }).row_version },
   });
   expect(retired.status()).toBe(200);
+  // A user whose contact stands behind an operator, and is then retired: the label is open.
+  const kai = await createAccount(request, `e2e-${suffix}-kai`, null, {
+    name: `Kai Example ${suffix}`,
+  });
+  made.users.push(kai.hid);
+  const kaiRead = await request.get(`./api/v1/users/${kai.hid}`, { headers });
+  const kaiContact = ((await kaiRead.json()) as { contact: { hid: string } }).contact.hid;
+  await make(request, headers, "/operators", {
+    label: `${suffix}-kai`,
+    contact_hid: kaiContact,
+    record_status: "active",
+  });
+  const kaiVersion = await request.get(`./api/v1/contacts/${kaiContact}`, { headers });
+  const kaiRetired = await request.post(`./api/v1/contacts/${kaiContact}/retire`, {
+    headers,
+    data: { row_version: ((await kaiVersion.json()) as { row_version: number }).row_version },
+  });
+  expect(kaiRetired.status()).toBe(200);
+  // A contact behind one operator, which is then released.
+  const joEmail = `jo.${suffix}@example.net`;
+  const jo = await make(request, headers, "/contacts", {
+    name: `Jo Example ${suffix}`,
+    email: joEmail,
+    record_status: "active",
+  });
+  const joOperator = await make(request, headers, "/operators", {
+    label: `${suffix}-jo`,
+    contact_hid: jo.hid,
+    record_status: "active",
+  });
+  const joRead = await request.get(`./api/v1/operators/${joOperator.hid}`, { headers });
+  const released = await request.post(`./api/v1/operators/${joOperator.hid}/retire`, {
+    headers,
+    data: { row_version: ((await joRead.json()) as { row_version: number }).row_version },
+  });
+  expect(released.status()).toBe(200);
   const seen = await watch(page.context());
   await signIn(page, account);
+
+  // The Users list says the label of a user whose contact is retired is open, nobody
+  // behind it; the Contacts list marks a released label so.
+  const rows = await usersListed(page, "");
+  const kaiMark = rows
+    .and(page.locator(`[data-user="${kai.username}"]`))
+    .getByTestId("user-operators")
+    .locator(".operator-mark");
+  await expect(kaiMark).toHaveAttribute("data-open", "true");
+  await expect(kaiMark).toContainText("open");
+  await page.goto(`./contacts?filter=${encodeURIComponent(`email:eq:${joEmail}`)}`);
+  const contacts = page.getByTestId("grid-contacts");
+  await expect(contacts.locator("[row-id]")).toHaveCount(1);
+  await expect(contacts.locator('[row-id] [col-id="is_operator"]')).toHaveText(
+    `${suffix}-jo (released)`,
+  );
+  await expect(contacts.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
 
   // Its page offers no Make an operator, which would be refused, and says why.
   await openUser(page, retiredUser.hid, retiredUser.username);

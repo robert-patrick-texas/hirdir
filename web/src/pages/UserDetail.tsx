@@ -113,7 +113,7 @@ function Facts({ user }: { user: User }) {
             {user.operators.length > 0 && (
               <span className="people-marks">
                 {user.operators.map((operator) => (
-                  <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+                  <OperatorMark key={operator.hid} mark={briefMark(operator, user.contact)} />
                 ))}
               </span>
             )}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   behindOperator,
   briefMark,
+  briefText,
   CONTACTS_GAPS,
   contactsAddress,
   followedLabel,
@@ -13,6 +14,7 @@ import {
   newUserBody,
   newUserErrors,
   operatorLabelOf,
+  operatorsCell,
   queryOf,
   refusedField,
   typeLabel,
@@ -184,6 +186,31 @@ describe("who is what, on the lists of people (P-280)", () => {
     });
     expect(briefMark(brief("ex-ops", "retired")).released).toBe(true);
     expect(briefMark({ ...brief("ex-ops", "active"), colour: "red" }).colour).toBeNull();
+  });
+
+  it("marks an operator open where the contact behind it is retired", () => {
+    const left = briefMark(brief("ex-ops", "active"), {
+      name: "Example Person",
+      record_status: "retired",
+    });
+    expect(left).toMatchObject({ open: true, person: "Example Person", released: false });
+    const there = briefMark(brief("ex-ops", "active"), {
+      name: "Example Person",
+      record_status: "active",
+    });
+    expect(there).toMatchObject({ open: false, person: "" });
+    expect(briefMark(brief("ex-ops", "active"), null).open).toBe(false);
+  });
+
+  it("writes a contact's operators on the list: released ones marked, none in words", () => {
+    expect(operatorsCell([])).toEqual({ text: "no operator", links: [] });
+    const cell = operatorsCell([brief("old", "retired"), brief("new", "active")]);
+    expect(cell.text).toBe("old (released), new");
+    expect(cell.links).toEqual([
+      { text: "old (released)", path: "/operators/O-old" },
+      { text: "new", path: "/operators/O-new" },
+    ]);
+    expect(briefText(brief("new", "draft"))).toBe("new");
   });
 
   it("counts a person behind retired operators alone as behind none", () => {

@@ -5,7 +5,7 @@
 
 import type { Schemas } from "../api/client";
 import { type FilterNode, formatShort, parseShort } from "./filter";
-import { type Mark, safeColour } from "./operators";
+import { type Mark, operatorPath, safeColour } from "./operators";
 import { NEW_PERSON_FIELDS, newPersonErrors, type PersonChoice, readPerson } from "./people";
 import { roleLabel } from "./roles";
 
@@ -121,14 +121,44 @@ export function newUserBody(
  * link to its page, and released where it is retired. Who is behind it is the person
  * whose page or row it is on, and is not said again.
  */
-export function briefMark(operator: Schemas["OperatorBrief"]): Mark {
+export function briefMark(
+  operator: Schemas["OperatorBrief"],
+  behind?: { name: string; record_status: string } | null,
+): Mark {
+  // A retired contact stands behind nothing: the label is open, as the Operators list
+  // says it, and its title names who was behind it.
+  const left = behind?.record_status === "retired";
   return {
     hid: operator.hid,
     label: operator.label,
     colour: safeColour(operator.colour),
-    person: "",
-    open: false,
+    person: left ? (behind?.name ?? "") : "",
+    open: left,
     released: operator.record_status === "retired",
+  };
+}
+
+/** An operator a contact names, as a cell of the list says it: released where retired. */
+export function briefText(operator: Schemas["OperatorBrief"]): string {
+  return operator.record_status === "retired" ? `${operator.label} (released)` : operator.label;
+}
+
+/**
+ * The cell of a contact's operators on the list of contacts (P-280): each a link to its
+ * page, a released one marked so, as the lists of users and the pages mark it, and
+ * `no operator` in plain words where there is none.
+ */
+export function operatorsCell(operators: readonly Schemas["OperatorBrief"][]): {
+  text: string;
+  links: { text: string; path: string }[];
+} {
+  const links = operators.map((operator) => ({
+    text: briefText(operator),
+    path: operatorPath(operator.hid),
+  }));
+  return {
+    text: links.length > 0 ? links.map((link) => link.text).join(", ") : "no operator",
+    links,
   };
 }
 
