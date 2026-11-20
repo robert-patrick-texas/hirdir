@@ -3158,7 +3158,7 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   step nearest to it (of the same hue for a swatch of the grid, else nearest in red,
   green and blue, the first for no colour), its thumb is drawn hollow and dashed, it
   says `No step: #eeaa00 is not one of the 32`, and the first move, by a key or a press,
-  takes the value to the step it comes to. A value that is no colour is said at the box
+  takes the value to the step it comes to, a press at the step it rests at among them. A value that is no colour is said at the box
   once it is left or seven characters long, and the form sends nothing. The value is
   shown on a chip filled with the colour, its text black or white, whichever has the
   greater WCAG contrast with it, and beside it the label being typed as the lists will
