@@ -26,7 +26,11 @@ describe("a group's box says what the group grants (P-282)", () => {
   it("names each role as people read it, or that it grants none", () => {
     expect(groupGrants(["inventory"])).toBe("grants Inventory");
     expect(groupGrants(["viewer", "admin"])).toBe("grants View-only, Admin");
-    expect(groupGrants([])).toBe("grants no role");
+    expect(groupGrants([])).toBe("grants nothing");
+    // The box is named by it in the New user form, beside the field Role.
+    for (const roles of [[], ["admin"], ["viewer", "inventory"]]) {
+      expect(groupGrants(roles)).not.toMatch(/role/i);
+    }
   });
 });
 

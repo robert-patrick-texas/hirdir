@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, useState } from "react";
+import { type FormEvent, Fragment, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { ColourPicker, useColours } from "../components/ColourPicker";
@@ -10,6 +10,7 @@ import {
   TextField,
 } from "../components/Field";
 import { GapLinks } from "../components/GapLinks";
+import { saveFile } from "../components/grid/save";
 import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { PersonChooser } from "../components/Person";
@@ -131,6 +132,7 @@ export function Users() {
             New user
           </button>
         )}
+        <ExportUsers />
       </div>
 
       {adding && (
@@ -282,6 +284,43 @@ export function Users() {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * 0.9.13: the users saved as a CSV file, every one of them, with the name the server
+ * gives the file (P-288). The file holds no access code and no token; the export is
+ * audited. It is fetched with the bearer token and saved from memory, as a grid's is.
+ */
+function ExportUsers() {
+  const action = useAction();
+  const [done, setDone] = useState("");
+  // Held at once, before the page draws the button as busy: a second press sends nothing.
+  const out = useRef(false);
+
+  async function save() {
+    if (out.current) return;
+    out.current = true;
+    setDone("");
+    // The route takes no body; the client's type of a download asks for one.
+    const result = await action.run(() =>
+      api.download("/api/v1/users/export", { body: undefined as never }),
+    );
+    out.current = false;
+    if (!result.ok) return;
+    const name = result.value.fileName ?? "users.csv";
+    saveFile(result.value.blob, name);
+    setDone(`Exported to ${name}.`);
+  }
+
+  return (
+    <div className="export-users">
+      <button type="button" onClick={() => void save()} disabled={action.busy}>
+        Export CSV<span className="visually-hidden"> of the users</span>
+      </button>
+      <Problem error={action.error} />
+      <Notice text={done} />
+    </div>
   );
 }
 

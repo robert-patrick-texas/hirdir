@@ -8,9 +8,12 @@ import { type Mark, safeColour } from "./operators";
 import { NEW_PERSON_FIELDS, newPersonErrors, type PersonChoice, readPerson } from "./people";
 import { roleLabel } from "./roles";
 
-/** What a group grants, said beside its box: "grants Inventory", or that it grants none. */
+/**
+ * What a group grants, said beside its box: "grants Inventory", or that it grants nothing.
+ * It names the box in the New user form, beside the field Role: it does not say "role".
+ */
 export function groupGrants(roles: readonly string[]): string {
-  if (roles.length === 0) return "grants no role";
+  if (roles.length === 0) return "grants nothing";
   return `grants ${roles.map((role) => roleLabel(role)).join(", ")}`;
 }
 
