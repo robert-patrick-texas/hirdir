@@ -50,7 +50,7 @@ and CLI's types are generated from it.
 | References | `GET` and `POST /reference-files`, `POST /reference-files/links`, `GET`, `PATCH` and `DELETE /reference-files/{hid}`, `GET` and `PUT /reference-files/{hid}/content`, `POST /reference-files/{hid}/attachments`, `DELETE /reference-files/{hid}/attachments/{attachment_hid}`; `GET /catalog-entries/{hid}/references`, `GET /regions/{hid}/references`, `GET /sites/{hid}/references`, `GET /locations/{hid}/references`, `GET /circuits/{hid}/references` and `GET /items/{hid}/references` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
-| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports` |
+| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `GET /imports/{hid}/created`, `POST /exports`, `GET /exports/tables`, `POST /exports/all`; `POST /users/export` (Admin) |
 | Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/circuit-costs`, `/reports/duplicates` |
 | Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
@@ -788,7 +788,7 @@ its method alone:
 
 | A request | In the measure of time | Refused |
 |---|:-:|---|
-| Long by nature: everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check`. Seconds of one say nothing of the server | no | while the health is `very_slow` or `busy` |
+| Long by nature: everything under `/reports`, with `POST /reports/capacity/try`; `POST /exports`, `POST /exports/all` and `POST /users/export`; the previews, `POST /imports/preview` and `POST /items/bulk-update`; and `POST /kept-answers/check`. Seconds of one say nothing of the server | no | while the health is `very_slow` or `busy` |
 | A read: every other `GET` of the API, the pages of lists among them, and the `POST .../query` that asks for a page of a list | yes | while the health is `busy` |
 | Kept: `POST /auth/sign-in` and the rest of `/auth`, and every request that stores a change, which is every other `POST`, `PUT`, `PATCH` and `DELETE`, applying a preview among them. A save that takes four seconds is a slow server | yes | never |
 | Apart: `/health/live` and `/health/ready`; `GET /about` and `GET /about/load`; `GET /settings`, so that an Admin who set the ceiling too low can set it again; `GET /openapi.json`; and a request that no route answers. They are asked for by the clock and answered at once | no | never |
@@ -1371,28 +1371,47 @@ Since 0.9.13 every table that a file is taken for is exported from one place (P-
 `GET /exports/tables`, for every role, lists them in the order in which their files
 are loaded, each with `entity`, the name an import and an export know it by; `label`;
 `file`, the name its file has in `examples/` without the extension; `count`, how many
-records the table holds, the retired among them; and `columns`, the columns of its
-file, those an import reads, in their order. `POST /exports` of a table that holds
-nothing gives the header row and no more as CSV, which is the template of its import,
-and the envelope with no rows as JSON.
+records the table holds, the retired and the drafts among them, each table counted
+once; and `columns`, the columns of its file, those an import reads, in their order,
+which are the header row an export writes when it is not asked for other columns.
+`POST /exports` of a table that holds nothing gives the header row and no more as CSV,
+which is the template of its import, and the envelope with no rows as JSON.
 
-`POST /exports/all` takes `format`, `csv` or `json`, and answers one zip: a file to
-each table, named as `examples/` names it, in the order of loading, each the export of
-the whole table in the form that loads back, the stored values and the retired
-included. The users are not in it. It is audited as an export is, once.
+`POST /exports/all`, for every role, takes `format`, `csv` or `json`, and answers one
+zip, `Example-Inventory-all-csv-20261120T101500-0500.zip`, named as any download is: a
+file to each table, named as `examples/` names it, `tags.csv` to `circuit-devices.csv`,
+in the order of loading, each the export of the whole table in the form that loads
+back, the stored values and the retired and the drafts included, the items by depth so
+that an item stands before the minor items in it. Each file is written as it is read,
+a piece at a time, and the zip goes out as it is written; the tables are read one
+after another, each in statements of its own, so an export of everything taken while
+somebody is changing records holds each table as it was when it was read. The users
+are not in it. It changes nothing, and it is audited, as the export of one table is
+not: an event `export` of the record type `inventory`, with no record, that holds the
+name of the file, the `format` and how many `tables`, so that the trail says who took
+the whole inventory out and when. The event is stored before the first piece of the
+file is sent. An export is no change of the inventory, and no kept answer is worked
+out again for one.
 
 What is exported loads back. The file of any table, as `POST /exports` gives it with
 `own_values`, the archived and the drafts included, previewed as an import into the
 inventory it came from, changes nothing: every row is `unchanged` and none is
 rejected, in both formats, for every table. A test holds it over all of them.
 
-`POST /users/export`, for an Admin, answers the users as CSV (P-288): a row to each
-user, by username, with `username`, `name`, `email`, `phone`, `phone2`, `role`, the
-role in force, `groups`, `operators`, the labels of those that are not retired, `kind`,
-`person` or `service`, `state`, `enabled` or `disabled`, `last_sign_in_at` and `notes`;
-several groups or operators stand in one cell, separated as the other files separate
-several values. It holds no access code, no token and no hash of either. It is audited
-as an export is. No file makes or changes a user.
+`POST /users/export`, for an Admin, answers the users as CSV (P-288),
+`Example-Inventory-users-20261120T101500-0500.csv`: a row to each user, by username,
+with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a user
+with no contact, `role`, the role in force, granted to the user or to a group it is in,
+blank where it has none, `groups`, by name, `operators`, the labels of those behind
+which its contact stands and that are not retired, `kind`, `person` or `service`,
+`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC, and `notes`; several
+groups or operators stand in one cell, separated by `;` as the other files separate
+several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
+are. It holds no access code, no token and no hash of either, and no column beyond
+these twelve. It is audited: an event `export` of the record type `user`, with no
+record of its own, whose `changes` hold `file_name` and `users`, how many rows the
+file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
+a user.
 
 ### The records an import made
 
@@ -2567,6 +2586,7 @@ hirdir items make-stack site2-sw-access-07 --name site2-sw-stack12 --member FCW0
 hirdir replacements remove <hid> --reason 'recorded on the wrong switch'   # an Admin: asks first
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
 hirdir export items --own-values --place-codes --output items.csv   # places as S2 > R102
+hirdir export --all --output everything.zip      # every table, whole, a file to each in one zip
 hirdir report summary --by health --format json
 hirdir report management                         # by site
 hirdir report management --by owner
@@ -2649,6 +2669,7 @@ refused leaves the others as they went.
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
+| Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, filter, sort or columns: each table is whole, in the form that loads back (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
@@ -3060,20 +3081,43 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   to those behind no operator. The page of a contact behind no operator has Make an
   operator, as a user's has, with the username as the label where the contact is a
   user and the contact's name where it is not.
-- **Operators.** The list shows the user behind each operator as a link, for an Admin,
-  and Show narrows it to those with nobody behind them. In the New operator form,
-  choosing a person who is a user fills the label with the username while the label is
-  blank or is still what the form filled in. On the page of an operator, Details stands
-  above The person's email and numbers.
+- **Operators.** The list has a column User: the user behind each operator by its
+  username, a link to the user's page for an Admin and plain words for the other roles,
+  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  the list, Show leads, as the lists of users and of contacts do, by a link one press
+  away whose address holds the grid's own filter, to every operator, to those with no
+  user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
+  nobody behind them at all, `is_open:eq:true`; the one on show is marked as the
+  current page. In the New operator form the colour starts at `next_for_operators`
+  of a read of `GET /colours` begun as the form opened, until one is chosen; choosing a
+  person who is a user fills the label with the username while the label is blank or is
+  still what the form filled in, and a label typed by hand is kept. A Create pressed
+  before the username or the colour has come waits for them, says so, and then makes
+  the operator with them. On the page of an operator, Details stands above The person's
+  email and numbers, and the colour is shown on its chip.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
-  one picker (P-285): the grid of `GET /colours`, 64 swatches, each a button named by
-  its value, reached by Tab and moved through by the arrow keys; above it a slider of
-  the 32, whose steps move the choice in the grid; and the text box, which takes any
-  `#rrggbb`. The three are one value: pressing a swatch moves the slider and fills the
-  box, and a value typed that is of the grid marks its swatch, while one that is not
-  marks none and is kept as typed. The value is shown on a chip filled with the colour,
-  its text black or white, whichever has the greater contrast with it, and beside it
-  the label as the lists will show it. A blank value is no colour, as before.
+  one picker (P-285), a group named as the field is: the text box, which takes any
+  `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and
+  the grid of `GET /colours`, 64 swatches, each a button named by its hue, its shade
+  and its value (`orange, shade 3 of 8, #fb9d59`), the one chosen pressed, ringed and
+  ticked. The grid is one stop of Tab, at the swatch chosen or the first; the arrow
+  keys move within it, Home and End to the ends of a row and with Control to the
+  first and the last, and Enter or Space chooses. The three are one value: pressing a
+  swatch moves the slider and fills the box, and a value typed that is of the grid
+  marks its swatch, in either case, while one that is not marks none and is kept as
+  typed. The slider is a range input of 32 steps over a track that shows them, its
+  step said in words (`Step 5 of 32: orange, shade 3 of 8, #fb9d59`). A range input
+  always stands at a step: where the value is none of the 32, the slider rests at the
+  step nearest to it (of the same hue for a swatch of the grid, else nearest in red,
+  green and blue, the first for no colour), its thumb is drawn hollow and dashed, it
+  says `No step: #eeaa00 is not one of the 32`, and the first move, by a key or a press,
+  takes the value to the step it comes to. A value that is no colour is said at the box
+  once it is left or seven characters long, and the form sends nothing. The value is
+  shown on a chip filled with the colour, its text black or white, whichever has the
+  greater WCAG contrast with it, and beside it the label being typed as the lists will
+  show it, with an operator's dot or a tag's square. A blank value is no colour, as
+  before. The colours are read once for every picker on the page; until they come, the
+  text box takes a colour by itself. Admin › Tags shows each tag's colour on its chip.
 - **Import.** Above the upload, What can be loaded and exported lists every table of
   `GET /exports/tables` in the order of loading, each with how many records it holds
   and Export CSV and Export JSON, the whole table in the form that loads back. A table

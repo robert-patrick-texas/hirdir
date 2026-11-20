@@ -3772,6 +3772,65 @@ export interface paths {
       };
     };
   };
+  "/api/v1/exports/all": {
+    /**
+     * Export every table at once: one zip, a file to each table, named as `examples/`
+     * names it, in the order files are loaded, each the whole table in the form that loads
+     * back, its stored values and its retired and drafts among them (P-286). The users are
+     * not in it. Audited: that the whole inventory was taken out, by whom and when.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ExportAllRequest"];
+        };
+      };
+      responses: {
+        /** One zip, a file to each table. */
+        200: {
+          content: {
+            "application/zip": unknown;
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/exports/tables": {
+    /**
+     * List every table that a file is taken for, in the order files are loaded, each
+     * with how many records it holds and the columns of its file (P-286).
+     *
+     * A table that holds nothing is exported all the same: as CSV it is its header row and
+     * no more, the template of its import.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ExportTable"][];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/external-systems": {
     /** List external systems, by name unless a sort says otherwise. */
     get: {
@@ -8213,6 +8272,29 @@ export interface paths {
       };
     };
   };
+  "/api/v1/users/export": {
+    /**
+     * Export the users as CSV, a row to each, by username (P-288): its person, the role
+     * in force, its groups and operators, its kind and state, when it last signed in, and
+     * its notes. No access code, token or hash of either is in it. Audited.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** The file, as an attachment. */
+        200: {
+          content: {
+            "text/csv": unknown;
+          };
+        };
+      };
+    };
+  };
   "/api/v1/users/{hid}": {
     /** Return one user. */
     get: {
@@ -10723,6 +10805,10 @@ export interface components {
       total: number;
       within_days: number;
     };
+    /** The format of every file in the zip of every table. */
+    ExportAllRequest: {
+      format?: "csv" | "json";
+    };
     /** What to export. The filter and the sort are those of a list. */
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
@@ -10744,6 +10830,19 @@ export interface components {
       /** Write each place the short way, by the codes of its site and its own: `S2 > R102`, with names where a place has no code (P-235). */
       place_codes?: boolean;
       sort?: string[];
+    };
+    /** One table that a file is taken for, as the Import page lists it (P-286). */
+    ExportTable: {
+      /** The columns of its file, those an import reads, in their order: the header row of its template. */
+      columns: string[];
+      /** How many records it holds, the retired and the drafts among them. */
+      count: number;
+      /** The name an import and an export know it by. */
+      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
+      /** The name its file has in `examples/` and in the zip of every table, without the extension. */
+      file: string;
+      /** What it is called for people. */
+      label: string;
     };
     /** A new external system. */
     ExternalSystemCreate: {

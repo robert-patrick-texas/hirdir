@@ -31,7 +31,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { count, importFile, main, openItem, pick, region, summary, whenApplied } from "./structure";
-import { expectClean, mark, signIn, test, watch } from "./support";
+import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
@@ -149,7 +149,8 @@ test("labels are made; a site, a stack and a switch are given one, and what is b
   await page.getByRole("button", { name: "New operator" }).click();
   const form = region(page, "New operator");
   await form.getByLabel("Label (required)").fill(core);
-  await form.getByLabel("Colour").fill("#1f6feb");
+  // 0.9.13: the colour is typed in the picker's box, which takes any #rrggbb (P-285).
+  await form.getByLabel("Colour", { exact: true }).fill("#1f6feb");
   await form.getByRole("radio", { name: "Another contact", exact: true }).check();
   await form.getByLabel("Contact", { exact: true }).fill(leeMail.split("@")[0] ?? "");
   await form
@@ -744,4 +745,133 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   await expect(page.getByTestId("place-path")).toHaveText(sitePath);
 
   await expectClean(page, seen);
+});
+
+test("0.9.13: an operator made for a user takes its username and the next colour, reads details first, and the list says the user behind each and finds the gaps", async ({
+  page,
+  account,
+  request,
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  // A member of the team who signs in, a View-only user whose contact is a person.
+  const person = `Example Person ${id}`;
+  const personMail = `example.person.${id}@example.net`;
+  const member = await createAccount(request, `e2e-${id}-ops`, "viewer", {
+    name: person,
+    email: personMail,
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // New operator: the colour starts at the next that no operator has, one of the 32 of
+  // the slider; which one depends on every operator there is, so it is not named here.
+  await page.goto("./operators");
+  await page.getByRole("button", { name: "New operator" }).click();
+  const form = region(page, "New operator");
+  const colour = form.getByRole("group", { name: "Colour", exact: true });
+  const box = colour.getByRole("textbox", { name: "Colour", exact: true });
+  await expect(box).toHaveValue(/^#[0-9a-f]{6}$/);
+  await expect(colour.locator(".colour-slider")).toHaveAttribute("data-none", "false");
+  await expect(colour.locator('.colour-swatch[aria-pressed="true"]')).toHaveAttribute(
+    "data-colour",
+    await box.inputValue(),
+  );
+
+  // A label typed by hand is kept when a user is chosen.
+  const label = form.getByLabel("Label (required)");
+  const chooseUser = async () => {
+    await form.getByRole("radio", { name: "A user", exact: true }).check();
+    await form.getByLabel("User", { exact: true }).fill(personMail.split("@")[0] ?? "");
+    await form
+      .getByRole("list", { name: "Users that match" })
+      .getByRole("button", {
+        name: `${offered(person, personMail)}, user ${member.username}`,
+        exact: true,
+      })
+      .click();
+  };
+  await label.fill(`Hand ${id}`);
+  await chooseUser();
+  await expect(form.getByTestId("chosen-new-operator-user")).toContainText(person);
+  await expect(label).toHaveValue(`Hand ${id}`);
+  // Blank, the label is filled with the username of the user chosen.
+  await label.fill("");
+  await form.getByRole("radio", { name: "Another contact", exact: true }).check();
+  await chooseUser();
+  await expect(label).toHaveValue(member.username);
+  // The colour is one press, beside the label as the lists will show it.
+  await colour.getByRole("button", { name: "violet, shade 5 of 8, #9964e5", exact: true }).click();
+  await expect(box).toHaveValue("#9964e5");
+  await expect(colour.locator(".colour-sample")).toHaveText(member.username);
+  await form.getByRole("button", { name: "Create operator" }).click();
+  await expect(page.getByTestId("operator-heading")).toContainText(member.username);
+  await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "internal");
+  await expect(page.getByTestId("operator-colour")).toHaveText("#9964e5");
+  await expect(page.getByTestId("operator-user").getByRole("link")).toHaveText(member.username);
+
+  // Its page reads Details first, above the person's email and numbers.
+  const sections = await page
+    .getByRole("main")
+    .getByRole("heading", { level: 2 })
+    .allTextContents();
+  expect(sections.indexOf("Details")).toBeGreaterThan(-1);
+  expect(sections.indexOf("Details")).toBeLessThan(
+    sections.indexOf("The person's email and numbers"),
+  );
+  // Its colour is changed on the slider, by the keyboard, and saved.
+  const details = region(page, "Details");
+  const again = details.getByRole("group", { name: "Colour", exact: true });
+  await again.getByRole("slider", { name: "Colour, Slider of 32", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(again.getByRole("textbox", { name: "Colour", exact: true })).toHaveValue("#7e4ac2");
+  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("The operator was saved.")).toBeVisible();
+  await expect(page.getByTestId("operator-colour")).toHaveText("#7e4ac2");
+
+  // The list says the user behind each operator, a link to its page for an Admin, and
+  // that there is none; Show leads to the gaps, each one press away, as the grid's own
+  // filter, to which this file's mark is added before anything is counted.
+  await page.goto(`./operators?filter=${encodeURIComponent(`label:contains:${id}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("4 operators");
+  const list = page.getByTestId("grid-operators");
+  const userOf = (name: string) =>
+    list.locator("[row-id]", { hasText: name }).locator('[col-id="user"]');
+  await expect(userOf(member.username).getByRole("link")).toHaveText(member.username);
+  await expect(userOf(edge)).toHaveText("no user");
+  const show = page.getByRole("navigation", { name: "Show operators" });
+  const filterBox = page.getByLabel("Filter", { exact: true });
+  const narrowed = async (gap: string, filter: string, total: string) => {
+    await show.getByRole("link", { name: gap, exact: true }).click();
+    await expect(filterBox).toHaveValue(filter);
+    await expect(show.getByRole("link", { name: gap, exact: true })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await filterBox.fill(`${filter} label:contains:${id}`);
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page.getByTestId("grid-total")).toHaveText(total);
+  };
+  await narrowed("No user behind it", "scope:ne:internal", "3 operators");
+  await expect(list.locator("[row-id]", { hasText: member.username })).toHaveCount(0);
+  await narrowed("Nobody behind it", "is_open:eq:true", "1 operator");
+  await expect(list.locator("[row-id]", { hasText: core })).toHaveCount(1);
+  await show.getByRole("link", { name: "Every operator", exact: true }).click();
+  await expect(filterBox).toHaveValue("");
+  await page.goto(`./operators?filter=${encodeURIComponent(`label:contains:${id}`)}`);
+  await userOf(member.username).getByRole("link").click();
+  await expect(page).toHaveURL(/\/admin\/users\//);
+  await expectClean(page, seen);
+
+  // For View-only the user is named in plain words: the page of a user is an Admin's.
+  const context = await browser.newContext();
+  const viewer = await context.newPage();
+  const viewed = await watch(context);
+  await signIn(viewer, member);
+  await viewer.goto(`./operators?filter=${encodeURIComponent(`label:eq:${member.username}`)}`);
+  const cell = viewer.getByTestId("grid-operators").locator("[row-id]").locator('[col-id="user"]');
+  await expect(cell).toHaveText(member.username);
+  await expect(cell.getByRole("link")).toHaveCount(0);
+  await expectClean(viewer, viewed);
+  await context.close();
 });

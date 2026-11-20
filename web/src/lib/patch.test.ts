@@ -407,6 +407,29 @@ describe("an operator and a contact in a form", () => {
   });
 });
 
+describe("a colour in a form", () => {
+  // 0.9.13: the picker's value, chosen from the grid, by the slider or typed (P-285).
+  const specs: FieldSpec[] = [{ name: "colour", label: "Colour", kind: "colour" }];
+  const tag = { row_version: 3, colour: "#eeaa00" };
+
+  it("is sent in lower case, as the server keeps it, and blank clears it", () => {
+    expect(buildCreate(specs, { colour: " #EEAA00 " }).body).toEqual({ colour: "#eeaa00" });
+    expect(buildCreate(specs, { colour: "" }).body).toEqual({});
+    expect(buildPatch(specs, tag, { colour: "#1F6FEB" }).body).toEqual({
+      row_version: 3,
+      colour: "#1f6feb",
+    });
+    expect(buildPatch(specs, tag, { colour: "" }).body).toEqual({ row_version: 3, colour: null });
+    // The same colour in capitals is no change.
+    expect(buildPatch(specs, tag, { colour: "#EEAA00" }).changed).toEqual([]);
+  });
+
+  it("is refused at the field before anything is sent where it is not #rrggbb", () => {
+    expect(buildCreate(specs, { colour: "orange" }).errors.colour).toMatch(/^In the form #1f6feb/);
+    expect(buildPatch(specs, tag, { colour: "#eeaa0" }).errors.colour).toMatch(/#1f6feb/);
+  });
+});
+
 describe("a planned location in a form", () => {
   const specs: FieldSpec[] = [
     { name: "planned_location_hid", label: "Planned location", kind: "planned_location" },

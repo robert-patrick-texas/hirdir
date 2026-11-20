@@ -8,6 +8,7 @@ the code it exits with.
 import csv
 import io
 import json
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from typer.testing import CliRunner, Result
 
 from hirdir.cli import client as cli_client
 from hirdir.cli.main import app
+from hirdir.io.entities import LOAD_ORDER
 from tests.api.inventory import Maker
 
 runner = CliRunner()
@@ -105,6 +107,38 @@ def test_export_writes_what_the_api_exports(
     sources = run("export", "catalog-entries", "--include-sources", "--format", "json").stdout
     assert json.loads(sources)["records"][0]["stack_discount_pct_source"] == "setting"
     run("export", "observations", expect=4)
+
+
+def test_export_all_writes_the_zip_of_every_table(
+    run, client: TestClient, inventory: dict, switches: list, tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "everything.zip"
+    written = run("export", "--all", "--format", "json", "--output", str(target))
+    assert f"wrote {target}" in written.stderr
+    archive = zipfile.ZipFile(target)
+    assert archive.namelist() == [f"{name.replace('_', '-')}.json" for name in LOAD_ORDER]
+    alone = client.post(
+        "/api/v1/exports",
+        json={
+            "entity": "items",
+            "format": "json",
+            "sort": ["depth", "name"],
+            "own_values": True,
+            "include_archived": True,
+            "include_drafts": True,
+        },
+        headers=inventory,
+    ).text
+    assert archive.read("items.json").decode() == alone
+    # With no --output, the name the server gives it, where the command is run.
+    monkeypatch.chdir(tmp_path)
+    named = run("export", "--all").stderr.removeprefix("wrote ").strip()
+    assert named.startswith("hirdir-all-csv-")
+    assert named.endswith(".zip")
+    assert zipfile.ZipFile(tmp_path / named).namelist()[0] == "tags.csv"
+    run("export", "--all", "items", expect=2)
+    run("export", "--all", "--filter", "name:eq:x", expect=2)
+    run("export", expect=2)
 
 
 def test_an_item_is_shown_by_whatever_it_is_known_by(run, make: Maker, switches: list) -> None:

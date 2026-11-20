@@ -3,21 +3,24 @@
 from itertools import chain
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from hirdir.api import records as r
 from hirdir.api import shapes
-from hirdir.api.deps import Audit, Db, Inventory, Viewer
+from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute, limited_body
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
-from hirdir.io import background, exports, imports, made, tables
+from hirdir.io import background, exports, imports, made, tables, users_file
 
 imports_ = APIRouter(prefix="/imports", tags=["Files"], route_class=IdempotentRoute)
 exports_ = APIRouter(prefix="/exports", tags=["Files"])
+# The users' own file, beside the routes of the accounts (P-288).
+users_file_ = APIRouter(prefix="/users", tags=["Accounts"])
+ZIP = "application/zip"
 
 FILE_TYPES = {"text/csv": "csv", "application/json": "json"}
 SkipRejected = Annotated[
@@ -276,4 +279,52 @@ def export(body: r.ExportRequest, _: Viewer, request: Request, db: Db) -> Stream
     )
 
 
-ROUTERS = (imports_, exports_)
+@exports_.get("/tables")
+def export_tables(_: Viewer, db: Db) -> list[r.ExportTable]:
+    """List every table that a file is taken for, in the order files are loaded, each
+    with how many records it holds and the columns of its file (P-286).
+
+    A table that holds nothing is exported all the same: as CSV it is its header row and
+    no more, the template of its import.
+    """
+    return [r.ExportTable.model_validate(table) for table in exports.tables(db)]
+
+
+@exports_.post(
+    "/all",
+    response_class=StreamingResponse,
+    responses={200: {"description": "One zip, a file to each table.", "content": {ZIP: {}}}},
+)
+def export_all(
+    body: r.ExportAllRequest, _: Viewer, context: Audit, request: Request, db: Db
+) -> StreamingResponse:
+    """Export every table at once: one zip, a file to each table, named as `examples/`
+    names it, in the order files are loaded, each the whole table in the form that loads
+    back, its stored values and its retired and drafts among them (P-286). The users are
+    not in it. Audited: that the whole inventory was taken out, by whom and when."""
+    wanted, name = exports.taken(db, context, body.format)
+    return StreamingResponse(
+        exports.stream_zip(request.app.state.sessions, wanted),
+        media_type=ZIP,
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@users_file_.post(
+    "/export",
+    response_class=Response,
+    responses={200: {"description": "The file, as an attachment.", "content": {"text/csv": {}}}},
+)
+def export_users(_: Admin, context: Audit, db: Db) -> Response:
+    """Export the users as CSV, a row to each, by username (P-288): its person, the role
+    in force, its groups and operators, its kind and state, when it last signed in, and
+    its notes. No access code, token or hash of either is in it. Audited."""
+    written = users_file.export(db, context)
+    return Response(
+        written.text,
+        media_type=exports.MEDIA_TYPES["csv"],
+        headers={"Content-Disposition": f'attachment; filename="{written.name}"'},
+    )
+
+
+ROUTERS = (imports_, exports_, users_file_)
