@@ -41,6 +41,12 @@ type Options<O> = Part<"path", PathOf<O>> &
   Part<"body", BodyOf<O>> &
   KeyOf<O> & { query?: QueryOf<O>; signal?: AbortSignal };
 type Args<O> = object extends Options<O> ? [options?: Options<O>] : [options: Options<O>];
+/** What a download is given: its body where the route takes one, and none where it does not. */
+type DownloadOptions<O> = Part<"body", BodyOf<O>> & { signal?: AbortSignal };
+type DownloadArgs<O> =
+  object extends DownloadOptions<O>
+    ? [options?: DownloadOptions<O>]
+    : [options: DownloadOptions<O>];
 
 /** The routes that take a file itself as the body of a `POST`. */
 type FileRoutes = {
@@ -376,11 +382,12 @@ export interface Client {
 
   /**
    * Fetch a file from a route that answers with one. It is fetched like everything
-   * else, with the bearer token and no cookie, and handed over to be saved or read.
+   * else, with the bearer token and no cookie, and handed over to be saved or read. A
+   * route that takes no body, as `POST /users/export`, is given none (review X5).
    */
   download<P extends DownloadRoutes>(
     route: P,
-    options: { body: BodyOf<Operation<"post", P>>; signal?: AbortSignal },
+    ...args: DownloadArgs<Operation<"post", P>>
   ): Promise<Download>;
 
   /**
@@ -612,7 +619,7 @@ export function createClient(deps: ClientDeps): Client {
       const { file, type, ...rest } = options;
       return send("post", route, { ...rest, file: { content: file, type } });
     }) as Client["upload"],
-    download: ((route: string, options: LooseOptions) =>
+    download: ((route: string, options: LooseOptions = {}) =>
       download(route, options)) as Client["download"],
     sendFile: ((method: string, route: string, options: TransferOptions) =>
       transfer(method, route, options)) as Client["sendFile"],
