@@ -1386,7 +1386,12 @@ that an item stands before the minor items in it. Each file is written as it is 
 a piece at a time, and the zip goes out as it is written; the tables are read one
 after another, each in statements of its own, so an export of everything taken while
 somebody is changing records holds each table as it was when it was read. The users
-are not in it. Like `POST /exports`, it changes nothing and is not audited.
+are not in it. It changes nothing, and it is audited, as the export of one table is
+not: an event `export` of the record type `inventory`, with no record, that holds the
+name of the file, the `format` and how many `tables`, so that the trail says who took
+the whole inventory out and when. The event is stored before the first piece of the
+file is sent. An export is no change of the inventory, and no kept answer is worked
+out again for one.
 
 What is exported loads back. The file of any table, as `POST /exports` gives it with
 `own_values`, the archived and the drafts included, previewed as an import into the

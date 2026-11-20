@@ -39897,7 +39897,7 @@
     },
     "/api/v1/exports/all": {
       "post": {
-        "description": "Export every table at once: one zip, a file to each table, named as `examples/`\nnames it, in the order files are loaded, each the whole table in the form that loads\nback, its stored values and its retired and drafts among them (P-286). The users are\nnot in it.",
+        "description": "Export every table at once: one zip, a file to each table, named as `examples/`\nnames it, in the order files are loaded, each the whole table in the form that loads\nback, its stored values and its retired and drafts among them (P-286). The users are\nnot in it. Audited: that the whole inventory was taken out, by whom and when.",
         "operationId": "export_all_api_v1_exports_all_post",
         "requestBody": {
           "content": {

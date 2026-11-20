@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.auth.roles import highest
-from hirdir.db.models import Contact, Operator, RoleGrant, User, UserGroup, UserGroupMember
-from hirdir.domain import audit, product, settings
+from hirdir.db.models import Contact, RoleGrant, User, UserGroup, UserGroupMember
+from hirdir.domain import accounts, audit, product, settings
 from hirdir.domain.audit import AuditContext, change
 from hirdir.io import files
 
@@ -78,19 +78,6 @@ def _roles(db: Session) -> dict[str, str]:
     return {hid: str(highest(roles)) for hid, roles in granted.items() if roles}
 
 
-def _operators(db: Session) -> dict[str, list[str]]:
-    """Return the labels of the operators behind which each contact stands, by label, by
-    the contact's HID, of those that are not retired."""
-    found: dict[str, list[str]] = defaultdict(list)
-    for contact_hid, label in db.execute(
-        select(Operator.contact_hid, Operator.label)
-        .where(Operator.contact_hid.is_not(None), Operator.record_status != "retired")
-        .order_by(Operator.label_key)
-    ):
-        found[str(contact_hid)].append(label)
-    return found
-
-
 def rows(db: Session) -> list[dict[str, Any]]:
     """Return a row to each user, by username, in plain values."""
     users = list(db.scalars(select(User).order_by(User.username_key)))
@@ -102,7 +89,7 @@ def rows(db: Session) -> list[dict[str, Any]]:
             )
         )
     }
-    groups, roles, operators = _groups(db), _roles(db), _operators(db)
+    groups, roles, operators = _groups(db), _roles(db), accounts.operators_of(db, users)
     written: list[dict[str, Any]] = []
     for user in users:
         contact = contacts.get(user.contact_hid or "")
@@ -115,7 +102,12 @@ def rows(db: Session) -> list[dict[str, Any]]:
                 "phone2": contact.phone2 if contact else None,
                 "role": roles.get(user.hid),
                 "groups": groups.get(user.hid, []),
-                "operators": operators.get(contact.hid, []) if contact else [],
+                # Those that are not retired: a retired label stands for nothing.
+                "operators": [
+                    operator.label
+                    for operator in operators.get(user.hid, [])
+                    if operator.record_status != "retired"
+                ],
                 "kind": "service" if user.is_service_account else "person",
                 "state": "disabled" if user.disabled else "enabled",
                 "last_sign_in_at": (

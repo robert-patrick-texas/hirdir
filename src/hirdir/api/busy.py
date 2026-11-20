@@ -44,8 +44,8 @@ REPORTS = "/reports/"
 # An export and a report with other values tried take no audit context; a preview and
 # the check of the kept answers take one, and can wait all the same: nothing of the
 # inventory changes until a preview is applied, and applying is never turned away. The
-# export of every table and that of the users are exports too (P-286, P-288); the
-# users' takes the audit context only to note that it was made.
+# export of every table and that of the users are exports too (P-286, P-288); each
+# takes the audit context only to note that it was made.
 LONG_POSTS = frozenset(
     {
         "/exports",
