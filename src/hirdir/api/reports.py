@@ -576,14 +576,18 @@ class KeptAnswer(Model):
     kept_at: datetime
     uses: Annotated[
         int,
-        Field(description="How many times the server has given it since it had it."),
+        Field(
+            description="How many times the server has given it since it was worked "
+            "out: 0 for the request that it was worked out for, and for what the "
+            "database holds that nobody has asked for yet."
+        ),
     ]
     ahead: Annotated[
         bool,
         Field(
-            description="Whether the database holds it, worked out ahead for the view "
-            "its page opens with (P-275). The others are in the memory of the server "
-            "alone."
+            description="Whether the database holds an answer to this request, "
+            "worked out ahead for the view its page opens with (P-275). The others "
+            "are in the memory of the server alone."
         ),
     ]
 

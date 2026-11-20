@@ -46,7 +46,8 @@ log = logging.getLogger("hirdir")
 # work by itself, in seconds.
 LOOK_EVERY = 5.0
 # How often the process of the background work looks for work, in seconds: nothing
-# wakes it, so an apply begins within this long of being asked for (P-267).
+# wakes it, so an apply begins within this long of being asked for (P-267), or once the
+# long reports that are being worked out ahead are done (P-276).
 LOOK_EVERY_ALONE = 1.0
 # The file in the state directory that the process of the background work holds a lock
 # on while it runs (P-267).

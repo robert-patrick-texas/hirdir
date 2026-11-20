@@ -10,6 +10,9 @@ the clock and its worker call it.
 
 import json
 import logging
+import threading
+import time
+import uuid
 from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any
@@ -21,11 +24,12 @@ from sqlalchemy.orm import Session
 
 from hirdir import __version__, clock, schedule
 from hirdir.api import reports
+from hirdir.app import create_app
 from hirdir.config import Config
-from hirdir.db import migrate
+from hirdir.db import dialect, migrate
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.db.models import KeptAnswer
-from hirdir.domain import audit, reset
+from hirdir.db.models import AuditEvent, KeptAnswer
+from hirdir.domain import audit, reset, settings, tags
 from hirdir.io import background, balance, examples, kept, planning
 from tests.api.inventory import API, Maker
 
@@ -399,3 +403,232 @@ def test_a_row_names_the_version_that_worked_it_out(make: Maker, db: Session) ->
     db.rollback()
     assert set(db.scalars(select(KeptAnswer.version))) == {__version__}
     assert db.scalar(select(func.count()).select_from(KeptAnswer)) == 4
+
+
+# --- what the review of 0.9.11 found (P-277) -------------------------------------------
+
+
+def test_a_change_stored_later_with_a_lesser_hid_still_leaves_the_rows_unused(
+    make: Maker, db: Session
+) -> None:
+    """A clock set back, or two processes in one millisecond: the HID of an event is
+    made from the clock of the process that makes it. The newest is the one stored
+    last, whatever its HID."""
+    _line(make, "Network engineer", "3")
+    assert sorted(reports.work_out_ahead(db)) == FOUR
+    newest = uuid.UUID(kept.stamp(db)[1])
+    earlier = str(uuid.UUID(int=newest.int - (2000 << 80)))
+    _line(make, "Senior network engineer", "2")
+    db.rollback()
+    made = kept.stamp(db)[1]
+    db.execute(update(AuditEvent).where(AuditEvent.hid == made).values(hid=earlier))
+    db.commit()
+    assert earlier < str(newest)
+    assert kept.stamp(db)[1] == earlier
+    assert sorted(kept.missing(db)) == FOUR
+    kept.drop()
+    assert make.get("/reports/capacity")["active"]["supply"] == "5"
+
+
+def test_a_change_dated_after_the_present_moment_is_old_enough(
+    make: Maker, db: Session, monkeypatch
+) -> None:
+    """Where the clock was set back since the newest change, the reports are due at
+    once, and not only when the clock has caught up."""
+    _line(make, "Network engineer", "3")
+    db.rollback()
+    assert not kept.due(db)
+    real = clock.now
+    monkeypatch.setattr(clock, "now", lambda: real() - timedelta(minutes=10))
+    assert kept.due(db)
+
+
+def test_a_report_that_cannot_be_worked_out_does_not_keep_the_others_out(
+    make: Maker, db: Session, monkeypatch, caplog
+) -> None:
+    _line(make, "Network engineer", "3")
+
+    def fails(*_: Any, **__: Any) -> Any:
+        raise RuntimeError("the coverage cannot be worked out")
+
+    monkeypatch.setattr(planning, "coverage", fails)
+    with (
+        caplog.at_level(logging.ERROR, logger="hirdir"),
+        pytest.raises(RuntimeError, match="the coverage cannot be worked out"),
+    ):
+        reports.work_out_ahead(db)
+    assert "the report coverage could not be worked out ahead" in caplog.text
+    assert _held(db) == ["capacity", "renewal_alert", "renewals"]
+    assert kept.missing(db) == ["coverage"]
+    # The session is the caller's still, and the report is kept once it can be.
+    monkeypatch.undo()
+    assert reports.work_out_ahead(db) == ["coverage"]
+
+
+def test_the_view_kept_follows_the_warning_period_and_a_request_that_names_no_days_is_it(
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session, monkeypatch
+) -> None:
+    """The first page asks for the coverage without the days, as the report's page
+    does, and so is given the row whatever `renewal_warning_days` is."""
+    _line(make, "Network engineer", "3")
+    now = {one["key"]: one for one in client.get(f"{API}/settings", headers=admin).json()}
+    answer = client.put(
+        f"{API}/settings/renewal_warning_days",
+        json={"row_version": now["renewal_warning_days"]["row_version"], "value": 60},
+        headers=admin,
+    )
+    assert answer.status_code == 200, answer.text
+    db.rollback()
+    assert sorted(reports.work_out_ahead(db)) == FOUR
+    kept.drop()
+    _nothing_is_worked_out(monkeypatch)
+    assert make.get("/reports/coverage")["within_days"] == 60
+    assert make.get("/reports/coverage", within_days=60)["within_days"] == 60
+
+
+def test_a_check_overtaken_by_a_change_names_nothing_and_writes_no_row(
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session, monkeypatch
+) -> None:
+    _line(make, "Network engineer", "3")
+    assert sorted(reports.work_out_ahead(db)) == FOUR
+    kept.drop()
+    before = kept.stamp(db)[1]
+    real = balance.balance
+    changed: list[int] = []
+
+    def a_change_then_the_balance(*a: Any, **k: Any) -> Any:
+        if not changed:
+            changed.append(1)
+            _line(make, "Senior network engineer", "2")
+        return real(*a, **k)
+
+    monkeypatch.setattr(balance, "balance", a_change_then_the_balance)
+    found = _as_admin(client, admin, "/kept-answers/check", "post")
+    monkeypatch.undo()
+    # The balance worked out anew is of the change, and is no defect of what was kept:
+    # it is not named, nor counted, and nothing after it is.
+    assert changed == [1]
+    assert found["differed"] == []
+    assert found["checked"] < 4
+    db.rollback()
+    row = db.scalars(select(KeptAnswer).where(KeptAnswer.report == "capacity")).one()
+    assert row.newest_event_hid == before != kept.stamp(db)[1]
+    assert json.loads(row.answer)["active"]["supply"] == "3.00"
+    # The check is an event all the same, with what it did check.
+    (event,) = make.get("/audit-events", action="kept_answers_checked")["items"]
+    assert {"field": "checked", "old": None, "new": found["checked"]} in event["changes"]
+
+
+def test_a_check_that_has_a_row_to_write_again_holds_no_other_writer_while_it_works(
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session, monkeypatch
+) -> None:
+    """A row is written when everything is compared, not across the working out of the
+    reports after it: a save meanwhile is stored at once."""
+    _line(make, "Network engineer", "3")
+    assert sorted(reports.work_out_ahead(db)) == FOUR
+    _made_wrong(db)
+    kept.drop()
+    for name in ("coverage", "renewals"):
+        real = getattr(planning, name)
+
+        def slowly(*a: Any, _real: Any = real, **k: Any) -> Any:
+            found = _real(*a, **k)
+            time.sleep(0.7)
+            return found
+
+        monkeypatch.setattr(planning, name, slowly)
+    checked: dict[str, Any] = {}
+
+    def check() -> None:
+        checked["found"] = _as_admin(client, admin, "/kept-answers/check", "post")
+
+    thread = threading.Thread(target=check)
+    thread.start()
+    # Whatever the order of the four, the check is among the slow ones for two seconds.
+    time.sleep(1.0)
+    started = time.monotonic()
+    _line(make, "Senior network engineer", "2")
+    waited = time.monotonic() - started
+    thread.join()
+    assert waited < 0.5, f"the save waited {waited:.1f} s for the check"
+    assert "found" in checked
+
+
+def test_a_check_writes_the_row_again_with_the_writers_place_taken_only_for_that(
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session, monkeypatch
+) -> None:
+    _line(make, "Network engineer", "3")
+    assert sorted(reports.work_out_ahead(db)) == FOUR
+    _made_wrong(db)
+    kept.drop()
+    held: list[str] = []
+    real_hold = dialect.hold_other_writers
+    real_work = {name: getattr(planning, name) for name in ("coverage", "renewals")}
+    monkeypatch.setattr(
+        dialect, "hold_other_writers", lambda session: held.append("hold") or real_hold(session)
+    )
+    for name, real in real_work.items():
+        monkeypatch.setattr(
+            planning,
+            name,
+            lambda *a, _real=real, _name=name, **k: held.append(_name) or _real(*a, **k),
+        )
+    found = _as_admin(client, admin, "/kept-answers/check", "post")
+    assert [one["report"] for one in found["differed"]] == ["capacity"]
+    # Every report is worked out before the writer's place is asked for.
+    assert "hold" in held
+    assert held.index("hold") > max(i for i, what in enumerate(held) if what != "hold")
+
+
+# --- by day, in the processes of the service -------------------------------------------
+
+
+def _one_second(session: Session) -> None:
+    """Set the time after a change to a second, as an Admin sets it."""
+    settings.set_setting(session, audit.SYSTEM, SETTING, 0, 1)
+
+
+def _wait_for(sessions: Any, wanted: list[str], within: float = 30.0) -> None:
+    deadline = time.monotonic() + within
+    while True:
+        with sessions() as session:
+            missing = kept.missing(session)
+        if sorted(missing) == sorted(wanted) or time.monotonic() >= deadline:
+            assert sorted(missing) == sorted(wanted)
+            return
+        time.sleep(0.1)
+
+
+def test_the_process_of_the_background_work_works_them_out_again_after_a_change(
+    config: Config,
+) -> None:
+    """Not at its start alone: after a change, with nothing by the clock due, the rows
+    are good again once the change is as old as the setting says."""
+    engine = make_engine(config.database_url)
+    sessions = make_sessions(engine)
+    with sessions() as session:
+        _one_second(session)
+        session.commit()
+    with background.working(config) as worker:
+        assert worker.ahead
+        _wait_for(sessions, [])
+        with sessions() as session:
+            tags.create_tag(session, audit.SYSTEM, {"label": "lab"})
+            session.commit()
+            assert sorted(kept.missing(session)) == FOUR
+        _wait_for(sessions, [])
+    engine.dispose()
+
+
+def test_a_server_works_ahead_by_day_only_where_it_does_the_background_work_of_the_service(
+    config: Config,
+) -> None:
+    for scheduled, work, expected in ((True, True, True), (False, True, False)):
+        app = create_app(config, scheduled=scheduled, work=work)
+        with TestClient(app):
+            assert app.state.worker.ahead is expected
+        app.state.engine.dispose()
+    app = create_app(config, scheduled=True, work=False)
+    with TestClient(app):
+        assert background.worker_state(app.state) == "not_running"
+    app.state.engine.dispose()
