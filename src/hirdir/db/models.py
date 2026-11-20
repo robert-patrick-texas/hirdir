@@ -125,6 +125,9 @@ class User(Bookkeeping, Base):
     # What the account is for, who asked for it, when it is to end (P-281). The notes
     # of the person are the contact's.
     notes: Mapped[str | None] = mapped_column(Text, default=None)
+    # `active` or `retired` (P-296): a retired account is that of somebody who has
+    # left. `disabled`, beside it, is one that may not sign in for now.
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
 
     memberships: Mapped[list[UserGroupMember]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

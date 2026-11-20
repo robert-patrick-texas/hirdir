@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.13, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.14, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -68,6 +68,10 @@ user is made with its contact and its operator in one step, the lists of users, 
 and operators each say which of the others a person is, a colour is pressed in a grid
 or moved to by a slider, and every table is exported from the page that loads it, an
 empty one as the template of its import.
+0.9.14 is the round of the person: whoever signs in changes their own name, email,
+numbers, organization, operator label and colour, and access code on a profile page;
+a user account is retired, which is other than disabled; and the account, the contact
+and the operators of one person are retired together, in one confirmation.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are

@@ -351,6 +351,22 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   the user's own page. The lists of users, of contacts and of operators each say which
   of the other two a person is, as a link, and each is narrowed to those that are not
   (P-280 to P-284).
+- **R12.9** A person who signs in changes what is their own on a profile page, reached
+  from their name in the menu bar: the name, email, numbers and organization of the
+  contact they are, the label and colour of each operator they are behind, and their
+  access code, for which the code they have is asked. Every role does this for itself
+  and nobody for another. A typed access code has a least length, which a setting says
+  (P-289, P-294, P-295).
+- **R12.10** A user account is active, disabled or retired. A retired account is that
+  of somebody who has left: it signs in with nothing, holds no role and is in no group,
+  keeps its username, and is left out of the list of users, of every picker and of the
+  users' file until the retired are asked for. An Admin retires an account and brings
+  one back (P-292, P-296).
+- **R12.11** The user, the contact and the operators of one person are shown as a
+  chain on the page of each, and a retirement of one says what becomes of each of the
+  others, in one confirmation and one change, or is refused with them named. A contact
+  is not retired while its account or a label stands on it. A retired user, contact or
+  operator is brought back by an Admin alone (P-291, P-297, P-298).
 
 ### R13 Integration
 

@@ -167,7 +167,9 @@ signs in changes their own name, email, numbers, organization, operator label an
 colour, and access code (P-289); the user, the contact and the operators of one
 person retired together, with one confirmation, or parted first (P-291); and a user
 account that is retired, which is other than disabled, left out of the list of users
-until it is asked for (P-292).
+until it is asked for (P-292). The owner's answers at its start are in those three
+rows, and what follows from them in P-294 to P-298. Its migration, `0017`, adds the
+record status of a user and changes no record; its scenarios are S56 to S58.
 
 ## From 0.6.1 to 0.9.0
 
@@ -435,6 +437,9 @@ written as a failing test at the start of its release.
 | S53 | Upload a file over the limit and one of a kind that is not allowed; then back up, restore on a clean install | Both uploads are refused with the reason; the restored inventory has every file, byte for byte |
 | S54 | An Admin makes a user with a new contact, an operator, a role, a group and notes in one request, after a request with a colour that is refused | The refused request made nothing and left no event; the one request made all of them, each audited; the user signs in with the group's role; its contact is a user and an operator; and a user made without an operator is found among the users with no operator |
 | S55 | Export every table of an empty inventory; load the examples; export every table whole, by itself and as the zip of all of them, and load each file back | Each empty table gives the header row of its file, the template of its import; every table loads back as nothing to change, in both formats; the zip holds every table in the order of loading and is in the audit trail, and one table exported is not |
+| S56 | A View-only user who is a contact and behind an operator changes their own name, email, numbers and organization, their label and colour, and their access code, first with a wrong current code and with a code that is too short | Both refusals change nothing and say why; each change is in the audit trail by that user; the session in hand stays signed in, another session of theirs is ended, and the old code signs in no longer; and the user changes nothing of another person |
+| S57 | An Admin retires the account of a user in two groups with a role of its own, and then makes a new account of the same username | The account signs in no longer, is in no group and holds no role, each written to the audit trail; the list of users leaves it out until the retired are asked for, and so does the users' file; the new account is refused with the retired one named; and brought back, the account has a new access code, no role and no group |
+| S58 | A user is a contact behind two operators. Retire the contact saying nothing of the rest; then retire it with the user, one operator handed over to another person and one released; then bring the user back | The first is refused, nothing changed, with the user and both operators named; the second retires the user and the contact, hands one label over and releases the other in one change, each audited; an Inventory user cannot bring the contact back; and an Admin brings back the user with its contact |
 
 ## Definition of done
 

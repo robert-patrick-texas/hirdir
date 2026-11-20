@@ -385,7 +385,7 @@ def test_the_install_page_and_the_package_test_say_of_the_long_reports_what_the_
 def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_the_code_says() -> (
     None
 ):
-    """The notes of the upgrade to 0.9.13, the newest, and what the package test asks for
+    """The notes of the upgrade to 0.9.13 and what the package test asks for
     it: migration 0016 adds `users.notes`, blank, creates no table and writes no event,
     and the file of the package test declares the column as the model does (P-281); the
     routes and the command that the page names are those of the contract and of the
@@ -401,8 +401,7 @@ def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_t
     from hirdir.io import exports, users_file
 
     versions = ROOT / "src/hirdir/db/migrations/versions"
-    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
-    assert revision == "0016"
+    revision = "0016"
     (migration,) = versions.glob(f"{revision}_*.py")
     source = migration.read_text(encoding="utf-8")
     assert 'down_revision = "0015"' in source

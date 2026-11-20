@@ -247,6 +247,140 @@ taken. The order begins with the darker shades, eight hues far apart. The colour
 fixed in `hirdir.domain.colours`. They are what is offered and not what is allowed: a
 colour is stored as `#rrggbb` whatever it is.
 
+### A person's own profile
+
+A person who signs in changes what is their own (P-289, P-294, P-295). `GET /auth/me`
+answers the user as before and, with it, `contact`, the contact the person is, with its
+`hid`, `name`, `email`, `phone`, `phone2`, `organization`, `record_status` and
+`row_version`, or null where the account has none; and `operators`, every operator
+that is not retired whose contact is theirs, in the order of their labels, each with
+`hid`, `label`, `colour`, `record_status` and `row_version`. The three routes below are
+for a session of any role, View-only too. They carry no HID of a user or of a contact:
+they change the records of whoever is signed in and no other. A service token is
+refused by each with a `403`.
+
+`PATCH /auth/me/contact` takes `row_version` and any of `name`, `email`, `phone`,
+`phone2` and `organization`; a field it does not know is a `422`, so that the notes,
+the tags and the state of the contact are not changed here. It is held to the rules of
+`PATCH /contacts/{hid}`, an email that another contact has being a `409` that names
+that contact, and is audited as an `update` of the contact, by the person. An account
+with no contact, or one whose contact is retired, answers a `409`: an Admin gives an
+account its contact. The answer is that of `GET /auth/me`.
+
+`PATCH /auth/me/operators/{hid}` takes `row_version` and either of `label` and
+`colour`, of an operator that is not retired and whose contact is the person's; any
+other operator is a `404`, and a field it does not know a `422`. It is held to the
+rules of `PATCH /operators/{hid}`, a label that another operator has being a `409`
+that names it, and is audited as an `update` of the operator. The answer is that of
+`GET /auth/me`.
+
+`POST /auth/me/access-code` takes `current_access_code` and `access_code`. A current
+code that is wrong is a `422` on `current_access_code`; it is counted against the
+person as a failed sign-in is, a `429` with `Retry-After` following where there have
+been too many, and is written to the audit trail as `access_code_refused`. A new code
+shorter than the setting `access_code_min_length`, or blank, or beginning or ending
+with a space, is a `422` on `access_code`. Accepted, the code is changed, every other
+session of the person ends, and the answer is that of `POST /auth/sign-in`: a new
+`token` and `expires_at` for the session in hand, and the `user`. It is audited as
+`set_access_code`, by the person.
+
+`access_code_min_length`, a whole number from 1 to 64 and 12 from the start, is the
+least length of an access code that is typed: here, and by an Admin on `POST /users`
+and `POST /users/{hid}/access-code` and in `hirdir admin`. A code the server makes is
+not held to it, and a code that is held already is not looked at.
+
+### Retired accounts, and a person retired together
+
+A user has `record_status`, `active` or `retired`, beside `disabled` (P-292, P-296).
+`GET /users` takes `retired`: `no`, which is the same as leaving it out and leaves the
+retired accounts out, `yes`, which lists them with the rest, and `only`. A retired
+account is in no gap: `contact=none` and `operator=none` leave it out.
+`POST /users/export` takes `retired` likewise, and the users' file has a
+`record_status` column after `disabled`.
+
+`POST /users/{hid}/retire` is for an Admin and takes `row_version` and `linked`,
+below. It ends every session of the account, erases its access code, takes it out of
+each of its groups, revokes each role granted to the account itself, and revokes the
+tokens of a service account; each is audited as it is when done by itself, and the
+account as `retire`. It is refused with a `409` where it would leave no Admin, and for
+an account that is retired already. The answer is the user.
+
+A retired account is refused at sign-in as an unknown one is, and its sessions and
+tokens are refused. `PATCH /users/{hid}` changes only its `username`, its `notes` and
+its `contact_hid` to `null`; `disabled`, another contact, a new access code, a service
+token, a membership and a grant of a role are each a `409` that says the account is
+retired. A username that a retired account has is refused to another, on `POST /users`
+and `PATCH /users/{hid}`, with a `409` on `username` that says so and names the
+retired account as `existing`.
+
+`POST /users/{hid}/bring-back` is for an Admin and takes `row_version` and `linked`.
+The account is `active` again and not disabled, with a new access code, which the
+answer carries once as `POST /users` does, `access_code` beside `user`; a service
+account has none. It has no role and no group. It is audited as `bring_back`. An
+account that is not retired is a `409`.
+
+`GET /users/{hid}/linked`, `GET /contacts/{hid}/linked` and
+`GET /operators/{hid}/linked`, which every role reads, answer the person a record
+belongs to (P-291, P-297): `user`, with `hid`, `username`, `record_status`, `disabled`
+and `role`, or null; `contact`, with `hid`, `name`, `email`, `record_status` and
+`uses`, or null; and `operators`, every operator of that contact, in the order of
+their labels, each with `hid`, `label`, `colour`, `record_status` and `uses`. The
+record asked for is among them, and the retired are listed, marked so. A user with no
+contact answers itself alone, and so does an operator with none.
+
+`POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and
+`POST /operators/{hid}/retire` take `linked` beside `row_version`:
+
+```json
+{
+  "row_version": 4,
+  "linked": {
+    "user": "retire",
+    "operators": [
+      {"hid": "…", "action": "hand_over", "contact_hid": "…"},
+      {"hid": "…", "action": "retire"}
+    ]
+  }
+}
+```
+
+`user` and `contact` are each `retire` or `keep`. An operator's `action` is `retire`,
+which releases what the label is on; `keep`; `open`, which leaves the label with no
+contact; or `hand_over`, with `contact_hid`, a contact that is not retired and is not
+this one, who is behind the label from then on. The record the route is on is not
+said: it is retired.
+
+- Every linked record that is not retired is said. Where one is not, nothing changes
+  and the answer is a `409` whose `errors` name each, as `linked.user`,
+  `linked.contact` and `linked.operators`, and whose `depends_on` lists the records
+  that were not said, each as `existing` names one (P-247), so that a page or a
+  command shows them and asks.
+- What is said of a record that is not linked, or is retired already, is a `422`.
+- A contact is not retired while its account or a label stands on it: where the
+  contact is retired, by its own route or as `retire`, `user` is `retire` and each
+  operator is `retire`, `open` or `hand_over`, or the request is a `422` on the field
+  that keeps one.
+- A request that retires a user is an Admin's, a `403` for anybody else. One that
+  retires a contact or an operator and keeps the user, or has none, is the Inventory
+  role's.
+- Everything one request says is one transaction. Each record is audited as if it
+  were done by itself: `retire` of a user, of a contact and of an operator, and
+  `update` of an operator that is opened or handed over.
+
+A record with nothing linked that is not retired is retired with `row_version` alone,
+as before. A row of a file that retires a contact or an operator with something
+linked is rejected, with the linked records named.
+
+A retired user, contact or operator is brought back by an Admin alone (P-298).
+`PATCH /contacts/{hid}` and `PATCH /operators/{hid}` that change `record_status` from
+`retired` are a `403` for any other role, and so is a row of a file that does it; to
+retire one is the Inventory role's as before. `linked` of `POST /users/{hid}/bring-back`
+has `contact`, `bring_back`, and `operators`, each with `hid` and `action`,
+`bring_back`. A user whose contact is retired is brought back with it, or the request
+is a `409` on `linked.contact` that names the contact; its contact taken off first, by
+`PATCH /users/{hid}`, it is brought back alone. The operators are those of that
+contact that are retired, and none need be said.
+
 ### Why a value, and what an operator is on
 
 `GET /items/{hid}/resolution` answers, for each value an item may have from elsewhere,
