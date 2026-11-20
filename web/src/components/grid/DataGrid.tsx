@@ -61,6 +61,7 @@ import type { ApiError } from "../../api/client";
 import { useAuth } from "../../auth";
 import { routerBasename } from "../../lib/base";
 import { ClipboardRefused, copyText } from "../../lib/clipboard";
+import { saveDownload } from "../../lib/download";
 import { all, type FilterNode, fieldsText, parseFilter, type QuickFields } from "../../lib/filter";
 import { plural } from "../../lib/format";
 import { type GridPlace, GridPlaces, placeFor, tabStorage, viewText } from "../../lib/gridPlace";
@@ -91,7 +92,6 @@ import {
   type GridColumn,
   queryColumns,
 } from "./columns";
-import { saveFile } from "./save";
 import { TickHeader, type TickHeaderParams } from "./tickHeader";
 
 ModuleRegistry.registerModules([
@@ -972,11 +972,10 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     );
     began(format);
     try {
-      // Fetched like everything else, with the bearer token, and saved from memory:
-      // there is no cookie for a plain link to the file to be allowed by.
-      const file = await api.download("/api/v1/exports", { body });
-      const name = file.fileName ?? exportName(entity, format, productName);
-      saveFile(file.blob, name);
+      const name = await saveDownload(
+        api.download("/api/v1/exports", { body }),
+        exportName(entity, format, productName),
+      );
       setDone(`Exported to ${name}.`);
     } catch (thrown) {
       setFailure(toApiError(thrown));

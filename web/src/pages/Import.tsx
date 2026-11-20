@@ -14,6 +14,7 @@ import {
 } from "../components/Preview";
 import { Problem } from "../components/Problem";
 import { SortTh } from "../components/SortTh";
+import { TableExports } from "../components/TableExports";
 import { Time } from "../components/Time";
 import { plural } from "../lib/format";
 import { toApiError, useLoad, useTitle } from "../lib/hooks";
@@ -81,6 +82,8 @@ export function Import() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [jobsTurn, setJobsTurn] = useState(0);
+  // Counts the applies that ended here, after each of which the tables are counted again.
+  const [appliedTurn, setAppliedTurn] = useState(0);
   const mayImport = allows(user.role, "inventory");
 
   /** Send a file to be previewed, and show the preview it becomes. */
@@ -130,13 +133,19 @@ export function Import() {
   return (
     <>
       <h1>Import</h1>
-      {mayImport ? (
-        <Upload busy={busy} error={error} onPreview={preview} />
-      ) : (
-        <p className="muted">
-          Importing needs the Inventory role. The imports that were made are listed below.
-        </p>
-      )}
+      {/* 0.9.13: beside the upload, every table a file is taken for, each exported in one
+          press, and everything at once (P-286). Every role exports; only the upload needs
+          the Inventory role. */}
+      <div className={mayImport ? "import-top import-beside" : "import-top"}>
+        {mayImport ? (
+          <Upload busy={busy} error={error} onPreview={preview} />
+        ) : (
+          <p className="muted">
+            Importing needs the Inventory role. The imports that were made are listed below.
+          </p>
+        )}
+        <TableExports turn={appliedTurn} />
+      </div>
       {hid && (
         <OneJob
           key={hid}
@@ -144,6 +153,7 @@ export function Import() {
           sent={mine}
           busy={busy}
           onChanged={() => setJobsTurn((turn) => turn + 1)}
+          onEnded={() => setAppliedTurn((turn) => turn + 1)}
           again={mine ? () => preview(mine.file, mine.entity, mine.mode, mine.from) : undefined}
         />
       )}
@@ -294,6 +304,8 @@ interface OneJobProps {
   busy: boolean;
   /** An apply began or ended: the list of jobs is out of date. */
   onChanged: () => void;
+  /** 0.9.13: an apply ended: what the tables hold has changed (P-286). */
+  onEnded: () => void;
   again: (() => void) | undefined;
 }
 
@@ -302,12 +314,13 @@ interface OneJobProps {
  * While it is being applied the page follows it, and once it has ended lists the rows it
  * left out. It may be left and come back to: it is read afresh, and followed again.
  */
-function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
+function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
   const [turn, setTurn] = useState(0);
   const followed = useJob(hid, {
     onEnded: () => {
       setTurn((count) => count + 1);
       onChanged();
+      onEnded();
     },
   });
   // The answer of the preview is shown at once; the job as the server has it follows.
