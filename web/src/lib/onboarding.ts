@@ -4,6 +4,7 @@
 // of a person in one press. This holds what the forms work out from what is typed.
 
 import type { Schemas } from "../api/client";
+import { type Mark, safeColour } from "./operators";
 import { NEW_PERSON_FIELDS, newPersonErrors, type PersonChoice, readPerson } from "./people";
 import { roleLabel } from "./roles";
 
@@ -67,33 +68,26 @@ export interface NewUserForm {
   /** Also an operator: made with the user, of its contact. */
   alsoOperator: boolean;
   label: string;
-  colour: string;
+  /**
+   * The colour as chosen, or null where none was: then the server gives the next that no
+   * operator has. Chosen blank, the operator has no colour.
+   */
+  colour: string | null;
   role: string;
   groupHids: readonly string[];
   notes: string;
   accessCode: string;
 }
 
-/** The operator `POST /users` makes with the user: each part left out is the server's. */
-export interface NewOperatorBody {
-  label?: string;
-  colour?: string;
-  description?: string;
-}
-
 /** What `POST /users` takes since 0.9.13 ("### People" of docs/interfaces.md). */
-export type NewUserBody = Schemas["UserCreate"] & {
-  notes?: string | null;
-  group_hids?: string[];
-  operator?: NewOperatorBody | null;
-};
+export type NewUserBody = Schemas["UserCreate"];
 
 /**
  * What one Create sends: the user, with its contact and its operator where their boxes
  * are ticked, its role, its groups and its notes. A service account is no person and has
  * neither box, nor an access code. What is missing is said of its field before anything
- * is sent. A label or a colour left blank is the server's to give: the username, and the
- * next colour that no operator has.
+ * is sent. A label left blank is the username, which the server gives; a colour not
+ * chosen is the next that no operator has, which it gives too.
  */
 export function newUserBody(
   form: NewUserForm,
@@ -105,9 +99,9 @@ export function newUserBody(
     if (read.contactHid !== null) body.contact_hid = read.contactHid;
     if (read.person !== null) body.contact = read.person;
     if (form.alsoOperator) {
-      const operator: NewOperatorBody = {};
+      const operator: Schemas["NewOperator"] = {};
       if (form.label.trim() !== "") operator.label = form.label.trim();
-      if (form.colour.trim() !== "") operator.colour = form.colour.trim();
+      if (form.colour !== null) operator.colour = form.colour.trim() || null;
       body.operator = operator;
     }
   }
@@ -118,9 +112,88 @@ export function newUserBody(
   return { ok: true, body };
 }
 
-/** The operator one Create made with the user, or null where none was asked for. */
-export function createdOperator(created: Schemas["UserCreated"]): Schemas["OperatorOut"] | null {
-  return (created as { operator?: Schemas["OperatorOut"] | null }).operator ?? null;
+/**
+ * The mark of an operator a user or a contact names (P-280): its label in its colour, a
+ * link to its page, and released where it is retired. Who is behind it is the person
+ * whose page or row it is on, and is not said again.
+ */
+export function briefMark(operator: Schemas["OperatorBrief"]): Mark {
+  return {
+    hid: operator.hid,
+    label: operator.label,
+    colour: safeColour(operator.colour),
+    person: "",
+    open: false,
+    released: operator.record_status === "retired",
+  };
+}
+
+/**
+ * Whether a person stands behind an operator that is not retired: where not, the page
+ * offers Make an operator (P-284), and the lists count them among those behind none.
+ */
+export function behindOperator(operators: readonly Schemas["OperatorBrief"][]): boolean {
+  return operators.some((operator) => operator.record_status !== "retired");
+}
+
+/** The gaps a list of users is narrowed to (P-280): no contact, or no operator. */
+export type UsersGap = "" | "no-contact" | "no-operator";
+
+/** What a gap asks `GET /users` for, and what the address of the page holds of it. */
+export const USERS_GAPS: readonly {
+  value: UsersGap;
+  label: string;
+  param: "contact" | "operator" | null;
+}[] = [
+  { value: "", label: "Every user", param: null },
+  { value: "no-contact", label: "Users with no contact", param: "contact" },
+  { value: "no-operator", label: "Users with no operator", param: "operator" },
+];
+
+/** The gap a list of users is narrowed to, as the address of the page says it. */
+export function usersGapOf(params: URLSearchParams): UsersGap {
+  if (params.get("contact") === "none") return "no-contact";
+  if (params.get("operator") === "none") return "no-operator";
+  return "";
+}
+
+/** What `GET /users` is asked, for a gap. */
+export function usersGapQuery(gap: UsersGap): { contact?: "none"; operator?: "none" } {
+  if (gap === "no-contact") return { contact: "none" };
+  if (gap === "no-operator") return { operator: "none" };
+  return {};
+}
+
+/** The address of the list of users: what is searched for, the gap, and the page. */
+export function usersAddress(q: string, gap: UsersGap, offset: number): URLSearchParams {
+  const wanted = new URLSearchParams();
+  if (q) wanted.set("q", q);
+  for (const [name, value] of Object.entries(usersGapQuery(gap))) wanted.set(name, value);
+  if (offset > 0) wanted.set("offset", String(offset));
+  return wanted;
+}
+
+/** The query of an address as it is written after the path: blank where it has none. */
+export function queryOf(params: URLSearchParams): string {
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+/**
+ * The gaps of the list of contacts (P-280), each as the filter of the grid that a link
+ * starts it with: every contact, those that are no user, those behind no operator. The
+ * filter is always given, blank for the whole, so that the grid does not take up the
+ * one it last had.
+ */
+export const CONTACTS_GAPS: readonly { label: string; filter: string }[] = [
+  { label: "Every contact", filter: "" },
+  { label: "Contacts that are no user", filter: "is_user:eq:false" },
+  { label: "Contacts behind no operator", filter: "is_operator:eq:false" },
+];
+
+/** The address of the list of contacts started with a filter. */
+export function contactsAddress(filter: string): string {
+  return `/contacts?${new URLSearchParams({ filter }).toString()}`;
 }
 
 /** The fields of the user itself that a refusal names, each said beside its input. */

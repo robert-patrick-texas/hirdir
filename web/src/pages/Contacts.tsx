@@ -4,8 +4,10 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Created, createdState, useCreated } from "../components/Created";
+import { GapLinks } from "../components/GapLinks";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
+import { MakeOperator } from "../components/MakeOperator";
 import { OperatorMark } from "../components/Operator";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
@@ -25,6 +27,8 @@ import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useChoices, useTags } from "../lib/lists";
+import { briefMark, CONTACTS_GAPS, contactsAddress, operatorLabelOf } from "../lib/onboarding";
+import { operatorPath } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { kindPath } from "../lib/preview";
@@ -73,6 +77,25 @@ const COLUMNS: GridColumn<Contact>[] = [
       { value: "false", label: "No user" },
     ],
     width: 160,
+  },
+  {
+    // 0.9.13: the operators it stands behind, each a link to its page, filtered and
+    // sorted by whether it stands behind one that is not retired (P-280).
+    id: "is_operator",
+    header: "Operators",
+    kind: "boolean",
+    column: null,
+    value: (contact) => contact.operators.map((operator) => operator.label).join(", "),
+    links: (contact) =>
+      contact.operators.map((operator) => ({
+        text: operator.label,
+        path: operatorPath(operator.hid),
+      })),
+    choices: [
+      { value: "true", label: "Behind an operator" },
+      { value: "false", label: "Behind no operator" },
+    ],
+    width: 180,
   },
   {
     // How many places and owners it is assigned to: counted by the server, for each row.
@@ -213,6 +236,15 @@ export function Contacts() {
           </p>
         </CreateForm>
       )}
+      {/* 0.9.13: the gaps, each one press away and an address of its own (P-280). */}
+      <GapLinks
+        label="Show contacts"
+        links={CONTACTS_GAPS.map((one) => ({
+          text: one.label,
+          to: contactsAddress(one.filter),
+          current: startFilter === one.filter,
+        }))}
+      />
       <DataGrid<Contact>
         key={startFilter ?? ""}
         id="contacts"
@@ -318,6 +350,27 @@ export function ContactDetail() {
                 <>A user: this person signs in to hirdir</>
               ) : (
                 <span className="muted">None: this person does not sign in to hirdir</span>
+              )}
+            </dd>
+            {/* 0.9.13: the operators it stands behind, as links, and one made in one press
+                where it is behind none (P-280, P-284). */}
+            <dt>Operators</dt>
+            <dd data-testid="contact-operator-marks">
+              {record.operators.length > 0 ? (
+                <span className="people-marks">
+                  {record.operators.map((operator) => (
+                    <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+                  ))}
+                </span>
+              ) : (
+                <span className="people-gap">no operator</span>
+              )}
+              {mayEdit && record.record_status !== "retired" && !record.is_operator && (
+                <MakeOperator
+                  contactHid={record.hid}
+                  label={operatorLabelOf(record)}
+                  who={record.name}
+                />
               )}
             </dd>
             <dt>Notes</dt>

@@ -193,7 +193,8 @@ test("P-172: a user is given another contact, a new one, or none", async ({
   await expect(facts).toHaveText(
     `${username} has no contact: it is shown by its username until it is given one.`,
   );
-  await expect((await userRow(page, username)).getByTestId("user-name")).toHaveText("No contact");
+  // 0.9.13: no contact, said plainly, as a gap the list is narrowed to (P-280).
+  await expect((await userRow(page, username)).getByTestId("user-name")).toHaveText("no contact");
   await expectClean(page, seen);
 });
 

@@ -3044,17 +3044,25 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
 - **New user.** One form makes the user, the contact and the operator (P-283). It has
   Also a contact, ticked from the start, with the name, the email and the numbers, or a
   contact there is already; Also an operator, ticked from the start, with the label,
-  which follows the username until it is typed over, and the colour, the next unused,
-  in the picker; the role; the groups, a box each (P-282); and the notes. A service
-  account has neither box. Unticking the contact unticks the operator, which needs
-  one. One Create sends one `POST /users`; a refusal is shown at its field, with
-  nothing typed lost, and the access code is shown with links to the three records.
-- **A user's page.** Its groups, each with the role the group grants, as a box to each
+  which follows the username while it is blank or still what the form filled in, and
+  the colour, the next unused, in the picker; the role; the groups, a box each with
+  the roles the group grants (P-282); and the notes. A service account has neither box.
+  Unticking the contact unticks the operator, which needs one, and ticking the operator
+  ticks the contact. A label or a colour left blank is the server's to give, the
+  username and the next unused, as one not yet read when Create is pressed is. One
+  Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
+  the label, `operator` at its box, `group_hids` at the groups, the contact's at the
+  person's, with nothing typed lost, and the access code is shown with links to the
+  three records.
+- **A user's page.** Its groups, each with the roles the group grants, as a box to each
   group there is: ticking and unticking add and remove the user at once, each by its
-  own request, and a refusal is said beside the box, which goes back. Its notes are
-  changed in its form. Its operators are listed as links; where it is behind none and
-  has a contact, Make an operator makes one in one press, with the username as its
-  label and the next unused colour, and leads to it (P-284).
+  own request, and a refusal is said beside the box, which goes back. A box pressed
+  again while its request is out sends nothing more. Its notes are changed in its form.
+  Its operators are listed as links; where it is behind none and has a contact, Make an
+  operator makes one in one press, with the username as its label and the next unused
+  colour, and leads to it (P-284). A label the server does not take, too long or
+  another operator's, opens the label and the colour in place, with the refusal at
+  the field, to be put right and made from there.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
   stands behind, as links; Show narrows the list to the contacts that are no user and
   to those behind no operator. The page of a contact behind no operator has Make an

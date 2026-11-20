@@ -3,8 +3,10 @@ import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
-import { CheckField, TextField } from "../components/Field";
+import { CheckField, TextAreaField, TextField } from "../components/Field";
 import { GroupBoxes } from "../components/GroupBoxes";
+import { MakeOperator } from "../components/MakeOperator";
+import { OperatorMark } from "../components/Operator";
 import { ContactChanges, PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
@@ -13,6 +15,7 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { behindOperator, briefMark } from "../lib/onboarding";
 import type { Option } from "../lib/patch";
 import { type PersonChoice, personChoice, personLabel, readPerson } from "../lib/people";
 import { roleLabel } from "../lib/roles";
@@ -101,6 +104,35 @@ function Facts({ user }: { user: User }) {
           </span>
         ))}
       </dd>
+      {/* 0.9.13: the operators it works as, as links, and one made in one press where it
+          has a contact and is behind none (P-280, P-284). */}
+      {!user.is_service_account && (
+        <>
+          <dt>Operators</dt>
+          <dd data-testid="user-operators">
+            {user.operators.length > 0 && (
+              <span className="people-marks">
+                {user.operators.map((operator) => (
+                  <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+                ))}
+              </span>
+            )}
+            {user.operators.length === 0 && <span className="people-gap">no operator</span>}
+            {user.contact && !behindOperator(user.operators) && (
+              <MakeOperator
+                contactHid={user.contact.hid}
+                label={user.username}
+                who={user.username}
+              />
+            )}
+            {!user.contact && (
+              <span className="muted"> · an operator stands for a contact: give it one first</span>
+            )}
+          </dd>
+        </>
+      )}
+      <dt>Notes</dt>
+      <dd data-testid="user-notes">{user.notes || <span className="muted">—</span>}</dd>
       <dt>Last sign-in</dt>
       <dd>
         <Time at={user.last_sign_in_at} />
@@ -126,10 +158,12 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
   const auth = useAuth();
   const [username, setUsername] = useState(user.username);
   const [disabled, setDisabled] = useState(user.disabled);
+  const [notes, setNotes] = useState(user.notes ?? "");
   const action = useAction();
   const fields = action.error?.fields ?? {};
   const renamed = username.trim() !== user.username;
-  const changed = renamed || disabled !== user.disabled;
+  const noted = notes.trim() !== (user.notes ?? "");
+  const changed = renamed || disabled !== user.disabled || noted;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -137,6 +171,8 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
     const body: Schemas["UserPatch"] = { row_version: user.row_version };
     if (renamed) body.username = username.trim();
     if (disabled !== user.disabled) body.disabled = disabled;
+    // 0.9.13: blank clears them (P-281).
+    if (noted) body.notes = notes.trim() || null;
     const result = await action.run(() =>
       api.request("patch", "/api/v1/users/{hid}", { path: { hid: user.hid }, body }),
     );
@@ -150,7 +186,7 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
     <section aria-labelledby="details">
       <h2 id="details">Details</h2>
       <form onSubmit={submit} className="stack" noValidate>
-        <Problem error={action.error} shown={["username", "disabled"]} onReload={reload} />
+        <Problem error={action.error} shown={["username", "disabled", "notes"]} onReload={reload} />
         <TextField
           label="Username"
           name="username"
@@ -169,6 +205,15 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
           onChange={setDisabled}
           hint="A disabled user cannot sign in, and every session they have ends."
           error={fields.disabled}
+        />
+        <TextAreaField
+          label="Notes"
+          name="notes"
+          value={notes}
+          onChange={setNotes}
+          maxLength={10000}
+          hint="The account's: what it is for, who asked for it, when it is to end. The person's own are on the contact."
+          error={fields.notes}
         />
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || !changed}>

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  behindOperator,
+  briefMark,
+  CONTACTS_GAPS,
+  contactsAddress,
   followedLabel,
   followUsername,
   groupGrants,
@@ -8,8 +12,13 @@ import {
   newUserBody,
   newUserErrors,
   operatorLabelOf,
+  queryOf,
   refusedField,
   typeLabel,
+  USERS_GAPS,
+  usersAddress,
+  usersGapOf,
+  usersGapQuery,
 } from "./onboarding";
 import { NO_NEW_PERSON, personChoice } from "./people";
 
@@ -95,9 +104,14 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
     });
   });
 
-  it("leaves a blank label and a blank colour to the server", () => {
-    const read = newUserBody({ ...PERSON, label: " ", colour: "" });
+  it("leaves a blank label and a colour not chosen to the server", () => {
+    const read = newUserBody({ ...PERSON, label: " ", colour: null });
     expect(read.ok && read.body.operator).toEqual({});
+  });
+
+  it("sends a colour chosen blank as none", () => {
+    const read = newUserBody({ ...PERSON, colour: " " });
+    expect(read.ok && read.body.operator).toEqual({ label: "ex-ops", colour: null });
   });
 
   it("sends a contact there is by its HID", () => {
@@ -143,6 +157,56 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
       ok: false,
       field: "contact_hid",
     });
+  });
+});
+
+describe("who is what, on the lists of people (P-280)", () => {
+  const brief = (label: string, record_status: "active" | "retired" | "draft") => ({
+    hid: `O-${label}`,
+    label,
+    colour: "#1f6feb",
+    record_status,
+  });
+
+  it("marks an operator by its label in its colour, released where it is retired", () => {
+    expect(briefMark(brief("ex-ops", "active"))).toEqual({
+      hid: "O-ex-ops",
+      label: "ex-ops",
+      colour: "#1f6feb",
+      person: "",
+      open: false,
+      released: false,
+    });
+    expect(briefMark(brief("ex-ops", "retired")).released).toBe(true);
+    expect(briefMark({ ...brief("ex-ops", "active"), colour: "red" }).colour).toBeNull();
+  });
+
+  it("counts a person behind retired operators alone as behind none", () => {
+    expect(behindOperator([])).toBe(false);
+    expect(behindOperator([brief("old", "retired")])).toBe(false);
+    expect(behindOperator([brief("old", "retired"), brief("new", "draft")])).toBe(true);
+  });
+
+  it("keeps the gap of the users in the address, and asks the server for it", () => {
+    expect(USERS_GAPS.map((gap) => gap.value)).toEqual(["", "no-contact", "no-operator"]);
+    expect(usersGapOf(new URLSearchParams("contact=none"))).toBe("no-contact");
+    expect(usersGapOf(new URLSearchParams("operator=none&q=ex"))).toBe("no-operator");
+    expect(usersGapOf(new URLSearchParams("contact=some"))).toBe("");
+    expect(usersGapQuery("no-contact")).toEqual({ contact: "none" });
+    expect(usersGapQuery("no-operator")).toEqual({ operator: "none" });
+    expect(usersGapQuery("")).toEqual({});
+    expect(queryOf(usersAddress("ex ops", "no-operator", 50))).toBe(
+      "?q=ex+ops&operator=none&offset=50",
+    );
+    expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("starts the list of contacts at each gap, and the whole with a blank filter", () => {
+    expect(CONTACTS_GAPS.map((gap) => contactsAddress(gap.filter))).toEqual([
+      "/contacts?filter=",
+      "/contacts?filter=is_user%3Aeq%3Afalse",
+      "/contacts?filter=is_operator%3Aeq%3Afalse",
+    ]);
   });
 });
 
