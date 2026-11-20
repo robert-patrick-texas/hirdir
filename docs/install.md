@@ -1842,7 +1842,42 @@ that process stopped is `stopped`, and its reason now reads `the background work
 stopped while it was being applied; apply it again to resume`, where it named the
 server.
 
-<!-- load: settings and About -->
+**The server says how it is doing.** The menu bar of every page has a mark of the
+server's health, read from the answers the page gets anyway: green where answers are
+quick, yellow, orange and red as the slowest of them take longer, each with its own
+shape and its word, and it leads to About. About shows, for everyone signed in, the
+last ten minutes as the server kept them in its memory: how long answers took, the
+least, the average, the most and the 50th, 95th and 99th in a hundred; how many
+requests fell in each band of time; how many were answered well, not taken as asked,
+failed, and refused as busy; the share of a processor the server used; the memory and
+the disk of the host; whether the second process runs; a graph of the times beside the
+processor; the ten slowest requests, by their route and never by what was searched
+for, with who asked and the request ID to find each in the journal; and who was
+active, with what each met, whoever had it worst first. Nothing of it is stored: it
+starts empty whenever the server starts.
+
+**Past a ceiling the server answers at once to wait.** There are three new settings of
+the inventory, under Admin, Settings, in force from the upgrade with no migration:
+`busy_response_ms`, 3000 unless set, `busy_cpu_percent`, 95 unless set, and
+`busy_over_seconds`, 30 unless set. The colour is by the time of the slowest answers
+of the last `busy_over_seconds`, the 95th in a hundred, or the slowest where there are
+twenty or fewer: green under a third of `busy_response_ms`, yellow to two thirds,
+orange to the whole, red past it. Nothing is refused at green and yellow. At orange the
+reports, the exports and the previews are answered `503` Busy with `Retry-After`, and
+at red every read is, the lists among them; the page says that the server is busy and
+offers to try again. Nothing is refused with fewer than twenty requests in that time,
+whatever the colour: a few slow answers on a quiet server are no load to shed. The
+processor past `busy_cpu_percent` for that time makes the server orange and never red;
+it is a share of one processor and can pass 100 on a host with several, where several
+requests are in the database at once, so the setting takes up to 100 for each
+processor. Never refused: the page itself, a sign-in, every change that is stored,
+About and the settings. Either setting at 0 switches that measure off, and both at 0
+refuse nothing, ever; the mark then goes by the thirds of three seconds. What
+monitors the server through a proxy will see these `503` answers under load, where it
+saw requests time out.
+
+Every answer of the API carries `X-Hirdir-Health`, as `busy; refusing=reads`, for a
+script that wishes to wait by itself.
 
 For a script that reads the API: `POST /api/v1/imports/<HID>/apply`, and the apply
 of a bulk edit, answer `202` with the job `queued`, always, where the job could be

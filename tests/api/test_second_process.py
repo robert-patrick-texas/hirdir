@@ -441,7 +441,9 @@ def served(installed: Config, monkeypatch, *options: str) -> dict[str, Any]:
                 hid = imports.begin_apply(db, asked, job.hid, source="file").hid
                 db.commit()
                 background.wake(state)
-                deadline = time.monotonic() + 1.5
+                # With the work in this process the job is waited for as long as a
+                # loaded host may take; without, a moment shows that nothing takes it.
+                deadline = time.monotonic() + (60 if "--work" in options else 1.5)
                 while True:
                     anew(db)
                     seen["job"] = db.get_one(ImportJob, hid).status
