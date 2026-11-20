@@ -1,13 +1,13 @@
 """Accounts: users, user groups, role grants, access codes, tokens and signing in."""
 
 import re
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, exists, func, or_, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -18,13 +18,14 @@ from hirdir.auth.throttle import Throttle
 from hirdir.db import dialect
 from hirdir.db.models import (
     Contact,
+    Operator,
     RoleGrant,
     ServiceToken,
     User,
     UserGroup,
     UserGroupMember,
 )
-from hirdir.domain import audit, contacts
+from hirdir.domain import audit, colours, contacts, operators, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import (
     Conflict,
@@ -34,11 +35,16 @@ from hirdir.domain.errors import (
     SignInDelayed,
     SignInRefused,
 )
-from hirdir.domain.records import Arrange
+from hirdir.domain.records import AnySelect, Arrange
 from hirdir.domain.records import touch as _touch
 
 USERNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 LAST_USED_GRANULARITY_SECONDS = 60
+# Which users of a list are kept by `contact` and by `operator`: all of them, those that
+# are one, or those that are not (P-280).
+WHICH = ("any", "some", "none")
+# A user's notes are as long as a contact's may be (P-281).
+MAX_NOTES = 10_000
 
 
 class NotSignedIn(Exception):
@@ -106,12 +112,48 @@ def find_user(db: Session, username: str) -> User | None:
     return db.scalar(select(User).where(User.username_key == _key(username)))
 
 
+def _behind_an_operator() -> ColumnElement[bool]:
+    """Say whether the contact of a user stands behind an operator that is not retired."""
+    return exists().where(
+        Operator.contact_hid == User.contact_hid, Operator.record_status != "retired"
+    )
+
+
+def _narrowed(query: AnySelect, contact: str, operator: str) -> AnySelect:
+    """Narrow a list of users to those that are, or are not, a contact and an operator.
+
+    `some` keeps the users that are one, `none` those that are not, and `any` all of
+    them. A service account is no person and is in neither `none` (P-280).
+    """
+    for name, value in (("contact", contact), ("operator", operator)):
+        if value not in WHICH:
+            raise Invalid(f"{name} is not acceptable", {name: "any, some or none"})
+    person = User.is_service_account.is_(False)
+    if contact == "some":
+        query = query.where(User.contact_hid.is_not(None))
+    elif contact == "none":
+        query = query.where(person, User.contact_hid.is_(None))
+    if operator == "some":
+        query = query.where(_behind_an_operator())
+    elif operator == "none":
+        query = query.where(person, ~_behind_an_operator())
+    return query
+
+
 def list_users(
-    db: Session, q: str = "", limit: int = 100, offset: int = 0, arrange: Arrange | None = None
+    db: Session,
+    q: str = "",
+    limit: int = 100,
+    offset: int = 0,
+    arrange: Arrange | None = None,
+    *,
+    contact: str = "any",
+    operator: str = "any",
 ) -> tuple[list[User], int]:
     """Return one page of users, by username, and the total that match q.
 
     `arrange` sorts them as was asked for, and the username settles what that leaves tied.
+    `contact` and `operator` keep those that are one, `some`, or the gaps, `none` (P-280).
     """
     query = select(User).outerjoin(Contact, Contact.hid == User.contact_hid)
     if q:
@@ -121,6 +163,7 @@ def list_users(
                 dialect.contains_text(Contact.name.expression, q),
             )
         )
+    query = _narrowed(query, contact, operator)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     if arrange is not None:
         query = arrange(query)
@@ -151,6 +194,14 @@ def contacts_of(db: Session, users: list[User]) -> dict[str, Contact]:
     if not hids:
         return {}
     return {one.hid: one for one in db.scalars(select(Contact).where(Contact.hid.in_(hids)))}
+
+
+def operators_of(db: Session, users: list[User]) -> dict[str, list[Operator]]:
+    """Return the operators each of the users works as, by the user's HID: those whose
+    contact is the user's, retired ones among them, in the order of their labels, read
+    in one query for them all. A user with no contact has none (P-280)."""
+    behind = contacts.operators_of(db, [user.contact_hid for user in users if user.contact_hid])
+    return {user.hid: list(behind.get(user.contact_hid or "", [])) for user in users}
 
 
 def name_of(user: User, contact: Contact | None) -> str:
@@ -210,6 +261,124 @@ def _told(db: Session, context: AuditContext, user: User, old: str | None, new: 
         audit.record(db, context, "update", "contact", new, [change("user_hid", None, user.hid)])
 
 
+def _checked_notes(value: Any) -> str | None:
+    """Return a user's notes, a blank as none, or refuse them (P-281)."""
+    notes = records.clean(value)
+    if notes is not None and len(notes) > MAX_NOTES:
+        raise Invalid("the notes are too long", {"notes": f"at most {MAX_NOTES} characters"})
+    return notes
+
+
+@dataclass(frozen=True)
+class NewUser:
+    """A user just made, with its access code, shown this once, and the operator made
+    with it, where one was (P-283)."""
+
+    user: User
+    access_code: str | None
+    operator: Operator | None
+
+
+def _named_in(prefix: str, error: Invalid | Conflict) -> Invalid | Conflict:
+    """Name the fields a refusal names as fields of a part of the request (P-283)."""
+    error.fields = {f"{prefix}.{name}": text for name, text in error.fields.items()}
+    return error
+
+
+def _checked_groups(db: Session, hids: Sequence[str]) -> list[UserGroup]:
+    """Return the groups a new user is put into, each once, or refuse one there is not."""
+    found: dict[str, UserGroup] = {}
+    for hid in hids:
+        group = db.get(UserGroup, hid)
+        if group is None:
+            raise Invalid(
+                "there is no such user group", {"group_hids": f"there is no user group {hid}"}
+            )
+        found[group.hid] = group
+    return list(found.values())
+
+
+def _checked_role(role: str | None) -> str | None:
+    if not role:
+        return None
+    try:
+        return Role(role).value
+    except ValueError:
+        raise Invalid("there is no such role", {"role": "viewer, inventory or admin"}) from None
+
+
+def onboard(
+    db: Session,
+    context: AuditContext,
+    *,
+    username: str,
+    is_service_account: bool = False,
+    access_code: str | None = None,
+    contact_hid: str | None = None,
+    contact: dict[str, Any] | None = None,
+    role: str | None = None,
+    group_hids: Sequence[str] = (),
+    operator: dict[str, Any] | None = None,
+    notes: str | None = None,
+) -> NewUser:
+    """Make what a new person needs, in the one change (P-282, P-283): the user, the
+    contact it is, the operator it works as, the grant of its role and its memberships.
+
+    Each part is audited as if it were made by itself, with the events that
+    `POST /operators`, `POST /role-grants` and `PUT /user-groups/{hid}/members/{user_hid}`
+    write. Where any part is refused, the error is raised before the caller's
+    transaction is committed, and so nothing is made and no event is kept. A refusal
+    names the field of the request it is for: `operator.label` for the label of the
+    operator, `group_hids` for a group there is not.
+
+    `operator` holds `label`, `colour` and `description`, each optional. The label left
+    out, or blank, is the username, and a username that is no acceptable label is
+    refused and never altered; the colour left out is the next that no operator has,
+    and given as blank or null is none. It needs a contact in the same request.
+    """
+    if operator is not None and (is_service_account or (contact is None and not contact_hid)):
+        raise Invalid(
+            "an operator is made of a person who is a contact",
+            {
+                "operator": "a service account works as no operator"
+                if is_service_account
+                else "give the contact, new or there, that stands behind the operator"
+            },
+        )
+    granted = _checked_role(role)
+    groups = _checked_groups(db, group_hids)
+    user, code = create_user(
+        db,
+        context,
+        username=username,
+        is_service_account=is_service_account,
+        access_code=access_code,
+        contact_hid=contact_hid,
+        contact=contact,
+        notes=notes,
+    )
+    if granted is not None:
+        grant_role(db, context, role=granted, user_hid=user.hid)
+    for group in groups:
+        add_member(db, context, group.hid, user.hid)
+    made = None
+    if operator is not None:
+        fields = {
+            "label": records.clean(operator.get("label")) or user.username,
+            "description": operator.get("description"),
+            "colour": operator["colour"]
+            if "colour" in operator
+            else colours.next_for_operators(db),
+            "contact_hid": user.contact_hid,
+            "record_status": "active",
+        }
+        try:
+            made = operators.create_operator(db, context, fields)
+        except (Invalid, Conflict) as error:
+            raise _named_in("operator", error) from None
+    return NewUser(user, code, made)
+
+
 def create_user(
     db: Session,
     context: AuditContext,
@@ -219,15 +388,18 @@ def create_user(
     access_code: str | None = None,
     contact_hid: str | None = None,
     contact: dict[str, Any] | None = None,
+    notes: str | None = None,
 ) -> tuple[User, str | None]:
     """Create a user. Return it with its access code, which is shown this once.
 
     A person gets the given access code, or a generated one. A service account gets
     none: it holds tokens instead. The person is a contact: `contact_hid` names one,
     `contact` holds the fields of a new one, made in the same change, or neither is
-    given and the user has none until an Admin gives it one (P-172).
+    given and the user has none until an Admin gives it one (P-172). `onboard` makes
+    with it its operator, its role and its groups (P-283).
     """
     username = _checked_username(db, username, None)
+    notes = _checked_notes(notes)
     if contact_hid is not None and contact is not None:
         raise Invalid(
             "a user is given one contact",
@@ -247,14 +419,14 @@ def create_user(
             person = contacts.create_contact(db, context, dict(contact))
         except (Invalid, Conflict) as error:
             # What is wrong is a field of the new contact, and is named so.
-            error.fields = {f"contact.{name}": text for name, text in error.fields.items()}
-            raise
+            raise _named_in("contact", error) from None
     user = User(
         username=username,
         username_key=_key(username),
         contact_hid=person.hid if person is not None else None,
         is_service_account=is_service_account,
         access_code_hash=codes.hash_code(code) if code else None,
+        notes=notes,
         created_by=context.actor_hid,
         updated_by=context.actor_hid,
     )
@@ -270,6 +442,7 @@ def create_user(
             change("username", None, user.username),
             change("is_service_account", None, user.is_service_account),
             *([change("contact_hid", None, user.contact_hid)] if user.contact_hid else []),
+            *([change("notes", None, user.notes)] if user.notes else []),
         ],
     )
     _told(db, context, user, None, user.contact_hid)
@@ -279,7 +452,8 @@ def create_user(
 def update_user(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> User:
-    """Change a user's username (P-173), its contact (P-172), or whether it is disabled.
+    """Change a user's username (P-173), its contact (P-172), its notes (P-281), or
+    whether it is disabled.
 
     The name, the email and the numbers a user shows are its contact's, and are changed
     on the contact. A new username keeps the user's sessions and tokens: it is the same
@@ -300,6 +474,10 @@ def update_user(
             changes.append(change("contact_hid", user.contact_hid, new))
     if fields.get("disabled") is not None and fields["disabled"] != user.disabled:
         changes.append(change("disabled", user.disabled, fields["disabled"]))
+    if "notes" in fields:
+        notes = _checked_notes(fields["notes"])
+        if notes != user.notes:
+            changes.append(change("notes", user.notes, notes))
     if not changes:
         if user.row_version != row_version:
             _touch(user, context, row_version)

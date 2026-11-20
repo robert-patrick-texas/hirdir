@@ -481,6 +481,16 @@ def is_user(contact_hid: Any) -> ColumnElement[bool]:
     return contact_hid.in_(select(User.contact_hid).where(User.contact_hid.is_not(None)))
 
 
+def is_operator(contact_hid: Any) -> ColumnElement[bool]:
+    """Say whether the contact a column names stands behind an operator that is not
+    retired (P-280)."""
+    return contact_hid.in_(
+        select(Operator.contact_hid).where(
+            Operator.contact_hid.is_not(None), Operator.record_status != "retired"
+        )
+    )
+
+
 def operator_scope(contact: Any) -> ColumnElement[Any]:
     """Return `internal` where the contact behind a label is a user's, `external` where
     it is not, and nothing where nobody is behind it: no contact, or one that is retired,
@@ -1729,6 +1739,8 @@ CONTACTS = Listing(
         "record_status": Field("choice", Contact.record_status),
         # The contact is a user's (P-172).
         "is_user": Field("boolean", is_user(Contact.hid)),
+        # The contact stands behind an operator that is not retired (P-280).
+        "is_operator": Field("boolean", is_operator(Contact.hid)),
         "tags": _tags("contact", Contact),
         # How many places, owners and operators name it, as its record counts them.
         "uses": Field("integer", ordered_by=_counted(Contact, *contacts.USED_BY)),
