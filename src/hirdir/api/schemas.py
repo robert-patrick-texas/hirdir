@@ -117,6 +117,19 @@ class PersonRef(Model):
     record_status: str
 
 
+class OperatorBrief(Model):
+    """An operator a person stands behind, as a user and a contact name it (P-280)."""
+
+    hid: str
+    label: str
+    colour: str | None
+    record_status: Literal["draft", "active", "retired"]
+
+
+# A user's notes are as long as a contact's may be (P-281).
+NOTES_LENGTH = 10_000
+
+
 class UserOut(Model):
     """A user: the part of a person who signs in, or a service account (P-172)."""
 
@@ -128,6 +141,13 @@ class UserOut(Model):
     )
     display_name: str = Field(description="The name of its contact; blank where it has none.")
     email: str = Field(description="The email of its contact; blank where it has none.")
+    operators: list[OperatorBrief] = Field(
+        description="The operators whose contact is the user's, retired ones among them, in "
+        "the order of their labels; none for a user with no contact (P-280)."
+    )
+    notes: str | None = Field(
+        description="What the account is for, who asked for it, when it is to end (P-281)."
+    )
     is_service_account: bool
     disabled: bool
     role: str | None = Field(description="The highest role held directly or through a group.")
@@ -146,6 +166,24 @@ class NewPerson(Model):
     organization: str | None = Field(default=None, max_length=200)
     phone: str | None = Field(default=None, max_length=50)
     phone2: str | None = Field(default=None, max_length=50)
+
+
+class NewOperator(Model):
+    """A new operator, made with the user whose contact stands behind it (P-283)."""
+
+    label: str | None = Field(
+        default=None,
+        max_length=40,
+        description="Left out or blank, the username of the new user, which must then be "
+        "an acceptable label: it is never shortened.",
+    )
+    colour: str | None = Field(
+        default=None,
+        max_length=20,
+        description="In the form #1f6feb. Left out, the next that no operator has, as "
+        "`next_for_operators` of `GET /colours` gives it; blank or null, none.",
+    )
+    description: str | None = Field(default=None, max_length=NOTES_LENGTH)
 
 
 class UserCreate(Model):
@@ -167,13 +205,17 @@ class UserCreate(Model):
         default=None, max_length=200, description="Left out, a code is generated."
     )
     role: str | None = Field(default=None, description="A role to grant at once.")
-
-
-class UserCreated(Model):
-    """A user just created, with the access code that is shown this once."""
-
-    user: UserOut
-    access_code: str | None
+    group_hids: list[str] = Field(
+        default=[],
+        max_length=1000,
+        description="The user groups to put the new user in, in the same change (P-282).",
+    )
+    operator: NewOperator | None = Field(
+        default=None,
+        description="An operator to make in the same change, whose contact is the user's: "
+        "it needs `contact` or `contact_hid` (P-283).",
+    )
+    notes: str | None = Field(default=None, max_length=NOTES_LENGTH, description="Blank is none.")
 
 
 class UserPatch(Model):
@@ -189,6 +231,9 @@ class UserPatch(Model):
         description="Another contact; null for none. A service account has none.",
     )
     disabled: bool | None = None
+    notes: str | None = Field(
+        default=None, max_length=NOTES_LENGTH, description="Null or blank clears them (P-281)."
+    )
 
 
 class AccessCodeSet(Model):

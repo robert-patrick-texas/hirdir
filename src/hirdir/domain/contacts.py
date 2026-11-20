@@ -481,6 +481,27 @@ def users_of(db: Session, hids: list[str]) -> dict[str, User]:
     return {user.contact_hid: user for user in found if user.contact_hid is not None}
 
 
+def operators_of(db: Session, hids: list[str]) -> dict[str, list[Operator]]:
+    """Return the operators each of the contacts stands behind, retired ones among them,
+    in the order of their labels, read in one query for them all (P-280)."""
+    found: dict[str, list[Operator]] = {hid: [] for hid in hids}
+    if not hids:
+        return found
+    for operator in db.scalars(
+        select(Operator)
+        .where(Operator.contact_hid.in_(set(hids)))
+        .order_by(Operator.label_key, Operator.hid)
+    ):
+        found[operator.contact_hid or ""].append(operator)
+    return found
+
+
+def is_operator(operators: list[Operator]) -> bool:
+    """Say whether a contact stands behind an operator, of those it stands behind, that
+    is not retired: one that is retired stands for nobody (P-280)."""
+    return any(operator.record_status != "retired" for operator in operators)
+
+
 # --- assignments ---------------------------------------------------------------------
 
 

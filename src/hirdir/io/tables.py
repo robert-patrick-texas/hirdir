@@ -31,6 +31,7 @@ from hirdir.db.models import (
     ImportRow,
     Item,
     Network,
+    Operator,
     ReferenceAttachment,
     ReferenceFile,
     RoleGrant,
@@ -118,6 +119,15 @@ USERS = Table(
             .correlate(User)
             .scalar_subquery(),
         ),
+        # The first of the operators the user works as, by label (P-280).
+        "operators": Field(
+            "text",
+            ordered_by=select(func.min(Operator.label_key))
+            .where(Operator.contact_hid == User.contact_hid)
+            .correlate(User)
+            .scalar_subquery(),
+        ),
+        "notes": Field("text", User.notes),
         "is_service_account": Field("boolean", User.is_service_account),
         "disabled": Field("boolean", User.disabled),
         "last_sign_in_at": Field("timestamp", User.last_sign_in_at),

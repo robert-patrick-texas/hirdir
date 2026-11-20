@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.api import schemas
-from hirdir.db.models import AuditEvent, Contact, RoleGrant, User, UserGroup
+from hirdir.db.models import AuditEvent, Contact, Operator, RoleGrant, User, UserGroup
 from hirdir.domain import accounts, load
 from hirdir.io.measures import Host
 
@@ -27,12 +27,25 @@ def person_ref(contact: Contact | None) -> schemas.PersonRef | None:
     )
 
 
-def user_out(db: Session, user: User, contact: Contact | None = None) -> schemas.UserOut:
-    """Return user with the role and groups they hold right now, and the contact it is:
-    its name and email are the contact's, read now (P-172)."""
+def operator_brief(operator: Operator) -> schemas.OperatorBrief:
+    """Return an operator as a user and a contact name it (P-280)."""
+    return schemas.OperatorBrief.model_validate(operator)
+
+
+def user_out(
+    db: Session,
+    user: User,
+    contact: Contact | None = None,
+    operators: list[Operator] | None = None,
+) -> schemas.UserOut:
+    """Return user with the role and groups they hold right now, the contact it is, whose
+    name and email are the contact's, read now (P-172), and the operators it works as
+    (P-280). A page of users passes the contacts and the operators it read for them all."""
     role = accounts.effective_role(db, user)
     if contact is None or contact.hid != user.contact_hid:
         contact = accounts.contact_of(db, user)
+    if operators is None:
+        operators = accounts.operators_of(db, [user])[user.hid]
     return schemas.UserOut(
         hid=user.hid,
         username=user.username,
@@ -40,6 +53,8 @@ def user_out(db: Session, user: User, contact: Contact | None = None) -> schemas
         contact=person_ref(contact),
         display_name=contact.name if contact is not None else "",
         email=(contact.email or "") if contact is not None else "",
+        operators=[operator_brief(one) for one in operators],
+        notes=user.notes,
         is_service_account=user.is_service_account,
         disabled=user.disabled,
         role=role.value if role else None,
@@ -75,8 +90,17 @@ def group_detail(db: Session, group: UserGroup) -> schemas.GroupDetail:
     members = accounts.members_of(db, group)
     return schemas.GroupDetail(
         **_group_fields(db, group, len(members)),
-        members=[user_out(db, member) for member in members],
+        members=users_out(db, members),
     )
+
+
+def users_out(db: Session, users: list[User]) -> list[schemas.UserOut]:
+    """Return a page of users, their contacts and their operators read once for them all."""
+    people = accounts.contacts_of(db, users)
+    behind = accounts.operators_of(db, users)
+    return [
+        user_out(db, user, people.get(user.contact_hid or ""), behind[user.hid]) for user in users
+    ]
 
 
 def grant_out(db: Session, grant: RoleGrant) -> schemas.GrantOut:
