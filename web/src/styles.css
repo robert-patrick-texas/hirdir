@@ -3121,3 +3121,55 @@ table.load-table th.load-band {
   font-size: 0.9em;
   user-select: all;
 }
+
+/* 0.9.13, lane w-people-0.9.13 */
+
+/* A user's groups (P-282): a group to a line, its box, its name and what it grants, and
+   what was refused of it under them. */
+.group-boxes .group-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin-right: 0;
+}
+
+.group-boxes .group-box .field-error {
+  flex-basis: 100%;
+  margin-left: 1.6rem;
+}
+
+.group-box-state {
+  color: var(--muted);
+}
+
+/* The New user form (P-283): the contact and the operator, each its box with what it
+   asks under it, set in from the edge so that what belongs to a box is seen as its. */
+.onboard-part {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.onboard-part > .person-chooser,
+.onboard-part > .fields {
+  margin-left: 1.6rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+
+/* Who is what on the lists and pages of people (P-280): plain words where there is none. */
+.people-gap {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.people-marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+}
+
+/* Make an operator (P-284): the label and the colour, opened in place by a refusal. */
+.make-operator-form {
+  margin-top: 0.5rem;
+  max-width: 40rem;
+}

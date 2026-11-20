@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, TextField } from "../components/Field";
+import { GroupBoxes } from "../components/GroupBoxes";
 import { ContactChanges, PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
@@ -28,6 +29,7 @@ type Token = Schemas["ServiceTokenOut"];
  */
 export function UserDetail() {
   const { hid = "" } = useParams();
+  const auth = useAuth();
   const user = useLoad(`user ${hid}`, (signal) =>
     api.request("get", "/api/v1/users/{hid}", { path: { hid }, signal }),
   );
@@ -49,6 +51,16 @@ export function UserDetail() {
             key={`${user.data.hid} ${user.data.row_version}`}
             user={user.data}
             reload={user.reload}
+          />
+          {/* 0.9.13: its groups, a box to each, changed at once (P-282). */}
+          <GroupBoxes
+            key={`groups ${user.data.hid}`}
+            user={user.data}
+            onChanged={() => {
+              user.refresh();
+              // A group can carry a role, the reader's own included.
+              if (auth.user.hid === hid) auth.refresh();
+            }}
           />
           {!user.data.is_service_account && (
             <Person

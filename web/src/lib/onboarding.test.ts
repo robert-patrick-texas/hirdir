@@ -1,0 +1,177 @@
+import { describe, expect, it } from "vitest";
+import {
+  followedLabel,
+  followUsername,
+  groupGrants,
+  NEW_USER_FIELDS,
+  type NewUserForm,
+  newUserBody,
+  newUserErrors,
+  operatorLabelOf,
+  refusedField,
+  typeLabel,
+} from "./onboarding";
+import { NO_NEW_PERSON, personChoice } from "./people";
+
+describe("a group's box says what the group grants (P-282)", () => {
+  it("names each role as people read it, or that it grants none", () => {
+    expect(groupGrants(["inventory"])).toBe("grants Inventory");
+    expect(groupGrants(["viewer", "admin"])).toBe("grants View-only, Admin");
+    expect(groupGrants([])).toBe("grants no role");
+  });
+});
+
+describe("the label of a new user's operator follows the username (P-283)", () => {
+  it("follows as the username is typed", () => {
+    let label = followedLabel("");
+    for (const typed of ["e", "ex", "ex-ops"]) label = followUsername(label, typed);
+    expect(label).toEqual({ label: "ex-ops", filled: "ex-ops" });
+  });
+
+  it("stays as typed over, whatever the username becomes", () => {
+    let label = followUsername(followedLabel(""), "ex-ops");
+    label = typeLabel(label, "EO");
+    label = followUsername(label, "ex-ops2");
+    expect(label.label).toBe("EO");
+  });
+
+  it("follows again once what was typed over it is blank", () => {
+    let label = typeLabel(followUsername(followedLabel(""), "ex"), "EO");
+    label = typeLabel(label, "");
+    expect(followUsername(label, "ex-ops").label).toBe("ex-ops");
+  });
+
+  it("follows while what was typed is what the form had filled in", () => {
+    const label = typeLabel(followUsername(followedLabel(""), "ex-ops"), "ex-ops");
+    expect(followUsername(label, "ex-ops2").label).toBe("ex-ops2");
+  });
+});
+
+describe("Make an operator labels it by the person (P-284)", () => {
+  it("is the username where the contact is a user, else the contact's name", () => {
+    expect(operatorLabelOf({ name: "Example Person", user: { username: "ex-ops" } })).toBe(
+      "ex-ops",
+    );
+    expect(operatorLabelOf({ name: "Example Person", user: null })).toBe("Example Person");
+    expect(operatorLabelOf({ name: "Example Person" })).toBe("Example Person");
+  });
+
+  it("opens its fields for a refusal of the label or the colour, not of the whole", () => {
+    expect(refusedField({ label: "another operator has this label" })).toBe(true);
+    expect(refusedField({ colour: "in the form #1f6feb" })).toBe(true);
+    expect(refusedField({ "operator.label": "too long" })).toBe(true);
+    expect(refusedField({ contact_hid: "this contact is retired" })).toBe(false);
+    expect(refusedField({})).toBe(false);
+  });
+});
+
+const PERSON: NewUserForm = {
+  username: " ex-ops ",
+  service: false,
+  alsoContact: true,
+  person: { ...personChoice("new"), person: { ...NO_NEW_PERSON, name: "Example Person" } },
+  alsoOperator: true,
+  label: "ex-ops",
+  colour: "#1f6feb",
+  role: "inventory",
+  groupHids: ["G1", "G2"],
+  notes: " For the network team. ",
+  accessCode: "",
+};
+
+describe("one Create sends what a new person needs (P-281 to P-283)", () => {
+  it("sends the user, a new contact, the operator, the role, the groups and the notes", () => {
+    expect(newUserBody(PERSON)).toEqual({
+      ok: true,
+      body: {
+        username: "ex-ops",
+        is_service_account: false,
+        contact: { name: "Example Person" },
+        operator: { label: "ex-ops", colour: "#1f6feb" },
+        role: "inventory",
+        group_hids: ["G1", "G2"],
+        notes: "For the network team.",
+      },
+    });
+  });
+
+  it("leaves a blank label and a blank colour to the server", () => {
+    const read = newUserBody({ ...PERSON, label: " ", colour: "" });
+    expect(read.ok && read.body.operator).toEqual({});
+  });
+
+  it("sends a contact there is by its HID", () => {
+    const read = newUserBody({ ...PERSON, person: personChoice("contact", "C1") });
+    expect(read.ok && read.body.contact_hid).toBe("C1");
+    expect(read.ok && "contact" in read.body).toBe(false);
+  });
+
+  it("sends no operator where its box is unticked, and neither without a contact", () => {
+    const noOperator = newUserBody({ ...PERSON, alsoOperator: false });
+    expect(noOperator.ok && "operator" in noOperator.body).toBe(false);
+    const nobody = newUserBody({ ...PERSON, alsoContact: false });
+    expect(nobody.ok && ("operator" in nobody.body || "contact" in nobody.body)).toBe(false);
+  });
+
+  it("sends a service account with neither, nor an access code", () => {
+    const read = newUserBody({ ...PERSON, service: true, accessCode: "kept-out" });
+    expect(read).toEqual({
+      ok: true,
+      body: {
+        username: "ex-ops",
+        is_service_account: true,
+        role: "inventory",
+        group_hids: ["G1", "G2"],
+        notes: "For the network team.",
+      },
+    });
+  });
+
+  it("leaves out no group, no role, blank notes, and sends an access code given", () => {
+    const read = newUserBody({ ...PERSON, groupHids: [], role: "", notes: " ", accessCode: "x" });
+    expect(read.ok && read.body).toMatchObject({ access_code: "x" });
+    expect(read.ok && ["group_hids", "role", "notes"].some((key) => key in read.body)).toBe(false);
+  });
+
+  it("says what is missing of the person before anything is sent", () => {
+    expect(newUserBody({ ...PERSON, person: personChoice("new") })).toEqual({
+      ok: false,
+      field: "name",
+      error: "A new person needs a name.",
+    });
+    expect(newUserBody({ ...PERSON, person: personChoice("contact") })).toMatchObject({
+      ok: false,
+      field: "contact_hid",
+    });
+  });
+});
+
+describe("a refusal of a new user is said at its field (P-283)", () => {
+  it("puts each part where the form shows it", () => {
+    expect(
+      newUserErrors({
+        username: "taken",
+        "contact.email": "another contact has this email",
+        "operator.label": "another operator has this label",
+        "operator.colour": "in the form #1f6feb",
+        operator: "needs a contact",
+        "group_hids.1": "no such group",
+        notes: "too long",
+      }),
+    ).toEqual({
+      username: "taken",
+      email: "another contact has this email",
+      label: "another operator has this label",
+      colour: "in the form #1f6feb",
+      operator: "needs a contact",
+      group_hids: "no such group",
+      notes: "too long",
+    });
+  });
+
+  it("names every field the server may refuse as one the form shows", () => {
+    for (const field of ["operator.label", "group_hids", "contact.name", "notes", "operator"]) {
+      expect(NEW_USER_FIELDS).toContain(field);
+    }
+  });
+});
