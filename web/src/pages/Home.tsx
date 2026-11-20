@@ -220,8 +220,11 @@ function Attention({ testId, section, one, many, after, none }: AttentionProps) 
  */
 function Cover() {
   const coverage = useLoad("home-coverage", (signal) =>
-    api.request("get", "/api/v1/reports/coverage", { query: { within_days: 90 }, signal }),
+    // 0.9.11: the days are left out, so the answer is of `renewal_warning_days`, the
+    // view that is worked out ahead and kept (D-184, P-275); it says how many they are.
+    api.request("get", "/api/v1/reports/coverage", { signal }),
   );
+  const soon = plural(coverage.data?.within_days ?? 90, "day");
   const endOfLife = useLoad("home-end-of-life", (signal) =>
     api.request("get", "/api/v1/reports/end-of-life", { query: { date: "ldos" }, signal }),
   );
@@ -248,10 +251,10 @@ function Cover() {
         <Attention
           testId="home-expiring"
           section={coverage.data?.sections.expiring}
-          one="item in service has cover that runs out within 90 days"
-          many="items in service have cover that runs out within 90 days"
+          one={`item in service has cover that runs out within ${soon}`}
+          many={`items in service have cover that runs out within ${soon}`}
           after="."
-          none="No cover of an item in service runs out within 90 days."
+          none={`No cover of an item in service runs out within ${soon}.`}
         />
         <Attention
           testId="home-ldos-past"

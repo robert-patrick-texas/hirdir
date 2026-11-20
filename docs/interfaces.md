@@ -2041,8 +2041,8 @@ process.
 
 `GET /kept-answers`, for an Admin, lists what is kept and would be given now: `report`,
 `request`, the request whole, `kept_at`, when it was worked out, `uses`, how many times
-the server has given it since it had it, and `ahead`, whether the database holds it,
-worked out ahead. Those the server has given come first, the most recently given last,
+the server has given it since it was worked out, and `ahead`, whether the database
+holds an answer to that request, worked out ahead. Those the server has given come first, the most recently given last,
 and then what the database holds that nobody has asked for yet, with `uses` of 0:
 
 ```json
@@ -2058,7 +2058,11 @@ and then what the database holds that nobody has asked for yet, with `uses` of 0
 
 `POST /kept-answers/check`, for an Admin, works out each of them anew, those the
 database holds among them, compares it with what was kept, in the server's memory and
-in its row, keeps the new one, and writes again a row that was not the same:
+in its row, keeps the new one, and writes again a row that was not the same, once all
+are compared. `checked` is how many were compared: a change that is stored while the
+check works leaves every kept answer stale, and from then on nothing more is
+compared, named or counted (P-277), so a check on a busy inventory may say fewer than
+were listed, and is asked again:
 
 ```json
 { "checked_at": "2027-03-02T14:05:09Z", "checked": 7, "differed": [] }

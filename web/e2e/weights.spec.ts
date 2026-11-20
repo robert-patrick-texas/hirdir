@@ -54,6 +54,8 @@ const SETTINGS = [
   "minimum_circuit_weight",
   "weight_per_resource_unit",
   "stack_discount_pct",
+  // 0.9.11: the days of the warning period, which the first page says (P-277).
+  "renewal_warning_days",
 ] as const;
 
 type Headers = { Authorization: string };
@@ -515,5 +517,34 @@ test("the Settings page checks the kept reports, and none differed", async ({ pa
   expect(Number(await check.getAttribute("data-checked"))).toBeGreaterThanOrEqual(1);
   await expect(check).toContainText("None differed.");
   await expect(kept.getByTestId("kept-differed")).toHaveCount(0);
+  await expectClean(page, seen);
+});
+
+// 0.9.11 (P-277): the first page asks for the coverage without the days, so that it is
+// given the view that is kept, of the warning period of the setting, and says its days.
+test("the first page counts the cover that runs out within the warning period of the setting", async ({
+  page,
+  request,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await session(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  const asked: string[] = [];
+  page.on("request", (one) => {
+    if (one.url().includes("/api/v1/reports/coverage")) asked.push(new URL(one.url()).search);
+  });
+  await page.goto("./");
+  const cover = page.getByTestId("home-cover");
+  await expect(cover).toContainText("within 90 days");
+  await put(request, headers, "renewal_warning_days", 60);
+  await page.reload();
+  await expect(cover).toContainText("within 60 days");
+  await expect(cover).not.toContainText("90 days");
+  // The request names no days: it is the one the report's own page opens with.
+  expect(asked.length).toBeGreaterThanOrEqual(2);
+  expect(asked.every((search) => !search.includes("within_days"))).toBe(true);
+  await put(request, headers, "renewal_warning_days", null);
   await expectClean(page, seen);
 });

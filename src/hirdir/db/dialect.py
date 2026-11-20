@@ -37,6 +37,7 @@ from sqlalchemy import (
     cast,
     func,
     literal,
+    literal_column,
     select,
     text,
 )
@@ -217,6 +218,22 @@ def hold_other_writers(db: Any) -> None:
         db.execute(text("UPDATE settings SET row_version = row_version WHERE 0"))
     else:
         db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": WRITER_LOCK})
+
+
+def stored_last(db: Any, model: Any) -> ColumnElement[Any]:
+    """Return what sorts the rows of a table that is only ever added to by when each was
+    stored, the last one greatest (P-277).
+
+    An HID is made from the clock of the process that makes it, so of two rows the one
+    stored later has the lesser HID where the clock was set back between them, or where
+    two processes made theirs in one millisecond. SQLite numbers the rows of a table as
+    they are stored, under the one writer, and that number is the order. PostgreSQL
+    has no such number of its own: there the order is the HID's until the table has a
+    sequence, which is to be added with PostgreSQL.
+    """
+    if db.get_bind().dialect.name == "sqlite":
+        return literal_column(f"{model.__tablename__}.rowid")
+    return model.hid
 
 
 def prepare_sqlite(dbapi_connection: Any) -> None:

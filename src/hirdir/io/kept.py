@@ -19,7 +19,10 @@ so that the first person to ask is not kept waiting. A process that is asked loo
 its memory, then at the row, and works the answer out itself where neither has it. A
 row is good for its request, its newest event, its day and the version of `hirdir`
 that worked it out, since an upgrade may change how a report is worked out and writes
-no event. Only `work_ahead`, and a check that found a row to differ, write the table.
+no event. Only `work_ahead`, and a check that found a row to differ, write the table,
+and both through `_store`: with the writer's place taken for the writes alone, and
+only an answer of the stamp that is read then. The newest event is the one stored
+last, whatever its HID (P-277).
 
 A report is worked out ahead where its module says so with `worked_ahead`, which names
 the form its answer is read back in and what gives the view its page opens with.
@@ -106,14 +109,20 @@ def worked_ahead(report: str, form: Any, view: Callable[[Session], Any]) -> None
 
 def _newest(db: Session) -> tuple[str | None, datetime | None]:
     """Return the newest audit event of a change of the inventory or its settings, and
-    when it was; neither where nothing has changed yet."""
+    when it was; neither where nothing has changed yet.
+
+    The newest is the one stored last, not the one with the greatest HID (P-277): a
+    change that is stored always moves it, whatever the clock of the process that
+    stored it said. It reads back from the end of the trail to the first event that is
+    of a change, past the sign-ins, previews and downloads that came after it.
+    """
     found = db.execute(
         select(AuditEvent.hid, AuditEvent.at)
         .where(
             AuditEvent.action.not_in(UNKEPT_ACTIONS),
             AuditEvent.record_type.not_in(UNKEPT_RECORDS),
         )
-        .order_by(AuditEvent.hid.desc())
+        .order_by(dialect.stored_last(db, AuditEvent).desc())
         .limit(1)
     ).first()
     return (None, None) if found is None else (found.hid, found.at)
@@ -234,15 +243,18 @@ def missing(db: Session) -> list[str]:
 def due(db: Session) -> bool:
     """Say whether the reports are to be worked out ahead now, after a change (P-276):
     one of them is missing, and the newest change of the inventory or its settings is
-    `reports_ahead_after_seconds` old or older. Never, where that is 0. It is asked at
-    every look of the second process, and costs three small reads."""
+    `reports_ahead_after_seconds` old or older. Never, where that is 0. A change dated
+    after the present moment, as one is where the clock was set back since, is old
+    enough. It is asked at every look of the second process, and costs three reads:
+    the settings, the end of the audit trail back to the newest change, and the rows."""
     after = int(settings.value(db, settings.AHEAD_SETTING))
     if after <= 0:
         return False
     newest, at = _newest(db)
     if not _missing(db, _stamp(db, newest)):
         return False
-    return at is None or clock.now() - at >= timedelta(seconds=after)
+    now = clock.now()
+    return at is None or at > now or now - at >= timedelta(seconds=after)
 
 
 def _write(db: Session, key: tuple[Any, ...], entry: Kept) -> None:
@@ -272,30 +284,55 @@ def work_ahead(db: Session) -> list[str]:
     The session is the caller's own, for this alone: what it has read is let go, and
     what is kept is stored before this returns. A row is written with the writer's
     place taken and the stamp read again: an answer worked out while something changed
-    is of no stamp for certain, and is thrown away, to be worked out again.
+    is of no stamp for certain, and is thrown away, to be worked out again. A report
+    that cannot be worked out does not keep the others out of the table: they are
+    kept, and then its failure is raised.
     """
     with _working:
         wanted = missing(db)
         if not wanted:
             return []
         noted: dict[str, tuple[tuple[Any, ...], Kept]] = {}
+        failed: Exception | None = None
         token = _noted.set(noted)
         try:
             for report in wanted:
-                _ahead[report].view(db)
+                try:
+                    _ahead[report].view(db)
+                except Exception as error:
+                    # Each is named; the first is raised below, with where it failed.
+                    log.error("the report %s could not be worked out ahead: %r", report, error)
+                    failed = failed or error
+                    db.rollback()
         finally:
             _noted.reset(token)
-        db.rollback()
-        dialect.hold_other_writers(db)
-        now = stamp(db)
-        kept = []
-        for report in wanted:
-            key, entry = noted.get(report, (None, None))
-            if key is not None and entry is not None and key[2:] == now:
-                _write(db, key, entry)
-                kept.append(report)
-        db.commit()
+        kept = _store(db, [noted[report] for report in wanted if report in noted])
+        if failed is not None:
+            raise failed
         return kept
+
+
+def _store(db: Session, found: list[tuple[tuple[Any, ...], Kept]]) -> list[str]:
+    """Write the rows of answers that were worked out, each with the stamp it was worked
+    out with, and store them. Return the reports written.
+
+    What the session has read is let go, the writer's place is taken, which is held for
+    these few writes alone, and the stamp is read again: only an answer of that very
+    stamp is written, since one that a change has overtaken is of no moment for
+    certain, and would lie over a row that is good.
+    """
+    if not found:
+        return []
+    db.rollback()
+    dialect.hold_other_writers(db)
+    now = stamp(db)
+    written = []
+    for key, entry in found:
+        if key[2:] == now:
+            _write(db, key, entry)
+            written.append(entry.report)
+    db.commit()
+    return written
 
 
 # --- what is kept, listed and checked ------------------------------------------------
@@ -398,27 +435,42 @@ def check(db: Session, context: AuditContext) -> Checked:
     should differ: one that did is a defect, and the check names its report and its
     request. The check is audited, and leaves the kept answers good, since it changes
     no record.
+
+    A change that is stored while the check works leaves every kept answer stale, and
+    an answer worked out anew across it is of no moment for certain: the stamp is read
+    again after each answer, and from the first that it has moved for, nothing more is
+    compared, named or counted, since none of it would be given any more. Rows are
+    written when all is compared, with the writer's place taken for those writes alone
+    and the stamp read once more, as `work_ahead` writes them: never across the working
+    out of a report, which would hold every other writer up for as long.
     """
     differed: list[Differed] = []
+    again: list[tuple[tuple[Any, ...], Kept]] = []
+    checked = 0
     now = stamp(db)
     _take_up(db, now)
-    good = _good(db, now)
     rows = _rows(db, now)
-    for key, entry in good:
+    for key, entry in _good(db, now):
         anew = entry.work(db)
         fresh = Kept(entry.report, entry.request, anew, entry.work, clock.now(), entry.uses)
         wrong = not same(anew, entry.answer)
+        rewrite = False
         if (entry.report, entry.request) in rows:
             # The row is compared too: this process may have worked its own answer out
             # before the row was written, and never have read it.
             held = _held(db, key, entry.work)
-            if held is None or not same(anew, held.answer):
-                wrong = True
-                _write(db, key, fresh)
-        if wrong:
+            rewrite = held is None or not same(anew, held.answer)
+        if stamp(db) != now:
+            break
+        checked += 1
+        if wrong or rewrite:
             differed.append(Differed(entry.report, entry.request, entry.kept_at))
+        if rewrite:
+            again.append((key, fresh))
         _keep(key, fresh)
-    found = Checked(clock.now(), len(good), differed)
+    # The session has written nothing yet, so letting go of what it read loses nothing.
+    _store(db, again)
+    found = Checked(clock.now(), checked, differed)
     audit.record(
         db,
         context,

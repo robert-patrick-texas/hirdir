@@ -356,7 +356,9 @@ upload, by its extension and by its first bytes.
   for the present moment, and is the newest change of the inventory or its settings
   that old? It reads the age from the audit event itself and remembers nothing between
   two looks, so a restart, a change made by another process and the turn of the day
-  are all one case; the question is three small reads. The one thread applies and
+  are all one case; an event dated after the present moment, as one is where the clock
+  was set back, is old enough. The question is three reads: the settings, the end of
+  the audit trail back to the newest change, and the four rows. The one thread applies and
   works ahead, so nothing is worked out while an import is applied, each batch of
   which is a change, and an apply that is asked for while the reports are being worked
   out waits for them, some seconds on a large inventory. A failure is logged and tried
@@ -434,7 +436,14 @@ answer is kept with the database it is of, the newest audit event of a change of
 inventory or its settings, the day in the application's time zone and the request
 whole: filter, view, section, sort and page. Every change writes an audit event, a
 setting's among them, so a newer event, or the turn of the day, leaves a kept answer
-unused, and one that a change has made wrong is never given. What is kept is no
+unused, and one that a change has made wrong is never given. The newest event is the
+one stored last, and not the one with the greatest HID (P-277): an HID is made from
+the clock of the process that makes it, and two processes, or a clock set back, do
+not make them in the order in which they are stored. SQLite numbers the rows of the
+audit trail as they are stored, under the one writer, and the trail is read back from
+its end by that number, in `db/dialect.py`, to the first event that is of a change:
+past the sign-ins, the previews and the downloads that came after it, which is quick
+unless many thousands of them have. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
 
 They are kept in two places (P-275). **In the memory of the process that gave it**,
@@ -457,8 +466,9 @@ works out those of the four that the database does not hold good; then it lets g
 it has read, takes the writer's place, reads the newest event again, and writes each
 row whose answer was worked out with that very event. An answer that was worked out
 while something changed is of no moment for certain, so it is thrown away, and worked
-out again when the inventory has been quiet. A row is replaced, never added to: the
-table holds four rows at the most, and nothing is swept. Being in the database, a kept
+out again when the inventory has been quiet. A report that cannot be worked out is
+named in the log and does not keep the others out of the table. A row is replaced,
+never added to: the table holds four rows at the most, and nothing is swept. Being in the database, a kept
 answer goes where its inventory goes: it is in a backup with the events it is good
 for, comes back with them at a restore, and is cleared by a reset.
 
@@ -477,7 +487,12 @@ report is worked out each time and never kept. An Admin may list what is kept, `
 asked for yet, each with `ahead`, whether the database holds it; and may check it,
 `POST /kept-answers/check`: each kept answer is worked out anew and compared with what
 was kept, in memory and in its row, and the check says which report and which request
-had differed, which none should, and writes again a row that did. It is audited and
+had differed, which none should, and writes again a row that did. It writes as working
+ahead does, when everything is compared, with the writer's place taken for those
+writes alone and the stamp read again, so that no save waits for a report to be
+worked out; and it reads the stamp again after each answer, and stops comparing at
+the first for which a change has moved it, since an answer worked out across a change
+is no defect of what was kept (P-277). It is audited and
 leaves the kept answers good, since it changes no record. `src/hirdir/io/kept.py`
 keeps them, and a report is one of the four where its module says so there, with the
 form of its answer.

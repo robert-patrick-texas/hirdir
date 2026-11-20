@@ -11323,12 +11323,12 @@ export interface components {
     };
     /** A long report that is kept, and would be given as it is now. */
     KeptAnswer: {
-      /** Whether the database holds it, worked out ahead for the view its page opens with (P-275). The others are in the memory of the server alone. */
+      /** Whether the database holds an answer to this request, worked out ahead for the view its page opens with (P-275). The others are in the memory of the server alone. */
       ahead: boolean;
       kept_at: string;
       report: string;
       request: string;
-      /** How many times the server has given it since it had it. */
+      /** How many times the server has given it since it was worked out: 0 for the request that it was worked out for, and for what the database holds that nobody has asked for yet. */
       uses: number;
     };
     /** What a check of the kept answers found: none should have differed. */
