@@ -3113,8 +3113,10 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   group there is: ticking and unticking add and remove the user at once, each by its
   own request, and a refusal is said beside the box, which goes back. A box pressed
   again while its request is out sends nothing more. Its notes are changed in its form.
-  Its operators are listed as links, released ones marked so; where it is behind none
-  that is not retired and has a contact, Make an operator makes one in one press, with
+  Its operators are listed as links, released ones marked so. Where its contact is
+  retired, no operator is offered, the page says that the contact is retired, the
+  contact a link, as such a user is one of both gaps; where it is behind none that is
+  not retired and has a contact that is not, Make an operator makes one in one press, with
   the username as its label and the next unused colour, read when it is pressed, and
   leads to it (P-284). A label the server does not take, too long or
   another operator's, opens the label and the colour in place, with the refusal at

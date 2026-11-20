@@ -516,12 +516,30 @@ test("P-284: an operator is made in one press, from a user's page and from a con
     name: long,
     record_status: "active",
   });
+  // A user whose contact is retired, which no operator can stand for.
+  const ivo = `Ivo Example ${suffix}`;
+  const retiredUser = await createAccount(request, `e2e-${suffix}-ivo`, null, { name: ivo });
+  made.users.push(retiredUser.hid);
+  const read = await request.get(`./api/v1/users/${retiredUser.hid}`, { headers });
+  const contactHid = ((await read.json()) as { contact: { hid: string } }).contact.hid;
+  const contact = await request.get(`./api/v1/contacts/${contactHid}`, { headers });
+  const retired = await request.post(`./api/v1/contacts/${contactHid}/retire`, {
+    headers,
+    data: { row_version: ((await contact.json()) as { row_version: number }).row_version },
+  });
+  expect(retired.status()).toBe(200);
   const seen = await watch(page.context());
   await signIn(page, account);
 
+  // Its page offers no Make an operator, which would be refused, and says why.
+  await openUser(page, retiredUser.hid, retiredUser.username);
+  const operators = page.getByTestId("user-operators");
+  await expect(operators.getByTestId("contact-retired")).toContainText("is retired");
+  await expect(operators.getByRole("link", { name: ivo })).toBeVisible();
+  await expect(operators.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
+
   // From a user's page: its username as the label, pressed twice while held back, once sent.
   await openUser(page, made.gus.hid, made.gus.username);
-  const operators = page.getByTestId("user-operators");
   await expect(operators).toContainText("no operator");
   let posted = 0;
   await page.route("**/api/v1/operators", async (route) => {
