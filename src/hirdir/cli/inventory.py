@@ -1271,8 +1271,28 @@ def export(
     if format_ not in ("csv", "json"):
         raise client.fail("--format is one of csv, json", 2)
     if all_tables:
-        if entity is not None or filter_ or sort or columns:
-            raise client.fail("--all exports every table whole: name no table, filter or sort", 2)
+        given = [
+            option
+            for option, value in (
+                ("a table", entity is not None),
+                ("--filter", filter_),
+                ("--sort", sort),
+                ("--columns", columns),
+                ("--own-values", own_values),
+                ("--include-sources", include_sources),
+                ("--place-codes", place_codes),
+                ("--include-archived", include_archived),
+                ("--include-drafts", include_drafts),
+            )
+            if value
+        ]
+        if given:
+            raise client.fail(
+                f"--all takes no {', '.join(given)}: the zip is always every table whole, "
+                "in the form that loads back, with its stored values and its retired and "
+                "drafts",
+                2,
+            )
         _export_all(client.load_target(url, token), format_, output)
         return
     if entity is None:

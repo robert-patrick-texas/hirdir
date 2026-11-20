@@ -64,9 +64,16 @@ def _text(column: Column, value: str) -> str:
     return text
 
 
+def _marked(text: str) -> bool:
+    """Say whether text is apostrophes and then the mark that clears a value: a value
+    that a file would read as the mark unless it is written with one apostrophe more."""
+    return text.lstrip("'").strip() == CLEAR_MARK
+
+
 def _guarded(text: str) -> bool:
-    """Say whether text is apostrophes and then a character that starts a formula."""
-    return text.lstrip("'")[:1] in FORMULA_STARTS
+    """Say whether text is apostrophes and then a character that starts a formula, or
+    the mark that clears a value."""
+    return text.lstrip("'")[:1] in FORMULA_STARTS or _marked(text)
 
 
 def _whole(value: Any) -> int:
@@ -238,12 +245,14 @@ def from_cell(column: Column, cell: str) -> Any:
 
 def unguarded(text: str) -> str:
     """Return a cell of a CSV file without the apostrophe an export put before it so
-    that a spreadsheet runs no formula."""
+    that a spreadsheet runs no formula, and a value that is the mark that clears is read
+    as that text."""
     return text[1:] if text[:1] == "'" and _guarded(text) else text
 
 
 def from_json(column: Column, value: Any) -> Any:
-    """Read one value of a JSON record: BLANK for empty text, None for null."""
+    """Read one value of a JSON record: BLANK for empty text, None for null. Text that is
+    the mark that clears behind an apostrophe is that text, without the apostrophe."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -251,6 +260,8 @@ def from_json(column: Column, value: Any) -> Any:
             return BLANK
         if value.strip() == CLEAR_MARK:
             return None
+        if value[:1] == "'" and _marked(value):
+            value = value[1:]
     return read(column, value)
 
 
@@ -263,7 +274,18 @@ def to_cell(value: Any) -> str:
     text = LIST_SEPARATOR.join(value) if isinstance(value, list) else str(value)
     # A value that begins with an apostrophe of its own before such a character gets
     # one more, so that reading the cell takes off the export's and leaves the value's.
+    # A value that is the mark that clears is written so too, and read back as text.
     return "'" + text if _guarded(text) else text
+
+
+def to_json(value: Any) -> Any:
+    """Write a plain value as a JSON file holds it: as it is, but text that is the mark
+    that clears, or that mark behind apostrophes of its own, with one apostrophe more,
+    so that it is read back as the text it is and clears nothing. A JSON file runs no
+    formula, so nothing else is guarded."""
+    if isinstance(value, str) and _marked(value):
+        return "'" + value
+    return value
 
 
 def typed(column: Column, value: Any) -> Any:
