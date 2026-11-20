@@ -1944,7 +1944,13 @@ For whoever operates the host:
   nothing of a later day is given after going back to an earlier backup. `hirdir admin
   reset` clears it.
 - Admin, Settings, Check kept reports lists what the database holds as well, marked
-  as worked out ahead, and checks it with the rest.
+  as worked out ahead, and checks it with the rest. A check that a change overtakes
+  says how many it compared before the change, and is asked again.
+- The first page counts the cover that runs out within the days of
+  `renewal_warning_days`, and says how many they are, where it said 90 whatever the
+  setting was. With the setting at its default nothing differs.
+- A clock of the host that is set back no longer leaves a report as it was after a
+  change: what a kept report is good for is the change stored last, whatever its time.
 
 Going back to 0.9.10 is by the backup the upgrade made, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the

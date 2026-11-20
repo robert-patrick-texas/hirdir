@@ -1858,8 +1858,8 @@ is more than none. Keeping it is a change of their own, audited on their user.
 The long reports worked out ahead (P-275), a row to each: `report`, which is the key,
 one of `coverage`, `renewals`, `renewal_alert` and `capacity`; `request`, the request
 whole that the answer is of, which is the view the report's page opens with;
-`newest_event_hid`, the newest audit event of a change of the inventory or its
-settings when it was worked out, null where there was none yet, and `day`, the day in
+`newest_event_hid`, the audit event of a change of the inventory or its settings that
+was stored last when it was worked out (P-277), null where there was none yet, and `day`, the day in
 the application's time zone, the two that it is good for (D-184); `version`, the
 version of `hirdir` that worked it out; `answer`, as JSON, in the form the route gives
 it or, for the capacity balance and the alert, the form they are worked with; and
