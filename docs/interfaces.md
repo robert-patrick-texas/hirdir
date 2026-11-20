@@ -184,33 +184,46 @@ add up to it: both are counted from one list of what names a contact.
 Since 0.9.13 each of the three lists says which of the other two a person is, and
 finds those that are not (P-280). A user answers `operators`, the operators whose
 contact is the user's, in the order of their labels, each with `hid`, `label`, `colour`
-and `record_status`; a user with no contact has none. A contact answers `operators`,
-the same of the contact, beside `is_user` and `user`. One contact may stand behind
-several operators. `GET /users` takes `contact` and `operator`, each `any`, which is
-the same as leaving it out, `some` or `none`: `contact=none` gives the users that are
-no contact, and `operator=none` those behind no operator that is not retired. A
-service account is no person and is in neither `none`. `GET /contacts` filters and
-sorts by `is_operator`, true where the contact stands behind an operator that is not
-retired, as it does by `is_user`; `GET /operators` finds those with nobody behind them
-by `scope`, as before.
+and `record_status`, a retired one among them, marked so; a user with no contact has
+none. A contact answers `operators`, the same of the contact, and `is_operator`, beside
+`is_user` and `user`. One contact may stand behind several operators. `GET /users`
+takes `contact` and `operator`, each `any`, which is the same as leaving it out, `some`
+or `none`: `contact=some` gives the users that are a contact and `contact=none` those
+that are none; `operator=some` those whose contact stands behind an operator that is
+not retired, and `operator=none` those behind none, a user with no contact among them.
+A service account is no person and is in neither `none`. Each of a page's lists is read
+in one query for the page. The users are sorted by `notes` and by `operators`, the
+first of their labels, as by their other columns. `GET /contacts` filters and sorts by
+`is_operator`, true where the contact stands behind an operator that is not retired, as
+it does by `is_user`; `GET /operators` finds those with nobody behind them by `scope`,
+as before.
 
 A user has `notes` (P-281): free text, at most as long as the notes of a contact,
-`null` unless given. `POST /users` and `PATCH /users/{hid}` take it, and a change of it
-is audited as any change of a user is.
+10,000 characters, `null` unless given, and blank is none. `POST /users` and
+`PATCH /users/{hid}` take it, `null` or blank clearing it, and a change of it is
+audited as any change of a user is, with its old and new text.
 
 `POST /users` makes, in the one change, what a new person needs (P-282, P-283). It takes
 `group_hids`, the user groups the new user is put into, each membership audited as
 `PUT /user-groups/{hid}/members/{user_hid}` audits it; a group that is not there
 refuses the whole with a `422` on `group_hids`. And it takes `operator`, an object with
 `label`, `colour` and `description`, each optional: an operator is made whose contact
-is the user's, with the username as its label where none is given and the next unused
-colour where none is given (`next_for_operators`, below). `operator` needs a contact
+is the user's, with the username as its label where none is given, or a blank one, and
+the next unused colour where none is given (`next_for_operators`, below); a colour
+given as blank or `null` is none, as on `POST /operators`. `operator` needs a contact
 in the same request, `contact` or `contact_hid`, and is refused with a `422` on
-`operator` without one, as it is for a service account; a label that another operator
-has is refused with a `409` on `operator.label`. The answer has `operator`, the
-operator made, or `null`. The user, the contact, the operator, the grant of the role
-and the memberships are one transaction, each audited as if it were made by itself:
-where any part is refused, nothing is made.
+`operator` without one, as it is for a service account. The label is held to the rules
+of any label, at most 40 characters with no semicolon: a username that is no acceptable
+label is refused with a `422` on `operator.label`, and never shortened; a label that
+another operator has is refused with a `409` on `operator.label` that names that
+operator as `existing`. A colour that is not `#rrggbb` is a `422` on `operator.colour`.
+The answer has `operator`, the operator made, as `GET /operators/{hid}` answers it, or
+`null`. The user, the contact, the operator, the grant of the role and the memberships
+are one transaction, each audited as if it were made by itself, with the events of
+`POST /contacts`, `POST /operators`, `POST /role-grants` and
+`PUT /user-groups/{hid}/members/{user_hid}`: where any part is refused, nothing is made
+and no event is kept. Each refusal names the field it is for, as `contact.name`,
+`operator.label`, `group_hids` or `role`, so that a form shows it there.
 
 `GET /colours`, which every role reads, gives the colours a form offers (P-285):
 `grid`, eight rows of eight, a row to each shade from the lightest to the darkest and
