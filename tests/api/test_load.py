@@ -299,10 +299,11 @@ def tags_take(clock: Clock, monkeypatch: pytest.MonkeyPatch) -> dict[str, float]
 def reads(
     client: TestClient, headers: dict, clock: Clock, takes: dict[str, float], seconds: float
 ) -> list[int]:
-    """Have twenty reads of the tags take so long each, then let a second pass, so that
-    the measures are read again. Return how each was answered."""
+    """Have twenty-one reads of the tags take so long each, which are reads enough to
+    be load, then let a second pass, so that the measures are read again. Return how
+    each was answered."""
     takes["seconds"] = seconds
-    answers = [client.get(f"{API}/tags", headers=headers).status_code for _ in range(20)]
+    answers = [client.get(f"{API}/tags", headers=headers).status_code for _ in range(21)]
     takes["seconds"] = 0.0
     clock.now += 1.0
     return answers
@@ -448,6 +449,7 @@ def test_the_answer_to_a_request_that_is_refused(
     }
     # It carries what every answer carries, and is no more kept than any other.
     assert answer.headers["x-request-id"]
+    # The header of an answer that is a refusal says what its body says.
     assert said(answer) == "very_slow; refusing=long"
     assert answer.headers["cache-control"] == "no-store"
     assert answer.headers["x-content-type-options"] == "nosniff"
@@ -537,7 +539,7 @@ def test_no_ceiling_refuses_nothing_however_busy(
         "response_ms": 0,
         "cpu_percent": 0,
         "over_seconds": 30,
-        "fewest_requests": 20,
+        "fewest_requests": 21,
     }
 
 
@@ -602,13 +604,15 @@ def test_the_time_of_an_answer_is_to_its_last_byte(
     assert (now["points"]["high_ms"], now["points"]["p95_ms"]) == ([250.0], [250.0])
 
 
-def test_one_slow_page_is_the_colour_and_twenty_requests_are_load(
+def test_one_slow_page_is_the_colour_and_twenty_one_reads_are_load(
     client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
 ) -> None:
     meter_of(client).hold(Ceiling(response_ms=300, cpu_percent=0, over_seconds=300))
     tags_take["seconds"] = 0.5
-    # One slow page on a quiet server: the mark is red, and nothing is refused.
-    assert client.get(f"{API}/tags", headers=admin).status_code == 200
+    # One slow page on a quiet server: the mark is red, the slow answer says so itself,
+    # and nothing is refused.
+    slow = client.get(f"{API}/tags", headers=admin)
+    assert (slow.status_code, said(slow)) == (200, "busy; refusing=nothing")
     clock.now += 1.0
     now = measured(client, admin)
     assert (now["measures"]["response_ms"], now["measures"]["requests"]) == (500.0, 1)
@@ -626,25 +630,69 @@ def test_one_slow_page_is_the_colour_and_twenty_requests_are_load(
     report = client.get(f"{API}/reports/summary", headers=admin)
     assert (report.status_code, said(report)) == (200, "busy; refusing=nothing")
     now = measured(client, admin)
-    assert now["measures"]["requests"] == 19 < now["ceiling"]["fewest_requests"]
+    assert now["measures"]["reads"] == 19 < now["ceiling"]["fewest_requests"]
     assert (now["health"], now["refusing"]) == ("busy", "nothing")
-    # A twentieth read, a quick one, and it is load: the slowest of twenty is the measure.
+    # A twentieth read, a quick one: of twenty the measure is one request alone, the
+    # slowest, and one request refuses nothing.
+    tags_take["seconds"] = 0.0
     assert client.get(f"{API}/choices", headers=admin).status_code == 200
     clock.now += 1.0
     now = measured(client, admin)
-    assert (now["measures"]["response_ms"], now["measures"]["requests"]) == (500.0, 20)
+    assert (now["measures"]["reads_ms"], now["measures"]["reads"]) == (500.0, 20)
+    assert (now["health"], now["refusing"]) == ("busy", "nothing")
+    # A twenty-first, and they are load: the second slowest of them is the measure.
+    assert client.get(f"{API}/choices", headers=admin).status_code == 200
+    clock.now += 1.0
+    now = measured(client, admin)
+    assert (now["measures"]["response_ms"], now["measures"]["requests"]) == (500.0, 21)
+    assert (now["measures"]["reads_ms"], now["measures"]["reads"]) == (500.0, 21)
     assert (now["health"], now["because"], now["refusing"]) == ("busy", ["response_ms"], "reads")
     assert now["totals"]["response_ms"]["p50"] == now["totals"]["response_ms"]["p95"] == 500.0
     # A third and two thirds of the ceiling, and the ceiling; all nineteen are past it.
     assert now["totals"]["bands"] == {
         "bounds_ms": [100.0, 200.0, 300.0],
-        "counts": [1, 0, 0, 19],
+        "counts": [2, 0, 0, 19],
     }
     # A report and a page of a list are refused, and a change is stored.
     assert client.get(f"{API}/reports/summary", headers=admin).status_code == 503
     refusal = client.get(f"{API}/items", headers=admin)
     assert (refusal.status_code, said(refusal)) == (503, "busy; refusing=reads")
+    busy = refusal.json()["busy"]
+    assert said(refusal) == f"{busy['health']}; refusing={busy['refusing']}"
     assert client.post(f"{API}/tags", json={"label": "a"}, headers=admin).status_code == 201
+
+
+def test_saves_that_are_slow_make_the_mark_red_and_refuse_no_read(
+    client: TestClient, admin: dict, clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Something holds the one writer, and the saves wait behind it: the health is of
+    everything a person meets, and what is refused of the reads alone."""
+    from hirdir.domain import tags
+
+    created = tags.create_tag
+
+    def waits(*arguments: Any) -> Any:
+        clock.now += 3.5
+        return created(*arguments)
+
+    meter_of(client).hold(Ceiling(response_ms=3000, cpu_percent=0, over_seconds=300))
+    for _ in range(30):
+        assert client.get(f"{API}/choices", headers=admin).status_code == 200
+    monkeypatch.setattr(tags, "create_tag", waits)
+    for number in range(5):
+        saved = client.post(f"{API}/tags", json={"label": f"tag {number}"}, headers=admin)
+        assert saved.status_code == 201, saved.text
+    # The save that waited says red itself, and that nothing is refused.
+    assert said(saved) == "busy; refusing=nothing"
+    clock.now += 1.0
+    now = measured(client, admin)
+    assert (now["measures"]["response_ms"], now["measures"]["requests"]) == (3500.0, 35)
+    assert (now["measures"]["reads_ms"], now["measures"]["reads"]) == (0.0, 30)
+    assert (now["health"], now["because"], now["refusing"]) == ("busy", ["response_ms"], "nothing")
+    # Enough reads to be load, and they are quick: every read and every report is taken.
+    for path in ("/items", "/tags", "/reports/summary"):
+        answer = client.get(API + path, headers=admin)
+        assert (answer.status_code, said(answer)) == (200, "busy; refusing=nothing"), path
 
 
 # --- the health of the server on every answer ----------------------------------------
@@ -694,16 +742,16 @@ def test_the_health_on_an_answer_is_each_of_its_four_words(
     assert (now["health"], now["refusing"]) == ("very_slow", "long")
     refusal = client.get(f"{API}/reports/summary", headers=admin)
     assert (refusal.status_code, said(refusal)) == (503, "very_slow; refusing=long")
-    # Red: of sixty and more the measure is the fourth slowest, so the fifth read that
-    # would take three and a half seconds is refused, and every read after it.
+    # Red: of sixty-one and more the measure is the fourth slowest, so the fifth read
+    # that would take three and a half seconds is refused, and every read after it.
     answers, status, health, now = after_reads_of(3.5)
-    assert answers == [200] * 4 + [503] * 16
+    assert answers == [200] * 4 + [503] * 17
     assert (status, health) == (503, "busy; refusing=reads")
     assert (now["health"], now["refusing"]) == ("busy", "reads")
     assert now["measures"]["response_ms"] == 3500.0
     assert now["totals"]["bands"] == {
         "bounds_ms": [1000.0, 2000.0, 3000.0],
-        "counts": [23, 20, 20, 4],
+        "counts": [24, 21, 21, 4],
     }
 
 
@@ -721,7 +769,7 @@ def test_the_health_is_very_slow_where_the_processor_is_past_its_ceiling(
         ["cpu_percent"],
         "long",
     )
-    assert now["measures"]["requests"] < now["ceiling"]["fewest_requests"]
+    assert now["measures"]["reads"] < now["ceiling"]["fewest_requests"]
     clock.idle()
     assert said(client.get(f"{API}/tags", headers=admin)) == GOOD
 
@@ -743,8 +791,30 @@ def test_with_no_ceiling_the_health_is_said_all_the_same(
         ["response_ms"],
         "nothing",
     )
-    assert now["measures"]["requests"] > now["ceiling"]["fewest_requests"]
+    assert now["measures"]["reads"] > now["ceiling"]["fewest_requests"]
     assert now["totals"]["bands"]["bounds_ms"] == [1000.0, 2000.0, 3000.0]
+
+
+def test_an_answer_that_was_slow_says_so_itself(
+    client: TestClient, admin: dict, clock: Clock, tags_take: dict[str, float]
+) -> None:
+    """The case of the second review: on a server that has seen nothing, an answer that
+    took three and a third seconds. A page's requests arrive together: were the header
+    what it was when they arrived, a page of four seconds would show green."""
+    meter_of(client).hold(Ceiling(response_ms=3000, cpu_percent=0, over_seconds=30))
+    tags_take["seconds"] = 3.3
+    slow = client.get(f"{API}/tags", headers=admin)
+    assert (slow.status_code, said(slow)) == (200, "busy; refusing=nothing")
+    # And so says what is asked after it, for as long as it is in the measure.
+    tags_take["seconds"] = 0.0
+    assert said(client.get(f"{API}/choices", headers=admin)) == "busy; refusing=nothing"
+    clock.now += 27
+    assert said(client.get(f"{API}/choices", headers=admin)) == GOOD
+    # Each band of time is said by the answer that was in it.
+    for seconds, health in ((1.5, "slow"), (2.5, "very_slow")):
+        clock.now += 31
+        tags_take["seconds"] = seconds
+        assert said(client.get(f"{API}/tags", headers=admin)) == f"{health}; refusing=nothing"
 
 
 def test_the_header_is_one_of_twelve_values_made_once() -> None:
@@ -1320,7 +1390,7 @@ def test_the_settings_of_the_ceiling_are_listed_with_what_they_are_unless_set(
         listed["busy_fewest_requests"]["value"],
         listed["busy_fewest_requests"]["decision"],
     ) == (
-        20,
+        21,
         "P-265",
     )
     assert listed["busy_retry_seconds"]["value"] == 5
@@ -1346,7 +1416,7 @@ def test_a_setting_of_the_ceiling_holds_from_the_moment_it_is_saved(
         "response_ms": 2500,
         "cpu_percent": 60,
         "over_seconds": 45,
-        "fewest_requests": 20,
+        "fewest_requests": 21,
     }
     # Returned to what it is unless set.
     put(client, admin, "busy_cpu_percent", None)
@@ -1531,10 +1601,12 @@ def test_the_shape_of_the_measures(client: TestClient, viewer: dict) -> None:
     assert (now["health"], now["because"], now["refusing"]) == ("good", [], "nothing")
     assert said(answer) == GOOD
     assert set(now["ceiling"]) == {"response_ms", "cpu_percent", "over_seconds", "fewest_requests"}
-    assert now["ceiling"]["fewest_requests"] == 20
-    assert set(now["measures"]) == {"response_ms", "requests", "cpu_percent"}
+    assert now["ceiling"]["fewest_requests"] == 21
+    assert set(now["measures"]) == {"response_ms", "requests", "reads_ms", "reads", "cpu_percent"}
     assert now["measures"]["response_ms"] > 0
-    assert now["measures"]["requests"] == 26
+    # The sign-in is in the health, and is not one of the reads.
+    assert (now["measures"]["requests"], now["measures"]["reads"]) == (26, 25)
+    assert 0 < now["measures"]["reads_ms"] <= now["measures"]["response_ms"]
     assert now["measures"]["cpu_percent"] >= 0
     assert (now["window_seconds"], now["step_seconds"]) == (600, 5)
     started = datetime.fromisoformat(now["started_at"])

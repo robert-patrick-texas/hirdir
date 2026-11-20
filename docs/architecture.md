@@ -485,13 +485,25 @@ page. This is how it is built, and why so.
   one request in twenty may take as long as it likes. A percentile, and not an
   average, so that the colour is what the slow requests are and not what the quick
   ones make of them.
-- **Why refusing needs twenty requests.** The colour says what people meet; refusing
+- **Why what is refused is read of the reads alone.** The colour is of everything a
+  person meets, and a save that waited is part of it. But a save is never refused, and
+  no read waits for one: where one long change holds the others up for seconds, the
+  saves are slow and the lists are as quick as ever. Refusing the lists for that would
+  shed nothing; and once they were refused they would be gone from the measure, and
+  the slow saves alone would keep the server red without end. So what can be refused
+  is decided by what can be refused: the same percentile, of the reads of the same
+  time. The health is never better than what is refused says, so the two words never
+  contradict one another.
+- **Why refusing needs twenty-one reads.** The colour says what people meet; refusing
   is for load. Three slow requests in half a minute are a slow page, and refusing the
-  next one would mend nothing and shed nothing. So how long requests take refuses by
-  its colour only where twenty or more requests are in the measure,
-  `busy_fewest_requests`; with fewer the mark is orange or red and nothing is refused
-  for it. The answer gives both words, and how many requests the measure is of, so
-  that the page says slow where it is slow and busy only where reads are refused.
+  next one would mend nothing and shed nothing. And of twenty or fewer the percentile
+  is the slowest of them: at twenty, one answer of three seconds among nineteen quick
+  ones would refuse every read. So how long the reads take refuses only where
+  twenty-one or more of them are in the measure, `busy_fewest_requests`, where the
+  percentile is never one request alone; with fewer the mark is orange or red and
+  nothing is refused for it. The answer gives both words, and both readings with how
+  many requests each is of, so that the page says slow where it is slow and busy only
+  where reads are refused.
 - **What is long by nature is in no percentile.** A report, an export or a preview
   takes seconds on a server in good health, and one of them among nineteen quick
   answers would be the measure. They are counted by how they were answered, and
@@ -525,8 +537,8 @@ page. This is how it is built, and why so.
   the heavy pages are refused, then at red the busy page is delivered." So there is one
   notion and not two: the health is green under a third of `busy_response_ms`, yellow
   to two thirds, orange to the whole and red past it, and a server with load to shed
-  refuses nothing while it is green or yellow, what is long by nature while it is
-  orange, and every read as well while it is red. There is no step that time alone
+  refuses nothing while its reads are green or yellow, what is long by nature while
+  they are orange, and every read as well while they are red. There is no step that time alone
   brings, and nothing of before is remembered but one thing: a server that refused its
   reads refuses what is long, and is orange at the best, until `busy_over_seconds`
   have passed since it last did, so that the reports do not come back in the same
@@ -547,15 +559,19 @@ page. This is how it is built, and why so.
   asked of late and is among the thousand remembered. Of a request the route's
   pattern is kept and never its path or its query. Which accounts are listed, and in
   what order, is `people_of` in `domain/load.py`.
-- **Both words on every answer.** They are worked out with the measures, once a second
-  at the most, and kept with them; a request reads them from memory when it arrives,
-  which it does anyway to learn whether it is refused, and `Gateway` writes them into
-  `X-Hirdir-Health` of the answer, `busy; refusing=nothing`, one of twelve values
-  that are made when the server starts. So the page learns the health from the
-  answers it gets, and asks nothing for it; and it has what is refused beside the
-  colour, since red with nothing refused is a slow page on a quiet server and must not
-  be called busy. With no ceiling the health is read all the same, against the thirds
-  of 3000, and nothing is refused for it.
+- **Both words on every answer, as they are when it begins.** They are worked out
+  with the measures, once a second at the most, and kept with them, and `Gateway`
+  writes them into `X-Hirdir-Health` of the answer, `busy; refusing=nothing`, one of
+  twelve values that are made when the server starts. So the page learns the health
+  from the answers it gets, and asks nothing for it; and it has what is refused beside
+  the colour, since red with nothing refused is a slow page on a quiet server and must
+  not be called busy. The header is written when the answer begins and not when the
+  request arrived: a page's requests arrive together, and a page that took four
+  seconds would otherwise show green. It stays cheap: what is held in memory is given,
+  unless the time this request has taken so far is in a higher band than the health
+  held, and only then are the measures read again, with the request in them. A request
+  that is refused carries what it was refused by. With no ceiling the health is read
+  all the same, against the thirds of 3000, and nothing is refused for it.
 - **The processor.** The measure is the processor time of the process, every thread
   of it, as a percentage of one processor. Python runs one thread of the process at a
   time, so a server that does nothing but work reads near 100. It can pass 100: SQLite
@@ -580,11 +596,11 @@ page. This is how it is built, and why so.
   the database, and before who sent it is looked at.
 - **What is refused first.** What is long by nature and can wait, the reports, the
   exports and the previews of imports: each one refused is the most relief, and the
-  lists that people work in go on until the server is red. A server that is red and
-  refuses its reads soon has fewer than twenty requests in the time the measure looks
-  back: the reads come back, with what is long still refused for a while, and are
-  measured, and are refused again if twenty of them say that the server is still red.
-  That is how it learns that it has come back.
+  lists that people work in go on until the reads are past the ceiling. A server that
+  refuses its reads soon has fewer than twenty-one of them in the time the measure
+  looks back: the reads come back, with what is long still refused for a while, and
+  are measured, and are refused again if twenty-one of them say that they are still
+  past the ceiling. That is how it learns that it has come back.
 - **What is never refused, and why.** A sign-in and every change that is stored: the
   work a person did is not thrown back at them while a list can wait (P-262). The
   health routes, so that what watches the service does not take a busy server for a

@@ -136,7 +136,7 @@ class Gateway:
     it refuses, at once, on the event loop: before the request waits for a thread or
     for the database.
     Every answer of the API says the health of the server and what it refuses, in
-    `X-Hirdir-Health`, as the meter had them in memory when the request arrived.
+    `X-Hirdir-Health`, as they are when the answer begins, its own time counted.
     """
 
     def __init__(
@@ -176,17 +176,18 @@ class Gateway:
         # never refused, and with no word of the server's health.
         kind: load.Kind = load.APART
         route: str | None = None
-        health: str | None = None
+        # What the measures said to a request that was refused, which its answer says.
+        decided: load.Reading | None = None
         if is_api:
             # What the measures say, from memory: read again once a second at the most.
             reading = meter.reading(now, cpu)
-            health = HEALTH_SAID[reading.health, reading.refusing]
             if self.kinds is not None:
                 kind, route = self.kinds.found(scope["method"], scope["path"].removeprefix(root))
             if load.refuses(reading.refusing, kind):
                 # An answer of busy is counted, and is in neither measure.
                 meter.turned_away(now, cpu, who=self._asking(scope, headers, meter))
                 refused = problems.server_busy(reading)
+                decided = reading
         # What is kept of the request for the lists of the slowest: never its path.
         asked = load.Asked(scope["method"], route, request_id) if is_api else None
         declared = headers.get("content-length", "")
@@ -203,6 +204,7 @@ class Gateway:
                 whole=not has_body,
                 long=kind == load.LONG,
                 api=is_api,
+                kept=kind == load.KEPT,
             )
             scope["state"]["in_flight"] = flight
             refused = self._too_large(scope, headers, root)
@@ -224,9 +226,15 @@ class Gateway:
                     out["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
                 out["X-Content-Type-Options"] = "nosniff"
                 out["Referrer-Policy"] = "no-referrer"
-                if health is not None:
-                    out[HEALTH] = health
                 if is_api:
+                    # The health as it is now that the answer begins, this request's own
+                    # time counted: an answer that was slow says so itself. One that
+                    # was refused says what it was refused by.
+                    said = decided
+                    if said is None and flight is not None:
+                        said = meter.answering(flight, *measures.clock())
+                    if said is not None:
+                        out[HEALTH] = HEALTH_SAID[said.health, said.refusing]
                     out["Cache-Control"] = "no-store"
                 elif is_asset and message["status"] == 200:
                     # The name of a built file changes whenever its content does, so a

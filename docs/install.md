@@ -1865,8 +1865,10 @@ twenty or fewer: green under a third of `busy_response_ms`, yellow to two thirds
 orange to the whole, red past it. Nothing is refused at green and yellow. At orange the
 reports, the exports and the previews are answered `503` Busy with `Retry-After`, and
 at red every read is, the lists among them; the page says that the server is busy and
-offers to try again. Nothing is refused with fewer than twenty requests in that time,
-whatever the colour: a few slow answers on a quiet server are no load to shed. The
+offers to try again. What is refused is decided by the reads alone, and only with more
+than twenty of them in that time: a few slow answers on a quiet server are no load to
+shed, and changes that wait their turn behind a long import make the mark red and
+turn no read away. The
 processor past `busy_cpu_percent` for that time makes the server orange and never red;
 it is a share of one processor and can pass 100 on a host with several, where several
 requests are in the database at once, so the setting takes up to 100 for each

@@ -351,9 +351,9 @@ class LoadCeiling(Model):
         "how long after it last refused its reads the server refuses what is long."
     )
     fewest_requests: int = Field(
-        description="`busy_fewest_requests`, 20: with fewer than this in "
-        "`measures.requests`, nothing is refused for time whatever the health says. "
-        "They are too few to be load."
+        description="`busy_fewest_requests`, 21: with fewer reads than this in "
+        "`measures.reads`, nothing is refused for time whatever the health says. They "
+        "are too few to be load, and of twenty the percentile is one request alone."
     )
 
 
@@ -369,8 +369,15 @@ class LoadMeasures(Model):
         "it. A request's time begins when the server has the whole of it, its body "
         "with it. Null with no request."
     )
-    requests: int = Field(
-        description="How many requests `response_ms` is of. With fewer than "
+    requests: int = Field(description="How many requests `response_ms` is of.")
+    reads_ms: float | None = Field(
+        description="The same percentile of the reads alone, a sign-in and a change "
+        "that is stored left out: by it, and not by `response_ms`, what is refused is "
+        "decided, since a read is never refused for a change that was slow. Null with "
+        "no read."
+    )
+    reads: int = Field(
+        description="How many reads `reads_ms` is of. With fewer than "
         "`ceiling.fewest_requests`, nothing is refused for time."
     )
     cpu_percent: float = Field(
@@ -553,21 +560,23 @@ class Load(Model):
         "`measures.response_ms` against the thirds of its ceiling, "
         "`totals.bands.bounds_ms`. `good` under the first or with no request, `slow` "
         "under the second, `very_slow` up to the third, `busy` past it. The processor "
-        "past its ceiling makes it `very_slow` at the least. Every answer of the API "
-        "carries it in `X-Hirdir-Health`, with `refusing`."
+        "past its ceiling makes it `very_slow` at the least, and it is never better "
+        "than what is refused says. Every answer of the API carries it in "
+        "`X-Hirdir-Health`, with `refusing`, as they are when the answer begins."
     )
     because: list[Literal["response_ms", "cpu_percent"]] = Field(
         description="The measures the health stands on. Empty while it is `good`."
     )
     refusing: Literal["nothing", "long", "reads"] = Field(
         description="What the server answers 503 Busy: `long`, the reports, the exports "
-        "and the previews, or `reads`, those and every other read of the API. It follows "
-        "the health where there is load to shed: `long` at `very_slow` and `reads` at "
-        "`busy`, with `ceiling.fewest_requests` or more in `measures.requests`. With "
-        "fewer it is `nothing` for time whatever the health: a quiet server whose pages "
-        "are slow. The processor past its ceiling refuses `long` whatever the count, "
-        "and so does a server for `over_seconds` after it last refused `reads`. A "
-        "measure whose ceiling is 0 refuses nothing."
+        "and the previews, or `reads`, those and every other read of the API. It is "
+        "decided by the reads alone, `measures.reads_ms`, where there is load to shed: "
+        "`long` where they are at two thirds of the ceiling or past it, and `reads` "
+        "where they are past the ceiling, with `ceiling.fewest_requests` or more in "
+        "`measures.reads`. With fewer it is `nothing` for time whatever the health, "
+        "and so it is where only the changes are slow. The processor past its ceiling "
+        "refuses `long` whatever the count, and so does a server for `over_seconds` "
+        "after it last refused `reads`. A measure whose ceiling is 0 refuses nothing."
     )
     ceiling: LoadCeiling
     measures: LoadMeasures
