@@ -11483,7 +11483,7 @@ export interface components {
       /** The measures the health stands on. Empty while it is `good`. */
       because: ("response_ms" | "cpu_percent")[];
       ceiling: components["schemas"]["LoadCeiling"];
-      /** The health of the server in a word, the colour of the mark: `measures.response_ms` against the thirds of its ceiling, `totals.bands.bounds_ms`. `good` under the first or with no request, `slow` under the second, `very_slow` up to the third, `busy` past it. The processor past its ceiling makes it `very_slow` at the least. Every answer of the API carries it in `X-Hirdir-Health`, with `refusing`. */
+      /** The health of the server in a word, the colour of the mark: `measures.response_ms` against the thirds of its ceiling, `totals.bands.bounds_ms`. `good` under the first or with no request, `slow` under the second, `very_slow` up to the third, `busy` past it. The processor past its ceiling makes it `very_slow` at the least, and it is never better than what is refused says. Every answer of the API carries it in `X-Hirdir-Health`, with `refusing`, as they are when the answer begins. */
       health: "good" | "slow" | "very_slow" | "busy";
       host: components["schemas"]["LoadHost"];
       in_flight: components["schemas"]["LoadInFlight"];
@@ -11492,7 +11492,7 @@ export interface components {
       people: components["schemas"]["LoadPerson"][];
       points: components["schemas"]["LoadPoints"];
       process: components["schemas"]["LoadProcess"];
-      /** What the server answers 503 Busy: `long`, the reports, the exports and the previews, or `reads`, those and every other read of the API. It follows the health where there is load to shed: `long` at `very_slow` and `reads` at `busy`, with `ceiling.fewest_requests` or more in `measures.requests`. With fewer it is `nothing` for time whatever the health: a quiet server whose pages are slow. The processor past its ceiling refuses `long` whatever the count, and so does a server for `over_seconds` after it last refused `reads`. A measure whose ceiling is 0 refuses nothing. */
+      /** What the server answers 503 Busy: `long`, the reports, the exports and the previews, or `reads`, those and every other read of the API. It is decided by the reads alone, `measures.reads_ms`, where there is load to shed: `long` where they are at two thirds of the ceiling or past it, and `reads` where they are past the ceiling, with `ceiling.fewest_requests` or more in `measures.reads`. With fewer it is `nothing` for time whatever the health, and so it is where only the changes are slow. The processor past its ceiling refuses `long` whatever the count, and so does a server for `over_seconds` after it last refused `reads`. A measure whose ceiling is 0 refuses nothing. */
       refusing: "nothing" | "long" | "reads";
       /** The ten slowest requests of the measure answered in the window, the slowest first. Those in flight are not in it. */
       slowest: components["schemas"]["LoadSlow"][];
@@ -11519,7 +11519,7 @@ export interface components {
     LoadCeiling: {
       /** `busy_cpu_percent`: what `measures.cpu_percent` may reach before the health is `very_slow` at the least; up to 100 for each processor of the host. 0: not looked at. */
       cpu_percent: number;
-      /** `busy_fewest_requests`, 20: with fewer than this in `measures.requests`, nothing is refused for time whatever the health says. They are too few to be load. */
+      /** `busy_fewest_requests`, 21: with fewer reads than this in `measures.reads`, nothing is refused for time whatever the health says. They are too few to be load, and of twenty the percentile is one request alone. */
       fewest_requests: number;
       /** `busy_over_seconds`: over how long the measures are read, and for how long after it last refused its reads the server refuses what is long. */
       over_seconds: number;
@@ -11552,7 +11552,11 @@ export interface components {
     LoadMeasures: {
       /** The processor time the process used, every thread of it, as a percentage of one processor. It passes 100 where several requests are in the database at once. */
       cpu_percent: number;
-      /** How many requests `response_ms` is of. With fewer than `ceiling.fewest_requests`, nothing is refused for time. */
+      /** How many reads `reads_ms` is of. With fewer than `ceiling.fewest_requests`, nothing is refused for time. */
+      reads: number;
+      /** The same percentile of the reads alone, a sign-in and a change that is stored left out: by it, and not by `response_ms`, what is refused is decided, since a read is never refused for a change that was slow. Null with no read. */
+      reads_ms: number | null;
+      /** How many requests `response_ms` is of. */
       requests: number;
       /** How long requests take: the 95th percentile, in milliseconds, of the time taken by the reads and the changes of the API that came in that time, whatever each took, and of the time waited so far by those in flight, however long ago they came. It is the longest of twenty or fewer, the second longest of twenty-one to forty, and so on. Reports, exports and previews are not in it. A request's time begins when the server has the whole of it, its body with it. Null with no request. */
       response_ms: number | null;
