@@ -1,8 +1,11 @@
 // 0.8.0: the long reports that are kept, and the check of them (P-142, P-157). The
 // coverage report, the renewal worklist, the summary of the renewal alert and the capacity
 // report are worked out ahead and given to every session alike while nothing has changed
-// them. They are kept in the server's memory, which `hirdir admin` cannot see: an Admin
-// checks them here, which works each out anew and says whether any had differed.
+// them. An Admin checks them here, which works each out anew and says whether any had
+// differed.
+// 0.9.11: the view each page opens with is worked out ahead by the second process and
+// kept in the database, where the server finds it; any other view is in the server's
+// memory alone (P-275, P-276). The table says which.
 
 import { useState } from "react";
 import { api, type Schemas } from "../api";
@@ -29,6 +32,11 @@ export function reportLabel(report: string): string {
   return REPORTS[report] ?? report;
 }
 
+/** Where a kept report is kept: in the database, worked out ahead, or by the server. */
+export function keptWhere(ahead: boolean): string {
+  return ahead ? "In the database, worked out ahead" : "In the server's memory";
+}
+
 /** Admin → Settings: what is kept, and the button that checks it. */
 export function KeptAnswers() {
   const kept = useLoad("kept-answers", (signal) =>
@@ -50,10 +58,12 @@ export function KeptAnswers() {
       <h2 id="kept-answers">Kept reports</h2>
       <p className="hint">
         The coverage report, the renewal worklist, the summary of the renewal alert and the capacity
-        balance are worked out each night and when the server starts, and kept: everyone is given
-        the same answer while nothing has changed it, and any audited change has them worked out
-        again. The check works each kept answer out anew from the records, compares it with what was
-        kept, and keeps the new one. None should differ: one that did is a defect to report.
+        balance are worked out ahead by the background work, each night, when it starts and once
+        nothing has changed for the time that reports_ahead_after_seconds says, and kept in the
+        database: everyone is given the same answer while nothing has changed it. Any other view of
+        them, and one that is asked for sooner, the server works out and keeps in its memory. The
+        check works each kept answer out anew from the records, compares it with what was kept, and
+        keeps the new one. None should differ: one that did is a defect to report.
       </p>
       <Problem error={check.error} />
       <p className="actions">
@@ -110,6 +120,7 @@ function KeptTable({ kept }: { kept: readonly Kept[] }) {
     request: (one) => one.request,
     kept_at: (one) => dateValue(one.kept_at),
     uses: (one) => one.uses,
+    ahead: (one) => keptWhere(one.ahead),
   });
   if (kept.length === 0) {
     return (
@@ -122,8 +133,8 @@ function KeptTable({ kept }: { kept: readonly Kept[] }) {
     <div className="scroll">
       <table data-testid="kept-list">
         <caption className="visually-hidden">
-          The reports that are kept, each with its request, when it was worked out and how many
-          times it has been given since
+          The reports that are kept, each with its request, when it was worked out, how many times
+          the server has given it since, and where it is kept
         </caption>
         <thead>
           <tr>
@@ -139,6 +150,9 @@ function KeptTable({ kept }: { kept: readonly Kept[] }) {
             <SortTh sort={sorting} column="uses" className="number">
               Given since
             </SortTh>
+            <SortTh sort={sorting} column="ahead">
+              Kept
+            </SortTh>
           </tr>
         </thead>
         <tbody>
@@ -150,6 +164,7 @@ function KeptTable({ kept }: { kept: readonly Kept[] }) {
                 <Time at={one.kept_at} />
               </td>
               <td className="number">{one.uses.toLocaleString("en-US")}</td>
+              <td data-ahead={one.ahead}>{keptWhere(one.ahead)}</td>
             </tr>
           ))}
         </tbody>

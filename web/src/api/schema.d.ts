@@ -4908,8 +4908,10 @@ export interface paths {
   "/api/v1/kept-answers": {
     /**
      * List the long reports that are kept and would be given now: the report, the
-     * request whole, when it was worked out, and how many times it has been given since.
-     * For an Admin, since the kept answers are in the server's memory.
+     * request whole, when it was worked out, how many times the server has given it
+     * since, and whether the database holds it, worked out ahead (P-275). Those the
+     * server has given come first, then what the database holds that nobody has asked
+     * for yet.
      */
     get: {
       parameters: {
@@ -4931,9 +4933,10 @@ export interface paths {
   "/api/v1/kept-answers/check": {
     /**
      * Work out each kept answer anew, compare it with what was kept, and keep the new
-     * one. `differed` names each that was not the same, which none should be: one that
-     * was is a defect to report. Audited as `kept_answers_checked`; it changes no record
-     * and leaves the kept answers good (P-157).
+     * one: those the server has given, and those the database holds, worked out ahead.
+     * `differed` names each that was not the same, which none should be: one that was is
+     * a defect to report. Audited as `kept_answers_checked`; it changes no record and
+     * leaves the kept answers good (P-157).
      */
     post: {
       parameters: {
@@ -11320,9 +11323,12 @@ export interface components {
     };
     /** A long report that is kept, and would be given as it is now. */
     KeptAnswer: {
+      /** Whether the database holds it, worked out ahead for the view its page opens with (P-275). The others are in the memory of the server alone. */
+      ahead: boolean;
       kept_at: string;
       report: string;
       request: string;
+      /** How many times the server has given it since it had it. */
       uses: number;
     };
     /** What a check of the kept answers found: none should have differed. */

@@ -501,6 +501,14 @@ test("the Settings page checks the kept reports, and none differed", async ({ pa
   await page.goto("./admin/settings");
   const kept = page.getByRole("region", { name: "Kept reports" });
   await expect(kept.getByTestId("kept-list").locator('tr[data-report="capacity"]')).toBeVisible();
+  // 0.9.11: each row says where it is kept (P-275): in the database, where the second
+  // process worked it out ahead, or in the server's memory, where this page asked first.
+  await expect(
+    kept.getByTestId("kept-list").locator('tr[data-report="capacity"] td[data-ahead]'),
+  ).toHaveText(/^(In the database, worked out ahead|In the server's memory)$/);
+  await expect(kept.getByTestId("kept-list").locator('button[data-sort="ahead"]')).toHaveText(
+    "Kept",
+  );
   await kept.getByRole("button", { name: "Check kept reports" }).click();
   const check = kept.getByTestId("kept-check");
   await expect(check).toHaveAttribute("data-differed", "0", { timeout: 30_000 });
