@@ -1965,6 +1965,34 @@ Going back to 0.9.10 is by the backup the upgrade made, as
 schema changed. What the table held is lost with it and is nothing to keep: 0.9.10
 works the reports out itself when it starts.
 
+### From 0.9.11 to 0.9.12
+
+The schema stays at revision `0015`: 0.9.12 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+0.9.12 mends one fault, in the web page. Under Admin, Settings, Change on a setting
+whose description is long, `busy_response_ms`, `busy_cpu_percent` or
+`reference_file_types`, opened the form beneath the setting's row with the row's own
+buttons out of sight above the window: the row is taller than what the window has left
+beside the form. While the form of a row is open, the row's buttons now stand at the
+foot of the row, directly above the form, and at its head again once the form is
+closed. The form itself was in view and worked before, and nothing was lost by the
+fault.
+
+A web page that was open while the upgrade ran says under its menu bar, the next time
+its person comes back to it, that a new version has been installed, with a button, Load
+again. Until it is loaded again it is the page of 0.9.11.
+
+For a script that reads the API: nothing is changed.
+
+Going back to 0.9.11 needs no backup, because the schema is the same:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.11_amd64.deb
+```
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -2015,7 +2043,7 @@ installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
 goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
-0.9.4, 0.9.5, 0.9.6, 0.9.7, 0.9.9 and 0.9.10 are such releases. The section of each release above says what its upgrade changed.
+0.9.4, 0.9.5, 0.9.6, 0.9.7, 0.9.9, 0.9.10 and 0.9.12 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 
