@@ -3075,13 +3075,24 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   marks none and is kept as typed. The value is shown on a chip filled with the colour,
   its text black or white, whichever has the greater contrast with it, and beside it
   the label as the lists will show it. A blank value is no colour, as before.
-- **Import.** Above the upload, What can be loaded and exported lists every table of
-  `GET /exports/tables` in the order of loading, each with how many records it holds
-  and Export CSV and Export JSON, the whole table in the form that loads back. A table
-  that holds nothing says so, and that its CSV is the template of its import. Export
-  everything, as CSV or as JSON, saves the zip of `POST /exports/all`.
-- **Geography.** Export offers regions, sites and locations, each as CSV and as JSON,
-  the same files as on the Import page (P-287).
+- **Import.** Beside the upload, on its right, What can be loaded and exported lists
+  every table of `GET /exports/tables` in the order of loading, each with how many
+  records it holds and its export as CSV and as JSON, one press each, the whole table in
+  the form that loads back: `POST /exports` with `own_values`, `include_archived` and
+  `include_drafts`, the items by `depth` and then `name`, as `POST /exports/all` sorts
+  them. The list is no taller than the upload and scrolls in its own box, so that the
+  upload and a preview stand where they stood; where the page is too narrow for both,
+  the list comes under the upload. A table that holds nothing says None, and its CSV
+  button reads CSV template: the header row alone, the template of its import. Export
+  everything, as CSV or as JSON, saves the zip of `POST /exports/all`. The counts are
+  read when the page opens and again when an apply ends; until they come every button
+  works, the tables being those the page knows. What became of the last press is said
+  beside its buttons: the name of the file saved, or the refusal, as of a busy server,
+  after which the button is pressed again. A View-only person has the list and its
+  buttons and no upload.
+- **Geography.** Under the words at the top, Export offers regions, sites and locations,
+  each as CSV and as JSON, one press each, the same files as on the Import page whatever
+  the view counts (P-287).
 
 ### The grid
 
