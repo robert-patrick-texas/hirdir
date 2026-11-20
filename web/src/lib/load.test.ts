@@ -31,8 +31,8 @@ function answer(): Load {
     health: "good",
     refusing: "nothing",
     because: [],
-    ceiling: { response_ms: 3000, cpu_percent: 95, over_seconds: 30, fewest_requests: 20 },
-    measures: { response_ms: null, requests: 0, cpu_percent: 2.5 },
+    ceiling: { response_ms: 3000, cpu_percent: 95, over_seconds: 30, fewest_requests: 21 },
+    measures: { response_ms: null, requests: 0, reads_ms: null, reads: 0, cpu_percent: 2.5 },
     window_seconds: 600,
     step_seconds: 5,
     started_at: "2026-01-15T11:00:00Z",
@@ -277,13 +277,16 @@ describe("words", () => {
       health: "busy",
       refusing: "nothing",
       because: ["response_ms"],
-      measures: { response_ms: 4200, requests: 7, cpu_percent: 3 },
+      measures: { response_ms: 4200, requests: 7, reads_ms: 900, reads: 5, cpu_percent: 3 },
     } satisfies Load;
     expect(whyNothingRefused(slow)).toBe(FEW_OR_NOT_READS);
     expect(whyNothingRefused({ ...slow, health: "very_slow" })).toBe(FEW_OR_NOT_READS);
     // It is said of slow saves among many requests as of a few slow reads: the count of
     // the requests does not decide it.
-    const many = { ...slow, measures: { response_ms: 4200, requests: 500, cpu_percent: 3 } };
+    const many = {
+      ...slow,
+      measures: { response_ms: 4200, requests: 500, reads_ms: 40, reads: 400, cpu_percent: 3 },
+    };
     expect(whyNothingRefused(many)).toBe(FEW_OR_NOT_READS);
   });
 

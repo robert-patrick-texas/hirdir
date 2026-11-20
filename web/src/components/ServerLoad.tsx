@@ -16,7 +16,7 @@
 // the slowest requests and the people, come last, so that a row more or less moves
 // nothing that is read above them.
 
-import { memo, useEffect, useState } from "react";
+import { Fragment, memo, useEffect, useState } from "react";
 import { api } from "../api";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
@@ -212,24 +212,44 @@ const Health = memo(function Health({
             {MEASURE_NAMES.map(({ measure, name }) => {
               const past = because.includes(measure);
               return (
-                <tr key={measure} data-measure={measure} data-past={past}>
-                  <th scope="row">
-                    {name}
-                    {measure === "response_ms" && (
-                      <span className="muted" data-testid="load-measured">
-                        {" "}
-                        of {plural(measures.requests, "request")}
-                      </span>
-                    )}
-                    {past && <span className="badge">The health stands on it</span>}
-                  </th>
-                  <td className="number" data-testid={`load-now-${measure}`}>
-                    {now(measure)}
-                  </td>
-                  <td className="number" data-testid={`load-ceiling-${measure}`}>
-                    {limit(measure)}
-                  </td>
-                </tr>
+                <Fragment key={measure}>
+                  <tr data-measure={measure} data-past={past}>
+                    <th scope="row">
+                      {name}
+                      {measure === "response_ms" && (
+                        <span className="muted" data-testid="load-measured">
+                          {" "}
+                          of {plural(measures.requests, "request")}
+                        </span>
+                      )}
+                      {past && <span className="badge">The health stands on it</span>}
+                    </th>
+                    <td className="number" data-testid={`load-now-${measure}`}>
+                      {now(measure)}
+                    </td>
+                    <td className="number" data-testid={`load-ceiling-${measure}`}>
+                      {limit(measure)}
+                    </td>
+                  </tr>
+                  {/* What is refused is decided by the reads alone, where there are enough
+                      of them: a read is never refused for a change that was slow (P-272). */}
+                  {measure === "response_ms" && (
+                    <tr data-measure="reads_ms">
+                      <th scope="row">
+                        Of the reads alone
+                        <span className="muted" data-testid="load-reads">
+                          {" "}
+                          of {countText(measures.reads)}: what is refused is decided by these, with{" "}
+                          {countText(ceiling.fewest_requests)} or more
+                        </span>
+                      </th>
+                      <td className="number" data-testid="load-now-reads_ms">
+                        {msText(measures.reads_ms, "no read to read it from")}
+                      </td>
+                      <td className="number">{limit(measure)}</td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>

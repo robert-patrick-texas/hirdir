@@ -137,6 +137,13 @@ test("About shows the server's own measures and one graph, and is no wider than 
     /^([\d,.]+ ms|no request to read it from)$/,
   );
   await expect(page.getByTestId("load-measured")).toHaveText(/^ ?of [\d,]+ requests?$/);
+  // The reads alone, by which what is refused is decided.
+  await expect(page.getByTestId("load-now-reads_ms")).toHaveText(
+    /^([\d,.]+ ms|no read to read it from)$/,
+  );
+  await expect(page.getByTestId("load-reads")).toHaveText(
+    /of [\d,]+: what is refused is decided by these, with 21 or more/,
+  );
   await expect(page.getByTestId("load-now-cpu_percent")).toHaveText(/^[\d,.]+%$/);
   await expect(page.getByTestId("load-ceiling-response_ms")).toHaveText("not looked at");
   await expect(page.getByTestId("load-ceiling-cpu_percent")).toHaveText("not looked at");
