@@ -59,9 +59,13 @@ export function tablesText(rows: readonly TableRow[]): string {
   return `${tables}, ${rows.length === 1 ? "" : "all "}holding nothing yet`;
 }
 
-/** The name of the button that exports a table, as a screen reader says it. */
+/**
+ * The name of the button that exports a table, as a screen reader says it. It is the same
+ * whatever the table holds, on the Import page and on Geography, which does not count:
+ * the words above the list say that the CSV of a table that holds nothing is its
+ * template (review X4).
+ */
 export function exportLabel(row: TableRow, format: FileFormat): string {
-  if (format === "csv" && holdsNothing(row)) return `Export the CSV template of ${row.label}`;
   return `Export ${row.label} as ${format.toUpperCase()}`;
 }
 

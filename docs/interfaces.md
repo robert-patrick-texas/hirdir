@@ -3172,8 +3172,10 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   zip of every table holds it, so that the page holds no copy of what that is. The list
   is no taller than the upload and scrolls in its own box, so that the
   upload and a preview stand where they stood; where the page is too narrow for both,
-  the list comes under the upload. A table that holds nothing says None, and its CSV
-  button reads CSV template: the header row alone, the template of its import. Export
+  the list comes under the upload. A table that holds nothing says None, and the words
+  above the list say that its CSV is the header row alone, the template of its import;
+  its buttons read CSV and JSON as every table's do, here and on Geography, which reads
+  no counts and so asks the server nothing more (review X4). Export
   everything, as CSV or as JSON, saves the zip of `POST /exports/all`. The counts are
   read when the page opens and again when an apply ends; until they come every button
   works, the tables being those the page knows. What became of the last press is said
@@ -3184,8 +3186,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   before; and a file chosen puts away what the page said of the one before, its refusal
   and its job, which stays among the past imports.
 - **Geography.** Under the words at the top, Export offers regions, sites and locations,
-  each as CSV and as JSON, one press each, the same files as on the Import page whatever
-  the view counts (P-287).
+  each as CSV and as JSON, one press each, the same files, under the same names, as on
+  the Import page whatever the view counts; the words beneath say that a table that
+  holds nothing gives its CSV template, its header row alone (P-287).
 
 ### The grid
 

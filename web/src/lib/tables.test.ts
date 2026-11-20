@@ -56,8 +56,8 @@ describe("the words of a table", () => {
     expect(holdsNothing(unknown)).toBe(false);
   });
 
-  it("names the CSV of a table that holds nothing as its template", () => {
-    expect(regions && exportLabel(regions, "csv")).toBe("Export the CSV template of Regions");
+  it("names a table's buttons the same whatever it holds, as Geography, which does not count, names them", () => {
+    expect(regions && exportLabel(regions, "csv")).toBe("Export Regions as CSV");
     expect(regions && exportLabel(regions, "json")).toBe("Export Regions as JSON");
     expect(sites && exportLabel(sites, "csv")).toBe("Export Sites as CSV");
     expect(exportLabel(unknown, "csv")).toBe("Export Tags as CSV");

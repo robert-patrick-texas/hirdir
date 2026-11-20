@@ -10,7 +10,6 @@ import {
   countWords,
   everythingName,
   exportLabel,
-  holdsNothing,
   type TableRow,
   tableRows,
   tablesText,
@@ -70,7 +69,7 @@ function ExportButtons({ row, saving }: { row: TableRow; saving: Saving }) {
               )
             }
           >
-            {format === "csv" && holdsNothing(row) ? "CSV template" : format.toUpperCase()}
+            {format.toUpperCase()}
           </button>
         );
       })}
@@ -188,7 +187,8 @@ export function GeographyExport() {
       </p>
       <p className="hint">
         Each the whole table, the retired and the drafts among them, in the columns its import
-        reads, to be corrected and loaded back on the Import page.
+        reads, to be corrected and loaded back on the Import page. A table that holds nothing gives
+        its CSV template: its header row alone.
       </p>
       <Said saving={saving} keys={keys} />
     </div>
