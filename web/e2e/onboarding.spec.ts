@@ -62,6 +62,34 @@ function groupBox(form: Locator, name: string): Locator {
   return form.getByRole("checkbox", { name: new RegExp(`^${name} \\(grants `) });
 }
 
+/**
+ * The gaps of a grid follow its own filter (P-280): on a gap, changed in the Filter box
+ * to another gap's filter, then to one that is no gap's, the mark follows; a press of
+ * the first gap, at the same address, starts the grid on it again.
+ */
+async function gapsFollowTheGrid(
+  page: Page,
+  show: Locator,
+  gaps: { pressed: string; filter: string; other: string; otherFilter: string },
+) {
+  const filterBox = page.getByLabel("Filter", { exact: true });
+  const marked = (name: string) => show.getByRole("link", { name, exact: true });
+  await expect(filterBox).toHaveValue(gaps.filter);
+  await expect(marked(gaps.pressed)).toHaveAttribute("aria-current", "page");
+  const apply = async (filter: string) => {
+    await filterBox.fill(filter);
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+  };
+  await apply(gaps.otherFilter);
+  await expect(marked(gaps.pressed)).not.toHaveAttribute("aria-current", "page");
+  await expect(marked(gaps.other)).toHaveAttribute("aria-current", "page");
+  await apply(`${gaps.otherFilter} ${gaps.filter}`);
+  await expect(show.locator('[aria-current="page"]')).toHaveCount(0);
+  await marked(gaps.pressed).click();
+  await expect(filterBox).toHaveValue(gaps.filter);
+  await expect(marked(gaps.pressed)).toHaveAttribute("aria-current", "page");
+}
+
 /** The rows of the Users list, searched for this file's users and narrowed as asked. */
 async function usersListed(page: Page, query: string): Promise<Locator> {
   await page.goto(`./admin/users?q=${encodeURIComponent(suffix)}${query}`);
@@ -126,15 +154,17 @@ test("P-282: a user's groups are ticked and unticked on its page, each at once",
   expect(sent).toBe(1);
   await page.unroute(held);
 
-  // Refused, as for a group deleted since the page was read: said beside the box, which
-  // goes back.
+  // Refused, as for a group deleted since the page was read: the page says by its name
+  // that the group is gone, and its box is taken away, without a reload.
   const answer = await request.delete(`./api/v1/user-groups/${gone.hid}`, { headers });
   expect(answer.status()).toBe(204);
   await box(goneName).click();
-  const refused = boxes.locator(`[data-group="${goneName}"] .field-error`);
-  await expect(refused).toContainText(`Not added to ${goneName}`);
-  await expect(box(goneName)).not.toBeChecked();
-  await expect(box(goneName)).toHaveAttribute("aria-invalid", "true");
+  await expect(boxes.getByTestId("groups-gone")).toHaveText(
+    `The group ${goneName} is gone: it was deleted after this was read, and its box is taken away.`,
+  );
+  await expect(box(goneName)).toHaveCount(0);
+  await expect(boxes).not.toContainText(gone.hid);
+  await expect(box(serversName)).toBeChecked();
   // The page read again has no box for it, and the user is in the one group ticked.
   await page.reload();
   await expect(box(serversName)).toBeChecked();
@@ -185,9 +215,25 @@ test("P-283: a new engineer is made by one Create, and read on the three lists",
     "style",
     new RegExp(`background-color: ${rgbOf(chosen)}`),
   );
+  // The operator's page, reached from there, says it was just made.
+  await operator.getByRole("link").click();
+  await expect(page.getByTestId("operator-heading")).toContainText(engineer.username);
+  await expect(page.getByText(`Operator ${engineer.username} was created.`)).toBeVisible();
 
-  // The Users list: the contact and the operator, each a link, the role, both groups, the notes.
+  // The Users list: the contact and the operator, each a link, the role, both groups, the
+  // notes; every column in view on a screen 1280 pixels wide, Notes cut short to its
+  // column with the whole of them on hover.
+  await page.setViewportSize({ width: 1280, height: 800 });
   const rows = await usersListed(page, "");
+  const table = page.getByTestId("users");
+  expect(
+    await table.evaluate((element) => {
+      const box = element.closest(".scroll") ?? element;
+      return box.scrollWidth <= box.clientWidth;
+    }),
+    "the list of users fits its box at 1280 pixels",
+  ).toBe(true);
+  await expect(table.getByRole("columnheader", { name: "Notes" })).toBeInViewport({ ratio: 1 });
   const row = rows.and(page.locator(`[data-user="${engineer.username}"]`));
   await expect(row.getByTestId("user-name").getByRole("link")).toHaveText(engineer.name);
   await expect(row.getByTestId("user-operators").getByRole("link")).toHaveText(engineer.username);
@@ -195,6 +241,8 @@ test("P-283: a new engineer is made by one Create, and read on the three lists",
   await expect(row.getByRole("link", { name: networkName })).toBeVisible();
   await expect(row.getByRole("link", { name: serversName })).toBeVisible();
   await expect(row.getByTestId("user-notes")).toHaveText(engineer.notes);
+  await expect(row.getByTestId("user-notes")).toHaveAttribute("title", engineer.notes);
+  await expect(row.getByTestId("user-email")).toHaveText(engineer.email);
   await row.getByRole("rowheader").getByRole("link").click();
   made.engineer = new URL(page.url()).pathname;
   made.users.push(decodeURIComponent(made.engineer.split("/").at(-1) ?? ""));
@@ -294,6 +342,16 @@ test("P-283: each refusal is shown at its field, with nothing typed lost", async
     await expect(page.getByRole("region", { name: `Access code for ${username}` })).toHaveCount(0);
   };
 
+  // A value that is no colour: said at the picker, as typed, and nothing sent.
+  const colourBox = form.getByRole("textbox", { name: "Colour" });
+  const shown = await colourBox.inputValue();
+  await colourBox.fill("rubbish");
+  await create.click();
+  await expect(colourBox).toHaveAttribute("aria-invalid", "true");
+  await expect(colourBox).toHaveValue("rubbish");
+  await intact();
+  await colourBox.fill(shown);
+
   // The email of another contact: at the email.
   await create.click();
   await expect(person.getByLabel("Email")).toHaveAttribute("aria-invalid", "true");
@@ -314,13 +372,17 @@ test("P-283: each refusal is shown at its field, with nothing typed lost", async
   await intact();
   await label.fill("");
 
-  // A group deleted since the form was read: at the groups, the whole refused.
+  // A group deleted since the form was read: the whole refused, and the form says by its
+  // name that the group is gone, its box taken away, the other group still ticked.
   const gone = await request.delete(`./api/v1/user-groups/${late.hid}`, { headers });
   expect(gone.status()).toBe(204);
   await create.click();
-  await expect(form.getByRole("group", { name: "Groups" }).locator(".field-error")).toBeVisible();
+  const groups = form.getByRole("group", { name: "Groups" });
+  await expect(groups.locator(".field-error")).toHaveText(
+    `The group ${lateName} is gone: it was deleted after this was read, and its box is taken away.`,
+  );
+  await expect(groupBox(form, lateName)).toHaveCount(0);
   await intact();
-  await groupBox(form, lateName).uncheck();
 
   // Nothing of the refused was made: no such user, no operator of its name.
   const users = await request.get(`./api/v1/users?q=${encodeURIComponent(username)}`, { headers });
@@ -435,6 +497,22 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await expect(
     contactsShow.getByRole("link", { name: "Contacts behind no operator" }),
   ).toHaveAttribute("aria-current", "page");
+  // The grid's own filter changed: the gap is marked only while it is the gap's, and a
+  // press of a gap starts the grid on it again, though the address is the same.
+  await gapsFollowTheGrid(page, contactsShow, {
+    pressed: "Contacts behind no operator",
+    filter: "is_operator:eq:false",
+    other: "Contacts that are no user",
+    otherFilter: "is_user:eq:false",
+  });
+  // The same on the list of operators.
+  await page.goto(`./operators?filter=${encodeURIComponent("is_open:eq:true")}`);
+  await gapsFollowTheGrid(page, page.getByRole("navigation", { name: "Show operators" }), {
+    pressed: "Nobody behind it",
+    filter: "is_open:eq:true",
+    other: "No user behind it",
+    otherFilter: "scope:ne:internal",
+  });
   const grid = page.getByTestId("grid-contacts");
   const narrowed = async (filter: string) => {
     await page.goto(`./contacts?filter=${encodeURIComponent(filter)}`);
@@ -452,6 +530,9 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   found = await narrowed(`is_user:eq:false name:contains:${suffix}`);
   await expect(found).toHaveCount(1);
   await expect(names).toHaveText(`Taken Example ${suffix}`);
+  // Neither, said in plain words, as the other two lists say theirs.
+  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
+  await expect(grid.locator('[row-id] [col-id="is_operator"]')).toHaveText("no operator");
   await expectClean(page, seen);
 });
 
@@ -472,12 +553,83 @@ test("P-284: an operator is made in one press, from a user's page and from a con
     name: long,
     record_status: "active",
   });
+  // A user whose contact is retired, which no operator can stand for.
+  const ivo = `Ivo Example ${suffix}`;
+  const retiredUser = await createAccount(request, `e2e-${suffix}-ivo`, null, { name: ivo });
+  made.users.push(retiredUser.hid);
+  const read = await request.get(`./api/v1/users/${retiredUser.hid}`, { headers });
+  const contactHid = ((await read.json()) as { contact: { hid: string } }).contact.hid;
+  const contact = await request.get(`./api/v1/contacts/${contactHid}`, { headers });
+  const retired = await request.post(`./api/v1/contacts/${contactHid}/retire`, {
+    headers,
+    data: { row_version: ((await contact.json()) as { row_version: number }).row_version },
+  });
+  expect(retired.status()).toBe(200);
+  // A user whose contact stands behind an operator, and is then retired: the label is open.
+  const kai = await createAccount(request, `e2e-${suffix}-kai`, null, {
+    name: `Kai Example ${suffix}`,
+  });
+  made.users.push(kai.hid);
+  const kaiRead = await request.get(`./api/v1/users/${kai.hid}`, { headers });
+  const kaiContact = ((await kaiRead.json()) as { contact: { hid: string } }).contact.hid;
+  await make(request, headers, "/operators", {
+    label: `${suffix}-kai`,
+    contact_hid: kaiContact,
+    record_status: "active",
+  });
+  const kaiVersion = await request.get(`./api/v1/contacts/${kaiContact}`, { headers });
+  const kaiRetired = await request.post(`./api/v1/contacts/${kaiContact}/retire`, {
+    headers,
+    data: { row_version: ((await kaiVersion.json()) as { row_version: number }).row_version },
+  });
+  expect(kaiRetired.status()).toBe(200);
+  // A contact behind one operator, which is then released.
+  const joEmail = `jo.${suffix}@example.net`;
+  const jo = await make(request, headers, "/contacts", {
+    name: `Jo Example ${suffix}`,
+    email: joEmail,
+    record_status: "active",
+  });
+  const joOperator = await make(request, headers, "/operators", {
+    label: `${suffix}-jo`,
+    contact_hid: jo.hid,
+    record_status: "active",
+  });
+  const joRead = await request.get(`./api/v1/operators/${joOperator.hid}`, { headers });
+  const released = await request.post(`./api/v1/operators/${joOperator.hid}/retire`, {
+    headers,
+    data: { row_version: ((await joRead.json()) as { row_version: number }).row_version },
+  });
+  expect(released.status()).toBe(200);
   const seen = await watch(page.context());
   await signIn(page, account);
 
+  // The Users list says the label of a user whose contact is retired is open, nobody
+  // behind it; the Contacts list marks a released label so.
+  const rows = await usersListed(page, "");
+  const kaiMark = rows
+    .and(page.locator(`[data-user="${kai.username}"]`))
+    .getByTestId("user-operators")
+    .locator(".operator-mark");
+  await expect(kaiMark).toHaveAttribute("data-open", "true");
+  await expect(kaiMark).toContainText("open");
+  await page.goto(`./contacts?filter=${encodeURIComponent(`email:eq:${joEmail}`)}`);
+  const contacts = page.getByTestId("grid-contacts");
+  await expect(contacts.locator("[row-id]")).toHaveCount(1);
+  await expect(contacts.locator('[row-id] [col-id="is_operator"]')).toHaveText(
+    `${suffix}-jo (released)`,
+  );
+  await expect(contacts.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
+
+  // Its page offers no Make an operator, which would be refused, and says why.
+  await openUser(page, retiredUser.hid, retiredUser.username);
+  const operators = page.getByTestId("user-operators");
+  await expect(operators.getByTestId("contact-retired")).toContainText("is retired");
+  await expect(operators.getByRole("link", { name: ivo })).toBeVisible();
+  await expect(operators.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
+
   // From a user's page: its username as the label, pressed twice while held back, once sent.
   await openUser(page, made.gus.hid, made.gus.username);
-  const operators = page.getByTestId("user-operators");
   await expect(operators).toContainText("no operator");
   let posted = 0;
   await page.route("**/api/v1/operators", async (route) => {
@@ -509,23 +661,31 @@ test("P-284: an operator is made in one press, from a user's page and from a con
   await expect(marks).toContainText("no operator");
   await marks.getByRole("button", { name: "Make an operator" }).click();
   await expect(page.getByTestId("operator-heading")).toContainText(hal);
+  await expect(page.getByText(`Operator ${hal} was created.`)).toBeVisible();
   await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "external");
   await page.unroute("**/api/v1/colours");
 
-  // A name that is no label: the label and the colour open in place, with the refusal.
+  // A name that is no label: no press that must fail, but the label and the colour open
+  // at once, the fault said in plain words, and nothing sent until it is put right.
   await page.goto(`./contacts/${encodeURIComponent(longContact.hid)}`);
-  await marks.getByRole("button", { name: "Make an operator" }).click();
+  await expect(marks.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
   const label = marks.getByLabel("Label (required)");
   await expect(label).toHaveAttribute("aria-invalid", "true");
   await expect(label).toHaveValue(long);
+  await expect(marks.locator(".field-error").first()).toContainText(
+    `A label is at most 40 characters, and this one has ${long.length}`,
+  );
   await expect(marks.getByRole("textbox", { name: "Colour" })).toHaveValue(/^#[0-9a-f]{6}$/);
+  await marks.getByRole("button", { name: "Make the operator" }).click();
+  await expect(label).toHaveValue(long);
   await label.fill(`${suffix}-long`);
+  await expect(label).not.toHaveAttribute("aria-invalid", "true");
   await marks.getByRole("button", { name: "Make the operator" }).click();
   await expect(page.getByTestId("operator-heading")).toContainText(`${suffix}-long`);
   await page.getByTestId("operator-person").getByRole("link", { name: long }).click();
   await expect(marks.getByRole("link", { name: `${suffix}-long` })).toBeVisible();
   await expect(marks.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
-  await expectClean(page, seen, ["422 POST"]);
+  await expectClean(page, seen);
 
   // The users the file made are disabled: none is left that can sign in.
   for (const hid of made.users) {

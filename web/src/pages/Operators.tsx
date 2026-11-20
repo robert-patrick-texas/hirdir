@@ -5,8 +5,9 @@ import { useAuth } from "../auth";
 import { BoxTree } from "../components/BoxTree";
 import { ColourShown, useNextColour } from "../components/ColourPicker";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { Created, useCreated } from "../components/Created";
 import { FormFields } from "../components/FormFields";
-import { GapLinks } from "../components/GapLinks";
+import { GapLinks, useGridGaps } from "../components/GapLinks";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { OperatorMark } from "../components/Operator";
@@ -19,7 +20,7 @@ import { formatTime, plural } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY } from "../lib/lists";
-import { isGapShown, labelFor, OPERATOR_GAPS, operatorsAddress } from "../lib/operatorPage";
+import { labelFor, OPERATOR_GAPS, operatorsAddress } from "../lib/operatorPage";
 import {
   markOf,
   type Operator,
@@ -237,6 +238,8 @@ export function Operators() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
+  // 0.9.13: a press of a gap starts the grid on it, and marks it only while it is shown (P-280).
+  const gaps = useGridGaps(startFilter);
   const [adding, setAdding] = useState(false);
   const admin = allows(user.role, "admin");
   const columns = useMemo(() => operatorColumns(admin), [admin]);
@@ -263,18 +266,20 @@ export function Operators() {
         links={OPERATOR_GAPS.map((gap) => ({
           text: gap.label,
           to: operatorsAddress(gap.filter),
-          current: isGapShown(gap.filter, startFilter),
+          current: gaps.current(gap.filter),
         }))}
+        onPress={gaps.pressed}
       />
       <DataGrid<Operator>
-        key={startFilter ?? ""}
+        key={gaps.gridKey}
         id="operators"
         noun={["operator", "operators"]}
         entity="operators"
         columns={columns}
-        load={(request, signal) =>
-          api.request("get", "/api/v1/operators", { query: queryParams(request), signal })
-        }
+        load={(request, signal) => {
+          gaps.heard(request);
+          return api.request("get", "/api/v1/operators", { query: queryParams(request), signal });
+        }}
         rowId={(operator) => operator.hid}
         rowLink={(operator) => operatorPath(operator.hid)}
         dimmed={(operator) => operator.record_status !== "active"}
@@ -302,6 +307,8 @@ export function OperatorDetail() {
     api.request("get", "/api/v1/operators/{hid}", { path: { hid }, signal }),
   );
   const [done, setDone] = useState("");
+  // 0.9.13: the operator just made, by Make an operator or the New user form (P-284).
+  const created = useCreated();
   const record = operator.data;
   const mark = markOf(record);
   useTitle(record ? record.label : "Operator");
@@ -320,6 +327,7 @@ export function OperatorDetail() {
       <h1>{mark ? <OperatorMark mark={mark} testId="operator-heading" /> : "Operator"}</h1>
       <Problem error={operator.error} />
       <Notice text={done} />
+      <Created made={created} />
       {operator.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>

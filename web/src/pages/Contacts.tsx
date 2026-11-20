@@ -4,7 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Created, createdState, useCreated } from "../components/Created";
-import { GapLinks } from "../components/GapLinks";
+import { GapLinks, useGridGaps } from "../components/GapLinks";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { MakeOperator } from "../components/MakeOperator";
@@ -27,9 +27,13 @@ import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useChoices, useTags } from "../lib/lists";
-import { briefMark, CONTACTS_GAPS, contactsAddress, operatorLabelOf } from "../lib/onboarding";
-import { isGapShown } from "../lib/operatorPage";
-import { operatorPath } from "../lib/operators";
+import {
+  briefMark,
+  CONTACTS_GAPS,
+  contactsAddress,
+  operatorLabelOf,
+  operatorsCell,
+} from "../lib/onboarding";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { kindPath } from "../lib/preview";
@@ -72,7 +76,8 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "User",
     kind: "boolean",
     column: "user",
-    value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : ""),
+    // 0.9.13: no user, said in plain words, as the lists of users and operators say theirs.
+    value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : "no user"),
     choices: [
       { value: "true", label: "A user: signs in to hirdir" },
       { value: "false", label: "No user" },
@@ -86,12 +91,9 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "Operators",
     kind: "boolean",
     column: null,
-    value: (contact) => contact.operators.map((operator) => operator.label).join(", "),
-    links: (contact) =>
-      contact.operators.map((operator) => ({
-        text: operator.label,
-        path: operatorPath(operator.hid),
-      })),
+    // A released one is marked so; none is said in plain words.
+    value: (contact) => operatorsCell(contact.operators).text,
+    links: (contact) => operatorsCell(contact.operators).links,
     choices: [
       { value: "true", label: "Behind an operator" },
       { value: "false", label: "Behind no operator" },
@@ -203,6 +205,8 @@ export function Contacts() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
+  // 0.9.13: a press of a gap starts the grid on it, and marks it only while it is shown (P-280).
+  const gaps = useGridGaps(startFilter);
   const [adding, setAdding] = useState(false);
   const tags = useTags();
   const specs = useMemo(() => contactSpecs((tags.data ?? []).map((tag) => tag.label)), [tags.data]);
@@ -244,18 +248,20 @@ export function Contacts() {
           text: one.label,
           to: contactsAddress(one.filter),
           // A plain visit, with no filter in the address, is of every contact.
-          current: isGapShown(one.filter, startFilter),
+          current: gaps.current(one.filter),
         }))}
+        onPress={gaps.pressed}
       />
       <DataGrid<Contact>
-        key={startFilter ?? ""}
+        key={gaps.gridKey}
         id="contacts"
         noun={["contact", "contacts"]}
         entity="contacts"
         columns={columns}
-        load={(request, signal) =>
-          api.request("get", "/api/v1/contacts", { query: queryParams(request), signal })
-        }
+        load={(request, signal) => {
+          gaps.heard(request);
+          return api.request("get", "/api/v1/contacts", { query: queryParams(request), signal });
+        }}
         rowId={(contact) => contact.hid}
         rowLink={(contact) => `/contacts/${encodeURIComponent(contact.hid)}`}
         dimmed={(contact) => contact.record_status !== "active"}
@@ -361,7 +367,7 @@ export function ContactDetail() {
               {record.operators.length > 0 ? (
                 <span className="people-marks">
                   {record.operators.map((operator) => (
-                    <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+                    <OperatorMark key={operator.hid} mark={briefMark(operator, record)} />
                   ))}
                 </span>
               ) : (

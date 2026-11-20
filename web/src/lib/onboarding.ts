@@ -4,7 +4,9 @@
 // of a person in one press. This holds what the forms work out from what is typed.
 
 import type { Schemas } from "../api/client";
-import { type Mark, safeColour } from "./operators";
+import { readColour } from "./colour";
+import { type FilterNode, formatShort, parseShort } from "./filter";
+import { type Mark, operatorPath, safeColour } from "./operators";
 import { NEW_PERSON_FIELDS, newPersonErrors, type PersonChoice, readPerson } from "./people";
 import { roleLabel } from "./roles";
 
@@ -15,6 +17,29 @@ import { roleLabel } from "./roles";
 export function groupGrants(roles: readonly string[]): string {
   if (roles.length === 0) return "grants nothing";
   return `grants ${roles.map((role) => roleLabel(role)).join(", ")}`;
+}
+
+/**
+ * The groups that are gone (P-282): those a form listed, of the ones asked for, that the
+ * server no longer has, by name, as a deletion under an open form leaves them.
+ */
+export function goneGroups(
+  listed: readonly { hid: string; name: string }[],
+  now: readonly { hid: string }[],
+  asked: readonly string[],
+): string[] {
+  const there = new Set(now.map((group) => group.hid));
+  return listed
+    .filter((group) => asked.includes(group.hid) && !there.has(group.hid))
+    .map((group) => group.name);
+}
+
+/** What a form says of groups deleted since it was read, by their names. */
+export function goneWords(names: readonly string[]): string {
+  const named = names.join(", ");
+  return names.length === 1
+    ? `The group ${named} is gone: it was deleted after this was read, and its box is taken away.`
+    : `The groups ${named} are gone: they were deleted after this was read, and their boxes are taken away.`;
 }
 
 /**
@@ -53,6 +78,24 @@ export function operatorLabelOf(person: {
   return person.user ? person.user.username : person.name;
 }
 
+/** The most characters an operator's label has, as the server holds it ("### People"). */
+export const MOST_IN_A_LABEL = 40;
+
+/**
+ * What is wrong with a label before it is sent, in plain words, or null: a label is not
+ * blank, is at most 40 characters and has no semicolon. A name that is no label, as a
+ * contact's long name, is said so at the field at once, and not sent to be refused.
+ */
+export function labelProblem(label: string): string | null {
+  const trimmed = label.trim();
+  if (trimmed === "") return "A label is needed: the username, initials, a code such as Op2.";
+  if (trimmed.length > MOST_IN_A_LABEL) {
+    return `A label is at most ${MOST_IN_A_LABEL} characters, and this one has ${trimmed.length}: choose a shorter one.`;
+  }
+  if (trimmed.includes(";")) return "A label has no semicolon: choose one without it.";
+  return null;
+}
+
 /**
  * Whether a refusal of a new operator is of its label or its colour, which the form of
  * Make an operator then opens with, rather than a refusal of the whole.
@@ -72,14 +115,26 @@ export interface NewUserForm {
   alsoOperator: boolean;
   label: string;
   /**
-   * The colour as chosen, or null where none was: then the server gives the next that no
-   * operator has. Chosen blank, the operator has no colour.
+   * The colour on show, which is sent (`colourOnShow`); null where none is shown yet,
+   * and the server gives the next that no operator has. Shown blank, no colour.
    */
   colour: string | null;
   role: string;
   groupHids: readonly string[];
   notes: string;
   accessCode: string;
+}
+
+/**
+ * The colour a form shows for a new operator, which is the colour it sends: the one
+ * chosen, or else the next that no operator has, as it was read for the form; null only
+ * while nothing is shown, before the colours have come, and the server gives the next.
+ */
+export function colourOnShow(
+  chosen: string | null,
+  next: string | null | undefined,
+): string | null {
+  return chosen ?? next ?? null;
 }
 
 /** What `POST /users` takes since 0.9.13 ("### People" of docs/interfaces.md). */
@@ -104,7 +159,13 @@ export function newUserBody(
     if (form.alsoOperator) {
       const operator: Schemas["NewOperator"] = {};
       if (form.label.trim() !== "") operator.label = form.label.trim();
-      if (form.colour !== null) operator.colour = form.colour.trim() || null;
+      if (form.colour !== null) {
+        // As the picker reads it: a value that is no colour is said at the picker, and
+        // nothing is sent; a colour is sent as the server keeps it, blank as none.
+        const colour = readColour(form.colour);
+        if (!colour.ok) return { ok: false, field: "colour", error: colour.error };
+        operator.colour = colour.colour;
+      }
       body.operator = operator;
     }
   }
@@ -120,14 +181,44 @@ export function newUserBody(
  * link to its page, and released where it is retired. Who is behind it is the person
  * whose page or row it is on, and is not said again.
  */
-export function briefMark(operator: Schemas["OperatorBrief"]): Mark {
+export function briefMark(
+  operator: Schemas["OperatorBrief"],
+  behind?: { name: string; record_status: string } | null,
+): Mark {
+  // A retired contact stands behind nothing: the label is open, as the Operators list
+  // says it, and its title names who was behind it.
+  const left = behind?.record_status === "retired";
   return {
     hid: operator.hid,
     label: operator.label,
     colour: safeColour(operator.colour),
-    person: "",
-    open: false,
+    person: left ? (behind?.name ?? "") : "",
+    open: left,
     released: operator.record_status === "retired",
+  };
+}
+
+/** An operator a contact names, as a cell of the list says it: released where retired. */
+export function briefText(operator: Schemas["OperatorBrief"]): string {
+  return operator.record_status === "retired" ? `${operator.label} (released)` : operator.label;
+}
+
+/**
+ * The cell of a contact's operators on the list of contacts (P-280): each a link to its
+ * page, a released one marked so, as the lists of users and the pages mark it, and
+ * `no operator` in plain words where there is none.
+ */
+export function operatorsCell(operators: readonly Schemas["OperatorBrief"][]): {
+  text: string;
+  links: { text: string; path: string }[];
+} {
+  const links = operators.map((operator) => ({
+    text: briefText(operator),
+    path: operatorPath(operator.hid),
+  }));
+  return {
+    text: links.length > 0 ? links.map((link) => link.text).join(", ") : "no operator",
+    links,
   };
 }
 
@@ -193,6 +284,23 @@ export const CONTACTS_GAPS: readonly { label: string; filter: string }[] = [
   { label: "Contacts that are no user", filter: "is_user:eq:false" },
   { label: "Contacts behind no operator", filter: "is_operator:eq:false" },
 ];
+
+/**
+ * Whether a gap of a grid is the one on show (P-280): the filter the grid last asked
+ * the server for is the gap's, or, until it has asked, the one the address started it
+ * with. A filter changed in the grid's own box is no gap's, unless it says the same.
+ */
+export function gapShown(
+  gap: string,
+  asked: FilterNode | null | undefined,
+  startFilter: string | null,
+): boolean {
+  const wanted = parseShort(gap);
+  const shown = asked === undefined ? parseShort(startFilter ?? "") : null;
+  if (!wanted.ok || (shown !== null && !shown.ok)) return false;
+  const filter = shown === null ? (asked ?? null) : shown.ok ? shown.filter : null;
+  return formatShort(wanted.filter) === formatShort(filter);
+}
 
 /** The address of the list of contacts started with a filter. */
 export function contactsAddress(filter: string): string {

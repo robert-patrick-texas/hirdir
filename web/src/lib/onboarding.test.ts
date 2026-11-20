@@ -2,16 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   behindOperator,
   briefMark,
+  briefText,
   CONTACTS_GAPS,
+  colourOnShow,
   contactsAddress,
   followedLabel,
   followUsername,
+  gapShown,
+  goneGroups,
+  goneWords,
   groupGrants,
+  labelProblem,
   NEW_USER_FIELDS,
   type NewUserForm,
   newUserBody,
   newUserErrors,
   operatorLabelOf,
+  operatorsCell,
   queryOf,
   refusedField,
   typeLabel,
@@ -31,6 +38,27 @@ describe("a group's box says what the group grants (P-282)", () => {
     for (const roles of [[], ["admin"], ["viewer", "inventory"]]) {
       expect(groupGrants(roles)).not.toMatch(/role/i);
     }
+  });
+});
+
+describe("a group deleted under an open form is said so by its name (P-282)", () => {
+  const listed = [
+    { hid: "G1", name: "ex-network" },
+    { hid: "G2", name: "ex-servers" },
+    { hid: "G3", name: "ex-lab" },
+  ];
+
+  it("names the groups asked for that the server no longer has", () => {
+    expect(goneGroups(listed, [{ hid: "G1" }], ["G1", "G2"])).toEqual(["ex-servers"]);
+    expect(goneGroups(listed, [{ hid: "G1" }], ["G1"])).toEqual([]);
+    expect(goneGroups(listed, [], ["G2", "G3"])).toEqual(["ex-servers", "ex-lab"]);
+  });
+
+  it("says it in words, one group or several", () => {
+    expect(goneWords(["ex-lab"])).toBe(
+      "The group ex-lab is gone: it was deleted after this was read, and its box is taken away.",
+    );
+    expect(goneWords(["ex-lab", "ex-servers"])).toMatch(/^The groups ex-lab, ex-servers are gone/);
   });
 });
 
@@ -67,6 +95,16 @@ describe("Make an operator labels it by the person (P-284)", () => {
     );
     expect(operatorLabelOf({ name: "Example Person", user: null })).toBe("Example Person");
     expect(operatorLabelOf({ name: "Example Person" })).toBe("Example Person");
+  });
+
+  it("says what is wrong with a label in plain words, before anything is sent", () => {
+    expect(labelProblem("ex-ops")).toBeNull();
+    expect(labelProblem("x".repeat(40))).toBeNull();
+    expect(labelProblem("x".repeat(41))).toBe(
+      "A label is at most 40 characters, and this one has 41: choose a shorter one.",
+    );
+    expect(labelProblem(" ")).toMatch(/^A label is needed/);
+    expect(labelProblem("ex;ops")).toMatch(/no semicolon/);
   });
 
   it("opens its fields for a refusal of the label or the colour, not of the whole", () => {
@@ -108,9 +146,28 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
     });
   });
 
-  it("leaves a blank label and a colour not chosen to the server", () => {
+  it("sends the colour on show: the one chosen, or the next as it was read", () => {
+    expect(colourOnShow(null, "#0169cd")).toBe("#0169cd");
+    expect(colourOnShow("#a35303", "#0169cd")).toBe("#a35303");
+    expect(colourOnShow("", "#0169cd")).toBe("");
+    expect(colourOnShow(null, undefined)).toBeNull();
+    const read = newUserBody({ ...PERSON, colour: colourOnShow(null, "#0169cd") });
+    expect(read.ok && read.body.operator).toEqual({ label: "ex-ops", colour: "#0169cd" });
+  });
+
+  it("leaves a blank label, and a colour while none is shown, to the server", () => {
     const read = newUserBody({ ...PERSON, label: " ", colour: null });
     expect(read.ok && read.body.operator).toEqual({});
+  });
+
+  it("reads the colour as the picker does: none sent where it is no colour", () => {
+    const wrong = newUserBody({ ...PERSON, colour: "rubbish" });
+    expect(wrong).toMatchObject({ ok: false, field: "colour" });
+    expect(!wrong.ok && wrong.error).not.toBe("");
+    const upper = newUserBody({ ...PERSON, colour: " #1F6FEB " });
+    expect(upper.ok && upper.body.operator).toEqual({ label: "ex-ops", colour: "#1f6feb" });
+    // Without an operator, the colour is not read at all.
+    expect(newUserBody({ ...PERSON, alsoOperator: false, colour: "rubbish" }).ok).toBe(true);
   });
 
   it("sends a colour chosen blank as none", () => {
@@ -185,6 +242,31 @@ describe("who is what, on the lists of people (P-280)", () => {
     expect(briefMark({ ...brief("ex-ops", "active"), colour: "red" }).colour).toBeNull();
   });
 
+  it("marks an operator open where the contact behind it is retired", () => {
+    const left = briefMark(brief("ex-ops", "active"), {
+      name: "Example Person",
+      record_status: "retired",
+    });
+    expect(left).toMatchObject({ open: true, person: "Example Person", released: false });
+    const there = briefMark(brief("ex-ops", "active"), {
+      name: "Example Person",
+      record_status: "active",
+    });
+    expect(there).toMatchObject({ open: false, person: "" });
+    expect(briefMark(brief("ex-ops", "active"), null).open).toBe(false);
+  });
+
+  it("writes a contact's operators on the list: released ones marked, none in words", () => {
+    expect(operatorsCell([])).toEqual({ text: "no operator", links: [] });
+    const cell = operatorsCell([brief("old", "retired"), brief("new", "active")]);
+    expect(cell.text).toBe("old (released), new");
+    expect(cell.links).toEqual([
+      { text: "old (released)", path: "/operators/O-old" },
+      { text: "new", path: "/operators/O-new" },
+    ]);
+    expect(briefText(brief("new", "draft"))).toBe("new");
+  });
+
   it("counts a person behind retired operators alone as behind none", () => {
     expect(behindOperator([])).toBe(false);
     expect(behindOperator([brief("old", "retired")])).toBe(false);
@@ -203,6 +285,23 @@ describe("who is what, on the lists of people (P-280)", () => {
       "?q=ex+ops&operator=none&offset=50",
     );
     expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("marks a gap of a grid only while the grid's filter is that gap's", () => {
+    const behindNone = { field: "is_operator", op: "eq", value: "false" } as const;
+    // Before the grid has asked, as the address started it; a plain visit is the whole.
+    expect(gapShown("is_operator:eq:false", undefined, "is_operator:eq:false")).toBe(true);
+    expect(gapShown("", undefined, null)).toBe(true);
+    expect(gapShown("is_operator:eq:false", undefined, null)).toBe(false);
+    // Once it has asked: what it asked, whatever the address still says.
+    expect(gapShown("is_operator:eq:false", behindNone, "is_operator:eq:false")).toBe(true);
+    const noUser = { field: "is_user", op: "eq", value: "false" } as const;
+    expect(gapShown("is_operator:eq:false", noUser, "is_operator:eq:false")).toBe(false);
+    expect(gapShown("is_user:eq:false", noUser, "is_operator:eq:false")).toBe(true);
+    expect(gapShown("", null, "is_operator:eq:false")).toBe(true);
+    expect(gapShown("", behindNone, "")).toBe(false);
+    // A filter the short form cannot say is no gap's.
+    expect(gapShown("", { or: [behindNone, noUser] }, "")).toBe(false);
   });
 
   it("starts the list of contacts at each gap, and the whole with a blank filter", () => {

@@ -113,18 +113,32 @@ function Facts({ user }: { user: User }) {
             {user.operators.length > 0 && (
               <span className="people-marks">
                 {user.operators.map((operator) => (
-                  <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+                  <OperatorMark key={operator.hid} mark={briefMark(operator, user.contact)} />
                 ))}
               </span>
             )}
             {user.operators.length === 0 && <span className="people-gap">no operator</span>}
-            {user.contact && !behindOperator(user.operators) && (
-              <MakeOperator
-                contactHid={user.contact.hid}
-                label={user.username}
-                who={user.username}
-              />
+            {/* A retired contact stands behind no operator: none is offered for it. */}
+            {user.contact?.record_status === "retired" && (
+              <span className="muted" data-testid="contact-retired">
+                {" "}
+                · its contact,{" "}
+                <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>
+                  {user.contact.name}
+                </Link>
+                , is retired: an operator is made once the contact is brought back, or the user is
+                given another
+              </span>
             )}
+            {user.contact &&
+              user.contact.record_status !== "retired" &&
+              !behindOperator(user.operators) && (
+                <MakeOperator
+                  contactHid={user.contact.hid}
+                  label={user.username}
+                  who={user.username}
+                />
+              )}
             {!user.contact && (
               <span className="muted"> · an operator stands for a contact: give it one first</span>
             )}

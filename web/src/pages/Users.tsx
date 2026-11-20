@@ -1,7 +1,9 @@
 import { type FormEvent, Fragment, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
+import { ApiError } from "../api/client";
 import { ColourPicker, useColours } from "../components/ColourPicker";
+import { createdState } from "../components/Created";
 import {
   CheckField,
   CheckGroupField,
@@ -23,9 +25,12 @@ import { ValueLink } from "../components/ValueLink";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   briefMark,
+  colourOnShow,
   type FollowedLabel,
   followedLabel,
   followUsername,
+  goneGroups,
+  goneWords,
   groupGrants,
   NEW_USER_FIELDS,
   newUserBody,
@@ -38,7 +43,7 @@ import {
   usersGapOf,
   usersGapQuery,
 } from "../lib/onboarding";
-import { markOf } from "../lib/operators";
+import { markOf, operatorPath } from "../lib/operators";
 import { type PersonChoice, personChoice } from "../lib/people";
 import { ROLES, roleLabel } from "../lib/roles";
 import { USERS_SORT } from "../lib/tableSorts";
@@ -167,7 +172,8 @@ export function Users() {
           <div className="scroll">
             <table data-testid="users" data-gap={gap || undefined}>
               <caption className="visually-hidden">
-                Users, each with the contact it is and the operators it works as
+                Users, each with the contact it is, its email and numbers, and the operators it
+                works as
                 {gap === "no-contact" && ": those with no contact"}
                 {gap === "no-operator" && ": those with no operator"}
               </caption>
@@ -179,9 +185,7 @@ export function Users() {
                   <SortTh sort={sort.header("display_name", holdsAll)} column="display_name">
                     Name
                   </SortTh>
-                  <th scope="col">Email</th>
-                  <th scope="col">Phone</th>
-                  <th scope="col">Second phone</th>
+                  <th scope="col">Numbers</th>
                   <SortTh sort={sort.header("operators", holdsAll)} column="operators">
                     Operators
                   </SortTh>
@@ -218,27 +222,37 @@ export function Users() {
                       </Link>
                     </th>
                     {/* 0.9.3: the name, email and numbers of its contact (P-172). 0.9.13: the
-                        contact as a link to its page, or no contact said plainly (P-280). */}
-                    <td data-testid="user-name">
-                      {user.contact ? (
-                        <>
-                          <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>
-                            {user.display_name}
-                          </Link>
-                          {user.contact.record_status === "retired" && (
-                            <span className="badge">Retired</span>
-                          )}
-                        </>
-                      ) : user.is_service_account ? (
-                        <span className="muted">Service account</span>
-                      ) : (
-                        <span className="people-gap">no contact</span>
+                        contact as a link to its page, or no contact said plainly (P-280);
+                        the email beneath the name and the two numbers in one cell, one
+                        above the other, so that every column is in view at 1280 pixels. */}
+                    <td className="user-person">
+                      <span data-testid="user-name">
+                        {user.contact ? (
+                          <>
+                            <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>
+                              {user.display_name}
+                            </Link>
+                            {user.contact.record_status === "retired" && (
+                              <span className="badge">Retired</span>
+                            )}
+                          </>
+                        ) : user.is_service_account ? (
+                          <span className="muted">Service account</span>
+                        ) : (
+                          <span className="people-gap">no contact</span>
+                        )}
+                      </span>
+                      {user.email && (
+                        <span className="user-email" data-testid="user-email">
+                          {user.email}
+                        </span>
                       )}
                     </td>
-                    <td data-testid="user-email">{user.email}</td>
-                    <td data-testid="user-phone">{user.contact?.phone}</td>
-                    <td data-testid="user-phone2">{user.contact?.phone2}</td>
-                    <td data-testid="user-operators">
+                    <td className="user-numbers">
+                      <span data-testid="user-phone">{user.contact?.phone}</span>
+                      <span data-testid="user-phone2">{user.contact?.phone2}</span>
+                    </td>
+                    <td className="user-operators" data-testid="user-operators">
                       <UserOperators user={user} />
                     </td>
                     <td>
@@ -259,14 +273,19 @@ export function Users() {
                     <td>
                       <Time at={user.last_sign_in_at} />
                     </td>
-                    <td className="user-notes" data-testid="user-notes">
-                      {user.notes}
+                    {/* Cut short to its column, the whole of it on hover and on the page. */}
+                    <td
+                      className="user-notes"
+                      data-testid="user-notes"
+                      title={user.notes ?? undefined}
+                    >
+                      <span className="user-notes-text">{user.notes}</span>
                     </td>
                   </tr>
                 ))}
                 {users.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="muted">
+                    <td colSpan={10} className="muted">
                       {noUsers(q, gap)}
                     </td>
                   </tr>
@@ -342,7 +361,7 @@ function UserOperators({ user }: { user: User }) {
     return (
       <span className="people-marks">
         {user.operators.map((operator) => (
-          <OperatorMark key={operator.hid} mark={briefMark(operator)} />
+          <OperatorMark key={operator.hid} mark={briefMark(operator, user.contact)} />
         ))}
       </span>
     );
@@ -374,8 +393,11 @@ function CreatedUser({ created, onDone }: { created: Created; onDone: () => void
 
 /** 0.9.13: what one Create made, each a link to its page: the user, its contact, its operator. */
 function MadeWithUser({ created }: { created: Created }) {
-  const { user } = created;
-  const mark = markOf(created.operator);
+  const { user, operator } = created;
+  const mark = markOf(operator);
+  // The page each link leads to says that the record was just made (P-204, P-284).
+  const contactTo = user.contact ? `/contacts/${encodeURIComponent(user.contact.hid)}` : "";
+  const operatorTo = mark ? operatorPath(mark.hid) : "";
   return (
     <p data-testid="user-made">
       Made: the user{" "}
@@ -383,13 +405,31 @@ function MadeWithUser({ created }: { created: Created }) {
       {user.contact && (
         <>
           {mark ? ", " : " and "}the contact{" "}
-          <Link to={`/contacts/${encodeURIComponent(user.contact.hid)}`}>{user.contact.name}</Link>
+          <Link
+            to={contactTo}
+            state={createdState({ kind: "Contact", name: user.contact.name, to: contactTo })}
+          >
+            {user.contact.name}
+          </Link>
         </>
       )}
       {mark && (
         <>
           {" "}
-          and the operator <OperatorMark mark={mark} />
+          and the operator{" "}
+          <span className="operator-mark" data-operator={mark.hid}>
+            <Link
+              to={operatorTo}
+              state={createdState({ kind: "Operator", name: mark.label, to: operatorTo })}
+            >
+              <span
+                className="swatch operator-dot"
+                aria-hidden="true"
+                {...(mark.colour ? { style: { backgroundColor: mark.colour } } : {})}
+              />
+              {mark.label}
+            </Link>
+          </span>
         </>
       )}
       .
@@ -426,14 +466,18 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
   const [notes, setNotes] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [found, setFound] = useState<Record<string, string>>({});
+  // The groups deleted since the form was read, by name, said at the groups.
+  const [gone, setGone] = useState<readonly string[]>([]);
   const groups = useLoad("user-groups", (signal) =>
     api.request("get", "/api/v1/user-groups", { signal }),
   );
   // Read afresh for the form: another operator may have taken a colour since the page was.
   const colours = useColours(true);
-  // Until one is chosen the colour shows the next no operator has, and is left to the
-  // server, which gives the same, and gives it too where the colours have not yet come.
-  const colour = chosenColour ?? colours.data?.next_for_operators ?? "";
+  // Until one is chosen the colour shows the next no operator has, as it was read for the
+  // form, and what is shown is what is sent; before the colours have come, nothing is
+  // shown, and the server gives the next.
+  const shownColour = colourOnShow(chosenColour, colours.data?.next_for_operators);
+  const colour = shownColour ?? "";
   const action = useAction();
   // What the server refused is said beside the field it names.
   const fields: Readonly<Record<string, string | undefined>> = {
@@ -450,7 +494,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
       person,
       alsoOperator,
       label: label.label,
-      colour: chosenColour,
+      colour: shownColour,
       role,
       groupHids,
       notes,
@@ -462,10 +506,42 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
       return;
     }
     setFound({});
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/users", { body: read.body }),
-    );
-    if (result.ok) onCreated(result.value);
+    setGone([]);
+    let groupRefused = false;
+    const result = await action.run(async () => {
+      try {
+        return await api.request("post", "/api/v1/users", { body: read.body });
+      } catch (thrown) {
+        groupRefused =
+          thrown instanceof ApiError &&
+          Object.keys(thrown.fields).some((field) => field.startsWith("group_hids"));
+        throw thrown;
+      }
+    });
+    if (result.ok) {
+      onCreated(result.value);
+      return;
+    }
+    if (groupRefused) await groupsGone();
+  }
+
+  /**
+   * A group was refused as not there: the groups are read again, and one deleted since
+   * the form was read is said so by its name, its box taken away and unticked, so that
+   * Create can be pressed again with what else is on the form.
+   */
+  async function groupsGone() {
+    try {
+      const now = await api.request("get", "/api/v1/user-groups", {});
+      const names = goneGroups(groups.data ?? [], now, groupHids);
+      if (names.length === 0) return;
+      const there = new Set(now.map((group) => group.hid));
+      setGroupHids((was) => was.filter((hid) => there.has(hid)));
+      setGone(names);
+      groups.reload();
+    } catch {
+      // Not read: the server's refusal stands at the groups.
+    }
   }
 
   return (
@@ -590,7 +666,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           onChange={setGroupHids}
           empty={groups.data ? "There are no groups." : "Loading…"}
           hint="The user is put in each group ticked, and holds the roles it grants."
-          error={fields.group_hids}
+          error={gone.length > 0 ? goneWords(gone) : fields.group_hids}
           disabled={action.busy}
         />
         <TextAreaField
