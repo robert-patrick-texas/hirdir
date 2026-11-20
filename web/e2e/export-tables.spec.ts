@@ -485,6 +485,38 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
   await page.getByRole("button", { name: "Apply 2 rows" }).click();
   await whenApplied(page, 2);
 
+  // In the same visit, the tags: exported from the list beside the upload, a row added,
+  // and the file chosen. Records follows the new file, and what the page said of the
+  // sites goes; the preview is of tags (review X1).
+  const tagsFile = await exported(
+    page,
+    tableRow(page, "tags").getByRole("button", { name: "Export Tags as CSV" }),
+    testInfo,
+  );
+  const tagsHeader = tagsFile.content.toString("utf8").split("\n")[0] ?? "";
+  expect(tagsHeader).toBe(HEADERS.tags);
+  const chooseTags = () =>
+    page.getByLabel("File", { exact: true }).setInputFiles({
+      name: tagsFile.name,
+      mimeType: "text/csv",
+      buffer: Buffer.from(`${tagsHeader}\n,${id},,\n`, "utf8"),
+    });
+  await chooseTags();
+  await expect(page.getByLabel("Records")).toHaveValue("tags");
+  await expect(page).toHaveURL(/\/import$/);
+  await expect(page.getByTestId("import-job")).toHaveCount(0);
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(page.getByTestId("import-job")).toHaveAttribute("data-status", "previewed", {
+    timeout: 20_000,
+  });
+  await expect(count(page, "created")).toHaveText("1");
+  await expect(count(page, "rejected")).toHaveText("0");
+  // Records set by hand since the last file is kept for the next.
+  await page.getByLabel("Records").selectOption("sites");
+  await chooseTags();
+  await expect(page.getByLabel("Records")).toHaveValue("sites");
+  await expect(page.getByTestId("import-job")).toHaveCount(0);
+
   // The sites hold the corrected addresses, and their file says so when exported again.
   await page.goto("./geography");
   const again = await exported(

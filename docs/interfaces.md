@@ -3179,7 +3179,10 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   works, the tables being those the page knows. What became of the last press is said
   beside its buttons: the name of the file saved, or the refusal, as of a busy server,
   after which the button is pressed again. A View-only person has the list and its
-  buttons and no upload.
+  buttons and no upload. Records is guessed again from the name of each file chosen,
+  as the sites and then the tags of one visit, unless it was set by hand since the file
+  before; and a file chosen puts away what the page said of the one before, its refusal
+  and its job, which stays among the past imports.
 - **Geography.** Under the words at the top, Export offers regions, sites and locations,
   each as CSV and as JSON, one press each, the same files as on the Import page whatever
   the view counts (P-287).
