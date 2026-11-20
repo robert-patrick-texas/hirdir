@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, useMemo, useRef, useState } from "react";
+import { type FormEvent, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -6,6 +6,7 @@ import { BoxTree } from "../components/BoxTree";
 import { ColourShown, useNextColour } from "../components/ColourPicker";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { FormFields } from "../components/FormFields";
+import { GapLinks } from "../components/GapLinks";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { OperatorMark } from "../components/Operator";
@@ -257,20 +258,14 @@ export function Operators() {
       )}
       {/* 0.9.13: the gaps, each one press away and an address of its own, as on the lists
           of users and of contacts (P-280). */}
-      <nav className="gap-links" aria-label="Show operators" data-testid="gap-links">
-        <span className="gap-links-label">Show</span>{" "}
-        {OPERATOR_GAPS.map((gap, index) => (
-          <Fragment key={gap.filter}>
-            {index > 0 && <span aria-hidden="true"> · </span>}
-            <Link
-              to={operatorsAddress(gap.filter)}
-              aria-current={isGapShown(gap.filter, startFilter) ? "page" : undefined}
-            >
-              {gap.label}
-            </Link>
-          </Fragment>
-        ))}
-      </nav>
+      <GapLinks
+        label="Show operators"
+        links={OPERATOR_GAPS.map((gap) => ({
+          text: gap.label,
+          to: operatorsAddress(gap.filter),
+          current: isGapShown(gap.filter, startFilter),
+        }))}
+      />
       <DataGrid<Operator>
         key={startFilter ?? ""}
         id="operators"

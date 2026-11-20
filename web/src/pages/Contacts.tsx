@@ -28,6 +28,7 @@ import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useChoices, useTags } from "../lib/lists";
 import { briefMark, CONTACTS_GAPS, contactsAddress, operatorLabelOf } from "../lib/onboarding";
+import { isGapShown } from "../lib/operatorPage";
 import { operatorPath } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
@@ -242,7 +243,8 @@ export function Contacts() {
         links={CONTACTS_GAPS.map((one) => ({
           text: one.label,
           to: contactsAddress(one.filter),
-          current: startFilter === one.filter,
+          // A plain visit, with no filter in the address, is of every contact.
+          current: isGapShown(one.filter, startFilter),
         }))}
       />
       <DataGrid<Contact>

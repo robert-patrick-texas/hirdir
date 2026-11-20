@@ -391,8 +391,13 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await expect(of(service).getByTestId("user-name")).toHaveText("Service account");
   await expect(of(service).getByTestId("user-operators")).toHaveText("—");
 
-  // Show, with the users with no contact: an address of its own, the search kept.
+  // Show, with the users with no contact: an address of its own, the search kept. Until
+  // a gap is chosen, the list is of every user, and says so.
   const show = page.getByRole("navigation", { name: "Show users" });
+  await expect(show.getByRole("link", { name: "Every user" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await show.getByRole("link", { name: "Users with no contact" }).click();
   await expect(page).toHaveURL(/[?&]contact=none/);
   await expect(page).toHaveURL(new RegExp(`[?&]q=${suffix}`));
@@ -420,6 +425,11 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   // The Contacts list: Show, with those that are no user and those behind no operator.
   await page.goto("./contacts");
   const contactsShow = page.getByRole("navigation", { name: "Show contacts" });
+  // A plain visit, with no filter in the address, is of every contact, and says so.
+  await expect(contactsShow.getByRole("link", { name: "Every contact" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await contactsShow.getByRole("link", { name: "Contacts behind no operator" }).click();
   await expect(page).toHaveURL(/filter=is_operator%3Aeq%3Afalse/);
   await expect(
