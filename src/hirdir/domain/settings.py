@@ -48,6 +48,11 @@ FEWEST_ITEMS_PER_REQUEST = 100
 MOST_ITEMS_PER_REQUEST = 5000
 # The most a default or a minimum of support weight may be (P-155).
 MOST_WEIGHT = Decimal(1_000_000)
+# How long after the newest change the second process works the long reports out again
+# by day, in seconds, and the longest that may be (P-276). 0: not by day.
+AHEAD_SETTING = "reports_ahead_after_seconds"
+DEFAULT_AHEAD_AFTER_SECONDS = 30
+MOST_AHEAD_AFTER_SECONDS = 3600
 
 
 def _refuse(key: str, expected: str) -> Invalid:
@@ -498,6 +503,19 @@ SPECS: dict[str, Spec] = {
         "over how long the two measures of the ceiling are read, in seconds, and for "
         "how long after it last refused its reads the server refuses what is long",
         _whole(load.OVER_SETTING, load.FEWEST_OVER_SECONDS, load.MOST_OVER_SECONDS, " of seconds"),
+    ),
+    # 0.9.11: the long reports worked out again by day (P-276). The second process reads
+    # it at each look.
+    AHEAD_SETTING: Spec(
+        DEFAULT_AHEAD_AFTER_SECONDS,
+        "how long after the newest change of the inventory or its settings the second "
+        "process works out again the long reports that the change left stale, in "
+        "seconds: the coverage report, the renewal worklist, the renewal alert and the "
+        "capacity balance, each for the view its page opens with. Somebody who asks "
+        "sooner is answered by the server, which works the report out itself. 0: not by "
+        "day, and they are worked out when the second process starts and at five "
+        "minutes past midnight alone",
+        _whole(AHEAD_SETTING, 0, MOST_AHEAD_AFTER_SECONDS, " of seconds"),
     ),
 }
 

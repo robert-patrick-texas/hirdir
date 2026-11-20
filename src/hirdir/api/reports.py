@@ -446,14 +446,19 @@ def capacity_answer(db: Db) -> r.CapacityOut:
     return shapes.capacity_out(balance.kept_balance(db))
 
 
-def work_out_ahead(db: Db) -> None:
-    """Work out and keep the long reports for the view each page opens with: the
-    coverage report, the renewal worklist, the summary of the renewal alert and the
-    capacity balance (P-142, P-157). It writes nothing."""
-    coverage_answer(db)
-    renewals_answer(db)
-    alerts.summary(db)
-    capacity_answer(db)
+# The view each page opens with is worked out ahead and kept in the database (P-275):
+# the coverage report and the renewal worklist here, the summary of the renewal alert
+# in `hirdir.io.alerts` and the capacity balance in `hirdir.io.balance`.
+kept.worked_ahead("coverage", r.CoverageReport, coverage_answer)
+kept.worked_ahead("renewals", r.RenewalsReport, renewals_answer)
+
+
+def work_out_ahead(db: Db) -> list[str]:
+    """Work out the long reports for the view each page opens with, those that the
+    database does not hold good, and keep them there: the coverage report, the renewal
+    worklist, the summary of the renewal alert and the capacity balance (P-142, P-157,
+    P-275). Return those kept. It stores what it keeps, and changes no record."""
+    return kept.work_ahead(db)
 
 
 def _two_places(value: Decimal) -> str:
@@ -569,7 +574,18 @@ class KeptAnswer(Model):
     report: str
     request: str
     kept_at: datetime
-    uses: int
+    uses: Annotated[
+        int,
+        Field(description="How many times the server has given it since it had it."),
+    ]
+    ahead: Annotated[
+        bool,
+        Field(
+            description="Whether the database holds it, worked out ahead for the view "
+            "its page opens with (P-275). The others are in the memory of the server "
+            "alone."
+        ),
+    ]
 
 
 class KeptDiffered(Model):
@@ -591,10 +607,14 @@ class KeptCheck(Model):
 @kept_.get("")
 def kept_answers(_: Admin, db: Db) -> list[KeptAnswer]:
     """List the long reports that are kept and would be given now: the report, the
-    request whole, when it was worked out, and how many times it has been given since.
-    For an Admin, since the kept answers are in the server's memory."""
+    request whole, when it was worked out, how many times the server has given it
+    since, and whether the database holds it, worked out ahead (P-275). Those the
+    server has given come first, then what the database holds that nobody has asked
+    for yet."""
     return [
-        KeptAnswer(report=e.report, request=e.request, kept_at=e.kept_at, uses=e.uses)
+        KeptAnswer(
+            report=e.report, request=e.request, kept_at=e.kept_at, uses=e.uses, ahead=e.ahead
+        )
         for e in kept.listing(db)
     ]
 
@@ -602,9 +622,10 @@ def kept_answers(_: Admin, db: Db) -> list[KeptAnswer]:
 @kept_.post("/check")
 def check_kept_answers(_: Admin, context: Audit, db: Db) -> KeptCheck:
     """Work out each kept answer anew, compare it with what was kept, and keep the new
-    one. `differed` names each that was not the same, which none should be: one that
-    was is a defect to report. Audited as `kept_answers_checked`; it changes no record
-    and leaves the kept answers good (P-157)."""
+    one: those the server has given, and those the database holds, worked out ahead.
+    `differed` names each that was not the same, which none should be: one that was is
+    a defect to report. Audited as `kept_answers_checked`; it changes no record and
+    leaves the kept answers good (P-157)."""
     found = kept.check(db, context)
     return KeptCheck(
         checked_at=found.checked_at,

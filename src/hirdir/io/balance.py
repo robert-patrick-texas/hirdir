@@ -491,6 +491,9 @@ def kept_balance(db: Session) -> Balance:
     return kept.answer(db, "capacity", kept.asked(), balance)
 
 
+kept.worked_ahead("capacity", Balance, kept_balance)
+
+
 # --- the balance kept week by week ---------------------------------------------------
 
 

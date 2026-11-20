@@ -43,6 +43,7 @@ from hirdir.db.models import (
     ImportRow,
     Item,
     ItemReplacement,
+    KeptAnswer,
     LifecycleRule,
     Location,
     Network,
@@ -89,6 +90,7 @@ CLEARED: tuple[Any, ...] = (
     ImportRow,
     ImportJob,
     IdempotencyKey,
+    KeptAnswer,
     RenewalAlertView,
     CapacityRecord,
     CapacityLineTarget,
@@ -186,6 +188,7 @@ BOOKKEEPING: tuple[Any, ...] = (
     ImportRow,
     ImportJob,
     IdempotencyKey,
+    KeptAnswer,
     RenewalAlertView,
     CapacityRecord,
 )

@@ -448,23 +448,25 @@ def _lifespan(scheduled: bool, work: bool) -> Callable[[FastAPI], Any]:
     started once the application is bound to its database and stopped, after the batch
     it is in, when the server stops, and for the server every job of the clock.
 
-    For the server, with or without it, that is what is the server's own. The sweep of
-    the store of reference files, before the first request is answered: the store is
-    kept under a lock of this process, and no other may sweep it while an upload is
-    taken (P-161). And the jobs of the clock that fill this process's memory
-    (`hirdir.schedule.SERVER_JOBS`). A test drives `hirdir.schedule` itself.
+    For the server, with or without it, that is what is the server's own: the sweep of
+    the store of reference files, before the first request is answered, since the store
+    is kept under a lock of this process, and no other may sweep it while an upload is
+    taken (P-161). The server does nothing by the clock (`hirdir.schedule.SERVER_JOBS`):
+    the long reports are worked out ahead by whoever does the background work, and
+    kept in the database (P-275); a server that does both works them out again by day
+    as well (P-276). A test drives `hirdir.schedule` itself.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        applying = background.running(app.state) if work else None
+        applying = background.running(app.state, ahead=scheduled) if work else None
         if applying is not None:
             await run_in_threadpool(applying.__enter__)
         if scheduled:
             # What an upload cut short left behind, and content no record names (P-161).
             await run_in_threadpool(_sweep_store, app)
         jobs = JOBS if work else SERVER_JOBS
-        scheduler = Scheduler(lambda: app.state.sessions(), jobs) if scheduled else None
+        scheduler = Scheduler(lambda: app.state.sessions(), jobs) if scheduled and jobs else None
         try:
             if scheduler is not None:
                 await run_in_threadpool(scheduler.start)

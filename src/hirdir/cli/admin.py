@@ -173,9 +173,10 @@ def work() -> None:
     """Do the background work. This is what the hirdir-worker service starts.
 
     It applies the imports and bulk edits that wait, looking for them every second,
-    and does what is done by the clock and written to the database. It answers nothing
-    on the network. Stopped, it stops after the batch it is applying, and that job is
-    resumed by applying it again.
+    does what is done by the clock, and works out the long reports ahead, at night and
+    after a change, keeping them in the database for the server to give. It answers
+    nothing on the network. Stopped, it stops after the batch it is applying, and that
+    job is resumed by applying it again.
     """
     config = _load()
     lock = _one_worker(config.state_dir)

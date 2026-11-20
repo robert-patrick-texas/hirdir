@@ -43,6 +43,7 @@ from tests.api.inventory import API, Maker
 from tests.conftest import INVENTORY_CODE, sign_in
 
 HEAD = "vendor,pid,serial_number,hostname"
+FOUR_REPORTS = ["capacity", "coverage", "renewal_alert", "renewals"]
 STOPPED_BY_A_STOP = "the background work stopped while it was being applied"
 runner = CliRunner()
 
@@ -293,12 +294,12 @@ def test_a_stop_in_the_middle_of_an_apply_stops_after_the_batch_and_is_resumed(
 
 
 def test_what_is_done_by_the_clock_is_shared_between_the_two(config: Config) -> None:
-    """The record of the week is written to the database, and is the second process's.
-    The long reports are kept in the memory of the process that answers, and are the
-    server's own, after the record, whose event would leave them stale."""
-    assert [job.name for job in schedule.BACKGROUND_JOBS] == ["capacity record"]
-    assert [job.name for job in schedule.SERVER_JOBS] == ["long reports"]
-    assert set(schedule.BACKGROUND_JOBS) | set(schedule.SERVER_JOBS) == set(schedule.JOBS)
+    """All that is done by the clock is the second process's, and nothing the server's:
+    the record of the week, and after it, whose event would leave them stale, the long
+    reports, which it keeps in the database, where the server finds them (P-275)."""
+    assert [job.name for job in schedule.BACKGROUND_JOBS] == ["capacity record", "long reports"]
+    assert schedule.SERVER_JOBS == ()
+    assert schedule.BACKGROUND_JOBS == schedule.JOBS
     from zoneinfo import ZoneInfo
 
     zone = ZoneInfo("America/New_York")
@@ -309,13 +310,17 @@ def test_what_is_done_by_the_clock_is_shared_between_the_two(config: Config) -> 
     assert (reports.hour, reports.minute) == (0, 5)
     assert record.date() == reports.date()
 
-    # The second process, at its start: the record, and nothing kept in its memory.
+    # The second process, at its start: the record, and the four reports in the
+    # database, for a server that has given none of them yet.
     with background.working(config):
         assert counted(config, CapacityRecord) == 1
+        kept.drop()
         engine = make_engine(config.database_url)
         with make_sessions(engine)() as db:
-            assert kept.listing(db) == []
+            listed = kept.listing(db)
         engine.dispose()
+    assert sorted(one.report for one in listed) == FOUR_REPORTS
+    assert all(one.ahead and one.uses == 0 for one in listed)
 
 
 def test_the_work_command_does_what_is_due_at_start_applies_and_stops_on_a_signal(
@@ -458,25 +463,28 @@ def served(installed: Config, monkeypatch, *options: str) -> dict[str, Any]:
     return seen
 
 
-def test_serve_does_none_of_the_background_work_and_keeps_what_is_the_servers_own(
+def test_serve_does_none_of_the_background_work_and_nothing_by_the_clock(
     installed: Config, monkeypatch
 ) -> None:
+    kept.drop()
     seen = served(installed, monkeypatch)
     # It holds its own lock and not the other, applies nothing and records nothing.
     assert (seen["server_lock"], seen["worker_lock"]) == (True, False)
     assert (seen["worker"], seen["job"], seen["records"]) == ("not_running", "queued", 0)
-    # The long reports are kept in its own memory, so it works them out itself.
-    assert seen["kept"] == {"coverage", "renewals", "renewal_alert", "capacity"}
+    # The long reports are the second process's to work out ahead (P-275): with none
+    # running, nothing is kept until somebody asks.
+    assert seen["kept"] == set()
     assert not background.is_held(installed.state_dir / admin.SERVER_LOCK)
 
 
 def test_serve_with_work_does_both_in_one_process_and_holds_both_locks(
     installed: Config, monkeypatch
 ) -> None:
+    kept.drop()
     seen = served(installed, monkeypatch, "--work")
     assert (seen["server_lock"], seen["worker_lock"]) == (True, True)
     assert (seen["worker"], seen["job"], seen["records"]) == ("in_process", "applied", 1)
-    assert seen["kept"] == {"coverage", "renewals", "renewal_alert", "capacity"}
+    assert seen["kept"] == set(FOUR_REPORTS)
     assert not background.is_held(installed.state_dir / background.WORKER_LOCK)
 
 

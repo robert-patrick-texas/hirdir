@@ -75,6 +75,9 @@ def summary(db: Session) -> Summary:
     return kept.answer(db, "renewal_alert", kept.asked(), _worked_out)
 
 
+kept.worked_ahead("renewal_alert", Summary, summary)
+
+
 def _seen(db: Session, user_hid: str) -> RenewalAlertView | None:
     return db.scalar(select(RenewalAlertView).where(RenewalAlertView.user_hid == user_hid))
 

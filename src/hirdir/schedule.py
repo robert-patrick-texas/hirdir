@@ -8,11 +8,12 @@ A job may also be run when its process starts. Nothing is run twice for one time
 due, and a time that passed while the process was stopped is not made up for: a job
 that must not miss one runs at the start as well, and finds there what is missing.
 
-The service is two processes (P-267), and each runs a scheduler for its own jobs. What
-a job writes to the database is the second process's, `hirdir admin work`:
-`BACKGROUND_JOBS`. What a job keeps in the memory of the process that answers is the
-server's own: `SERVER_JOBS`. A process that does both, `hirdir admin serve --work`,
-runs them all, `JOBS`.
+The service is two processes (P-267), and what is done by the clock is the second
+process's, `hirdir admin work`: `BACKGROUND_JOBS`, which are all there are, `JOBS`. The
+server does nothing by the clock, `SERVER_JOBS`, since 0.9.11, when the long reports
+that it worked out for its own memory went to the second process, which keeps them in
+the database (P-275). A process that does both, `hirdir admin serve --work`, runs them
+all.
 
 `run_due` runs what is due at a moment it is given, which is how the tests drive it
 without waiting for a Monday.
@@ -30,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.domain import audit, settings
-from hirdir.io import balance
+from hirdir.io import balance, kept
 
 log = logging.getLogger("hirdir.schedule")
 # How often the scheduler looks at the clock.
@@ -38,7 +39,7 @@ WAKE_SECONDS = 60.0
 # Just after midnight: a minute in, so that a clock a little behind is past it too.
 AFTER_MIDNIGHT = time(0, 1)
 # And once what is due then is done: the long reports are worked out after the record
-# of the week, which another process makes, and makes within the minute it is due in.
+# of the week, which is made within the minute it is due in.
 AFTER_THE_RECORD = time(0, 5)
 MONDAY = 0
 
@@ -92,32 +93,46 @@ def record_balance(db: Session, moment: datetime) -> None:
 
 
 def work_out_ahead(db: Session, moment: datetime) -> None:
-    """Work out the long reports of the day and keep them, for the view each page opens
-    with, so that the first person of the day is not kept waiting (D-179, P-157): the
-    coverage report, the renewal worklist, the summary of the renewal alert and the
-    capacity balance. It writes nothing."""
+    """Work out the long reports of the day and keep them in the database, for the view
+    each page opens with, so that the first person of the day is not kept waiting
+    (D-179, P-157, P-275): the coverage report, the renewal worklist, the summary of the
+    renewal alert and the capacity balance. What the database holds good already is
+    left as it is. It changes no record."""
     from hirdir.api import reports
 
     reports.work_out_ahead(db)
 
 
+def work_out_ahead_if_due(db: Session) -> bool:
+    """Work the long reports out again where a change, or the turn of the day, has left
+    one of them stale and nothing has changed since for as long as
+    `reports_ahead_after_seconds` says (P-276). Say whether it was done. The process of
+    the background work asks at each look, when it has nothing to apply."""
+    # The reports themselves say which of them are worked out ahead.
+    from hirdir.api import reports
+
+    if not kept.due(db):
+        return False
+    reports.work_out_ahead(db)
+    return True
+
+
 # R14.7: the balance of each week, each Monday just after midnight, and when the
 # process that records it starts in a week that has none.
 CAPACITY_RECORD = Job("capacity record", weekly(MONDAY), record_balance, at_start=True)
-# D-179, P-157: the long reports of the day, just after midnight and when the server
-# starts. It runs after the record, whose audit event would otherwise leave them stale:
-# in one process by its place in the list, and between two by the minutes between them.
+# D-179, P-157, P-275: the long reports of the day, just after midnight and when the
+# process that works them out starts, whatever `reports_ahead_after_seconds` says. It
+# runs after the record, by its place in the list, whose audit event would otherwise
+# leave them stale.
 LONG_REPORTS = Job("long reports", daily(AFTER_THE_RECORD), work_out_ahead, at_start=True)
 JOBS: tuple[Job, ...] = (CAPACITY_RECORD, LONG_REPORTS)
-# What the process of the background work does by the clock (P-267): what is written
-# to the database, where the server finds it.
-BACKGROUND_JOBS: tuple[Job, ...] = (CAPACITY_RECORD,)
-# What the server does by the clock itself, whichever process does the rest: the long
-# reports are kept in the memory of the process that answers (D-184, `hirdir.io.kept`),
-# so worked out by another process they would be kept where no request reads them, and
-# the first person of the day would wait for each all the same. Kept where both
-# processes read them, the job is the second process's: move it to the list above.
-SERVER_JOBS: tuple[Job, ...] = (LONG_REPORTS,)
+# What the process of the background work does by the clock (P-267): all of it. What
+# it works out it writes to the database, where the server finds it.
+BACKGROUND_JOBS: tuple[Job, ...] = JOBS
+# What the server does by the clock itself, where another process does the rest:
+# nothing. Until 0.9.11 the long reports were here, kept in the memory of the process
+# that answers alone (D-184).
+SERVER_JOBS: tuple[Job, ...] = ()
 
 
 class Scheduler:

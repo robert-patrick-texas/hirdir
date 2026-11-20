@@ -33,9 +33,11 @@ their defaults after its runs, so that every other request is timed with none.
 An answer that is kept (D-184, P-157) is timed twice. "anew" drops every kept answer,
 `hirdir.io.kept.drop()`, before each run, outside what is timed, so that each run works
 it out from the records as the first request after a change does; "kept" asks the same
-again unchanged, as every request after the first does until something changes. With
-`--url` the kept answers are in the server's process and cannot be dropped from here, so
-the requests anew are left out.
+again unchanged, as every request after the first does until something changes. What
+the database holds, worked out ahead by a service that ran on the fixture (P-275), is
+taken away once, before anything is timed, and nothing in this process works ahead.
+With `--url` the kept answers are in the server's process and cannot be dropped from
+here, so the requests anew are left out.
 
 By default the application is built in this process, with `hirdir.app.create_app` on
 the fixture's database, and asked through `fastapi.testclient.TestClient`: what is
@@ -899,6 +901,13 @@ def main(argv: list[str] | None = None) -> int:
         from hirdir.config import Config
 
         app = create_app(Config(state_dir=given.folder))
+        # What a service that ran on the fixture worked out ahead and left in its
+        # database (P-275) would be given in place of an answer worked out anew.
+        from hirdir.io import kept
+
+        with app.state.sessions() as db:
+            kept.forget(db)
+            db.commit()
         with TestClient(app) as client:
             results = run(client, facts, engine=app.state.engine, say=said, **options)
         app.state.engine.dispose()

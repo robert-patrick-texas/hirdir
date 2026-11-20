@@ -1354,6 +1354,27 @@ class RenewalAlertView(Bookkeeping, Base):
     ending: Mapped[list[str]] = mapped_column(JSON, default=list)
 
 
+class KeptAnswer(Base):
+    """A long report worked out ahead, for the view its page opens with (P-275).
+
+    One row to a report. It is good for the request, the newest audit event of a change
+    of the inventory or its settings, the day in the application's time zone and the
+    version of `hirdir` that it names, and is given for no other: `hirdir.io.kept`
+    writes it and reads it. It is no record, and what it holds is worked out again
+    from the records.
+    """
+
+    __tablename__ = "kept_answers"
+
+    report: Mapped[str] = mapped_column(String(40), primary_key=True)
+    request: Mapped[str] = mapped_column(Text)
+    newest_event_hid: Mapped[str | None] = mapped_column(String(36), default=None)
+    day: Mapped[date] = mapped_column(Date)
+    version: Mapped[str] = mapped_column(String(40))
+    answer: Mapped[str] = mapped_column(Text)
+    kept_at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)
+
+
 class IdempotencyKey(Base):
     """A key a caller sent with a request, and the answer it was given."""
 
