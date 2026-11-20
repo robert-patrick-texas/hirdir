@@ -160,7 +160,8 @@ with its contact and its operator in one step; an operator made of a user in one
 a colour chosen from a grid and a slider; every table exported from the Import page,
 an empty one as its template and all at once, and what is exported loading back as
 nothing to change; Geography exported as its three tables; and the users as CSV. Its
-migration, `0016`, adds the notes of a user and changes no record. The round after it,
+migration, `0016`, adds the notes of a user and changes no record; its scenarios are S54
+and S55. The round after it,
 before 1.0.0, is 0.9.14, the round of the person: a profile page on which a person who
 signs in changes their own name, email, numbers, organization, operator label and
 colour, and access code (P-289), and the user, the contact and the operators of one
@@ -430,6 +431,8 @@ written as a failing test at the start of its release.
 | S51 | Upload a photograph and a floor plan to a location, and download each | Each is listed with its title and kind, comes back byte for byte, and a View-only user downloads and cannot upload |
 | S52 | Upload an administration guide to a catalog entry | Every item of that model reaches it, with no request leaving the server |
 | S53 | Upload a file over the limit and one of a kind that is not allowed; then back up, restore on a clean install | Both uploads are refused with the reason; the restored inventory has every file, byte for byte |
+| S54 | An Admin makes a user with a new contact, an operator, a role, a group and notes in one request, after a request with a colour that is refused | The refused request made nothing and left no event; the one request made all of them, each audited; the user signs in with the group's role; its contact is a user and an operator; and a user made without an operator is found among the users with no operator |
+| S55 | Export every table of an empty inventory; load the examples; export every table whole, by itself and as the zip of all of them, and load each file back | Each empty table gives the header row of its file, the template of its import; every table loads back as nothing to change, in both formats; the zip holds every table in the order of loading and is in the audit trail, and one table exported is not |
 
 ## Definition of done
 
