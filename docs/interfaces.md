@@ -1412,8 +1412,15 @@ the whole inventory out and when. The event is stored before the first piece of 
 file is sent. An export is no change of the inventory, and no kept answer is worked
 out again for one.
 
+`POST /exports` with `whole` gives one table as the zip holds it: the whole table in the
+form that loads back, its stored values, the retired and the drafts among them, the
+items with each before the minor items in it. A whole table is the same for whoever
+asks: a filter, a sort, columns, HIDs, `include_sources` and `place_codes` beside it are
+refused with a `422` on `whole`. The Import page and Geography ask for a table so, and
+hold no copy of what whole means.
+
 What is exported loads back. The file of any table, as `POST /exports` gives it with
-`own_values`, the archived and the drafts included, previewed as an import into the
+`whole`, previewed as an import into the
 inventory it came from, changes nothing: every row is `unchanged` and none is
 rejected, in both formats, for every table. A test holds it over all of them.
 

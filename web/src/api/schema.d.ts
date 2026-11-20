@@ -10833,6 +10833,8 @@ export interface components {
       /** Write each place the short way, by the codes of its site and its own: `S2 > R102`, with names where a place has no code (P-235). */
       place_codes?: boolean;
       sort?: string[];
+      /** The whole table in the form that loads back, as the file of every table holds it: the stored values, the retired and the drafts among them, in the order its file is loaded in. A filter, a sort, columns, HIDs, the sources and the codes of places are refused beside it (P-286). */
+      whole?: boolean;
     };
     /** One table that a file is taken for, as the Import page lists it (P-286). */
     ExportTable: {

@@ -4811,6 +4811,13 @@ class ExportRequest(Model):
     )
     include_archived: bool = False
     include_drafts: bool = False
+    whole: bool = Field(
+        default=False,
+        description="The whole table in the form that loads back, as the file of every "
+        "table holds it: the stored values, the retired and the drafts among them, in "
+        "the order its file is loaded in. A filter, a sort, columns, HIDs, the sources "
+        "and the codes of places are refused beside it (P-286).",
+    )
 
 
 class ExportTable(Model):

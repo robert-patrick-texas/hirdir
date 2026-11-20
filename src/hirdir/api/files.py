@@ -254,10 +254,11 @@ def list_import_created(
 )
 def export(body: r.ExportRequest, _: Viewer, request: Request, db: Db) -> StreamingResponse:
     """Export a list as CSV or JSON, with the filter and the sort that the list takes."""
-    wanted = exports.plan(
+    wanted = exports.asked(
         db,
         body.entity,
-        format_=body.format,
+        body.format,
+        body.whole,
         filter_=body.filter,
         sort=body.sort,
         columns=body.columns,
