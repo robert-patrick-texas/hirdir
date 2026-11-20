@@ -3112,7 +3112,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   colour on show is the colour sent: the next unused, as it was read when the form
   opened, until another is chosen; where the colours have not yet been read when Create
   is pressed, none is shown and the server gives the next; a colour chosen blank is
-  none. One
+  none; and a value that is no colour, read as the picker reads it (`readColour`), is
+  said at the picker as typed and nothing is sent. One
   Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
   the label, `operator` at its box, `group_hids` at the groups, the contact's at the
   person's, with nothing typed lost; a group deleted since the form was read is named
@@ -3135,7 +3136,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   characters or with a semicolon, there is no press that must fail: the label and the
   colour are open at once, the fault said at the label in plain words and nothing sent
   until it is put right. A label another operator has, refused by the server, opens
-  them too, with the refusal at the field. The colour on show there is the one sent.
+  them too, with the refusal at the field. The colour on show there is the one sent,
+  and a value that is no colour is said at the picker, nothing sent.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
   stands behind, as links, in the column Operators, which filters and sorts by
   `is_operator`, a released one written `label (released)`; and plain words where there

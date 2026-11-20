@@ -342,6 +342,16 @@ test("P-283: each refusal is shown at its field, with nothing typed lost", async
     await expect(page.getByRole("region", { name: `Access code for ${username}` })).toHaveCount(0);
   };
 
+  // A value that is no colour: said at the picker, as typed, and nothing sent.
+  const colourBox = form.getByRole("textbox", { name: "Colour" });
+  const shown = await colourBox.inputValue();
+  await colourBox.fill("rubbish");
+  await create.click();
+  await expect(colourBox).toHaveAttribute("aria-invalid", "true");
+  await expect(colourBox).toHaveValue("rubbish");
+  await intact();
+  await colourBox.fill(shown);
+
   // The email of another contact: at the email.
   await create.click();
   await expect(person.getByLabel("Email")).toHaveAttribute("aria-invalid", "true");

@@ -160,6 +160,16 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
     expect(read.ok && read.body.operator).toEqual({});
   });
 
+  it("reads the colour as the picker does: none sent where it is no colour", () => {
+    const wrong = newUserBody({ ...PERSON, colour: "rubbish" });
+    expect(wrong).toMatchObject({ ok: false, field: "colour" });
+    expect(!wrong.ok && wrong.error).not.toBe("");
+    const upper = newUserBody({ ...PERSON, colour: " #1F6FEB " });
+    expect(upper.ok && upper.body.operator).toEqual({ label: "ex-ops", colour: "#1f6feb" });
+    // Without an operator, the colour is not read at all.
+    expect(newUserBody({ ...PERSON, alsoOperator: false, colour: "rubbish" }).ok).toBe(true);
+  });
+
   it("sends a colour chosen blank as none", () => {
     const read = newUserBody({ ...PERSON, colour: " " });
     expect(read.ok && read.body.operator).toEqual({ label: "ex-ops", colour: null });

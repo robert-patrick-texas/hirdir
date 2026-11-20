@@ -4,6 +4,7 @@
 // of a person in one press. This holds what the forms work out from what is typed.
 
 import type { Schemas } from "../api/client";
+import { readColour } from "./colour";
 import { type FilterNode, formatShort, parseShort } from "./filter";
 import { type Mark, operatorPath, safeColour } from "./operators";
 import { NEW_PERSON_FIELDS, newPersonErrors, type PersonChoice, readPerson } from "./people";
@@ -158,7 +159,13 @@ export function newUserBody(
     if (form.alsoOperator) {
       const operator: Schemas["NewOperator"] = {};
       if (form.label.trim() !== "") operator.label = form.label.trim();
-      if (form.colour !== null) operator.colour = form.colour.trim() || null;
+      if (form.colour !== null) {
+        // As the picker reads it: a value that is no colour is said at the picker, and
+        // nothing is sent; a colour is sent as the server keeps it, blank as none.
+        const colour = readColour(form.colour);
+        if (!colour.ok) return { ok: false, field: "colour", error: colour.error };
+        operator.colour = colour.colour;
+      }
       body.operator = operator;
     }
   }

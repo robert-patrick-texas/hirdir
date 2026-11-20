@@ -11,6 +11,7 @@ import { type FormEvent, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { api } from "../api";
 import { ApiError } from "../api/client";
+import { readColour } from "../lib/colour";
 import { useAction } from "../lib/hooks";
 import { labelProblem, refusedField } from "../lib/onboarding";
 import { operatorPath } from "../lib/operators";
@@ -141,13 +142,17 @@ function MakeOperatorForm(props: MakeOperatorFormProps) {
   // What is wrong with the label is said as it stands, the person's name at first.
   const fault = labelProblem(label);
   const labelError = refused.label ?? fault ?? undefined;
+  const [colourFault, setColourFault] = useState<string | null>(null);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (fault !== null) return;
+    // A value that is no colour is said at the picker, as typed, and nothing is sent.
+    const read = colour === null ? null : readColour(colour);
+    setColourFault(read !== null && !read.ok ? read.error : null);
+    if (fault !== null || (read !== null && !read.ok)) return;
     onMake({
       label: label.trim(),
-      colour: async () => (colour !== null ? colour.trim() || null : await next.wait()),
+      colour: async () => (read?.ok ? read.colour : await next.wait()),
     });
   }
 
@@ -174,7 +179,7 @@ function MakeOperatorForm(props: MakeOperatorFormProps) {
         onChange={onColour}
         sample={label}
         hint="The next colour that no operator has, unless another is chosen. Blank is no colour."
-        error={refused.colour}
+        error={colourFault ?? refused.colour}
         disabled={busy}
       />
       <p className="actions">
