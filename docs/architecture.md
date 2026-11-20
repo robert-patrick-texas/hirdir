@@ -678,9 +678,10 @@ page. This is how it is built, and why so.
   the ceiling too low reaches it to set it again.
 - **Which route is which.** `api/busy.py` reads it from what a route declares: a `GET`
   under `/reports` is long by nature; any other `GET` reads; and whatever takes the
-  audit context stores a change, as every route that writes does. A list or an export
-  asked for with `POST` takes no audit context, and a preview takes one and can wait
-  all the same: those few are named. A test fails for a route that is none of these,
+  audit context stores a change, as every route that writes does. A list or the export
+  of one table asked for with `POST` takes no audit context, and a preview takes one
+  and can wait all the same, as do the export of every table and that of the users,
+  which take it only to note that the file was taken: those few are named. A test fails for a route that is none of these,
   so a new route is decided when it is written. Every request of the API asks which
   its route is, since its time is in the measure or is not, so what was found for a
   method and a path is remembered.

@@ -1,4 +1,5 @@
-"""Scenarios S03 to S05 of docs/build-plan.md, against a real server process.
+"""Scenarios S03 to S05 of docs/build-plan.md, and the onboarding of R12.8, which has no
+number of its own there yet, against a real server process.
 
 S01 and S02 need the installed package and a browser: `make package-test` and
 `make e2e` run them.
@@ -62,6 +63,56 @@ def test_s05_the_sixth_wrong_code_is_delayed_and_every_failure_is_audited(server
     assert admin.get("/audit-events", params={"action": "sign_in_failed"}).json()["total"] == 5
     assert admin.get("/audit-events", params={"action": "sign_in_delayed"}).json()["total"] == 1
     assert all("set-cookie" not in attempt.headers for attempt in attempts)
+
+
+def test_r12_8_a_person_is_onboarded_in_one_step_and_each_list_finds_the_gaps(
+    server: Server,
+) -> None:
+    """R12.8: the user, its contact and its operator, with its role and its groups, in one
+    request; a refusal of any part makes nothing; the lists say who is which (P-280 to
+    P-283). The command line still makes a user with its contact."""
+    admin = server.sign_in(*ADMIN)
+    group = admin.post("/user-groups", json={"name": "Example Engineers"}).json()
+    admin.post("/role-grants", json={"role": "inventory", "group_hid": group["hid"]})
+    before = admin.get("/audit-events", params={"limit": 1}).json()["total"]
+    refused = admin.post(
+        "/users",
+        json={
+            "username": "ex-ops",
+            "contact": {"name": "Example Person"},
+            "group_hids": [group["hid"]],
+            "operator": {"colour": "orange"},
+        },
+    )
+    assert refused.status_code == 422
+    assert [one["field"] for one in refused.json()["errors"]] == ["operator.colour"]
+    assert admin.get("/audit-events", params={"limit": 1}).json()["total"] == before
+    assert admin.get("/users", params={"q": "ex-ops"}).json()["total"] == 0
+    assert admin.get("/contacts", params={"filter": "name:eq:Example Person"}).json()["total"] == 0
+
+    made = admin.post(
+        "/users",
+        json={
+            "username": "ex-ops",
+            "contact": {"name": "Example Person", "email": "example.person@example.net"},
+            "group_hids": [group["hid"]],
+            "operator": {},
+            "notes": "For the example team.",
+            "access_code": "ex-ops-code",
+        },
+    ).json()
+    assert made["operator"]["label"] == "ex-ops"
+    assert made["user"]["operators"][0]["hid"] == made["operator"]["hid"]
+    ops = server.sign_in("ex-ops", "ex-ops-code")
+    assert ops.get("/auth/me").json()["role"] == "inventory"
+    contact = ops.get(f"/contacts/{made['user']['contact_hid']}").json()
+    assert (contact["is_user"], contact["is_operator"]) == (True, True)
+
+    server.admin("create-user", "ex-desk", "--name", "Example Desk", "--role", "viewer")
+    gaps = admin.get("/users", params={"operator": "none"}).json()["items"]
+    assert sorted(one["username"] for one in gaps) == ["ada", "ex-desk"]
+    nobody = admin.get("/contacts", params={"filter": "is_operator:eq:false"}).json()["items"]
+    assert [one["name"] for one in nobody] == ["Example Desk"]
 
 
 def test_prefix_reaches_the_server_for_a_client_behind_the_proxy(server: Server) -> None:

@@ -184,33 +184,46 @@ add up to it: both are counted from one list of what names a contact.
 Since 0.9.13 each of the three lists says which of the other two a person is, and
 finds those that are not (P-280). A user answers `operators`, the operators whose
 contact is the user's, in the order of their labels, each with `hid`, `label`, `colour`
-and `record_status`; a user with no contact has none. A contact answers `operators`,
-the same of the contact, beside `is_user` and `user`. One contact may stand behind
-several operators. `GET /users` takes `contact` and `operator`, each `any`, which is
-the same as leaving it out, `some` or `none`: `contact=none` gives the users that are
-no contact, and `operator=none` those behind no operator that is not retired. A
-service account is no person and is in neither `none`. `GET /contacts` filters and
-sorts by `is_operator`, true where the contact stands behind an operator that is not
-retired, as it does by `is_user`; `GET /operators` finds those with nobody behind them
-by `scope`, as before.
+and `record_status`, a retired one among them, marked so; a user with no contact has
+none. A contact answers `operators`, the same of the contact, and `is_operator`, beside
+`is_user` and `user`. One contact may stand behind several operators. `GET /users`
+takes `contact` and `operator`, each `any`, which is the same as leaving it out, `some`
+or `none`: `contact=some` gives the users that are a contact and `contact=none` those
+that are none; `operator=some` those whose contact stands behind an operator that is
+not retired, and `operator=none` those behind none, a user with no contact among them.
+A service account is no person and is in neither `none`. Each of a page's lists is read
+in one query for the page. The users are sorted by `notes` and by `operators`, the
+first of their labels, as by their other columns. `GET /contacts` filters and sorts by
+`is_operator`, true where the contact stands behind an operator that is not retired, as
+it does by `is_user`; `GET /operators` finds those with nobody behind them by `scope`,
+as before.
 
 A user has `notes` (P-281): free text, at most as long as the notes of a contact,
-`null` unless given. `POST /users` and `PATCH /users/{hid}` take it, and a change of it
-is audited as any change of a user is.
+10,000 characters, `null` unless given, and blank is none. `POST /users` and
+`PATCH /users/{hid}` take it, `null` or blank clearing it, and a change of it is
+audited as any change of a user is, with its old and new text.
 
 `POST /users` makes, in the one change, what a new person needs (P-282, P-283). It takes
 `group_hids`, the user groups the new user is put into, each membership audited as
 `PUT /user-groups/{hid}/members/{user_hid}` audits it; a group that is not there
 refuses the whole with a `422` on `group_hids`. And it takes `operator`, an object with
 `label`, `colour` and `description`, each optional: an operator is made whose contact
-is the user's, with the username as its label where none is given and the next unused
-colour where none is given (`next_for_operators`, below). `operator` needs a contact
+is the user's, with the username as its label where none is given, or a blank one, and
+the next unused colour where none is given (`next_for_operators`, below); a colour
+given as blank or `null` is none, as on `POST /operators`. `operator` needs a contact
 in the same request, `contact` or `contact_hid`, and is refused with a `422` on
-`operator` without one, as it is for a service account; a label that another operator
-has is refused with a `409` on `operator.label`. The answer has `operator`, the
-operator made, or `null`. The user, the contact, the operator, the grant of the role
-and the memberships are one transaction, each audited as if it were made by itself:
-where any part is refused, nothing is made.
+`operator` without one, as it is for a service account. The label is held to the rules
+of any label, at most 40 characters with no semicolon: a username that is no acceptable
+label is refused with a `422` on `operator.label`, and never shortened; a label that
+another operator has is refused with a `409` on `operator.label` that names that
+operator as `existing`. A colour that is not `#rrggbb` is a `422` on `operator.colour`.
+The answer has `operator`, the operator made, as `GET /operators/{hid}` answers it, or
+`null`. The user, the contact, the operator, the grant of the role and the memberships
+are one transaction, each audited as if it were made by itself, with the events of
+`POST /contacts`, `POST /operators`, `POST /role-grants` and
+`PUT /user-groups/{hid}/members/{user_hid}`: where any part is refused, nothing is made
+and no event is kept. Each refusal names the field it is for, as `contact.name`,
+`operator.label`, `group_hids` or `role`, so that a form shows it there.
 
 `GET /colours`, which every role reads, gives the colours a form offers (P-285):
 `grid`, eight rows of eight, a row to each shade from the lightest to the darkest and
@@ -1373,7 +1386,12 @@ that an item stands before the minor items in it. Each file is written as it is 
 a piece at a time, and the zip goes out as it is written; the tables are read one
 after another, each in statements of its own, so an export of everything taken while
 somebody is changing records holds each table as it was when it was read. The users
-are not in it. Like `POST /exports`, it changes nothing and is not audited.
+are not in it. It changes nothing, and it is audited, as the export of one table is
+not: an event `export` of the record type `inventory`, with no record, that holds the
+name of the file, the `format` and how many `tables`, so that the trail says who took
+the whole inventory out and when. The event is stored before the first piece of the
+file is sent. An export is no change of the inventory, and no kept answer is worked
+out again for one.
 
 What is exported loads back. The file of any table, as `POST /exports` gives it with
 `own_values`, the archived and the drafts included, previewed as an import into the
@@ -3063,20 +3081,43 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   to those behind no operator. The page of a contact behind no operator has Make an
   operator, as a user's has, with the username as the label where the contact is a
   user and the contact's name where it is not.
-- **Operators.** The list shows the user behind each operator as a link, for an Admin,
-  and Show narrows it to those with nobody behind them. In the New operator form,
-  choosing a person who is a user fills the label with the username while the label is
-  blank or is still what the form filled in. On the page of an operator, Details stands
-  above The person's email and numbers.
+- **Operators.** The list has a column User: the user behind each operator by its
+  username, a link to the user's page for an Admin and plain words for the other roles,
+  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  the list, Show leads, as the lists of users and of contacts do, by a link one press
+  away whose address holds the grid's own filter, to every operator, to those with no
+  user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
+  nobody behind them at all, `is_open:eq:true`; the one on show is marked as the
+  current page. In the New operator form the colour starts at `next_for_operators`
+  of a read of `GET /colours` begun as the form opened, until one is chosen; choosing a
+  person who is a user fills the label with the username while the label is blank or is
+  still what the form filled in, and a label typed by hand is kept. A Create pressed
+  before the username or the colour has come waits for them, says so, and then makes
+  the operator with them. On the page of an operator, Details stands above The person's
+  email and numbers, and the colour is shown on its chip.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
-  one picker (P-285): the grid of `GET /colours`, 64 swatches, each a button named by
-  its value, reached by Tab and moved through by the arrow keys; above it a slider of
-  the 32, whose steps move the choice in the grid; and the text box, which takes any
-  `#rrggbb`. The three are one value: pressing a swatch moves the slider and fills the
-  box, and a value typed that is of the grid marks its swatch, while one that is not
-  marks none and is kept as typed. The value is shown on a chip filled with the colour,
-  its text black or white, whichever has the greater contrast with it, and beside it
-  the label as the lists will show it. A blank value is no colour, as before.
+  one picker (P-285), a group named as the field is: the text box, which takes any
+  `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and
+  the grid of `GET /colours`, 64 swatches, each a button named by its hue, its shade
+  and its value (`orange, shade 3 of 8, #fb9d59`), the one chosen pressed, ringed and
+  ticked. The grid is one stop of Tab, at the swatch chosen or the first; the arrow
+  keys move within it, Home and End to the ends of a row and with Control to the
+  first and the last, and Enter or Space chooses. The three are one value: pressing a
+  swatch moves the slider and fills the box, and a value typed that is of the grid
+  marks its swatch, in either case, while one that is not marks none and is kept as
+  typed. The slider is a range input of 32 steps over a track that shows them, its
+  step said in words (`Step 5 of 32: orange, shade 3 of 8, #fb9d59`). A range input
+  always stands at a step: where the value is none of the 32, the slider rests at the
+  step nearest to it (of the same hue for a swatch of the grid, else nearest in red,
+  green and blue, the first for no colour), its thumb is drawn hollow and dashed, it
+  says `No step: #eeaa00 is not one of the 32`, and the first move, by a key or a press,
+  takes the value to the step it comes to. A value that is no colour is said at the box
+  once it is left or seven characters long, and the form sends nothing. The value is
+  shown on a chip filled with the colour, its text black or white, whichever has the
+  greater WCAG contrast with it, and beside it the label being typed as the lists will
+  show it, with an operator's dot or a tag's square. A blank value is no colour, as
+  before. The colours are read once for every picker on the page; until they come, the
+  text box takes a colour by itself. Admin › Tags shows each tag's colour on its chip.
 - **Import.** Above the upload, What can be loaded and exported lists every table of
   `GET /exports/tables` in the order of loading, each with how many records it holds
   and Export CSV and Export JSON, the whole table in the form that loads back. A table
