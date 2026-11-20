@@ -8,6 +8,7 @@ import {
   luminance,
   pasted,
   placeIn,
+  readColour,
   restingStep,
   sameColour,
   stepAfterKey,
@@ -47,6 +48,14 @@ describe("a typed colour", () => {
     expect(colourProblem("  ")).toBeNull();
     expect(colourProblem("#1f6feb")).toBeNull();
     expect(colourProblem("orange")).toMatch(/^In the form #1f6feb/);
+  });
+
+  it("is read before it is sent: none, a colour in lower case, or refused", () => {
+    expect(readColour("")).toEqual({ ok: true, colour: null });
+    expect(readColour(" #EEAA00 ")).toEqual({ ok: true, colour: "#eeaa00" });
+    const refused = readColour("rubbish");
+    expect(refused.ok).toBe(false);
+    expect(refused.ok ? "" : refused.error).toMatch(/^In the form #1f6feb/);
   });
 
   it("is pasted whole, without the blanks around it, in place of what is selected", () => {
