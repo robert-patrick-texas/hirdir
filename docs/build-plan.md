@@ -161,8 +161,10 @@ a colour chosen from a grid and a slider; every table exported from the Import p
 an empty one as its template and all at once, and what is exported loading back as
 nothing to change; Geography exported as its three tables; and the users as CSV. Its
 migration, `0016`, adds the notes of a user and changes no record. The round after it,
-before 1.0.0, is a profile page on which a person who signs in changes their own name,
-email, numbers, organization, operator label and colour, and access code (P-289).
+before 1.0.0, is 0.9.14, the round of the person: a profile page on which a person who
+signs in changes their own name, email, numbers, organization, operator label and
+colour, and access code (P-289), and the user, the contact and the operators of one
+person retired together, with one confirmation, or parted first (P-291).
 
 ## From 0.6.1 to 0.9.0
 
