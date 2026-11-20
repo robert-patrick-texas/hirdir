@@ -604,8 +604,16 @@ class KeptCheck(Model):
     """What a check of the kept answers found: none should have differed."""
 
     checked_at: datetime
-    checked: int
+    checked: Annotated[int, Field(description="How many kept answers were compared.")]
     differed: list[KeptDiffered]
+    overtaken: Annotated[
+        bool,
+        Field(
+            description="Whether a change was stored while the check worked. It then "
+            "stopped there: what it had not compared yet is given no more, and is "
+            "neither counted nor named. Ask again (P-277)."
+        ),
+    ]
 
 
 @kept_.get("")
@@ -634,6 +642,7 @@ def check_kept_answers(_: Admin, context: Audit, db: Db) -> KeptCheck:
     return KeptCheck(
         checked_at=found.checked_at,
         checked=found.checked,
+        overtaken=found.overtaken,
         differed=[
             KeptDiffered(report=d.report, request=d.request, kept_at=d.kept_at)
             for d in found.differed

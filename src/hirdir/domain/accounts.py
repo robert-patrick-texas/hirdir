@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from hirdir import clock
@@ -675,5 +676,22 @@ def _authenticate_service(db: Session, token: str) -> Principal:
         raise NotSignedIn("the token is not valid")
     last = record.last_used_at
     if last is None or (now - last).total_seconds() > LAST_USED_GRANULARITY_SECONDS:
-        record.last_used_at = now
+        _used(db, record, now)
     return Principal(user=user, role=effective_role(db, user), kind="service")
+
+
+def _used(db: Session, record: ServiceToken, now: datetime) -> None:
+    """Keep when a service token was last used, and store it at once (P-277).
+
+    Left to be stored with the request, it would take the one writer's place at the
+    request's first read and hold it until the request ends: a report or an export
+    asked for with a token would hold up every save for as long as it took. Nothing
+    else of the request is written yet, so storing it here stores nothing else. Where
+    the writer's place cannot be had in time, the use is not kept, and the next
+    request keeps it: a request that only reads is not refused for it.
+    """
+    record.last_used_at = now
+    try:
+        db.commit()
+    except OperationalError:
+        db.rollback()

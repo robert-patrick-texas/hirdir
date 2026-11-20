@@ -307,6 +307,7 @@ def work_ahead(db: Session) -> list[str]:
         finally:
             _noted.reset(token)
         kept = _store(db, [noted[report] for report in wanted if report in noted])
+        db.commit()
         if failed is not None:
             raise failed
         return kept
@@ -314,12 +315,12 @@ def work_ahead(db: Session) -> list[str]:
 
 def _store(db: Session, found: list[tuple[tuple[Any, ...], Kept]]) -> list[str]:
     """Write the rows of answers that were worked out, each with the stamp it was worked
-    out with, and store them. Return the reports written.
+    out with. Return the reports written. The caller stores them, at once.
 
     What the session has read is let go, the writer's place is taken, which is held for
-    these few writes alone, and the stamp is read again: only an answer of that very
-    stamp is written, since one that a change has overtaken is of no moment for
-    certain, and would lie over a row that is good.
+    these few writes and what the caller writes with them, and the stamp is read again:
+    only an answer of that very stamp is written, since one that a change has
+    overtaken is of no moment for certain, and would lie over a row that is good.
     """
     if not found:
         return []
@@ -331,7 +332,6 @@ def _store(db: Session, found: list[tuple[tuple[Any, ...], Kept]]) -> list[str]:
         if key[2:] == now:
             _write(db, key, entry)
             written.append(entry.report)
-    db.commit()
     return written
 
 
@@ -406,6 +406,8 @@ class Checked:
     checked_at: datetime
     checked: int
     differed: list[Differed]
+    # A change was stored while the check worked, and it stopped comparing there.
+    overtaken: bool = False
 
 
 def _take_up(db: Session, now: tuple[Any, ...]) -> None:
@@ -439,14 +441,17 @@ def check(db: Session, context: AuditContext) -> Checked:
     A change that is stored while the check works leaves every kept answer stale, and
     an answer worked out anew across it is of no moment for certain: the stamp is read
     again after each answer, and from the first that it has moved for, nothing more is
-    compared, named or counted, since none of it would be given any more. Rows are
-    written when all is compared, with the writer's place taken for those writes alone
-    and the stamp read once more, as `work_ahead` writes them: never across the working
-    out of a report, which would hold every other writer up for as long.
+    compared, named or counted, since none of it would be given any more, and the
+    check says that it was `overtaken`, to be asked again. Rows are written when all is
+    compared, with the writer's place taken for those writes and the check's own event,
+    which are stored together by the caller, and the stamp read once more, as
+    `work_ahead` writes them: never across the working out of a report, which would
+    hold every other writer up for as long.
     """
     differed: list[Differed] = []
     again: list[tuple[tuple[Any, ...], Kept]] = []
     checked = 0
+    overtaken = False
     now = stamp(db)
     _take_up(db, now)
     rows = _rows(db, now)
@@ -461,6 +466,7 @@ def check(db: Session, context: AuditContext) -> Checked:
             held = _held(db, key, entry.work)
             rewrite = held is None or not same(anew, held.answer)
         if stamp(db) != now:
+            overtaken = True
             break
         checked += 1
         if wrong or rewrite:
@@ -469,8 +475,10 @@ def check(db: Session, context: AuditContext) -> Checked:
             again.append((key, fresh))
         _keep(key, fresh)
     # The session has written nothing yet, so letting go of what it read loses nothing.
+    # The rows and the event that names them are one transaction: a row is never
+    # written again by a check of which the trail says nothing.
     _store(db, again)
-    found = Checked(clock.now(), checked, differed)
+    found = Checked(clock.now(), checked, differed, overtaken)
     audit.record(
         db,
         context,
@@ -479,6 +487,7 @@ def check(db: Session, context: AuditContext) -> Checked:
         None,
         [
             audit.change("checked", None, found.checked),
+            audit.change("overtaken", None, found.overtaken),
             audit.change(
                 "differed", None, [{"report": d.report, "request": d.request} for d in differed]
             ),

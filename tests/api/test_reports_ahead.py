@@ -10,10 +10,11 @@ the clock and its worker call it.
 
 import json
 import logging
-import threading
+import sqlite3
 import time
 import uuid
 from collections.abc import Iterator
+from contextlib import closing
 from datetime import timedelta
 from typing import Any
 
@@ -79,6 +80,20 @@ def _made_wrong(db: Session) -> None:
     held["active"]["supply"] = "99"
     row.answer = json.dumps(held)
     db.commit()
+
+
+def _writer_is_free(config: Config) -> bool:
+    """Say whether another writer gets the one writer's place of the database now: it
+    asks for it on a connection of its own, and waits a fifth of a second at the most."""
+    path = config.database_path
+    assert path is not None
+    with closing(sqlite3.connect(path, timeout=0.2)) as other:
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            other.execute("ROLLBACK")
+        except sqlite3.OperationalError:
+            return False
+    return True
 
 
 def _never(*_: Any, **__: Any) -> Any:
@@ -239,7 +254,7 @@ def test_what_the_database_holds_is_listed_and_checked_before_anybody_has_asked(
     assert sorted(one["report"] for one in listed) == FOUR
     assert all(one["ahead"] and one["uses"] == 0 for one in listed)
     found = _as_admin(client, admin, "/kept-answers/check", "post")
-    assert (found["checked"], found["differed"]) == (4, [])
+    assert (found["checked"], found["differed"], found["overtaken"]) == (4, [], False)
     # Taking them up for the check is no use of them.
     assert all(one["uses"] == 0 for one in _as_admin(client, admin, "/kept-answers"))
 
@@ -510,6 +525,8 @@ def test_a_check_overtaken_by_a_change_names_nothing_and_writes_no_row(
     assert changed == [1]
     assert found["differed"] == []
     assert found["checked"] < 4
+    # And it says so, for the Admin to ask again.
+    assert found["overtaken"] is True
     db.rollback()
     row = db.scalars(select(KeptAnswer).where(KeptAnswer.report == "capacity")).one()
     assert row.newest_event_hid == before != kept.stamp(db)[1]
@@ -520,38 +537,27 @@ def test_a_check_overtaken_by_a_change_names_nothing_and_writes_no_row(
 
 
 def test_a_check_that_has_a_row_to_write_again_holds_no_other_writer_while_it_works(
-    make: Maker, client: TestClient, admin: dict[str, str], db: Session, monkeypatch
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session, config: Config, monkeypatch
 ) -> None:
     """A row is written when everything is compared, not across the working out of the
-    reports after it: a save meanwhile is stored at once."""
+    reports after it: while each of those is worked out, the writer's place is free."""
     _line(make, "Network engineer", "3")
     assert sorted(reports.work_out_ahead(db)) == FOUR
     _made_wrong(db)
     kept.drop()
+    free: dict[str, bool] = {}
     for name in ("coverage", "renewals"):
         real = getattr(planning, name)
 
-        def slowly(*a: Any, _real: Any = real, **k: Any) -> Any:
-            found = _real(*a, **k)
-            time.sleep(0.7)
-            return found
+        def probing(*a: Any, _real: Any = real, _name: str = name, **k: Any) -> Any:
+            free[_name] = _writer_is_free(config)
+            return _real(*a, **k)
 
-        monkeypatch.setattr(planning, name, slowly)
-    checked: dict[str, Any] = {}
-
-    def check() -> None:
-        checked["found"] = _as_admin(client, admin, "/kept-answers/check", "post")
-
-    thread = threading.Thread(target=check)
-    thread.start()
-    # Whatever the order of the four, the check is among the slow ones for two seconds.
-    time.sleep(1.0)
-    started = time.monotonic()
-    _line(make, "Senior network engineer", "2")
-    waited = time.monotonic() - started
-    thread.join()
-    assert waited < 0.5, f"the save waited {waited:.1f} s for the check"
-    assert "found" in checked
+        monkeypatch.setattr(planning, name, probing)
+    found = _as_admin(client, admin, "/kept-answers/check", "post")
+    # The capacity balance, whose row is wrong, is compared before the two that probe.
+    assert [one["report"] for one in found["differed"]] == ["capacity"]
+    assert free == {"coverage": True, "renewals": True}
 
 
 def test_a_check_writes_the_row_again_with_the_writers_place_taken_only_for_that(
@@ -632,3 +638,65 @@ def test_a_server_works_ahead_by_day_only_where_it_does_the_background_work_of_t
     with TestClient(app):
         assert background.worker_state(app.state) == "not_running"
     app.state.engine.dispose()
+
+
+def test_a_row_is_written_again_only_with_the_event_of_the_check_that_names_it(
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session, monkeypatch
+) -> None:
+    """The row and the event are one transaction: a check whose event cannot be stored
+    leaves the row as it found it, for the next check to name."""
+    _line(make, "Network engineer", "3")
+    assert sorted(reports.work_out_ahead(db)) == FOUR
+    _made_wrong(db)
+    kept.drop()
+
+    def refused(*_: Any, **__: Any) -> Any:
+        raise RuntimeError("the event cannot be stored")
+
+    monkeypatch.setattr(audit, "record", refused)
+    assert client.post(f"{API}/kept-answers/check", headers=admin).status_code == 500
+    monkeypatch.undo()
+    db.rollback()
+    row = db.scalars(select(KeptAnswer).where(KeptAnswer.report == "capacity")).one()
+    assert json.loads(row.answer)["active"]["supply"] == "99"
+    assert make.get("/audit-events", action="kept_answers_checked")["items"] == []
+    kept.drop()
+    found = _as_admin(client, admin, "/kept-answers/check", "post")
+    assert [one["report"] for one in found["differed"]] == ["capacity"]
+    (event,) = make.get("/audit-events", action="kept_answers_checked")["items"]
+    assert {"field": "overtaken", "old": None, "new": False} in event["changes"]
+
+
+def test_a_long_request_by_a_service_token_holds_no_other_writer(
+    make: Maker, client: TestClient, admin: dict[str, str], config: Config, monkeypatch
+) -> None:
+    """When a token was last used is stored at once, where it was left to be stored
+    with the request and so held the one writer's place for as long as the request
+    took (P-277)."""
+    created = client.post(
+        f"{API}/users",
+        headers=admin,
+        json={"username": "svc-reports", "is_service_account": True, "role": "viewer"},
+    ).json()
+    made = client.post(
+        f"{API}/users/{created['user']['hid']}/service-tokens",
+        headers=admin,
+        json={"name": "probe"},
+    ).json()
+    service = {"Authorization": f"Bearer {made['secret']}"}
+    free: list[bool] = []
+    real = planning.coverage
+
+    def while_it_works(*a: Any, **k: Any) -> Any:
+        free.append(_writer_is_free(config))
+        return real(*a, **k)
+
+    monkeypatch.setattr(planning, "coverage", while_it_works)
+    answer = client.get(f"{API}/reports/coverage", headers=service)
+    assert answer.status_code == 200, answer.text
+    assert free == [True]
+    # The use is kept all the same.
+    (token,) = client.get(
+        f"{API}/users/{created['user']['hid']}/service-tokens", headers=admin
+    ).json()
+    assert token["last_used_at"] is not None
