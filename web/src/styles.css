@@ -3168,6 +3168,26 @@ table.load-table th.load-band {
   font-style: italic;
 }
 
+/* Show, and the gaps of a list beside it, as the pages of a menu are: the one on show
+   is filled. */
+.gap-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.gap-links-label {
+  font-weight: 600;
+}
+
+.gap-links ul {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem;
+}
+
 .people-marks {
   display: inline-flex;
   flex-wrap: wrap;
