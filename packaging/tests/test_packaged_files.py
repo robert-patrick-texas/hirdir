@@ -332,6 +332,58 @@ def test_the_install_page_names_both_units_and_what_the_commands_say(
     assert f"```text\n{refused}\n```" in INSTALL
 
 
+def test_the_install_page_and_the_package_test_say_of_the_long_reports_what_the_code_says() -> None:
+    """The notes of the upgrade to 0.9.11, the newest, and what the package test asks for
+    it: the table, the setting and its bounds, the line of the journal, and the four
+    reports that the second process works out ahead (P-275, P-276)."""
+    import importlib
+
+    from hirdir.db.models import KeptAnswer
+    from hirdir.domain import settings
+    from hirdir.io import background, kept
+
+    assert "### From 0.9.10 to 0.9.11" in INSTALL
+    notes = INSTALL.split("### From 0.9.10 to 0.9.11\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    revision = max(
+        path.name[:4] for path in (ROOT / "src/hirdir/db/migrations/versions").glob("[0-9]*.py")
+    )
+    assert revision == "0015"
+    assert f"to `{revision}`. One table is added, `{KeptAnswer.__tablename__}`" in page
+    assert KeptAnswer in reset.CLEARED
+    assert "`hirdir admin reset` clears it" in page
+
+    # The setting, as the page gives it to an operator.
+    name = settings.AHEAD_SETTING
+    assert settings.SPECS[name].default == settings.DEFAULT_AHEAD_AFTER_SECONDS
+    assert f"`{name}`, {settings.DEFAULT_AHEAD_AFTER_SECONDS} unless set" in page
+    assert f"a whole number from 0 to {settings.MOST_AHEAD_AFTER_SECONDS:,}" in page
+    assert f"{settings.DEFAULT_AHEAD_AFTER_SECONDS} seconds after the last change" in page
+    # And the line that the journal of the second process has where working ahead failed.
+    said = "the long reports could not be worked out ahead; it is tried again in %d seconds"
+    source = (ROOT / "src" / "hirdir" / "io" / "background.py").read_text(encoding="utf-8")
+    assert f'"{said}"' in source
+    assert f"`{said % background.AHEAD_AGAIN_AFTER}`" in page
+
+    # The package test waits for the reports that are worked out ahead, each by its name,
+    # sets the setting by its name, and the file of the migration asks for each by its
+    # route: a fifth report would be waited for by nobody.
+    # The reports say which of them are worked out ahead as their modules are loaded.
+    importlib.import_module("hirdir.api.reports")
+    ahead = sorted(kept._ahead)
+    assert len(ahead) == 4
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (four,) = re.findall(r"^four = (\[.+\])$", script, re.M)
+    assert sorted(re.findall(r'"(\w+)"', four)) == ahead
+    assert f"put_setting {name} " in script
+    hook = (PACKAGING / "package-test.d" / f"migration-{revision}.sh").read_text(encoding="utf-8")
+    (routes,) = re.findall(r'^routes_0015="(.+)"$', hook, re.M)
+    assert sorted(route.split(":")[0] for route in routes.split()) == ahead
+    # The migration writes no event, as the page says, and its file says so to the test.
+    assert "the upgrade writes no audit event" in page
+    assert "\nwrites_no_event=yes\n" in hook
+
+
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
     """The way back in docs/install.md is the one the package prints, word for word."""
     postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
