@@ -60,7 +60,12 @@
 #                      the background work, the two units of the service: an import
 #                      applied by the second process, the server answering alone while
 #                      that unit is stopped, and a stop, a start and a restart of
-#                      hirdir acting on both
+#                      hirdir acting on both; and, where the second process keeps the
+#                      long reports in the database, that it works them out by itself,
+#                      again after a change when the setting says and not with the
+#                      setting at 0, that the server answers a long report without
+#                      it, and that a reset clears what is kept and a restore brings
+#                      it back
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -657,7 +662,11 @@ has_worker() { inside test -e /usr/lib/systemd/system/hirdir-worker.service; }
 # that it is under way. What it does as it starts is done by then: the record of a week
 # that has none, which the releases before made before their server answered, and the
 # marking of a job found applying. So what is asked of the installation next finds
-# both done, as it did when one process did both.
+# both done, as it did when one process did both. From 0.9.11 the long reports are
+# worked out by then as well, which the server did before it listened (P-275): but an
+# answer worked out across a change is thrown away, and the reports that a change left
+# stale are worked out only once the change is as old as the setting says, so whoever
+# needs them worked out asks, with wait_ahead, and does not take it from this.
 worker_under_way() {
     inside bash -c 'id=$(systemctl show --property InvocationID --value hirdir-worker.service) &&
         [ -n "$id" ] &&
@@ -723,6 +732,84 @@ pgrep -f "[h]irdir admin work" >/dev/null && left="$left a process"
 [ -n "$(find /var/lib/systemd/deb-systemd-helper-enabled /var/lib/systemd/deb-systemd-helper-masked -name "hirdir-worker*" 2>/dev/null)" ] && left="$left what the helper of the package remembers of it"
 [ "$(systemctl is-active hirdir-worker.service 2>/dev/null)" = active ] && left="$left an active unit"
 echo "${left:-nothing}"' 2>&1
+}
+
+# ---- the long reports, worked out ahead ---------------------------------------------------
+#
+# From 0.9.11 the four long reports, the capacity balance, the coverage report, the
+# renewal worklist and the summary of the renewal alert, are worked out ahead by the
+# second process and kept in the database, a row to each in kept_answers (P-275): when
+# it starts, at five past midnight, and by day once the newest change is as old as
+# reports_ahead_after_seconds says (P-276). The server works out nothing ahead. So the
+# table is written with nobody asking, a moment after the service starts and again
+# after any change: no check may take from the start of the server that the reports
+# are worked out, or count the rows of the table while the second process may be
+# writing them. A check that needs them asks, and waits. Nothing here names a
+# release: it is asked of an installation that has the second unit and the table.
+
+# keeps_ahead: whether the installation keeps the long reports in its database, worked
+# out by its second process.
+keeps_ahead() { has_worker && [ "$(tables_there kept_answers)" = kept_answers ]; }
+
+# ahead_after MOMENT FROM TO: what the last response, of GET /kept-answers, lists as
+# worked out ahead, beside a moment written as the API writes one: "all four" where the
+# four reports are listed so, each worked out no sooner than FROM seconds after the
+# moment and no later than TO; otherwise each report that is listed so with its
+# seconds, or "none".
+ahead_after() {
+    python3 -c '
+import json, sys
+from datetime import datetime
+
+moment = datetime.fromisoformat(sys.argv[2])
+low, high = float(sys.argv[3]), float(sys.argv[4])
+try:
+    listed = json.load(open(sys.argv[1], encoding="utf-8"))
+    after = {
+        e["report"]: (datetime.fromisoformat(e["kept_at"]) - moment).total_seconds()
+        for e in listed
+        if e.get("ahead")
+    }
+except Exception as error:
+    print(f"<{type(error).__name__}: {error}>")
+    sys.exit()
+four = ["capacity", "coverage", "renewal_alert", "renewals"]
+if sorted(after) == four and all(low <= seconds <= high for seconds in after.values()):
+    print("all four")
+else:
+    print(", ".join(f"{report} {seconds:.1f} s after" for report, seconds in sorted(after.items())) or "none")' \
+        "$work/body" "$1" "$2" "$3"
+}
+
+# ahead_times: the reports that the last response, of GET /kept-answers, lists as worked
+# out ahead, each with the moment it was worked out at, in the order of their names.
+ahead_times() { json 'sorted([e["report"], e["kept_at"]] for e in d if e.get("ahead"))'; }
+
+# ahead_rows: the rows of kept_answers, read from the database file, as ahead_times
+# prints what is listed: each report with the moment it was worked out at, written as
+# the API writes one. What the server lists of a report that it worked out itself,
+# before the row was written, is the moment of its own answer, and not the row's.
+ahead_rows() {
+    inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
+import json, sqlite3
+from datetime import datetime
+
+rows = sqlite3.connect("/var/lib/hirdir/hirdir.db").execute("SELECT report, kept_at FROM kept_answers ORDER BY report")
+print(json.dumps([[report, datetime.fromisoformat(kept_at).isoformat() + "Z"] for report, kept_at in rows]))' 2>&1
+}
+
+# wait_ahead [SECONDS [MOMENT]]: ask GET /kept-answers, as the Admin whose token is in
+# $token, until it lists the four long reports as worked out ahead, each worked out
+# after the moment where one is given, for at most so many seconds, 60 unless said. The
+# last answer is left for ahead_after and ahead_times to read.
+wait_ahead() {
+    local until=$((SECONDS + ${1:-60})) moment=${2:-1970-01-01T00:00:00Z}
+    while :; do
+        api GET /kept-answers
+        if [ "$status" = 200 ] && [ "$(ahead_after "$moment" 0 inf)" = "all four" ]; then return 0; fi
+        [ "$SECONDS" -lt "$until" ] || return 1
+        sleep 0.5
+    done
 }
 
 # wait_status WANTED METHOD PATH: repeat a request until it has the wanted status, for
@@ -938,7 +1025,9 @@ table_rows() {
 # 0.7.0 the service records the capacity balance of the week when it starts in a week
 # that has no record (D-188): one event, which the system makes and nobody, of the
 # action create on a capacity_record. From 0.8.0 it also works out the long reports when
-# it starts (P-157), which writes nothing. An upgrade writes no event but those of a
+# it starts (P-157), which writes no event; from 0.9.11 its second process does that, and
+# writes what it works out into kept_answers and no event either (P-275), so the rows
+# of that table are no sign of anything an upgrade did. An upgrade writes no event but those of a
 # migration whose file names their request ID, and a check that one wrote no other
 # allows for the service's event by name, and for no other.
 events_beside() {
@@ -1211,7 +1300,11 @@ install_previous() {
 #   more_tables          tables that hold what a site made and are no part of the
 #                        inventory, which the migration changes, such as its import jobs,
 #                        with a space between them: they are read from the database
-#                        file, kept and compared as the tables of the inventory are
+#                        file, kept and compared as the tables of the inventory are.
+#                        Never kept_answers, which from 0.9.11 holds nothing that a
+#                        site made: the second process writes its rows by itself as
+#                        the upgrade starts it, and a comparison would take them for
+#                        something the upgrade changed
 #   counted_view         the view of the items that must be counted as before, as a
 #                        query with its question mark, where the migration is meant to
 #                        change how some are counted. Empty, it is all of them
@@ -2998,7 +3091,9 @@ witness_kept() {
     if [ -n "$witness_referenced" ]; then
         witness_tables="$witness_tables reference_files reference_attachments"
     fi
-    # And the tables beside the inventory that the file of a migration names.
+    # And the tables beside the inventory that the file of a migration names. The
+    # tables are named here one by one, and kept_answers is not among them, also where
+    # the previous release has it: see "the long reports, worked out ahead".
     witness_tables="$witness_tables${more_tables:+ $more_tables}"
     for table in $witness_tables; do
         columns_before[$table]=$(table_read "$table" columns)
@@ -3982,9 +4077,17 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
 }
 
 # The tables that hirdir admin reset clears: the inventory, those of 0.4.0, of 0.5.0, of
-# 0.6.0, of 0.7.0 and of 0.8.0 among it, and what was stored about it, the long reports that
-# 0.9.11 keeps in kept_answers among that. A test in packaging/tests/
-# fails when a table that a reset clears is not named here.
+# 0.6.0, of 0.7.0 and of 0.8.0 among it, and what was stored about it. A test in
+# packaging/tests/ fails when a table that a reset clears is not named here.
+#
+# kept_answers, the last of them, is no part of the inventory and holds no record: its
+# rows are the long reports that the second process of 0.9.11 works out by itself, a
+# moment after the service starts and again after a change (P-275, P-276). It is named
+# here because a reset clears it, and for nothing else: no comparison of what an upgrade
+# carried over reads this list. files() counts its rows with the others, and only
+# while both units are stopped, so that nothing writes it meanwhile; and it has seen,
+# before it stops them, that the second process has written the four rows, so that the
+# count before the reset does not depend on how far that process had come.
 inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts operators contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines capacity_line_targets capacity_records contract_contacts renewal_alert_views circuits circuit_carriers circuit_costs circuit_devices vendor_contacts circuit_contacts circuit_groups circuit_group_members reference_files reference_attachments kept_answers"
 
 # Which of those tables hold a row, and whether the table of accounts does. It is read
@@ -4033,10 +4136,23 @@ print(json.dumps(body))' "$@"
 files() {
     section "files: examples/ imported and exported through nginx under $prefix/"
     local before items_before tags_before groups_before places_before cover_before name entity rows item_rows hid filter wanted exported limit made
+    local ahead_before=""
 
     expect "pkg the package ships the CSV and JSON files of examples/ in /usr/share/doc/hirdir/examples/, each as the repository has it" \
         "$(inside bash -c 'cd /usr/share/doc/hirdir/examples && sha256sum -- * | LC_ALL=C sort' 2>&1)" \
         "$(cd examples && sha256sum -- *.csv *.json | LC_ALL=C sort)"
+    # From 0.9.11 the backup holds the long reports that the second process worked out
+    # of the inventory as it is now, which the restore at the end is to bring back with
+    # it. They are waited for, since the last change may be less than the half minute
+    # old that the setting asks for.
+    if keeps_ahead; then
+        if wait_ahead 120; then
+            pass "pkg before the backup, the second process has worked out the four long reports of the inventory as it is, by itself, and GET /kept-answers lists each as worked out ahead"
+        else
+            fail "pkg before the backup, the second process has worked out the four long reports of the inventory as it is, by itself, and GET /kept-answers lists each as worked out ahead (got $status, and worked out ahead: $(ahead_times))"
+        fi
+        ahead_before=$(ahead_rows)
+    fi
     before=$(inside hirdir admin backup 2>/dev/null || true)
     check "pkg hirdir admin backup keeps the inventory as it is before any file is imported (${before:-no backup})" \
         inside test -s "${before:-/nonexistent}"
@@ -4247,6 +4363,23 @@ files() {
     api POST /reference-files/links "{\"title\": \"Plan kept elsewhere\", \"kind\": \"floor_plan\", \"url\": \"https://www.example.net/plans/reset\", \"attach_to\": [\"$hid\"]}"
     expect "pkg a file and a link on a location of the examples, from 0.9.0, for the reset to clear" "$made $status" "201 201"
 
+    # From 0.9.11 a reset clears the long reports that the second process keeps, too.
+    # Here nobody has changed its setting: half a minute after the upload just made, the
+    # last of the changes, it works out those of the examples, which are the reports
+    # with the most in them that this test has. They are waited for, so that the table
+    # holds its four rows when the service is stopped and the tables are counted, however
+    # far the second process had come; and the check then works each out anew.
+    if keeps_ahead; then
+        api GET '/audit-events?limit=1'
+        made=$(json 'd["items"][0]["at"]')
+        wait_ahead 150 "$made" || true
+        expect "pkg with reports_ahead_after_seconds as it is installed, at 30, the second process works out the four long reports of the examples by itself, each no sooner than half a minute after the last change, the link just made, and keeps them" \
+            "$status $(ahead_after "$made" 30 150)" "200 all four"
+        api POST /kept-answers/check
+        expect "pkg and POST /kept-answers/check, which works each of them out anew, finds none that differs from its row" \
+            "$status $(json '[d["checked"] >= 4, d["differed"]]')" '200 [true, []]'
+    fi
+
     # hirdir admin reset is how a site clears test data, on the server and nowhere else.
     # Here it clears the examples and what structure(), geography(),
     # operators_and_plans(), cover_and_purchases() and multiplied_and_seen() made beside
@@ -4262,13 +4395,13 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0, and the references and what they are on of 0.9.0 too" \
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0, and the references and what they are on of 0.9.0 too, and the long reports that the second process of 0.9.11 keeps, which are no record" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     local people
     people=$(people_kept)
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, and keeps the accounts" \
+    expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, what was kept of the long reports with it, and keeps the accounts" \
         "$code $(inventory_left)" "0 users"
     expect "pkg and keeps the contact that each user is, as it was, with its history: ${people%% contacts*} contacts, and nothing else of the contacts" \
         "$(people_kept) $(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM contacts')" "$people ${people%% contacts*}"
@@ -4305,6 +4438,14 @@ files() {
         pass "pkg hirdir answers again through nginx"
     else
         fail "pkg hirdir answers again through nginx (got $status)"
+    fi
+    # The restore brought kept_answers back with the inventory that its rows were worked
+    # out of, so each is good again, and the second process, which has started by now,
+    # found nothing to work out.
+    if keeps_ahead; then
+        api GET /kept-answers
+        expect "pkg the restore brought back, with the inventory, the four long reports that the second process had worked out of it: each is listed as worked out ahead, at the moment it was worked out before the backup, and none was worked out again" \
+            "$status $(ahead_times)" "200 $ahead_before"
     fi
     api GET '/items?include_archived=true&include_drafts=true&limit=1'
     expect "pkg and the item list is as it was before the examples, for the checks that follow" \
@@ -7489,6 +7630,116 @@ second_process() {
         "$status $(json 'sum(t["label"].startswith("pkgtest-worker-") for t in d)')" "200 0"
 }
 
+# ---- the long reports and the second process ------------------------------------------------
+
+# worked_ahead: what the second process does with the long reports, and what the server
+# does without it (P-275, P-276), tried on the installation as it stands, with the Admin
+# whose token is in $token: the four are worked out with nobody asking, and the check
+# finds each row to be what the records give; after a change they are worked out again,
+# no sooner than reports_ahead_after_seconds says and not much later; with the setting
+# at 0 they are not; with the unit stopped the server answers a long report by itself,
+# and keeps it in its memory alone; started again, the second process works them out
+# whatever the setting says; and a restart of the service works nothing out again, the
+# rows being good still. The setting is set low for it and put back, and the tag that
+# is the change is taken out again.
+#
+# The moments are the server's own, the audit event's and the row's, so nothing here is
+# timed by this script but how long it waits. Five past midnight in the application's
+# time zone, when the reports are worked out whatever the setting says, would be taken
+# for a failure of the one line that says they are not: the ten seconds it lasts are
+# let be.
+worked_ahead() {
+    local made tag changed_at kept listed after=3 within=30
+
+    if wait_ahead 90; then
+        pass "pkg the second process has worked out the four long reports by itself, with nobody asking: GET /kept-answers lists the capacity balance, the coverage report, the renewal worklist and the summary of the renewal alert, each as worked out ahead"
+    else
+        fail "pkg the second process has worked out the four long reports by itself, with nobody asking: GET /kept-answers lists the capacity balance, the coverage report, the renewal worklist and the summary of the renewal alert, each as worked out ahead (got $status, and worked out ahead: $(ahead_times))"
+    fi
+    expect "pkg kept_answers holds a row to each of the four, and each names $version as the version that worked it out" \
+        "$(sqlite_text 'SELECT report, version FROM kept_answers ORDER BY report' | xargs)" \
+        "capacity $version coverage $version renewal_alert $version renewals $version"
+    api POST /kept-answers/check
+    expect "pkg POST /kept-answers/check, by the Admin, works out each of them anew and finds none that differs from its row" \
+        "$status $(json '[d["checked"] >= 4, d["differed"]]')" '200 [true, []]'
+
+    # After a change. The setting is itself one; the tag is the one that is timed.
+    made=$(put_setting reports_ahead_after_seconds "$after")
+    api POST /tags '{"label": "pkgtest-ahead"}'
+    made="$made $status"
+    tag=$(json_field hid)
+    api GET '/audit-events?limit=1'
+    changed_at=$(json 'd["items"][0]["at"]')
+    made="$made $(json '[d["items"][0]["action"], d["items"][0]["record_type"]]')"
+    wait_ahead $((after + within)) "$changed_at" || true
+    expect "pkg with reports_ahead_after_seconds set to $after by the Admin, a tag is made, an audited change, which leaves the four stale: the second process works them out again, each no sooner than $after seconds after that change and within $((after + within)) of it, and GET /kept-answers lists the four as worked out ahead once more, each with the newer kept_at" \
+        "$made $status $(ahead_after "$changed_at" "$after" $((after + within)))" \
+        "200 $after 201 [\"create\", \"tag\"] 200 all four"
+
+    # With the setting at 0, which is a change as well, nothing is worked out by day.
+    made=$(put_setting reports_ahead_after_seconds 0)
+    sleep 10
+    api GET /kept-answers
+    expect "pkg with the setting at 0, which is a change too and leaves them stale again, nothing is worked out by day: ten seconds later GET /kept-answers lists nothing as worked out ahead" \
+        "$made $status $(ahead_times)" "200 0 200 []"
+
+    # The server alone: it works a long report out itself, and keeps it in its memory,
+    # from which it gives it to the next who asks. What it has worked out itself and
+    # given has no use yet; each time it is given again is one.
+    check "pkg systemctl stop hirdir-worker stops the second process" inside systemctl stop hirdir-worker.service
+    api GET /reports/capacity
+    made="$(units_are) $status $(json '"active" in d')"
+    api GET /reports/capacity
+    made="$made $status $(json '"active" in d')"
+    api GET /kept-answers
+    expect "pkg with hirdir-worker stopped and nothing worked out ahead, the server still answers GET /reports/capacity, twice: it works the capacity balance out itself and keeps it in its memory alone, from which it gives it the second time, used once and not as worked out ahead" \
+        "$made $status $(json '[[e["ahead"], e["uses"]] for e in d if e["report"] == "capacity"]') $(ahead_times)" \
+        'active inactive 200 true 200 true 200 [[false, 1]] []'
+
+    # Started again, with the setting still at 0.
+    check "pkg systemctl start hirdir-worker starts it again" inside systemctl start hirdir-worker.service
+    wait_worker || true
+    if wait_ahead 90; then
+        pass "pkg started, with the setting still at 0, the second process works the four out, as it does whenever it starts, whatever the setting says: GET /kept-answers lists the four as worked out ahead, the capacity balance that the server gave among them"
+    else
+        fail "pkg started, with the setting still at 0, the second process works the four out, as it does whenever it starts, whatever the setting says: GET /kept-answers lists the four as worked out ahead, the capacity balance that the server gave among them (got $status, and worked out ahead: $(ahead_times))"
+    fi
+    api POST /kept-answers/check
+    expect "pkg and the check finds none that differs, of what the server has given and of what the database holds" \
+        "$status $(json '[d["checked"] >= 4, d["differed"]]')" '200 [true, []]'
+    kept=$(ahead_rows)
+
+    # A restart of the service, both units: nothing has changed, so the rows are good
+    # still, the second process leaves them as they are, and the server, which has
+    # given nothing yet, lists them as the database holds them.
+    check "pkg systemctl restart hirdir succeeds" inside systemctl restart hirdir.service
+    if wait_ready; then
+        api GET /kept-answers
+        listed="$status $(ahead_times) $(json 'sorted({e["uses"] for e in d})')"
+    else
+        listed="the service did not come back ($status)"
+    fi
+    expect "pkg a restart of the service works nothing out: the server answers with nothing in its memory, and GET /kept-answers lists the four as the database holds them, each row as it was before the restart, at the moment it was worked out then, and given by nobody yet" \
+        "$listed $(ahead_rows)" "200 $kept [0] $kept"
+
+    # Put back.
+    made=$(put_setting reports_ahead_after_seconds null)
+    api DELETE "/tags/$tag"
+    made="$made $status"
+    api GET /settings
+    expect "pkg the setting is put back to its default, 30, and the tag is taken out again" \
+        "$made $(json '[[s["value"], s["is_default"]] for s in d if s["key"] == "reports_ahead_after_seconds"]')" \
+        '200 30 204 [[30, true]]'
+}
+
+# In the fresh pass, where the installation has the second process and the table.
+reports_ahead() {
+    keeps_ahead || return 0
+    section "the long reports worked out ahead by the second process"
+    sign_in "$admin" "$admin_code"
+    worked_ahead
+}
+
 # ---- on the host: files, restart, backup ---------------------------------------------
 
 state() {
@@ -7815,6 +8066,7 @@ else
         capacity_balance
         reinstall
         second_process
+        reports_ahead
         state
         if [ "$e2e" = 1 ]; then browser_scenarios; fi
         another_prefix

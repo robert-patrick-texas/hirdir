@@ -227,7 +227,12 @@ changed_0010() {
         "$status $(json '[[d[v]["support_weight"] == d[v]["items_weight"], d[v]["places_weight"], d[v]["circuits_weight"], d[v]["defaulted"], d[v]["raised"]] for v in ("active", "with_drafts")]')" \
         '200 [[true, "0", "0", {"circuits": 0, "items": 0, "sites": 0}, {"circuits": 0, "items": 0, "sites": 0}], [true, "0", "0", {"circuits": 0, "items": 0, "sites": 0}, {"circuits": 0, "items": 0, "sites": 0}]]'
     # It is kept, and the service, when it started, worked out the four long reports and
-    # kept them, which nothing written since has made stale.
+    # kept them, which nothing written since has made stale. Up to 0.9.10 the server
+    # did that before it listened, so they were there with its first answer. From
+    # 0.9.11 the second process does, a moment after it starts, and keeps them in the
+    # database (P-275): there they are waited for, and not taken from the server's
+    # having answered.
+    if keeps_ahead; then wait_ahead 90 || true; fi
     api GET /kept-answers
     expect "pkg $when GET /kept-answers lists, beside what has been asked since, the four long reports that the service worked out when it started and keeps: the capacity report, the coverage report, the renewal worklist and the renewal alert" \
         "$status $(json 'sorted({e["report"] for e in d} & {"capacity", "coverage", "renewals", "renewal_alert"})')" \

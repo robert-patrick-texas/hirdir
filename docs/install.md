@@ -1906,8 +1906,10 @@ and `/var/lib/hirdir/worker.lock` is left, an empty file that 0.9.9 does not loo
 ### From 0.9.10 to 0.9.11
 
 The schema goes from revision `0014` to `0015`. One table is added, `kept_answers`,
-which starts empty; nothing that is held is changed, and the upgrade writes no audit
-event. It takes its backup and stops and starts the service as every upgrade does.
+which the migration leaves empty; nothing that is held is changed, and the upgrade
+writes no audit event. It takes its backup and stops and starts the service as every
+upgrade does, and the second process, as it starts, writes the four rows of the table,
+so that is what it holds once the upgrade is done.
 
 **The long reports are worked out by the second process.** The coverage report, the
 renewal worklist, the summary of the renewal alert and the capacity balance, each for
@@ -1931,7 +1933,10 @@ the start and the night.
 
 For whoever operates the host:
 
-- Nothing is to be done at the upgrade, and no answer of the API differs.
+- Nothing is to be done at the upgrade, and no report answers otherwise than it did.
+  Two answers of the API have more in them: each entry of `GET /kept-answers` has one
+  field more, `ahead`, and the list holds what the database holds beside what the
+  server has given; and `GET /settings` lists the new setting.
 - A restart of the server no longer works the reports out, so it answers its first
   request sooner; what the table holds is still good after it.
 - With the second process down, nothing is worked out ahead: see
