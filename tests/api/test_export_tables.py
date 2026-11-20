@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import AuditEvent, ServiceToken, User
+from hirdir.io import kept
 from hirdir.io.entities import LOAD_ORDER
 from tests.api.inventory import API, Maker
 
@@ -217,3 +218,53 @@ def test_the_users_file_holds_no_access_code_token_or_hash_and_is_audited(
     told = {entry["field"]: entry["new"] for entry in events[0].changes}
     assert told["users"] == 5
     assert told["file_name"].startswith("hirdir-users-")
+
+
+def test_taking_every_table_out_is_audited_once_and_one_table_is_not(
+    client: TestClient, viewer: dict[str, str], make: Maker
+) -> None:
+    """The owner's answer (P-286): the whole inventory taken out is in the trail, with
+    who took it and in which format; the export of one table is not, as it never was."""
+    make.vendor("Juniper")
+    before = len(make.audit())
+    alone = client.post(
+        f"{API}/exports", json={"entity": "vendors", "format": "csv"}, headers=viewer
+    )
+    assert alone.status_code == 200, alone.text
+    assert len(make.audit()) == before
+
+    whoami = client.get(f"{API}/auth/me", headers=viewer).json()
+    response = client.post(f"{API}/exports/all", json={"format": "json"}, headers=viewer)
+    assert response.status_code == 200, response.text
+    events = make.audit()
+    assert len(events) == before + 1
+    event = events[0]
+    assert (event["action"], event["record_type"], event["record_hid"]) == (
+        "export",
+        "inventory",
+        None,
+    )
+    assert event["actor_hid"] == whoami["hid"]
+    said = {change["field"]: change["new"] for change in event["changes"]}
+    name = response.headers["content-disposition"].split('"')[1]
+    assert said == {"file_name": name, "format": "json", "tables": len(LOAD_ORDER)}
+
+    # A format that is refused takes nothing out and writes nothing.
+    refused = client.post(f"{API}/exports/all", json={"format": "xlsx"}, headers=viewer)
+    assert refused.status_code == 422
+    assert len(make.audit()) == before + 1
+
+
+def test_an_export_leaves_the_kept_answers_good(
+    make: Maker, client: TestClient, admin: dict[str, str], db: Session
+) -> None:
+    """An export is noted and changes nothing: no report is worked out again for one."""
+    stamp = kept.stamp(db)
+    for path, body in (("/exports/all", {"format": "csv"}), ("/users/export", None)):
+        assert client.post(f"{API}{path}", json=body, headers=admin).status_code == 200
+    db.rollback()
+    assert kept.stamp(db) == stamp
+    assert [event["action"] for event in make.audit()[:2]] == ["export", "export"]
+    make.vendor("Juniper")
+    db.rollback()
+    assert kept.stamp(db) != stamp

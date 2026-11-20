@@ -3777,7 +3777,7 @@ export interface paths {
      * Export every table at once: one zip, a file to each table, named as `examples/`
      * names it, in the order files are loaded, each the whole table in the form that loads
      * back, its stored values and its retired and drafts among them (P-286). The users are
-     * not in it.
+     * not in it. Audited: that the whole inventory was taken out, by whom and when.
      */
     post: {
       parameters: {
