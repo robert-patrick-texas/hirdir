@@ -13561,6 +13561,23 @@
         "title": "EndOfLifeReport",
         "type": "object"
       },
+      "ExportAllRequest": {
+        "additionalProperties": false,
+        "description": "The format of every file in the zip of every table.",
+        "properties": {
+          "format": {
+            "default": "csv",
+            "enum": [
+              "csv",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "title": "ExportAllRequest",
+        "type": "object"
+      },
       "ExportRequest": {
         "additionalProperties": false,
         "description": "What to export. The filter and the sort are those of a list.",
@@ -13705,6 +13722,84 @@
           "entity"
         ],
         "title": "ExportRequest",
+        "type": "object"
+      },
+      "ExportTable": {
+        "additionalProperties": false,
+        "description": "One table that a file is taken for, as the Import page lists it (P-286).",
+        "properties": {
+          "columns": {
+            "description": "The columns of its file, those an import reads, in their order: the header row of its template.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "count": {
+            "description": "How many records it holds, the retired and the drafts among them.",
+            "title": "Count",
+            "type": "integer"
+          },
+          "entity": {
+            "description": "The name an import and an export know it by.",
+            "enum": [
+              "tags",
+              "vendors",
+              "catalog_entries",
+              "contacts",
+              "vendor_contacts",
+              "operators",
+              "regions",
+              "sites",
+              "locations",
+              "contact_assignments",
+              "owners",
+              "owner_members",
+              "networks",
+              "external_systems",
+              "agreements",
+              "contracts",
+              "contract_contacts",
+              "purchase_requests",
+              "purchase_lines",
+              "items",
+              "device_groups",
+              "device_group_members",
+              "item_replacements",
+              "addresses",
+              "contract_coverage",
+              "registrations",
+              "capacity_lines",
+              "circuit_groups",
+              "circuits",
+              "circuit_carriers",
+              "circuit_costs",
+              "circuit_contacts",
+              "circuit_devices"
+            ],
+            "title": "Entity",
+            "type": "string"
+          },
+          "file": {
+            "description": "The name its file has in `examples/` and in the zip of every table, without the extension.",
+            "title": "File",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is called for people.",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "label",
+          "file",
+          "count",
+          "columns"
+        ],
+        "title": "ExportTable",
         "type": "object"
       },
       "ExternalSystemCreate": {
@@ -39800,6 +39895,70 @@
         ]
       }
     },
+    "/api/v1/exports/all": {
+      "post": {
+        "description": "Export every table at once: one zip, a file to each table, named as `examples/`\nnames it, in the order files are loaded, each the whole table in the form that loads\nback, its stored values and its retired and drafts among them (P-286). The users are\nnot in it.",
+        "operationId": "export_all_api_v1_exports_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAllRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {}
+            },
+            "description": "One zip, a file to each table."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export All",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/exports/tables": {
+      "get": {
+        "description": "List every table that a file is taken for, in the order files are loaded, each\nwith how many records it holds and the columns of its file (P-286).\n\nA table that holds nothing is exported all the same: as CSV it is its header row and\nno more, the template of its import.",
+        "operationId": "export_tables_api_v1_exports_tables_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExportTable"
+                  },
+                  "title": "Response Export Tables Api V1 Exports Tables Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Tables",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
     "/api/v1/external-systems": {
       "get": {
         "description": "List external systems, by name unless a sort says otherwise.",
@@ -49165,6 +49324,24 @@
           }
         },
         "summary": "Create User",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/users/export": {
+      "post": {
+        "description": "Export the users as CSV, a row to each, by username (P-288): its person, the role\nin force, its groups and operators, its kind and state, when it last signed in, and\nits notes. No access code, token or hash of either is in it. Audited.",
+        "operationId": "export_users_api_v1_users_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The file, as an attachment."
+          }
+        },
+        "summary": "Export Users",
         "tags": [
           "Accounts"
         ]
