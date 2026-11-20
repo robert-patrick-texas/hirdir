@@ -508,13 +508,10 @@ SPECS: dict[str, Spec] = {
     # it at each look.
     AHEAD_SETTING: Spec(
         DEFAULT_AHEAD_AFTER_SECONDS,
-        "how long after the newest change of the inventory or its settings the second "
-        "process works out again the long reports that the change left stale, in "
-        "seconds: the coverage report, the renewal worklist, the renewal alert and the "
-        "capacity balance, each for the view its page opens with. Somebody who asks "
-        "sooner is answered by the server, which works the report out itself. 0: not by "
-        "day, and they are worked out when the second process starts and at five "
-        "minutes past midnight alone",
+        # Kept short: a long meaning makes a tall row, and the form of a tall row opens
+        # with its Change button out of view.
+        "how long after the newest change the background work works the long reports "
+        "out again, in seconds. 0: when it starts and at five past midnight alone",
         _whole(AHEAD_SETTING, 0, MOST_AHEAD_AFTER_SECONDS, " of seconds"),
     ),
 }
