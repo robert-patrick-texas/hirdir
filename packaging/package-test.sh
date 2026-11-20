@@ -1323,7 +1323,8 @@ install_previous() {
 # file may also set, as it is read, what the inventory is to expect of the previous
 # release where that differs from every release since: see $zoneless_moment and
 # $witness_weight. Its first function adds to $users_made each user that it makes
-# beside the accounts of the pass.
+# beside the accounts of the pass, and to $groups_made and $grants_made each user group
+# and each grant of a role.
 #
 # A migration that has no file is given what every upgrade is given, and a SKIP line
 # that says so, in both passes. Nobody has then said what it adds, so what was there
@@ -1856,6 +1857,8 @@ zoneless_moment=2026-11-03T14:00:00Z
 zoneless_said="09:00 in the application's time zone, New York here, which is 14:00 in UTC"
 users_before=0
 users_made=0
+groups_made=0
+grants_made=0
 events_before=0
 conffiles_before=""
 
@@ -3591,7 +3594,7 @@ previous_release() {
     users_before=$(json 'len(d["items"])')
     api GET /user-groups
     keep groups
-    held="$users_before users, $(json 'len(d)') group with $(json 'd[0]["member_count"]') member"
+    held="$users_before users, $(json 'len(d)') groups, Network Engineering with $(json '[g["member_count"] for g in d if g["name"] == "Network Engineering"]') member"
     api GET /role-grants
     keep grants
     held="$held, $(json 'len(d)') role grants"
@@ -3601,8 +3604,8 @@ previous_release() {
     api GET '/audit-events?limit=1000'
     keep events
     events_before=$(json 'd["total"]')
-    expect "pkg $previous_version now holds the accounts, the group, the grants and the token$([ "$users_made" -gt 0 ] && echo ", and the $users_made users that the files of this pair made, with no role")" \
-        "$held" "$((3 + users_made)) users, 1 group with 1 member, 3 role grants, 1 service token"
+    expect "pkg $previous_version now holds the accounts, the group, the grants and the token$([ "$((users_made + groups_made + grants_made))" -gt 0 ] && echo ", and the $users_made users, $groups_made groups and $grants_made grants that the files of this pair made")" \
+        "$held" "$((3 + users_made)) users, $((1 + groups_made)) groups, Network Engineering with [1] member, $((3 + grants_made)) role grants, 1 service token"
     check "pkg and an audit event for each thing done ($events_before events)" test "$events_before" -ge 10
     if [ -n "$witness_entry" ]; then
         api GET /vendors
