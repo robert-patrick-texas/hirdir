@@ -7,11 +7,14 @@
 //   moved through by the arrow keys and chosen from by Enter and Space. The tag is saved,
 //   read back in the list and in its form, and changed there. With the colours held
 //   back, the box takes a colour by itself, and Create makes the tag. The picker fits a
-//   form 360 pixels wide, in light and in dark.
+//   form 360 pixels wide, in light and in dark. An operator's colour is pressed, saved
+//   and read back on its page and in its form; with the colours held back, Create waits
+//   for the next free colour and makes the operator with it.
 //
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
-// mark is in every name it gives a record: the tags, which it removes when it ends. In
-// the list of tags, which every file may add to, it looks at its own rows alone.
+// mark is in every name it gives a record: the tags, which it removes when it ends, and
+// the operators. In the lists, which every file may add to, it looks at its own rows
+// alone; the next free colour depends on every operator, and is not named.
 
 import { expect, type Locator, type Page } from "@playwright/test";
 import { region } from "./structure";
@@ -243,6 +246,57 @@ test("with the colours held back the box takes a colour, and the picker fits 360
     await page.getByRole("dialog").getByRole("button", { name: "Remove tag" }).click();
     await expect(page.getByText(`The tag ${label} was removed.`)).toBeVisible();
   }
+
+  await expectClean(page, seen);
+});
+
+test("an operator's colour is pressed, saved and read back, and a Create pressed before the colours have come waits for the next free one", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(120_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./operators");
+  await page.getByRole("button", { name: "New operator", exact: true }).click();
+  const form = region(page, "New operator");
+  await form.getByLabel("Label (required)").fill(`C1-${id}`);
+  const colour = picker(form);
+  // The sample is the label as the lists show an operator: a dot, and the label.
+  await expect(colour.locator(".colour-sample.operator-mark")).toHaveText(`C1-${id}`);
+  await swatch(colour, "teal, shade 6 of 8, #027c7c").click();
+  await form.getByRole("button", { name: "Create operator", exact: true }).click();
+  await expect(page.getByTestId("operator-heading")).toContainText(`C1-${id}`);
+  await expect(page.getByTestId("operator-colour")).toHaveText("#027c7c");
+  expect(
+    await page
+      .getByTestId("operator-colour")
+      .evaluate((element) => getComputedStyle(element).color),
+  ).toBe(WHITE);
+  const details = picker(region(page, "Details"));
+  await expect(box(details)).toHaveValue("#027c7c");
+  await expect(pressed(details)).toHaveAttribute("data-colour", "#027c7c");
+
+  // The colours come late: Create, pressed before, waits for the next free colour and
+  // makes the operator with it.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/colours", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto("./operators");
+  await page.getByRole("button", { name: "New operator", exact: true }).click();
+  const late = region(page, "New operator");
+  await late.getByLabel("Label (required)").fill(`C2-${id}`);
+  await expect(box(picker(late))).toHaveValue("");
+  await late.getByRole("button", { name: "Create operator", exact: true }).click();
+  await expect(late.getByText("Waiting for what the form fills in")).toBeVisible();
+  release();
+  await expect(page.getByTestId("operator-heading")).toContainText(`C2-${id}`);
+  await expect(page.getByTestId("operator-colour")).toHaveText(/^#[0-9a-f]{6}$/);
 
   await expectClean(page, seen);
 });

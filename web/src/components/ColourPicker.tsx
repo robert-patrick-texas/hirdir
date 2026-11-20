@@ -6,7 +6,7 @@
 // are one value. The value is shown on a chip filled with the colour, its text black or
 // white, whichever is read better, and beside it the label as the lists will show it.
 
-import { type KeyboardEvent, type PointerEvent, useId, useRef, useState } from "react";
+import { type KeyboardEvent, type PointerEvent, useCallback, useId, useRef, useState } from "react";
 import { api, type Schemas } from "../api";
 import {
   colourProblem,
@@ -55,6 +55,32 @@ export function readColours(since = 0): Promise<Colours> {
 export function useColours(fresh = false): Loaded<Colours> {
   const [since] = useState(() => (fresh ? performance.now() : 0));
   return useLoad(`colours ${since}`, () => readColours(since));
+}
+
+/** The colour the next operator is given, as it is free now, and a way to wait for it. */
+export interface NextColour {
+  /** `next_for_operators` of a read begun after the form opened; null until it has come. */
+  next: string | null;
+  /** The same, once it has come: for a Create pressed before it has. Null if it is not read. */
+  wait: () => Promise<string | null>;
+}
+
+/**
+ * The colour a new operator starts with (P-285): `next_for_operators`, from a read of
+ * `GET /colours` begun after the form opened, which the pickers on the page share.
+ */
+export function useNextColour(): NextColour {
+  const [since] = useState(() => performance.now());
+  const colours = useLoad(`colours ${since}`, () => readColours(since));
+  const wait = useCallback(
+    () =>
+      readColours(since).then(
+        (read) => safeColour(read.next_for_operators),
+        () => null,
+      ),
+    [since],
+  );
+  return { next: safeColour(colours.data?.next_for_operators), wait };
 }
 
 /** The words that stand for no colour on a chip, and for one that cannot be shown. */
