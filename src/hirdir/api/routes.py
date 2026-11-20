@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import asdict
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, select, text
 
 import hirdir
@@ -85,10 +85,44 @@ def sign_in(body: schemas.SignIn, request: Request, db: Db) -> schemas.SessionOu
 
 
 @auth.get("/me")
-def me(principal: SignedIn, db: Db) -> schemas.UserOut:
-    """Return the signed-in user, with the role they hold right now. Its `notes` are
-    null: the notes on an account are answered by the routes of users alone (P-281)."""
+def me(principal: SignedIn, db: Db) -> schemas.MeOut:
+    """Return the signed-in user, with the role they hold right now, the contact they
+    are and the operators they are behind, each with the version it is changed at
+    (P-294). Its `notes` are null: the notes on an account are answered by the routes of
+    users alone (P-281)."""
     return views.me_out(db, principal.user)
+
+
+@auth.patch("/me/contact")
+def update_own_contact(
+    body: schemas.OwnContactPatch, principal: Viewer, context: Audit, db: Db
+) -> schemas.MeOut:
+    """Change the name, the email, the numbers or the organization of the contact the
+    signed-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any
+    role; a service token is refused. An account with no contact, or with one that is
+    retired, is a `409` (P-294)."""
+    raise HTTPException(501, "Not built yet")
+
+
+@auth.patch("/me/operators/{hid}")
+def update_own_operator(
+    hid: str, body: schemas.OwnOperatorPatch, principal: Viewer, context: Audit, db: Db
+) -> schemas.MeOut:
+    """Change the label or the colour of an operator the signed-in person is behind, by
+    the rules of `PATCH /operators/{hid}`. For a session of any role; a service token is
+    refused. An operator that is another's, or retired, is a `404` (P-294)."""
+    raise HTTPException(501, "Not built yet")
+
+
+@auth.post("/me/access-code", responses={429: {"model": schemas.Problem}})
+def change_own_access_code(
+    body: schemas.OwnAccessCode, request: Request, principal: Viewer, context: Audit, db: Db
+) -> schemas.SessionOut:
+    """Change the access code of the signed-in person, who gives the code they have. A
+    wrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every
+    other session of the person ends, and the answer carries a new token for this one
+    (P-295). For a session of any role; a service token is refused."""
+    raise HTTPException(501, "Not built yet")
 
 
 @auth.post("/sign-out-everywhere", status_code=204)

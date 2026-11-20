@@ -20960,6 +20960,145 @@
         "title": "ManagementRow",
         "type": "object"
       },
+      "MeOut": {
+        "additionalProperties": false,
+        "description": "The signed-in user, with what is their own: the answer of `GET /auth/me` and of\nthe routes under it, and `user` in the answer of signing in. It is a user as the\nroutes of users answer one, but for three things: `contact` and `operators` carry\nwhat the profile changes, and the version of each, and `notes` is null.",
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnContact"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The contact the person is, with the version to change it at. None for a service account, or a user not given one."
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "display_name": {
+            "description": "The name of its contact; blank where it has none.",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "description": "The email of its contact; blank where it has none.",
+            "title": "Email",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupRef"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "is_service_account": {
+            "title": "Is Service Account",
+            "type": "boolean"
+          },
+          "last_sign_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sign In At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Always null: the notes on an account are an Admin's, answered by the routes of users alone (P-281).",
+            "title": "Notes"
+          },
+          "operators": {
+            "description": "The operators that are not retired whose contact is the person's, in the order of their labels, each with the version to change it at. None for a user with no contact, or with one that is retired: nobody is behind the labels of a retired contact (P-280).",
+            "items": {
+              "$ref": "#/components/schemas/OwnOperator"
+            },
+            "title": "Operators",
+            "type": "array"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The highest role held directly or through a group.",
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "username",
+          "contact_hid",
+          "contact",
+          "display_name",
+          "email",
+          "operators",
+          "notes",
+          "is_service_account",
+          "disabled",
+          "role",
+          "groups",
+          "last_sign_in_at",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MeOut",
+        "type": "object"
+      },
       "MemberAdd": {
         "additionalProperties": false,
         "description": "An item to make a member of a group.",
@@ -22704,6 +22843,278 @@
           "record_status"
         ],
         "title": "OperatorRef",
+        "type": "object"
+      },
+      "OwnAccessCode": {
+        "additionalProperties": false,
+        "description": "The access code a person has, and the one they take in its place.",
+        "properties": {
+          "access_code": {
+            "description": "At least as long as the setting `access_code_min_length` says, not blank, and with no space at its beginning or end.",
+            "maxLength": 200,
+            "title": "Access Code",
+            "type": "string"
+          },
+          "current_access_code": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Current Access Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_access_code",
+          "access_code"
+        ],
+        "title": "OwnAccessCode",
+        "type": "object"
+      },
+      "OwnContact": {
+        "additionalProperties": false,
+        "description": "The contact the signed-in person is, as their profile reads and changes it.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "phone2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone2"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "email",
+          "phone",
+          "phone2",
+          "organization",
+          "record_status",
+          "row_version"
+        ],
+        "title": "OwnContact",
+        "type": "object"
+      },
+      "OwnContactPatch": {
+        "additionalProperties": false,
+        "description": "What a person changes of the contact they are, and the version it was read at.\nNothing else of a contact is taken: not its notes, its tags or its state.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null or blank is none.",
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null or blank is none.",
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null or blank is none.",
+            "title": "Phone"
+          },
+          "phone2": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null or blank is none.",
+            "title": "Phone2"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "OwnContactPatch",
+        "type": "object"
+      },
+      "OwnOperator": {
+        "additionalProperties": false,
+        "description": "An operator the signed-in person is behind, as their profile reads and changes it.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "colour",
+          "record_status",
+          "row_version"
+        ],
+        "title": "OwnOperator",
+        "type": "object"
+      },
+      "OwnOperatorPatch": {
+        "additionalProperties": false,
+        "description": "What a person changes of an operator they are behind, and the version it was read\nat. Nothing else of an operator is taken: not who is behind it, nor its state.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In the form #1f6feb. Null or blank is none.",
+            "title": "Colour"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "OwnOperatorPatch",
         "type": "object"
       },
       "OwnerCreate": {
@@ -29347,7 +29758,7 @@
             "type": "string"
           },
           "user": {
-            "$ref": "#/components/schemas/UserOut"
+            "$ref": "#/components/schemas/MeOut"
           }
         },
         "required": [
@@ -33609,14 +34020,14 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Return the signed-in user, with the role they hold right now. Its `notes` are\nnull: the notes on an account are answered by the routes of users alone (P-281).",
+        "description": "Return the signed-in user, with the role they hold right now, the contact they\nare and the operators they are behind, each with the version it is changed at\n(P-294). Its `notes` are null: the notes on an account are answered by the routes of\nusers alone (P-281).",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserOut"
+                  "$ref": "#/components/schemas/MeOut"
                 }
               }
             },
@@ -33624,6 +34035,153 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/api/v1/auth/me/access-code": {
+      "post": {
+        "description": "Change the access code of the signed-in person, who gives the code they have. A\nwrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every\nother session of the person ends, and the answer carries a new token for this one\n(P-295). For a session of any role; a service token is refused.",
+        "operationId": "change_own_access_code_api_v1_auth_me_access_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnAccessCode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Change Own Access Code",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/api/v1/auth/me/contact": {
+      "patch": {
+        "description": "Change the name, the email, the numbers or the organization of the contact the\nsigned-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any\nrole; a service token is refused. An account with no contact, or with one that is\nretired, is a `409` (P-294).",
+        "operationId": "update_own_contact_api_v1_auth_me_contact_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Own Contact",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/api/v1/auth/me/operators/{hid}": {
+      "patch": {
+        "description": "Change the label or the colour of an operator the signed-in person is behind, by\nthe rules of `PATCH /operators/{hid}`. For a session of any role; a service token is\nrefused. An operator that is another's, or retired, is a `404` (P-294).",
+        "operationId": "update_own_operator_api_v1_auth_me_operators__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnOperatorPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Own Operator",
         "tags": [
           "Access"
         ]

@@ -257,12 +257,109 @@ class SignIn(Model):
     access_code: str = Field(min_length=1, max_length=200)
 
 
+# --- a person's own profile (P-289, P-294, P-295) -------------------------------------
+
+
+class OwnContact(Model):
+    """The contact the signed-in person is, as their profile reads and changes it."""
+
+    hid: str
+    name: str
+    email: str | None
+    phone: str | None
+    phone2: str | None
+    organization: str | None
+    record_status: Literal["draft", "active", "retired"]
+    row_version: int
+
+
+class OwnOperator(Model):
+    """An operator the signed-in person is behind, as their profile reads and changes it."""
+
+    hid: str
+    label: str
+    colour: str | None
+    record_status: Literal["draft", "active"]
+    row_version: int
+
+
+class MeOut(Model):
+    """The signed-in user, with what is their own: the answer of `GET /auth/me` and of
+    the routes under it, and `user` in the answer of signing in. It is a user as the
+    routes of users answer one, but for three things: `contact` and `operators` carry
+    what the profile changes, and the version of each, and `notes` is null."""
+
+    hid: str
+    username: str
+    contact_hid: str | None
+    contact: OwnContact | None = Field(
+        description="The contact the person is, with the version to change it at. None for "
+        "a service account, or a user not given one."
+    )
+    display_name: str = Field(description="The name of its contact; blank where it has none.")
+    email: str = Field(description="The email of its contact; blank where it has none.")
+    operators: list[OwnOperator] = Field(
+        description="The operators that are not retired whose contact is the person's, in "
+        "the order of their labels, each with the version to change it at. None for a "
+        "user with no contact, or with one that is retired: nobody is behind the labels "
+        "of a retired contact (P-280)."
+    )
+    notes: str | None = Field(
+        description="Always null: the notes on an account are an Admin's, answered by the "
+        "routes of users alone (P-281)."
+    )
+    is_service_account: bool
+    disabled: bool
+    role: str | None = Field(description="The highest role held directly or through a group.")
+    groups: list[GroupRef]
+    last_sign_in_at: datetime | None
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class OwnContactPatch(Model):
+    """What a person changes of the contact they are, and the version it was read at.
+    Nothing else of a contact is taken: not its notes, its tags or its state."""
+
+    row_version: int
+    name: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=254, description="Null or blank is none.")
+    phone: str | None = Field(default=None, max_length=50, description="Null or blank is none.")
+    phone2: str | None = Field(default=None, max_length=50, description="Null or blank is none.")
+    organization: str | None = Field(
+        default=None, max_length=200, description="Null or blank is none."
+    )
+
+
+class OwnOperatorPatch(Model):
+    """What a person changes of an operator they are behind, and the version it was read
+    at. Nothing else of an operator is taken: not who is behind it, nor its state."""
+
+    row_version: int
+    label: str | None = Field(default=None, max_length=40)
+    colour: str | None = Field(
+        default=None, max_length=20, description="In the form #1f6feb. Null or blank is none."
+    )
+
+
+class OwnAccessCode(Model):
+    """The access code a person has, and the one they take in its place."""
+
+    current_access_code: str = Field(min_length=1, max_length=200)
+    access_code: str = Field(
+        max_length=200,
+        description="At least as long as the setting `access_code_min_length` says, not "
+        "blank, and with no space at its beginning or end.",
+    )
+
+
 class SessionOut(Model):
     """A session: the token to send as `Authorization: Bearer`, and when it ends."""
 
     token: str
     expires_at: datetime
-    user: UserOut
+    user: MeOut
 
 
 class GroupOut(Model):

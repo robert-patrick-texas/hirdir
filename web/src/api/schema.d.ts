@@ -640,8 +640,10 @@ export interface paths {
   };
   "/api/v1/auth/me": {
     /**
-     * Return the signed-in user, with the role they hold right now. Its `notes` are
-     * null: the notes on an account are answered by the routes of users alone (P-281).
+     * Return the signed-in user, with the role they hold right now, the contact they
+     * are and the operators they are behind, each with the version it is changed at
+     * (P-294). Its `notes` are null: the notes on an account are answered by the routes of
+     * users alone (P-281).
      */
     get: {
       parameters: {
@@ -654,7 +656,116 @@ export interface paths {
         /** Successful Response */
         200: {
           content: {
-            "application/json": components["schemas"]["UserOut"];
+            "application/json": components["schemas"]["MeOut"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/auth/me/access-code": {
+    /**
+     * Change the access code of the signed-in person, who gives the code they have. A
+     * wrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every
+     * other session of the person ends, and the answer carries a new token for this one
+     * (P-295). For a session of any role; a service token is refused.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnAccessCode"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SessionOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+        /** Too Many Requests */
+        429: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/auth/me/contact": {
+    /**
+     * Change the name, the email, the numbers or the organization of the contact the
+     * signed-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any
+     * role; a service token is refused. An account with no contact, or with one that is
+     * retired, is a `409` (P-294).
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnContactPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["MeOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/auth/me/operators/{hid}": {
+    /**
+     * Change the label or the colour of an operator the signed-in person is behind, by
+     * the rules of `PATCH /operators/{hid}`. For a session of any role; a service token is
+     * refused. An operator that is another's, or retired, is a `404` (P-294).
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnOperatorPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["MeOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
           };
         };
       };
@@ -12049,6 +12160,36 @@ export interface components {
       /** By model: the name of its vendor. */
       vendor?: string | null;
     };
+    /**
+     * The signed-in user, with what is their own: the answer of `GET /auth/me` and of
+     * the routes under it, and `user` in the answer of signing in. It is a user as the
+     * routes of users answer one, but for three things: `contact` and `operators` carry
+     * what the profile changes, and the version of each, and `notes` is null.
+     */
+    MeOut: {
+      /** The contact the person is, with the version to change it at. None for a service account, or a user not given one. */
+      contact: components["schemas"]["OwnContact"] | null;
+      contact_hid: string | null;
+      created_at: string;
+      disabled: boolean;
+      /** The name of its contact; blank where it has none. */
+      display_name: string;
+      /** The email of its contact; blank where it has none. */
+      email: string;
+      groups: components["schemas"]["GroupRef"][];
+      hid: string;
+      is_service_account: boolean;
+      last_sign_in_at: string | null;
+      /** Always null: the notes on an account are an Admin's, answered by the routes of users alone (P-281). */
+      notes: string | null;
+      /** The operators that are not retired whose contact is the person's, in the order of their labels, each with the version to change it at. None for a user with no contact, or with one that is retired: nobody is behind the labels of a retired contact (P-280). */
+      operators: components["schemas"]["OwnOperator"][];
+      /** The highest role held directly or through a group. */
+      role: string | null;
+      row_version: number;
+      updated_at: string;
+      username: string;
+    };
     /** An item to make a member of a group. */
     MemberAdd: {
       /** Given, the item's disposition from this change, as the rule of its lifecycle state allows. Left out, it stays as it is. */
@@ -12369,6 +12510,57 @@ export interface components {
       record_status: "draft" | "active" | "retired";
       /** internal where its contact is a user's, external where not; none if nobody. */
       scope: "internal" | "external" | null;
+    };
+    /** The access code a person has, and the one they take in its place. */
+    OwnAccessCode: {
+      /** At least as long as the setting `access_code_min_length` says, not blank, and with no space at its beginning or end. */
+      access_code: string;
+      current_access_code: string;
+    };
+    /** The contact the signed-in person is, as their profile reads and changes it. */
+    OwnContact: {
+      email: string | null;
+      hid: string;
+      name: string;
+      organization: string | null;
+      phone: string | null;
+      phone2: string | null;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+    };
+    /**
+     * What a person changes of the contact they are, and the version it was read at.
+     * Nothing else of a contact is taken: not its notes, its tags or its state.
+     */
+    OwnContactPatch: {
+      /** Null or blank is none. */
+      email?: string | null;
+      name?: string | null;
+      /** Null or blank is none. */
+      organization?: string | null;
+      /** Null or blank is none. */
+      phone?: string | null;
+      /** Null or blank is none. */
+      phone2?: string | null;
+      row_version: number;
+    };
+    /** An operator the signed-in person is behind, as their profile reads and changes it. */
+    OwnOperator: {
+      colour: string | null;
+      hid: string;
+      label: string;
+      record_status: "draft" | "active";
+      row_version: number;
+    };
+    /**
+     * What a person changes of an operator they are behind, and the version it was read
+     * at. Nothing else of an operator is taken: not who is behind it, nor its state.
+     */
+    OwnOperatorPatch: {
+      /** In the form #1f6feb. Null or blank is none. */
+      colour?: string | null;
+      label?: string | null;
+      row_version: number;
     };
     /** A new owner. */
     OwnerCreate: {
@@ -13545,7 +13737,7 @@ export interface components {
     SessionOut: {
       expires_at: string;
       token: string;
-      user: components["schemas"]["UserOut"];
+      user: components["schemas"]["MeOut"];
     };
     /**
      * A setting: the value in force, its default, what it means and what it takes. Or
