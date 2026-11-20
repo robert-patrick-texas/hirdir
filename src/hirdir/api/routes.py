@@ -111,15 +111,16 @@ def list_users(
     contact: Annotated[
         Which,
         Query(
-            description="`some`, the users that are a contact; `none`, the people that are "
-            "none. A service account is in neither `none` (P-280)."
+            description="`some`, the users that are a contact that is not retired; `none`, "
+            "the people that are none, or whose contact is retired. A service account is in "
+            "neither `none` (P-280)."
         ),
     ] = "any",
     operator: Annotated[
         Which,
         Query(
-            description="`some`, the users whose contact stands behind an operator that is "
-            "not retired; `none`, the people behind none (P-280)."
+            description="`some`, the users whose contact, not retired, stands behind an "
+            "operator that is not retired; `none`, the people behind none (P-280)."
         ),
     ] = "any",
     sort: Annotated[list[str] | None, Query(description=tables.USERS.help)] = None,

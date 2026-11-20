@@ -8214,9 +8214,9 @@ export interface paths {
       parameters: {
         query?: {
           q?: string;
-          /** `some`, the users that are a contact; `none`, the people that are none. A service account is in neither `none` (P-280). */
+          /** `some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280). */
           contact?: "any" | "some" | "none";
-          /** `some`, the users whose contact stands behind an operator that is not retired; `none`, the people behind none (P-280). */
+          /** `some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280). */
           operator?: "any" | "some" | "none";
           /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
@@ -9983,7 +9983,7 @@ export interface components {
       created_at: string;
       email: string | null;
       hid: string;
-      /** The contact stands behind an operator that is not retired (P-280). */
+      /** The contact, not retired, stands behind an operator that is not retired: nobody is behind the operators of a retired contact (P-280). */
       is_operator: boolean;
       /** The contact is the person a user is. */
       is_user: boolean;

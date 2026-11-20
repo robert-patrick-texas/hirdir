@@ -8412,7 +8412,7 @@
             "type": "string"
           },
           "is_operator": {
-            "description": "The contact stands behind an operator that is not retired (P-280).",
+            "description": "The contact, not retired, stands behind an operator that is not retired: nobody is behind the operators of a retired contact (P-280).",
             "title": "Is Operator",
             "type": "boolean"
           },
@@ -49182,13 +49182,13 @@
             }
           },
           {
-            "description": "`some`, the users that are a contact; `none`, the people that are none. A service account is in neither `none` (P-280).",
+            "description": "`some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280).",
             "in": "query",
             "name": "contact",
             "required": false,
             "schema": {
               "default": "any",
-              "description": "`some`, the users that are a contact; `none`, the people that are none. A service account is in neither `none` (P-280).",
+              "description": "`some`, the users that are a contact that is not retired; `none`, the people that are none, or whose contact is retired. A service account is in neither `none` (P-280).",
               "enum": [
                 "any",
                 "some",
@@ -49199,13 +49199,13 @@
             }
           },
           {
-            "description": "`some`, the users whose contact stands behind an operator that is not retired; `none`, the people behind none (P-280).",
+            "description": "`some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280).",
             "in": "query",
             "name": "operator",
             "required": false,
             "schema": {
               "default": "any",
-              "description": "`some`, the users whose contact stands behind an operator that is not retired; `none`, the people behind none (P-280).",
+              "description": "`some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280).",
               "enum": [
                 "any",
                 "some",

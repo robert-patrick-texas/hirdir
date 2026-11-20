@@ -324,6 +324,50 @@ def test_the_contacts_say_and_find_who_is_behind_an_operator(
     assert names(sort="-is_operator,name")[0] == "Example Both"
 
 
+def test_a_retired_contact_is_as_no_contact_for_the_gaps_and_still_answered(
+    client: TestClient, admin: dict, viewer: dict
+) -> None:
+    """A user whose contact is retired is in both gaps and in neither `some`, as nobody is
+    behind its operator; it still answers what is left over (P-280)."""
+    desk = Maker(client, admin)
+    made = desk.post("/users", {"username": "ex-left", "contact": PERSON, "operator": {}})
+    desk.post("/users", {"username": "ex-ops", "contact": {"name": "Example Ops"}, "operator": {}})
+    desk.post("/users", {"username": "ex-bot", "is_service_account": True})
+    contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
+    desk.post(
+        f"/contacts/{contact['hid']}/retire", {"row_version": contact["row_version"]}, expect=200
+    )
+
+    assert "ex-left" in _usernames(desk, contact="none")
+    assert "ex-left" not in _usernames(desk, contact="some")
+    assert "ex-left" in _usernames(desk, operator="none")
+    assert "ex-left" not in _usernames(desk, operator="some")
+    assert _usernames(desk, operator="some") == ["ex-ops"]
+    # Every user is in one of `some` and `none`, or is a service account.
+    everyone = sorted(_usernames(desk))
+    for which in ("contact", "operator"):
+        split = _usernames(desk, **{which: "some"}) + _usernames(desk, **{which: "none"})
+        assert sorted([*split, "ex-bot"]) == everyone, which
+
+    # What is left over is still answered, for the page to show it.
+    user = desk.get(f"/users/{made['user']['hid']}")
+    assert user["contact"]["record_status"] == "retired"
+    assert [one["hid"] for one in user["operators"]] == [made["operator"]["hid"]]
+    # The three lists agree: nobody is behind the operator, and the contact is none.
+    reader = Maker(client, viewer)
+    assert reader.get(f"/operators/{made['operator']['hid']}")["scope"] is None
+    seen = reader.get(f"/contacts/{contact['hid']}")
+    assert (seen["is_operator"], len(seen["operators"])) == (False, 1)
+
+    # A list shows a retired record with include_archived, and the filter says the same.
+    def names(**params: Any) -> list[str]:
+        return [one["name"] for one in reader.get("/contacts", **params)["items"]]
+
+    assert names(filter="record_status:eq:retired", include_archived="true") == ["Example Person"]
+    assert names(filter="is_operator:eq:true", include_archived="true") == ["Example Ops"]
+    assert names(filter="is_operator:eq:false", include_archived="true") == ["Example Person"]
+
+
 def _engine(client: TestClient) -> Engine:
     return cast(FastAPI, client.app).state.engine
 
