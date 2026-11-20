@@ -82,7 +82,7 @@ test("the mark of health is in the menu bar of every page, says the health in wo
     ["Items", /\/items$/],
     ["Reports", /\/reports/],
     ["Vendors", /\/vendors$/],
-    ["Admin", /\/admin$/],
+    ["Admin", /\/admin(\/|$)/],
   ] as const) {
     await menuBar(page).getByRole("link", { name, exact: true }).click();
     await expect(page).toHaveURL(path);

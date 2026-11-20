@@ -256,8 +256,9 @@ test("past its ceiling a quiet server is said to be slow and a loaded one busy: 
     "Over 1 ms",
   ]);
 
-  // The slowest requests, each by its route as a pattern, with who asked: this account
-  // among them, and nothing of what it asked for.
+  // The slowest requests of the ten minutes, the slowest first, each by its route as a
+  // pattern with who asked, and nothing of what was asked for. They are of the whole
+  // server, so after other files have run they need not be this account's.
   const slowest = page.getByTestId("load-slowest");
   await expect(slowest.locator("thead th")).toHaveText([
     "When",
@@ -267,10 +268,9 @@ test("past its ceiling a quiet server is said to be slow and a loaded one busy: 
     "Status",
     "Request ID",
   ]);
-  const mine = slowest.locator("tbody tr").filter({ hasText: account.username });
-  await expect(mine.first()).toBeVisible();
-  await expect(mine.first().getByTestId("load-slow-who")).toHaveText(account.username);
-  await expect(mine.first().getByTestId("load-slow-id")).toHaveText(/\S{8,}/);
+  const slow = slowest.locator("tbody tr");
+  await expect(slow.first()).toBeVisible();
+  await expect(slow.first().getByTestId("load-slow-id")).toHaveText(/\S{8,}/);
   const routes = await slowest.getByTestId("load-slow-request").allTextContents();
   expect(routes.length).toBeGreaterThan(0);
   expect(routes.length).toBeLessThanOrEqual(10);
@@ -278,16 +278,31 @@ test("past its ceiling a quiet server is said to be slow and a loaded one busy: 
     expect(route).toMatch(/^[A-Z]+ (\/api\/v1\/[a-z0-9/{}_-]*|a path that no route answers)$/);
     expect(route).not.toContain(suffix);
   }
-  // An Admin opens the account of who asked from its name.
-  await expect(
-    mine.first().getByRole("link", { name: account.username, exact: true }),
-  ).toHaveAttribute("href", new RegExp(`/admin/users/${account.hid}$`));
-  // Who is active: this account, with what it met.
+  const times = (await slow.locator("td:nth-child(4)").allTextContents()).map((text) =>
+    Number(text.replace(/[^\d.]/g, "")),
+  );
+  expect(
+    [...times].sort((one, other) => other - one),
+    "the slowest first",
+  ).toEqual(times);
+  // Who is active: whoever asked each of the slowest is among them, and so is this
+  // account, with what it met; an Admin opens an account from its name.
   const people = page.getByTestId("load-people");
+  const names = (await people.getByTestId("load-person-name").allTextContents()).map((name) =>
+    name.trim(),
+  );
+  for (const who of await slowest.getByTestId("load-slow-who").allTextContents()) {
+    expect(who.trim()).not.toBe("");
+    expect(names, "who asked a slow request is among the people").toContain(who.trim());
+  }
   const me = people.locator(`tbody tr[data-person="${account.username}"]`);
   await expect(me).toHaveCount(1);
   await expect(me).toHaveAttribute("data-kind", "person");
   await expect(me.locator("td").first()).toHaveText(/^[1-9][\d,]*$/);
+  await expect(me.getByRole("link", { name: account.username, exact: true })).toHaveAttribute(
+    "href",
+    new RegExp(`/admin/users/${account.hid}$`),
+  );
   await expect(people.locator("thead th.load-band")).toHaveCount(4);
   await expect(page.getByTestId("fault")).toHaveCount(0);
 
