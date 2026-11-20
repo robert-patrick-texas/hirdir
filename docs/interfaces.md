@@ -3052,9 +3052,12 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
 - **Users.** Each row shows the contact the user is and the operators it works as, each
   a link to that record's page, the operator as its label with its colour, and plain
   words where there is none, `no contact` and `no operator`; and the notes of the
-  account. Above the list, Show narrows it to the users with no contact, and to those
-  with no operator, by `contact=none` and `operator=none`. Export CSV saves the file
-  of `POST /users/export`.
+  account; a service account says neither, being no person. Above the list, Show has
+  a link to every user, one to the users with no contact and one to those with no
+  operator, each an address of its own, `contact=none` and `operator=none` beside the
+  search, so that a link to a gap can be sent; the one on show is marked. The Operators
+  and Notes columns sort as the others do. Export CSV saves the file of
+  `POST /users/export` under the name the server gives it.
 - **New user.** One form makes the user, the contact and the operator (P-283). It has
   Also a contact, ticked from the start, with the name, the email and the numbers, or a
   contact there is already; Also an operator, ticked from the start, with the label,
@@ -3062,8 +3065,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   the colour, the next unused, in the picker; the role; the groups, a box each with
   the roles the group grants (P-282); and the notes. A service account has neither box.
   Unticking the contact unticks the operator, which needs one, and ticking the operator
-  ticks the contact. A label or a colour left blank is the server's to give, the
-  username and the next unused, as one not yet read when Create is pressed is. One
+  ticks the contact. A label left blank is the username and a colour not chosen the
+  next unused, which the server gives, as it does where the colours had not yet been
+  read when Create was pressed; a colour chosen blank is none. One
   Create sends one `POST /users`; a refusal is shown at its field, `operator.label` at
   the label, `operator` at its box, `group_hids` at the groups, the contact's at the
   person's, with nothing typed lost, and the access code is shown with links to the
@@ -3072,16 +3076,21 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   group there is: ticking and unticking add and remove the user at once, each by its
   own request, and a refusal is said beside the box, which goes back. A box pressed
   again while its request is out sends nothing more. Its notes are changed in its form.
-  Its operators are listed as links; where it is behind none and has a contact, Make an
-  operator makes one in one press, with the username as its label and the next unused
-  colour, and leads to it (P-284). A label the server does not take, too long or
+  Its operators are listed as links, released ones marked so; where it is behind none
+  that is not retired and has a contact, Make an operator makes one in one press, with
+  the username as its label and the next unused colour, read when it is pressed, and
+  leads to it (P-284). A label the server does not take, too long or
   another operator's, opens the label and the colour in place, with the refusal at
   the field, to be put right and made from there.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
-  stands behind, as links; Show narrows the list to the contacts that are no user and
-  to those behind no operator. The page of a contact behind no operator has Make an
-  operator, as a user's has, with the username as the label where the contact is a
-  user and the contact's name where it is not.
+  stands behind, as links, in the column Operators, which filters and sorts by
+  `is_operator`; Show has a link to every contact and one to each gap, the contacts
+  that are no user and those behind no operator, each starting the grid with its
+  filter (`is_user:eq:false`, `is_operator:eq:false`). The page of a contact lists the
+  operators it stands behind, released ones marked so, and where it stands behind none
+  that is not retired, and is not retired itself, has Make an operator for an
+  Inventory role or above, as a user's has, with the username as the label where the
+  contact is a user and the contact's name where it is not.
 - **Operators.** The list shows the user behind each operator as a link, for an Admin,
   and Show narrows it to those with nobody behind them. In the New operator form,
   choosing a person who is a user fills the label with the username while the label is
