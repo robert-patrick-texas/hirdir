@@ -321,10 +321,7 @@ function ExportUsers() {
     if (out.current) return;
     out.current = true;
     setDone("");
-    // The route takes no body; the client's type of a download asks for one.
-    const result = await action.run(() =>
-      api.download("/api/v1/users/export", { body: undefined as never }),
-    );
+    const result = await action.run(() => api.download("/api/v1/users/export"));
     out.current = false;
     if (!result.ok) return;
     const name = result.value.fileName ?? "users.csv";
