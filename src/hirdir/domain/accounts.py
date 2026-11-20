@@ -610,10 +610,21 @@ def members_of(db: Session, group: UserGroup) -> list[User]:
     )
 
 
-def _checked_group_name(db: Session, name: str, except_hid: str | None = None) -> str:
+def _checked_group_name(db: Session, name: str, group: UserGroup | None = None) -> str:
+    """Return the name a group is to have, or refuse it.
+
+    It holds no semicolon, which separates the groups of a user in a file (P-288). A
+    group that holds one already, from before, keeps its name until it is renamed.
+    """
     name = name.strip()
     if not name or len(name) > 100:
         raise Invalid("the group name is not acceptable", {"name": "1 to 100 characters"})
+    if ";" in name and (group is None or name != group.name):
+        raise Invalid(
+            "the group name is not acceptable",
+            {"name": "must not hold a semicolon, which separates groups in a file"},
+        )
+    except_hid = group.hid if group is not None else None
     other = db.scalar(select(UserGroup).where(UserGroup.name_key == _key(name)))
     if other is not None and other.hid != except_hid:
         raise Conflict(
@@ -649,7 +660,7 @@ def update_group(
     group = get_group(db, hid)
     changes = []
     if fields.get("name") is not None:
-        name = _checked_group_name(db, fields["name"], except_hid=hid)
+        name = _checked_group_name(db, fields["name"], group)
         if name != group.name:
             changes.append(change("name", group.name, name))
     if fields.get("description") is not None and fields["description"].strip() != group.description:

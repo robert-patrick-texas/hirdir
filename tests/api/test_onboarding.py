@@ -8,8 +8,10 @@ from typing import Any, cast
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, event
+from sqlalchemy import Engine, event, update
+from sqlalchemy.orm import Session
 
+from hirdir.db.models import UserGroup
 from tests.api.inventory import API, Maker, errors
 
 PERSON = {"name": "Example Person", "email": "example.person@example.net", "phone": "x1"}
@@ -496,3 +498,41 @@ def test_only_an_admin_makes_a_user_and_every_role_reads_the_operators_of_contac
     for headers in (admin, inventory, viewer):
         seen = Maker(client, headers).get(f"/contacts/{made['user']['contact_hid']}")
         assert seen["operators"][0]["hid"] == made["operator"]["hid"]
+
+
+# --- the name of a user group --------------------------------------------------------------
+
+
+def test_a_user_groups_name_holds_no_semicolon_which_separates_groups_in_a_file(
+    client: TestClient, admin: dict, db: Session
+) -> None:
+    desk = Maker(client, admin)
+    refused = client.post(f"{API}/user-groups", json={"name": "Example; East"}, headers=admin)
+    assert refused.status_code == 422
+    assert "semicolon" in errors(refused.json())["name"]
+    group = desk.post("/user-groups", {"name": "Example East"})
+    renamed = client.patch(
+        f"{API}/user-groups/{group['hid']}",
+        json={"row_version": group["row_version"], "name": "Example; East"},
+        headers=admin,
+    )
+    assert renamed.status_code == 422
+    assert "semicolon" in errors(renamed.json())["name"]
+
+    # One that holds one already, from before, keeps its name until it is renamed.
+    db.execute(
+        update(UserGroup)
+        .where(UserGroup.hid == group["hid"])
+        .values(name="Example; Old", name_key="example; old")
+    )
+    db.commit()
+    kept = desk.get(f"/user-groups/{group['hid']}")
+    kept = desk.patch(
+        f"/user-groups/{group['hid']}",
+        {"row_version": kept["row_version"], "name": "Example; Old", "description": "Kept."},
+    )
+    assert (kept["name"], kept["description"]) == ("Example; Old", "Kept.")
+    again = desk.patch(
+        f"/user-groups/{group['hid']}", {"row_version": kept["row_version"], "name": "Example Old"}
+    )
+    assert again["name"] == "Example Old"

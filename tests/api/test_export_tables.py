@@ -149,7 +149,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
     )["user"]
     service = people.post("/users", {"username": "ex-service", "is_service_account": True})
     people.post(f"/users/{service['user']['hid']}/service-tokens", {"name": "monitoring"})
-    for name, role in (("Example Team; East", "inventory"), ("Example Readers", "viewer")):
+    for name, role in (("Example Team East", "inventory"), ("Example Readers", "viewer")):
         group = people.post("/user-groups", {"name": name})
         people.post("/role-grants", {"role": role, "group_hid": group["hid"]})
         response = client.put(
@@ -174,7 +174,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "phone": "'+1 555 0100",
         "phone2": "'@desk",
         "role": "inventory",
-        "groups": "Example Readers;Example Team; East",
+        "groups": "Example Readers;Example Team East",
         "operators": "EP;ex-ops",
         "kind": "person",
         "state": "disabled",

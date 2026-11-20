@@ -194,8 +194,9 @@ not retired, and `operator=none` those behind none, a user with no contact among
 A service account is no person and is in neither `none`. What a page of users shows of
 each, its contact, its role in force, its groups and its operators, is read once for the
 whole page and never for a row, and so are the size and the roles of each group of
-`GET /user-groups`: a page costs the same statements whatever its size. The users are sorted by `notes` and by `operators`, the
-first of their labels, as by their other columns. `GET /contacts` filters and sorts by
+`GET /user-groups`: a page costs the same statements whatever its size. The users are
+sorted by `notes` and by `operators`, the first of their labels, as by their other
+columns. `GET /contacts` filters and sorts by
 `is_operator`, true where the contact stands behind an operator that is not retired, as
 it does by `is_user`; `GET /operators` finds those with nobody behind them by `scope`,
 as before.
@@ -1409,7 +1410,10 @@ which its contact stands and that are not retired, `kind`, `person` or `service`
 `state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC, and `notes`; several
 groups or operators stand in one cell, separated by `;` as the other files separate
 several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
-are. It holds no access code, no token and no hash of either, and no column beyond
+are. So that a cell of groups is read as it was written, the name of a user group holds
+no semicolon, as a tag's label and an operator's do not: `POST /user-groups` and a
+rename by `PATCH /user-groups/{hid}` refuse one with a `422` on `name`, and a group
+that holds one from before 0.9.13 keeps its name until it is renamed. It holds no access code, no token and no hash of either, and no column beyond
 these twelve. It is audited: an event `export` of the record type `user`, with no
 record of its own, whose `changes` hold `file_name` and `users`, how many rows the
 file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
