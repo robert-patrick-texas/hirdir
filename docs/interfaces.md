@@ -3074,14 +3074,28 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   blank or is still what the form filled in. On the page of an operator, Details stands
   above The person's email and numbers.
 - **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
-  one picker (P-285): the grid of `GET /colours`, 64 swatches, each a button named by
-  its value, reached by Tab and moved through by the arrow keys; above it a slider of
-  the 32, whose steps move the choice in the grid; and the text box, which takes any
-  `#rrggbb`. The three are one value: pressing a swatch moves the slider and fills the
-  box, and a value typed that is of the grid marks its swatch, while one that is not
-  marks none and is kept as typed. The value is shown on a chip filled with the colour,
-  its text black or white, whichever has the greater contrast with it, and beside it
-  the label as the lists will show it. A blank value is no colour, as before.
+  one picker (P-285), a group named as the field is: the text box, which takes any
+  `#rrggbb`; under it a slider of the 32, whose steps move the choice in the grid; and
+  the grid of `GET /colours`, 64 swatches, each a button named by its hue, its shade
+  and its value (`orange, shade 3 of 8, #fb9d59`), the one chosen pressed, ringed and
+  ticked. The grid is one stop of Tab, at the swatch chosen or the first; the arrow
+  keys move within it, Home and End to the ends of a row and with Control to the
+  first and the last, and Enter or Space chooses. The three are one value: pressing a
+  swatch moves the slider and fills the box, and a value typed that is of the grid
+  marks its swatch, in either case, while one that is not marks none and is kept as
+  typed. The slider is a range input of 32 steps over a track that shows them, its
+  step said in words (`Step 5 of 32: orange, shade 3 of 8, #fb9d59`). A range input
+  always stands at a step: where the value is none of the 32, the slider rests at the
+  step nearest to it (of the same hue for a swatch of the grid, else nearest in red,
+  green and blue, the first for no colour), its thumb is drawn hollow and dashed, it
+  says `No step: #eeaa00 is not one of the 32`, and the first move, by a key or a press,
+  takes the value to the step it comes to. A value that is no colour is said at the box
+  once it is left or seven characters long, and the form sends nothing. The value is
+  shown on a chip filled with the colour, its text black or white, whichever has the
+  greater WCAG contrast with it, and beside it the label being typed as the lists will
+  show it, with an operator's dot or a tag's square. A blank value is no colour, as
+  before. The colours are read once for every picker on the page; until they come, the
+  text box takes a colour by itself. Admin › Tags shows each tag's colour on its chip.
 - **Import.** Above the upload, What can be loaded and exported lists every table of
   `GET /exports/tables` in the order of loading, each with how many records it holds
   and Export CSV and Export JSON, the whole table in the form that loads back. A table

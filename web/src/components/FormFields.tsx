@@ -7,6 +7,7 @@ import {
   hintOf,
   type Option,
 } from "../lib/patch";
+import { ColourField } from "./ColourPicker";
 import { ContactField } from "./ContactField";
 import { EntryField } from "./EntryField";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
@@ -233,6 +234,18 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             onChange={(next) => onChange(name, next)}
             known={spec.options ?? []}
             {...(spec.blank === undefined ? {} : { blank: spec.blank })}
+          />
+        );
+      case "colour":
+        // 0.9.13: the grid of 64, the slider of 32 and the text box, as one value (P-285).
+        return (
+          <ColourField
+            key={name}
+            {...shared}
+            value={text}
+            onChange={(next) => onChange(name, next)}
+            sample={spec.sample?.(values) ?? ""}
+            {...(spec.sampleAs === undefined ? {} : { sampleAs: spec.sampleAs })}
           />
         );
       case "longtext":

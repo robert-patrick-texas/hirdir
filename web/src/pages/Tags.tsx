@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { ColourShown } from "../components/ColourPicker";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
@@ -10,6 +11,7 @@ import { SortTh } from "../components/SortTh";
 import { plural } from "../lib/format";
 import { useAction, useTitle } from "../lib/hooks";
 import { useTags } from "../lib/lists";
+import { safeColour } from "../lib/operators";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
 import { useSorting } from "../lib/useSorting";
@@ -25,26 +27,17 @@ const SPECS: FieldSpec[] = [
     maxLength: 100,
     hint: "No semicolon: it separates tags in a file",
   },
-  { name: "colour", label: "Colour", kind: "text", maxLength: 7, hint: "In the form #1f6feb" },
+  // 0.9.13: chosen from the grid, by the slider or typed, beside the tag as it will show (P-285).
+  {
+    name: "colour",
+    label: "Colour",
+    kind: "colour",
+    hint: "Press a colour, move the slider, or type one in the form #1f6feb. Blank is no colour.",
+    sample: (values) => (typeof values.label === "string" ? values.label : ""),
+    sampleAs: "tag",
+  },
   { name: "description", label: "Description", kind: "longtext", maxLength: 10000 },
 ];
-
-/** The colour of a tag when it is one, as it is shown: nothing for what is no colour. */
-function shownColour(colour: string | null): string | null {
-  return colour && /^#[0-9a-f]{6}$/i.test(colour) ? colour : null;
-}
-
-/** A tag's colour as a small square. The colour is checked before it is used as one. */
-function Swatch({ colour: given }: { colour: string | null }) {
-  const colour = shownColour(given);
-  if (!colour) return <span className="muted">—</span>;
-  return (
-    <>
-      <span className="swatch" style={{ backgroundColor: colour }} aria-hidden="true" />{" "}
-      <span className="mono">{colour}</span>
-    </>
-  );
-}
 
 /** Admin → Tags: the labels that may be put on records. A tag is made before it is used. */
 export function Tags() {
@@ -59,7 +52,7 @@ export function Tags() {
   const rows = tags.data ?? [];
   const sorting = useSorting(rows, {
     label: (tag) => tag.label,
-    colour: (tag) => shownColour(tag.colour),
+    colour: (tag) => safeColour(tag.colour),
     description: (tag) => tag.description,
     on: (tag) => tag.uses,
   });
@@ -155,7 +148,7 @@ export function Tags() {
                   <tr data-tag={tag.label}>
                     <th scope="row">{tag.label}</th>
                     <td>
-                      <Swatch colour={tag.colour} />
+                      <ColourShown colour={tag.colour} />
                     </td>
                     <td>{tag.description}</td>
                     <td className="nowrap">{plural(tag.uses, "record")}</td>
