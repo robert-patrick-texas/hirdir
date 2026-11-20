@@ -11333,9 +11333,12 @@ export interface components {
     };
     /** What a check of the kept answers found: none should have differed. */
     KeptCheck: {
+      /** How many kept answers were compared. */
       checked: number;
       checked_at: string;
       differed: components["schemas"]["KeptDiffered"][];
+      /** Whether a change was stored while the check worked. It then stopped there: what it had not compared yet is given no more, and is neither counted nor named. Ask again (P-277). */
+      overtaken: boolean;
     };
     /** A kept answer that was not the same as the one worked out anew. */
     KeptDiffered: {

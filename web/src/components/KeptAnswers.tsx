@@ -92,6 +92,7 @@ function CheckFound({ found }: { found: Checked }) {
       data-testid="kept-check"
       data-checked={found.checked}
       data-differed={differed.length}
+      data-overtaken={found.overtaken}
     >
       <p className={differed.length === 0 ? "alert alert-ok" : "alert alert-error"}>
         {plural(found.checked, "kept report")} checked at <Time at={found.checked_at} />.{" "}
@@ -99,6 +100,13 @@ function CheckFound({ found }: { found: Checked }) {
           ? "None differed."
           : `${differed.length} differed from the answer worked out anew: a defect to report, with the report and the request each was of.`}
       </p>
+      {found.overtaken && (
+        <p className="alert alert-info" data-testid="kept-overtaken">
+          Something was changed while the check worked, so it stopped there: every kept report is
+          worked out again after a change, and what was not compared yet is given no more. Check
+          again when the inventory is quiet.
+        </p>
+      )}
       {differed.length > 0 && (
         <ul data-testid="kept-differed">
           {differed.map((one) => (

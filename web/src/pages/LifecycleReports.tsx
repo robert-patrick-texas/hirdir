@@ -58,6 +58,19 @@ interface View {
   includeDrafts: boolean;
 }
 
+/**
+ * The days a report takes where none are given: the setting in force, or what the
+ * setting is unless set, until the settings are read (P-277).
+ */
+function settingDays(
+  settings: readonly { key: string; value?: unknown }[] | undefined,
+  key: string,
+  unlessSet: number,
+): number {
+  const value = settings?.find((setting) => setting.key === key)?.value;
+  return typeof value === "number" ? value : unlessSet;
+}
+
 function viewOf(params: URLSearchParams): View {
   return {
     filter: params.get("filter") ?? "",
@@ -243,6 +256,7 @@ export function CoverageReport() {
   const report = useLoad(`coverage-report ${JSON.stringify(query)}`, (signal) =>
     api.request("get", "/api/v1/reports/coverage", { query, signal }),
   );
+  const settings = useSettings();
   const data = report.data;
   const section = shown === null ? undefined : data?.sections[shown];
   const refused = fieldErrors(report.error, ["filter", "within_days"]).shown;
@@ -275,7 +289,7 @@ export function CoverageReport() {
       <ViewForm
         key={`${view.filter} ${view.days}`}
         view={view}
-        defaultDays={90}
+        defaultDays={settingDays(settings.data, "renewal_warning_days", 90)}
         daysLabel="Cover that runs out within"
         archived={false}
         filterRefused={refused.filter}
@@ -626,7 +640,7 @@ export function EndOfLifeReport() {
       <ViewForm
         key={`${view.filter} ${view.days}`}
         view={view}
-        defaultDays={730}
+        defaultDays={settingDays(settings.data, "end_of_life_within_days", 730)}
         daysLabel="Approaching: within"
         archived
         filterRefused={refused.filter}
