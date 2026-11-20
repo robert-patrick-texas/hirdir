@@ -261,20 +261,29 @@ test("a table is exported as the list counts it, the header row alone where it c
   // What the file holds is what the list says the table holds, whatever that is now:
   // the header row alone where it is none, which the words above the list call its
   // template; the header row and a row to each network where there are some (review X3).
-  const held = Number(await row.getAttribute("data-count"));
-  await expect(row.getByTestId("table-count")).toHaveText(
-    held === 0 ? "None" : held.toLocaleString("en-US"),
-  );
+  // Every spec file works on the one inventory, and another may make a network between
+  // the count and the export: then both are read again, three times at the most.
+  let held = 0;
+  let text = "";
+  for (let attempt = 1; ; attempt += 1) {
+    held = Number(await row.getAttribute("data-count"));
+    await expect(row.getByTestId("table-count")).toHaveText(
+      held === 0 ? "None" : held.toLocaleString("en-US"),
+    );
+    const file = await exported(
+      page,
+      row.getByRole("button", { name: "Export Networks as CSV" }),
+      testInfo,
+    );
+    expect(file.name).toMatch(serverName("networks", "csv"));
+    text = file.content.toString("utf8");
+    if (parseCsv(text).length - 1 === held || attempt === 3) break;
+    await page.reload();
+    await expect(row).toHaveAttribute("data-count", /^\d+$/);
+  }
   await expect(page.getByTestId("export-tables-said")).toContainText(
     "A table that holds nothing gives its CSV template: its header row alone.",
   );
-  const file = await exported(
-    page,
-    row.getByRole("button", { name: "Export Networks as CSV" }),
-    testInfo,
-  );
-  expect(file.name).toMatch(serverName("networks", "csv"));
-  const text = file.content.toString("utf8");
   const [head = [], ...networks] = parseCsv(text);
   const header = head.join(",");
   expect(header).toBe(HEADERS.networks);
