@@ -307,7 +307,7 @@ test("past its ceiling a quiet server is said to be slow and a loaded one busy: 
   await expect(page.getByTestId("fault")).toHaveCount(0);
 
   // A list still loads: slow is not busy, and nothing says that it is.
-  await menuBar(page).getByRole("link", { name: "Items", exact: true }).click();
+  await page.goto(list);
   await expect(page.getByTestId("grid-total")).toHaveText("1 item", { timeout: 20_000 });
   await expect(page.locator("main .alert-error")).toHaveCount(0);
   await expect(healthMark).toHaveAttribute("data-refusing", "nothing");
