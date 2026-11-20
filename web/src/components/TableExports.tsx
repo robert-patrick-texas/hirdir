@@ -10,11 +10,9 @@ import {
   countWords,
   everythingName,
   exportLabel,
-  holdsNothing,
   type TableRow,
   tableRows,
   tablesText,
-  wholeExport,
 } from "../lib/tables";
 import { type Entity, exportName, type FileFormat } from "../lib/transfer";
 import { Problem } from "./Problem";
@@ -62,12 +60,16 @@ function ExportButtons({ row, saving }: { row: TableRow; saving: Saving }) {
             onClick={() =>
               void saving.save(
                 key,
-                () => api.download("/api/v1/exports", { body: wholeExport(row.entity, format) }),
+                // The whole table, as the zip of every table holds it: the server's word.
+                () =>
+                  api.download("/api/v1/exports", {
+                    body: { entity: row.entity, format, whole: true },
+                  }),
                 exportName(row.entity, format, productName),
               )
             }
           >
-            {format === "csv" && holdsNothing(row) ? "CSV template" : format.toUpperCase()}
+            {format.toUpperCase()}
           </button>
         );
       })}
@@ -185,7 +187,8 @@ export function GeographyExport() {
       </p>
       <p className="hint">
         Each the whole table, the retired and the drafts among them, in the columns its import
-        reads, to be corrected and loaded back on the Import page.
+        reads, to be corrected and loaded back on the Import page. A table that holds nothing gives
+        its CSV template: its header row alone.
       </p>
       <Said saving={saving} keys={keys} />
     </div>

@@ -14,7 +14,14 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { inflateRawSync } from "node:zlib";
-import { type Download, expect, type Locator, type Page, type TestInfo } from "@playwright/test";
+import {
+  type Download,
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  type TestInfo,
+} from "@playwright/test";
 import { count, importFile, region, whenApplied } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
@@ -106,6 +113,13 @@ async function exported(
   await button.click();
   const name = (await download).suggestedFilename();
   return { name, content: await saved(download, testInfo) };
+}
+
+/** The next `POST /exports` the page sends. */
+function exportAsked(page: Page): Promise<Request> {
+  return page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/v1/exports"),
+  );
 }
 
 /** Rows of cells of CSV text, as RFC 4180 has them. */
@@ -209,11 +223,14 @@ test("the Import page lists every table in the order of loading, and exports one
   const list = region(page, "What can be loaded and exported");
   await expect(list).toBeVisible();
   await expect(tableRow(page, "tags").getByTestId("table-count")).toHaveText("…");
+  const asked = exportAsked(page);
   const tags = await exported(
     page,
     list.getByRole("button", { name: "Export Tags as CSV" }),
     testInfo,
   );
+  // The whole table, by the server's word for it, and nothing beside it (review X2).
+  expect((await asked).postDataJSON()).toEqual({ entity: "tags", format: "csv", whole: true });
   expect(tags.name).toMatch(serverName("tags", "csv"));
   expect(tags.content.toString("utf8").split("\n")[0]).toBe(HEADERS.tags);
   await expect(tableRow(page, "tags")).toContainText(/Exported to hirdir-tags-.*\.csv\./);
@@ -232,7 +249,7 @@ test("the Import page lists every table in the order of loading, and exports one
   await expectClean(page, seen);
 });
 
-test("a table that holds nothing is exported as its template, filled in, and loaded back as one record", async ({
+test("a table is exported as the list counts it, the header row alone where it counts none, and its header row filled in loads back as one record", async ({
   page,
   account,
 }, testInfo) => {
@@ -241,32 +258,31 @@ test("a table that holds nothing is exported as its template, filled in, and loa
   await page.goto("./import");
   const row = tableRow(page, "networks");
   await expect(row).toHaveAttribute("data-count", /^\d+$/);
-  const empty = (await row.getAttribute("data-count")) === "0";
-  let header: string;
-  if (empty) {
-    // The page says so, and that its CSV is the template: the header row alone.
-    await expect(row.getByTestId("table-count")).toHaveText("None");
-    const template = await exported(
-      page,
-      row.getByRole("button", { name: "Export the CSV template of Networks" }),
-      testInfo,
-    );
-    expect(template.name).toMatch(serverName("networks", "csv"));
-    expect(template.content.toString("utf8")).toBe(`${HEADERS.networks}\n`);
-    header = HEADERS.networks;
-  } else {
-    // Another file, or an earlier run, made one: its header row is the template.
-    testInfo.annotations.push({ type: "note", description: "Networks held records already" });
-    const file = await exported(
-      page,
-      row.getByRole("button", { name: "Export Networks as CSV" }),
-      testInfo,
-    );
-    header = file.content.toString("utf8").split("\n")[0] ?? "";
-    expect(header).toBe(HEADERS.networks);
-  }
+  // What the file holds is what the list says the table holds, whatever that is now:
+  // the header row alone where it is none, which the words above the list call its
+  // template; the header row and a row to each network where there are some (review X3).
+  const held = Number(await row.getAttribute("data-count"));
+  await expect(row.getByTestId("table-count")).toHaveText(
+    held === 0 ? "None" : held.toLocaleString("en-US"),
+  );
+  await expect(page.getByTestId("export-tables-said")).toContainText(
+    "A table that holds nothing gives its CSV template: its header row alone.",
+  );
+  const file = await exported(
+    page,
+    row.getByRole("button", { name: "Export Networks as CSV" }),
+    testInfo,
+  );
+  expect(file.name).toMatch(serverName("networks", "csv"));
+  const text = file.content.toString("utf8");
+  const [head = [], ...networks] = parseCsv(text);
+  const header = head.join(",");
+  expect(header).toBe(HEADERS.networks);
+  expect(networks).toHaveLength(held);
+  if (held === 0) expect(text).toBe(`${HEADERS.networks}\n`);
 
-  // One row is added to the template, and the file is loaded back: it makes one network.
+  // One row is added to the header row, the template, and the file is loaded back: it
+  // makes one network.
   await preview(page, `networks-${id}.csv`, `${header}\n,${network},vrf\n`, "networks");
   await expect(count(page, "created")).toHaveText("1");
   await expect(count(page, "rejected")).toHaveText("0");
@@ -366,9 +382,7 @@ test("an export a busy server refuses says so beside its button, and is pressed 
     { times: 1 },
   );
   const row = tableRow(page, "sites");
-  const button = row.getByRole("button", {
-    name: /^Export (the CSV template of )?Sites( as CSV)?$/,
-  });
+  const button = row.getByRole("button", { name: "Export Sites as CSV" });
   await button.click();
   await expect(row.locator(".alert-error")).toHaveText(
     "The server is busy and did not answer this. Try again in 5 seconds.",
@@ -425,11 +439,13 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
     ["sites", "Sites"],
     ["locations", "Locations"],
   ] as const) {
+    const asked = exportAsked(page);
     const csv = await exported(
       page,
       line.getByRole("button", { name: `Export ${label} as CSV` }),
       testInfo,
     );
+    expect((await asked).postDataJSON()).toEqual({ entity, format: "csv", whole: true });
     expect(csv.name).toMatch(serverName(entity, "csv"));
     expect(csv.content.toString("utf8").split("\n")[0]).toBe(HEADERS[entity]);
     const json = await exported(
@@ -465,6 +481,38 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
   await expect(count(page, "rejected")).toHaveText("0");
   await page.getByRole("button", { name: "Apply 2 rows" }).click();
   await whenApplied(page, 2);
+
+  // In the same visit, the tags: exported from the list beside the upload, a row added,
+  // and the file chosen. Records follows the new file, and what the page said of the
+  // sites goes; the preview is of tags (review X1).
+  const tagsFile = await exported(
+    page,
+    tableRow(page, "tags").getByRole("button", { name: "Export Tags as CSV" }),
+    testInfo,
+  );
+  const tagsHeader = tagsFile.content.toString("utf8").split("\n")[0] ?? "";
+  expect(tagsHeader).toBe(HEADERS.tags);
+  const chooseTags = () =>
+    page.getByLabel("File", { exact: true }).setInputFiles({
+      name: tagsFile.name,
+      mimeType: "text/csv",
+      buffer: Buffer.from(`${tagsHeader}\n,${id},,\n`, "utf8"),
+    });
+  await chooseTags();
+  await expect(page.getByLabel("Records")).toHaveValue("tags");
+  await expect(page).toHaveURL(/\/import$/);
+  await expect(page.getByTestId("import-job")).toHaveCount(0);
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(page.getByTestId("import-job")).toHaveAttribute("data-status", "previewed", {
+    timeout: 20_000,
+  });
+  await expect(count(page, "created")).toHaveText("1");
+  await expect(count(page, "rejected")).toHaveText("0");
+  // Records set by hand since the last file is kept for the next.
+  await page.getByLabel("Records").selectOption("sites");
+  await chooseTags();
+  await expect(page.getByLabel("Records")).toHaveValue("sites");
+  await expect(page.getByTestId("import-job")).toHaveCount(0);
 
   // The sites hold the corrected addresses, and their file says so when exported again.
   await page.goto("./geography");

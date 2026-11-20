@@ -129,6 +129,16 @@ export function Import() {
     }
   }
 
+  /**
+   * 0.9.13: a new file was chosen. The refusal of the file before and its job, which the
+   * page showed under the upload, are of another file: they go, and the job stays among
+   * the past imports (review X1).
+   */
+  function chosen() {
+    setError(null);
+    if (hid) navigate("/import");
+  }
+
   const mine = sent && sent.preview.job.hid === hid ? sent : null;
   return (
     <>
@@ -138,7 +148,7 @@ export function Import() {
           the Inventory role. */}
       <div className={mayImport ? "import-top import-beside" : "import-top"}>
         {mayImport ? (
-          <Upload busy={busy} error={error} onPreview={preview} />
+          <Upload busy={busy} error={error} onPreview={preview} onChosen={chosen} />
         ) : (
           <p className="muted">
             Importing needs the Inventory role. The imports that were made are listed below.
@@ -166,10 +176,12 @@ interface UploadProps {
   busy: boolean;
   error: ApiError | null;
   onPreview: (file: File, entity: Entity | "", mode: Mode | "", from: ReadFrom) => void;
+  /** 0.9.13: a new file was chosen: what the page says of the file before goes (review X1). */
+  onChosen: () => void;
 }
 
 /** The form that sends a file: the file, the records it holds and the mode beside it. */
-function Upload({ busy, error, onPreview }: UploadProps) {
+function Upload({ busy, error, onPreview, onChosen }: UploadProps) {
   const { productName } = useSite();
   const [file, setFile] = useState<File | null>(null);
   const [entity, setEntity] = useState<Entity | "">("");
@@ -183,9 +195,17 @@ function Upload({ busy, error, onPreview }: UploadProps) {
   const known = ["entity", "mode", "system", "complete"];
   const refused = fieldErrors(error, known).shown;
 
+  // 0.9.13: whether Records was set by hand since the last file was chosen. Until it is,
+  // each file chosen says again what it holds, as the sites and then the tags of one
+  // visit; once it is, the next file keeps the choice (review X1).
+  const [setByHand, setSetByHand] = useState(false);
+
   function choose(chosen: File | null) {
     setFile(chosen);
-    if (chosen && entity === "") setEntity(guessEntity(chosen.name, productName));
+    if (!chosen) return;
+    if (!setByHand) setEntity(guessEntity(chosen.name, productName));
+    setSetByHand(false);
+    onChosen();
   }
 
   function submit(event: FormEvent) {
@@ -218,10 +238,13 @@ function Upload({ busy, error, onPreview }: UploadProps) {
             label="Records"
             name="entity"
             value={entity}
-            onChange={(next) => setEntity(isEntity(next) ? next : "")}
+            onChange={(next) => {
+              setEntity(isEntity(next) ? next : "");
+              setSetByHand(true);
+            }}
             disabled={busy}
             error={refused.entity}
-            hint="What the file holds. A JSON file may say so itself."
+            hint="What the file holds, guessed from its name. A JSON file may say so itself."
           >
             <option value="">As the file says</option>
             {ENTITIES.map((option) => (

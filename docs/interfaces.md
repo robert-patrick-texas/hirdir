@@ -3174,21 +3174,27 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
 - **Import.** Beside the upload, on its right, What can be loaded and exported lists
   every table of `GET /exports/tables` in the order of loading, each with how many
   records it holds and its export as CSV and as JSON, one press each, the whole table in
-  the form that loads back: `POST /exports` with `own_values`, `include_archived` and
-  `include_drafts`, the items by `depth` and then `name`, as `POST /exports/all` sorts
-  them. The list is no taller than the upload and scrolls in its own box, so that the
+  the form that loads back: `POST /exports` with `whole`, which gives the table as the
+  zip of every table holds it, so that the page holds no copy of what that is. The list
+  is no taller than the upload and scrolls in its own box, so that the
   upload and a preview stand where they stood; where the page is too narrow for both,
-  the list comes under the upload. A table that holds nothing says None, and its CSV
-  button reads CSV template: the header row alone, the template of its import. Export
+  the list comes under the upload. A table that holds nothing says None, and the words
+  above the list say that its CSV is the header row alone, the template of its import;
+  its buttons read CSV and JSON as every table's do, here and on Geography, which reads
+  no counts and so asks the server nothing more (review X4). Export
   everything, as CSV or as JSON, saves the zip of `POST /exports/all`. The counts are
   read when the page opens and again when an apply ends; until they come every button
   works, the tables being those the page knows. What became of the last press is said
   beside its buttons: the name of the file saved, or the refusal, as of a busy server,
   after which the button is pressed again. A View-only person has the list and its
-  buttons and no upload.
+  buttons and no upload. Records is guessed again from the name of each file chosen,
+  as the sites and then the tags of one visit, unless it was set by hand since the file
+  before; and a file chosen puts away what the page said of the one before, its refusal
+  and its job, which stays among the past imports.
 - **Geography.** Under the words at the top, Export offers regions, sites and locations,
-  each as CSV and as JSON, one press each, the same files as on the Import page whatever
-  the view counts (P-287).
+  each as CSV and as JSON, one press each, the same files, under the same names, as on
+  the Import page whatever the view counts; the words beneath say that a table that
+  holds nothing gives its CSV template, its header row alone (P-287).
 
 ### The grid
 

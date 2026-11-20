@@ -619,6 +619,25 @@ describe("download", () => {
     await thrownBy(() => client.download("/api/v1/exports", { body }));
     expect(sessions.get()).toBeNull();
   });
+
+  // 0.9.13 review X5: a route whose request has no body is asked for with none, and
+  // its type asks for none; the type check fails here where it requires one.
+  it("sends no body to a route that takes none", async () => {
+    const { client, fetch } = setup(
+      () =>
+        new Response("username\nex-ops\n", {
+          status: 200,
+          headers: { "Content-Type": "text/csv" },
+        }),
+    );
+    const file = await client.download("/api/v1/users/export");
+    expect(await file.blob.text()).toBe("username\nex-ops\n");
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBeUndefined();
+    expect(init?.headers).not.toHaveProperty("Content-Type");
+    await client.download("/api/v1/users/export", {});
+  });
 });
 
 describe("fileNameOf", () => {
