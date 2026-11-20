@@ -14,7 +14,6 @@ import {
   type TableRow,
   tableRows,
   tablesText,
-  wholeExport,
 } from "../lib/tables";
 import { type Entity, exportName, type FileFormat } from "../lib/transfer";
 import { Problem } from "./Problem";
@@ -62,7 +61,11 @@ function ExportButtons({ row, saving }: { row: TableRow; saving: Saving }) {
             onClick={() =>
               void saving.save(
                 key,
-                () => api.download("/api/v1/exports", { body: wholeExport(row.entity, format) }),
+                // The whole table, as the zip of every table holds it: the server's word.
+                () =>
+                  api.download("/api/v1/exports", {
+                    body: { entity: row.entity, format, whole: true },
+                  }),
                 exportName(row.entity, format, productName),
               )
             }

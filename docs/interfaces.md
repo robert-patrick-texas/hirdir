@@ -3168,9 +3168,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
 - **Import.** Beside the upload, on its right, What can be loaded and exported lists
   every table of `GET /exports/tables` in the order of loading, each with how many
   records it holds and its export as CSV and as JSON, one press each, the whole table in
-  the form that loads back: `POST /exports` with `own_values`, `include_archived` and
-  `include_drafts`, the items by `depth` and then `name`, as `POST /exports/all` sorts
-  them. The list is no taller than the upload and scrolls in its own box, so that the
+  the form that loads back: `POST /exports` with `whole`, which gives the table as the
+  zip of every table holds it, so that the page holds no copy of what that is. The list
+  is no taller than the upload and scrolls in its own box, so that the
   upload and a preview stand where they stood; where the page is too narrow for both,
   the list comes under the upload. A table that holds nothing says None, and its CSV
   button reads CSV template: the header row alone, the template of its import. Export

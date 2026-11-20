@@ -14,7 +14,14 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { inflateRawSync } from "node:zlib";
-import { type Download, expect, type Locator, type Page, type TestInfo } from "@playwright/test";
+import {
+  type Download,
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  type TestInfo,
+} from "@playwright/test";
 import { count, importFile, region, whenApplied } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
@@ -106,6 +113,13 @@ async function exported(
   await button.click();
   const name = (await download).suggestedFilename();
   return { name, content: await saved(download, testInfo) };
+}
+
+/** The next `POST /exports` the page sends. */
+function exportAsked(page: Page): Promise<Request> {
+  return page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/v1/exports"),
+  );
 }
 
 /** Rows of cells of CSV text, as RFC 4180 has them. */
@@ -209,11 +223,14 @@ test("the Import page lists every table in the order of loading, and exports one
   const list = region(page, "What can be loaded and exported");
   await expect(list).toBeVisible();
   await expect(tableRow(page, "tags").getByTestId("table-count")).toHaveText("…");
+  const asked = exportAsked(page);
   const tags = await exported(
     page,
     list.getByRole("button", { name: "Export Tags as CSV" }),
     testInfo,
   );
+  // The whole table, by the server's word for it, and nothing beside it (review X2).
+  expect((await asked).postDataJSON()).toEqual({ entity: "tags", format: "csv", whole: true });
   expect(tags.name).toMatch(serverName("tags", "csv"));
   expect(tags.content.toString("utf8").split("\n")[0]).toBe(HEADERS.tags);
   await expect(tableRow(page, "tags")).toContainText(/Exported to hirdir-tags-.*\.csv\./);
@@ -425,11 +442,13 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
     ["sites", "Sites"],
     ["locations", "Locations"],
   ] as const) {
+    const asked = exportAsked(page);
     const csv = await exported(
       page,
       line.getByRole("button", { name: `Export ${label} as CSV` }),
       testInfo,
     );
+    expect((await asked).postDataJSON()).toEqual({ entity, format: "csv", whole: true });
     expect(csv.name).toMatch(serverName(entity, "csv"));
     expect(csv.content.toString("utf8").split("\n")[0]).toBe(HEADERS[entity]);
     const json = await exported(

@@ -8,7 +8,6 @@ import {
   holdsNothing,
   tableRows,
   tablesText,
-  wholeExport,
 } from "./tables";
 
 const TABLES: ExportTable[] = [
@@ -16,24 +15,6 @@ const TABLES: ExportTable[] = [
   { entity: "regions", label: "Regions", file: "regions", count: 0, columns: ["hid", "name"] },
   { entity: "sites", label: "Sites", file: "sites", count: 1250, columns: ["hid", "name"] },
 ];
-
-describe("wholeExport", () => {
-  it("asks for the whole table in the form that loads back", () => {
-    expect(wholeExport("sites", "csv")).toEqual({
-      entity: "sites",
-      format: "csv",
-      own_values: true,
-      include_archived: true,
-      include_drafts: true,
-    });
-    expect(wholeExport("regions", "json").format).toBe("json");
-  });
-
-  it("puts an item before the minor items in it, as the export of everything does", () => {
-    expect(wholeExport("items", "csv").sort).toEqual(["depth", "name"]);
-    expect(wholeExport("locations", "csv").sort).toBeUndefined();
-  });
-});
 
 describe("tableRows", () => {
   it("lists the tables as the server gives them, in its order", () => {

@@ -1,38 +1,19 @@
 // 0.9.13: every table a file is taken for, exported whole (P-286, P-287).
 //
 // The Import page lists them all, in the order their files are loaded, each with how many
-// records it holds; Geography has its three. Each is exported as an import reads it: the
-// whole table, its stored values, the retired and the drafts among them, so that the file
-// is corrected and loaded back, and changes nothing where it is loaded back as it is.
+// records it holds; Geography has its three. Each is exported as an import reads it, by
+// `POST /exports` with `whole`: the server's word for the whole table as the zip of every
+// table holds it, so that the file is corrected and loaded back, and changes nothing where
+// it is loaded back as it is. The page holds no copy of what that is.
 
 import type { Schemas } from "../api/client";
 import { ENTITIES } from "./imports";
 import { namedFile } from "./product";
 import { countText } from "./summary";
-import type { Entity, ExportRequest, FileFormat } from "./transfer";
+import type { Entity, FileFormat } from "./transfer";
 
 /** One table as `GET /exports/tables` gives it. */
 export type ExportTable = Schemas["ExportTable"];
-
-/**
- * The order of a table exported whole where the order of its list is not the one its file
- * loads in: an item stands before the minor items in it. The server's export of every
- * table sorts them so too.
- */
-const WHOLE_SORT: Partial<Record<Entity, readonly string[]>> = { items: ["depth", "name"] };
-
-/** The body of `POST /exports` for a whole table, in the form that loads back. */
-export function wholeExport(entity: Entity, format: FileFormat): ExportRequest {
-  const sort = WHOLE_SORT[entity];
-  return {
-    entity,
-    format,
-    own_values: true,
-    include_archived: true,
-    include_drafts: true,
-    ...(sort ? { sort: [...sort] } : {}),
-  };
-}
 
 /** One table as a list of them shows it. */
 export interface TableRow {
