@@ -325,6 +325,12 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   a step of the path may be a code, a path may begin at the code of a region or a
   site, and a location is found by its code after its site. An export writes places by
   their codes where it is asked to (P-235).
+- **R11.9** Every table that a file is taken for is exported from the page that takes
+  the files, with how many records it holds, one table or all of them at once; a table
+  that holds nothing exports as the template of its import. What is exported, loaded
+  back into the inventory it came from, MUST change nothing (P-286, P-287).
+- **R11.10** An Admin exports the users as CSV. No file holds an access code, a token
+  or a hash of either, and no file makes or changes a user (P-288).
 
 ### R12 Access
 
@@ -340,6 +346,11 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   browser storage.
 - **R12.6** An Admin MUST be able to end every session of a user at once.
 - **R12.7** Automation uses tokens that belong to service accounts, never to people.
+- **R12.8** An Admin makes a user, the contact it is and the operator it works as in
+  one step, with its role and its groups, and changes a user's groups and notes from
+  the user's own page. The lists of users, of contacts and of operators each say which
+  of the other two a person is, as a link, and each is narrowed to those that are not
+  (P-280 to P-284).
 
 ### R13 Integration
 

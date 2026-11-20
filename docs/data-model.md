@@ -1755,7 +1755,7 @@ here, because it is needed before the database can be asked. See
 
 | Record | Fields |
 |---|---|
-| `users` | `username` (unique, and changed by an Admin, P-173), `contact_hid` (the contact the user is, unique; none for a service account), `is_service_account`, `access_code_hash`, `tokens_valid_after`, `disabled`, `last_sign_in_at` |
+| `users` | `username` (unique, and changed by an Admin, P-173), `contact_hid` (the contact the user is, unique; none for a service account), `is_service_account`, `access_code_hash`, `tokens_valid_after`, `disabled`, `last_sign_in_at`, `notes` (free text, blank unless given: what the account is for, who asked for it, when it is to end; the account's, beside the notes of its contact, which are the person's, P-281, migration `0016`) |
 | `user_groups` | `name` (unique), `description` |
 | `user_group_members` | `user_hid`, `group_hid` |
 | `role_grants` | `role` (`viewer`, `inventory`, `admin`), and exactly one of `user_hid` or `group_hid` |

@@ -122,6 +122,9 @@ class User(Bookkeeping, Base):
     tokens_valid_after: Mapped[int] = mapped_column(BigInteger, default=0)
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
     last_sign_in_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # What the account is for, who asked for it, when it is to end (P-281). The notes
+    # of the person are the contact's.
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
 
     memberships: Mapped[list[UserGroupMember]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

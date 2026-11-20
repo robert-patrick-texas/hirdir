@@ -181,6 +181,47 @@ carrier; and `colour`, of an operator. A record that names the contact in two ro
 listed twice. `total` of the answer is `uses` of the contact, and the totals of the kinds
 add up to it: both are counted from one list of what names a contact.
 
+Since 0.9.13 each of the three lists says which of the other two a person is, and
+finds those that are not (P-280). A user answers `operators`, the operators whose
+contact is the user's, in the order of their labels, each with `hid`, `label`, `colour`
+and `record_status`; a user with no contact has none. A contact answers `operators`,
+the same of the contact, beside `is_user` and `user`. One contact may stand behind
+several operators. `GET /users` takes `contact` and `operator`, each `any`, which is
+the same as leaving it out, `some` or `none`: `contact=none` gives the users that are
+no contact, and `operator=none` those behind no operator that is not retired. A
+service account is no person and is in neither `none`. `GET /contacts` filters and
+sorts by `is_operator`, true where the contact stands behind an operator that is not
+retired, as it does by `is_user`; `GET /operators` finds those with nobody behind them
+by `scope`, as before.
+
+A user has `notes` (P-281): free text, at most as long as the notes of a contact,
+`null` unless given. `POST /users` and `PATCH /users/{hid}` take it, and a change of it
+is audited as any change of a user is.
+
+`POST /users` makes, in the one change, what a new person needs (P-282, P-283). It takes
+`group_hids`, the user groups the new user is put into, each membership audited as
+`PUT /user-groups/{hid}/members/{user_hid}` audits it; a group that is not there
+refuses the whole with a `422` on `group_hids`. And it takes `operator`, an object with
+`label`, `colour` and `description`, each optional: an operator is made whose contact
+is the user's, with the username as its label where none is given and the next unused
+colour where none is given (`next_for_operators`, below). `operator` needs a contact
+in the same request, `contact` or `contact_hid`, and is refused with a `422` on
+`operator` without one, as it is for a service account; a label that another operator
+has is refused with a `409` on `operator.label`. The answer has `operator`, the
+operator made, or `null`. The user, the contact, the operator, the grant of the role
+and the memberships are one transaction, each audited as if it were made by itself:
+where any part is refused, nothing is made.
+
+`GET /colours`, which every role reads, gives the colours a form offers (P-285):
+`grid`, eight rows of eight, a row to each shade from the lightest to the darkest and
+in each row the eight hues in the order of the rainbow, red, orange, yellow, green,
+teal, blue, violet and pink; `slider`, 32 of them, the four middle shades of each hue,
+hue after hue; and `next_for_operators`, the first colour of a fixed order through
+those 32 that no operator that is not retired has, or the least used where all are
+taken. The order begins with the darker shades, eight hues far apart. The colours are
+fixed in `hirdir.domain.colours`. They are what is offered and not what is allowed: a
+colour is stored as `#rrggbb` whatever it is.
+
 ### Why a value, and what an operator is on
 
 `GET /items/{hid}/resolution` answers, for each value an item may have from elsewhere,
@@ -1312,6 +1353,33 @@ of them can be set.
 Every template in `examples/` is produced by exporting the seeded example database, so
 the templates can never drift from the importer. `make examples` writes them, and a
 test fails when they are out of date.
+
+Since 0.9.13 every table that a file is taken for is exported from one place (P-286).
+`GET /exports/tables`, for every role, lists them in the order in which their files
+are loaded, each with `entity`, the name an import and an export know it by; `label`;
+`file`, the name its file has in `examples/` without the extension; `count`, how many
+records the table holds, the retired among them; and `columns`, the columns of its
+file, those an import reads, in their order. `POST /exports` of a table that holds
+nothing gives the header row and no more as CSV, which is the template of its import,
+and the envelope with no rows as JSON.
+
+`POST /exports/all` takes `format`, `csv` or `json`, and answers one zip: a file to
+each table, named as `examples/` names it, in the order of loading, each the export of
+the whole table in the form that loads back, the stored values and the retired
+included. The users are not in it. It is audited as an export is, once.
+
+What is exported loads back. The file of any table, as `POST /exports` gives it with
+`own_values`, the archived and the drafts included, previewed as an import into the
+inventory it came from, changes nothing: every row is `unchanged` and none is
+rejected, in both formats, for every table. A test holds it over all of them.
+
+`POST /users/export`, for an Admin, answers the users as CSV (P-288): a row to each
+user, by username, with `username`, `name`, `email`, `phone`, `phone2`, `role`, the
+role in force, `groups`, `operators`, the labels of those that are not retired, `kind`,
+`person` or `service`, `state`, `enabled` or `disabled`, `last_sign_in_at` and `notes`;
+several groups or operators stand in one cell, separated as the other files separate
+several values. It holds no access code, no token and no hash of either. It is audited
+as an export is. No file makes or changes a user.
 
 ### The records an import made
 
@@ -2951,6 +3019,55 @@ What 0.9.6 changes:
   to the stack counts it, as `the 1 thing that runs on it`. No other page
   reads `replaces` or `replaced_by` of an item: the report of replacements has a row for
   each replacement.
+
+What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-288):
+
+- **Users.** Each row shows the contact the user is and the operators it works as, each
+  a link to that record's page, the operator as its label with its colour, and plain
+  words where there is none, `no contact` and `no operator`; and the notes of the
+  account. Above the list, Show narrows it to the users with no contact, and to those
+  with no operator, by `contact=none` and `operator=none`. Export CSV saves the file
+  of `POST /users/export`.
+- **New user.** One form makes the user, the contact and the operator (P-283). It has
+  Also a contact, ticked from the start, with the name, the email and the numbers, or a
+  contact there is already; Also an operator, ticked from the start, with the label,
+  which follows the username until it is typed over, and the colour, the next unused,
+  in the picker; the role; the groups, a box each (P-282); and the notes. A service
+  account has neither box. Unticking the contact unticks the operator, which needs
+  one. One Create sends one `POST /users`; a refusal is shown at its field, with
+  nothing typed lost, and the access code is shown with links to the three records.
+- **A user's page.** Its groups, each with the role the group grants, as a box to each
+  group there is: ticking and unticking add and remove the user at once, each by its
+  own request, and a refusal is said beside the box, which goes back. Its notes are
+  changed in its form. Its operators are listed as links; where it is behind none and
+  has a contact, Make an operator makes one in one press, with the username as its
+  label and the next unused colour, and leads to it (P-284).
+- **Contacts.** Each row shows the user the contact is, as before, and the operators it
+  stands behind, as links; Show narrows the list to the contacts that are no user and
+  to those behind no operator. The page of a contact behind no operator has Make an
+  operator, as a user's has, with the username as the label where the contact is a
+  user and the contact's name where it is not.
+- **Operators.** The list shows the user behind each operator as a link, for an Admin,
+  and Show narrows it to those with nobody behind them. In the New operator form,
+  choosing a person who is a user fills the label with the username while the label is
+  blank or is still what the form filled in. On the page of an operator, Details stands
+  above The person's email and numbers.
+- **A colour.** Wherever a colour is entered, an operator's and a tag's, the form has
+  one picker (P-285): the grid of `GET /colours`, 64 swatches, each a button named by
+  its value, reached by Tab and moved through by the arrow keys; above it a slider of
+  the 32, whose steps move the choice in the grid; and the text box, which takes any
+  `#rrggbb`. The three are one value: pressing a swatch moves the slider and fills the
+  box, and a value typed that is of the grid marks its swatch, while one that is not
+  marks none and is kept as typed. The value is shown on a chip filled with the colour,
+  its text black or white, whichever has the greater contrast with it, and beside it
+  the label as the lists will show it. A blank value is no colour, as before.
+- **Import.** Above the upload, What can be loaded and exported lists every table of
+  `GET /exports/tables` in the order of loading, each with how many records it holds
+  and Export CSV and Export JSON, the whole table in the form that loads back. A table
+  that holds nothing says so, and that its CSV is the template of its import. Export
+  everything, as CSV or as JSON, saves the zip of `POST /exports/all`.
+- **Geography.** Export offers regions, sites and locations, each as CSV and as JSON,
+  the same files as on the Import page (P-287).
 
 ### The grid
 

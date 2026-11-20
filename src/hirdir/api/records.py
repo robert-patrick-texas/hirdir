@@ -4433,6 +4433,23 @@ class TagPatch(Model):
     description: LongText | None = None
 
 
+class ColoursOut(Model):
+    """The colours a form offers, and the one the next operator is given (P-285)."""
+
+    grid: list[list[str]] = Field(
+        description="Eight rows of eight: a row to each shade, the lightest first, and "
+        "in each row the eight hues in the order of the rainbow."
+    )
+    slider: list[str] = Field(
+        description="32 colours of the grid: the four middle shades of each hue, hue "
+        "after hue in the order of the rainbow."
+    )
+    next_for_operators: str = Field(
+        description="The first colour, of a fixed order through the 32, that no "
+        "operator that is not retired has, or the least used where all are taken."
+    )
+
+
 class ChoiceOut(Model):
     """One value of one editable list."""
 

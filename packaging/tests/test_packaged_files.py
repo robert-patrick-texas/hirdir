@@ -333,7 +333,7 @@ def test_the_install_page_names_both_units_and_what_the_commands_say(
 
 
 def test_the_install_page_and_the_package_test_say_of_the_long_reports_what_the_code_says() -> None:
-    """The notes of the upgrade to 0.9.11, the newest, and what the package test asks for
+    """The notes of the upgrade to 0.9.11 and what the package test asks for
     it: the table, the setting and its bounds, the line of the journal, and the four
     reports that the second process works out ahead (P-275, P-276)."""
     import importlib
@@ -345,10 +345,8 @@ def test_the_install_page_and_the_package_test_say_of_the_long_reports_what_the_
     assert "### From 0.9.10 to 0.9.11" in INSTALL
     notes = INSTALL.split("### From 0.9.10 to 0.9.11\n", 1)[1].split("\n### ", 1)[0]
     page = " ".join(notes.split())
-    revision = max(
-        path.name[:4] for path in (ROOT / "src/hirdir/db/migrations/versions").glob("[0-9]*.py")
-    )
-    assert revision == "0015"
+    revision = "0015"
+    assert list((ROOT / "src/hirdir/db/migrations/versions").glob(f"{revision}_*.py"))
     assert f"to `{revision}`. One table is added, `{KeptAnswer.__tablename__}`" in page
     assert KeptAnswer in reset.CLEARED
     assert "`hirdir admin reset` clears it" in page

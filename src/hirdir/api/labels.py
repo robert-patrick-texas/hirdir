@@ -6,10 +6,11 @@ from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
-from hirdir.domain import choices, lifecycle, load, settings, tags
+from hirdir.domain import choices, colours, lifecycle, load, settings, tags
 from hirdir.io import measures
 
 tag_routes = APIRouter(prefix="/tags", tags=["Labels and lists"], route_class=IdempotentRoute)
+colour_routes = APIRouter(prefix="/colours", tags=["Labels and lists"])
 choice_routes = APIRouter(prefix="/choices", tags=["Labels and lists"], route_class=IdempotentRoute)
 setting_routes = APIRouter(prefix="/settings", tags=["Labels and lists"])
 rule_routes = APIRouter(prefix="/lifecycle-rules", tags=["Labels and lists"])
@@ -46,6 +47,21 @@ def update_tag(hid: str, body: r.TagPatch, _: Inventory, context: Audit, db: Db)
 def delete_tag(hid: str, _: Inventory, context: Audit, db: Db) -> None:
     """Remove a tag that no record carries."""
     tags.delete_tag(db, context, hid)
+
+
+# --- colours -------------------------------------------------------------------------
+
+
+@colour_routes.get("")
+def list_colours(_: Viewer, db: Db) -> r.ColoursOut:
+    """Give the colours a form offers, the grid of 64 and the slider of 32, and the
+    colour the next operator is given where none is chosen. A colour that is not among
+    them is taken as well: these are what is offered, not what is allowed."""
+    return r.ColoursOut(
+        grid=[list(row) for row in colours.GRID],
+        slider=list(colours.SLIDER),
+        next_for_operators=colours.next_for_operators(db),
+    )
 
 
 # --- choices -------------------------------------------------------------------------
@@ -134,4 +150,4 @@ def update_rule(
     return shapes.rule_out(rule)
 
 
-ROUTERS = (tag_routes, choice_routes, setting_routes, rule_routes)
+ROUTERS = (tag_routes, colour_routes, choice_routes, setting_routes, rule_routes)

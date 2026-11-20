@@ -8254,6 +8254,43 @@
         "title": "CircuitSide",
         "type": "object"
       },
+      "ColoursOut": {
+        "additionalProperties": false,
+        "description": "The colours a form offers, and the one the next operator is given (P-285).",
+        "properties": {
+          "grid": {
+            "description": "Eight rows of eight: a row to each shade, the lightest first, and in each row the eight hues in the order of the rainbow.",
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Grid",
+            "type": "array"
+          },
+          "next_for_operators": {
+            "description": "The first colour, of a fixed order through the 32, that no operator that is not retired has, or the least used where all are taken.",
+            "title": "Next For Operators",
+            "type": "string"
+          },
+          "slider": {
+            "description": "32 colours of the grid: the four middle shades of each hue, hue after hue in the order of the rainbow.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Slider",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grid",
+          "slider",
+          "next_for_operators"
+        ],
+        "title": "ColoursOut",
+        "type": "object"
+      },
       "ContactCreate": {
         "additionalProperties": false,
         "description": "A new contact.",
@@ -36719,6 +36756,28 @@
         "summary": "Retire Circuit",
         "tags": [
           "Circuits"
+        ]
+      }
+    },
+    "/api/v1/colours": {
+      "get": {
+        "description": "Give the colours a form offers, the grid of 64 and the slider of 32, and the\ncolour the next operator is given where none is chosen. A colour that is not among\nthem is taken as well: these are what is offered, not what is allowed.",
+        "operationId": "list_colours_api_v1_colours_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColoursOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Colours",
+        "tags": [
+          "Labels and lists"
         ]
       }
     },

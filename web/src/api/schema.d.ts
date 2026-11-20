@@ -2366,6 +2366,29 @@ export interface paths {
       };
     };
   };
+  "/api/v1/colours": {
+    /**
+     * Give the colours a form offers, the grid of 64 and the slider of 32, and the
+     * colour the next operator is given where none is chosen. A colour that is not among
+     * them is taken as well: these are what is offered, not what is allowed.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ColoursOut"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/contact-assignments": {
     /**
      * List contact assignments: those of one place with `region_hid`, `site_hid` or
@@ -9840,6 +9863,15 @@ export interface components {
       site_hid: string;
       /** The path of its site. */
       site_path: string;
+    };
+    /** The colours a form offers, and the one the next operator is given (P-285). */
+    ColoursOut: {
+      /** Eight rows of eight: a row to each shade, the lightest first, and in each row the eight hues in the order of the rainbow. */
+      grid: string[][];
+      /** The first colour, of a fixed order through the 32, that no operator that is not retired has, or the least used where all are taken. */
+      next_for_operators: string;
+      /** 32 colours of the grid: the four middle shades of each hue, hue after hue in the order of the rainbow. */
+      slider: string[];
     };
     /** A new contact. */
     ContactCreate: {
