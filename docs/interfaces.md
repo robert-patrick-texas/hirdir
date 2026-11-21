@@ -3542,7 +3542,8 @@ P-292, P-296 to P-298):
   by it. The page of a retired account says that it
   signs in with nothing, is in no group and holds no role, and offers only what the
   server changes of it: its username, with the words that no other account takes the
-  name until it is given another, its notes, and Take its contact away. The box
+  name until it is given another, its notes, and Take its contact away, which asks
+  first and says that the account is given no contact again until it is brought back. The box
   Disabled, the groups, the form of the contact, another contact, the access code, the
   sessions and a new token are not offered, the form of a new token not drawn at all
   and the tokens read again at the retirement, so that each reads Revoked at once, and the page says that they are given once

@@ -377,3 +377,37 @@ test("review 7: Reload in a confirmation that is stale keeps it open, with what 
   ).toBeVisible();
   await expectClean(page, seen, ["409 POST"]);
 });
+
+test("review 8: Take its contact away, of a retired account, asks first", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const mia = await person(request, headers, "mia");
+  const [first] = mia.labels as [Label];
+  await change(request, headers, "post", `/users/${mia.user.hid}/retire`, {
+    linked: { contact: "keep", operators: [{ hid: first.hid, action: "keep" }] },
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await openUser(page, mia.user);
+  const take = region(page, "Take its contact away");
+  const facts = page.getByTestId("user-person");
+  await take.getByRole("button", { name: "Take its contact away" }).click();
+  const ask = page.getByRole("dialog");
+  await expect(ask).toContainText("is given no contact again until it is brought back");
+  // Cancelled, nothing is changed.
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(facts.getByRole("link", { name: mia.contact.name })).toBeVisible();
+  expect(
+    (await read<{ contact: unknown }>(request, headers, `/users/${mia.user.hid}`)).contact,
+  ).not.toBeNull();
+  // Confirmed, the contact is taken away.
+  await take.getByRole("button", { name: "Take its contact away" }).click();
+  await ask.getByRole("button", { name: "Take its contact away" }).click();
+  await expect(facts).toContainText("has no contact");
+  await expectClean(page, seen);
+});

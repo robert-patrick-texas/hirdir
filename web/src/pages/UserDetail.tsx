@@ -472,11 +472,24 @@ function TakeContact({ user, reload }: { user: User; reload: () => void }) {
         brought back by itself, and the contact stays as it is.
       </p>
       <Problem error={action.error} onReload={reload} />
-      <p className="actions">
-        <button type="button" onClick={() => void take()} disabled={action.busy}>
-          Take its contact away
-        </button>
-      </p>
+      {/* It asks first (review 8): a retired account is given no contact again. */}
+      <div className="actions">
+        <ConfirmButton
+          label="Take its contact away"
+          title={`Take the contact of ${user.username} away?`}
+          confirmLabel="Take its contact away"
+          onConfirm={take}
+          disabled={action.busy}
+        >
+          <p>
+            {user.username} is given no contact again until it is brought back: a retired account is
+            given none.{" "}
+            {user.contact
+              ? `The contact ${user.contact.name} stays as it is, and is no longer this account's.`
+              : ""}
+          </p>
+        </ConfirmButton>
+      </div>
     </section>
   );
 }
