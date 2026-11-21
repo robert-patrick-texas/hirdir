@@ -58,7 +58,9 @@
 #                      whole, at once as a zip and one by one, an empty one as its
 #                      template, and previewed back as nothing to change, a person made a
 #                      user, a contact and an operator in one request, the gaps of the
-#                      users, the colours and the users as a file, reference files
+#                      users, the colours and the users as a file, a person's own
+#                      profile and access code, an account retired and brought
+#                      back and a person retired together, reference files
 #                      uploaded and downloaded through nginx and a backup of them restored
 #                      on a second, clean host, then the inventory made by hand, and the
 #                      capacity balance of the worked example; and, where the package has
@@ -102,7 +104,8 @@
 # files, S18 to S21 and S23 for minor items, stacks, a replacement and addresses, S24 to
 # S28 for places, contacts, a site that is moved and an owner outside the team, S29 to
 # S35 for contracts and coverage, the end of life, the portfolio of a vendor, purchases,
-# registrations, drafts and archived items, S39 and S40 for the capacity balance. The
+# registrations, drafts and archived items, S39 and S40 for the capacity balance, S56
+# to S58 for a person's own profile, a retired account and a person retired together. The
 # others, marked pkg, are about the package alone, or about a record that has no
 # scenario of its own yet, such as the condition of an item and the health of a stack.
 #
@@ -111,7 +114,9 @@
 # report, hirdir geography, hirdir locations, hirdir regions, hirdir sites, hirdir
 # operators, hirdir agreements, hirdir contracts, hirdir purchases, hirdir systems,
 # hirdir registrations, hirdir capacity and hirdir vendors) are then run in the
-# container, from the package, by client_commands().
+# container, from the package, by client_commands(), and hirdir profile, hirdir
+# whoami, hirdir sign-in, hirdir users, hirdir contacts retire and hirdir operators
+# retire by own_and_retired().
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -606,6 +611,22 @@ print("; ".join(problems[:3]) if problems else "same")' "$work/kept-$1.json" "$w
 
 # The value of the header named $1 in the last response.
 header() { tr -d '\r' <"$work/headers" | sed -n "s/^$1: //Ip" | tail -n 1; }
+
+# events_of REQUEST: the audit events of one request, oldest first, each as its action
+# and the kind of record it is of.
+events_of() {
+    api GET "/audit-events?request_id=$1&limit=200"
+    json '[[e["action"], e["record_type"]] for e in reversed(d["items"])]'
+}
+
+# linked_kept KIND/HID: what a retirement of a contact or an operator says of the
+# records linked to it, from 0.9.14, where each that is not retired is to be said
+# (P-297): every one of them kept, which is what a retirement did before. KIND is
+# users, contacts or operators. It prints the `linked` of the request, as JSON.
+linked_kept() {
+    api GET "/$1/linked"
+    json '(lambda kind, hid: {name: said for name, said in {"user": "keep" if kind != "users" and d["user"] and d["user"]["record_status"] != "retired" else None, "contact": "keep" if kind != "contacts" and d["contact"] and d["contact"]["record_status"] != "retired" else None, "operators": [{"hid": o["hid"], "action": "keep"} for o in d["operators"] if o["record_status"] != "retired" and o["hid"] != hid]}.items() if said})(*"'"$1"'".split("/"))'
+}
 
 # sign_in USERNAME ACCESS_CODE: ask for a session. Sets $status and, on 200, $token.
 sign_in() {
@@ -3467,7 +3488,7 @@ carried_inventory() {
 # purchase request is cancelled, and a setting is returned to its default. A circuit is
 # retired before the places of its sides, which are not retired while it is not.
 witness_undone() {
-    local entry made="" wanted="" day
+    local entry made="" wanted="" day row linked
     day=$(day_from_today -30)
     if [ -n "$witness_contracts" ]; then
         api GET '/capacity-lines?include_drafts=true&limit=1000'
@@ -3504,6 +3525,17 @@ witness_undone() {
                 ;;
             settings/*)
                 put_setting "${entry#settings/}" null >/dev/null
+                wanted="${wanted}200 "
+                ;;
+            contacts/* | operators/*)
+                # From 0.9.14 the retirement of a contact or an operator says what
+                # becomes of each linked record that is not retired (P-297): each is
+                # kept. The operators are retired before the contacts behind them.
+                api GET "/$entry"
+                row=$(json_field row_version)
+                linked=""
+                if dpkg --compare-versions "$version" ge 0.9.14; then linked=", \"linked\": $(linked_kept "$entry")"; fi
+                api POST "/$entry/retire" "{\"row_version\": $row$linked}"
                 wanted="${wanted}200 "
                 ;;
             *)
@@ -4572,9 +4604,11 @@ files() {
     multiplied_and_seen
     # From 0.9.13: every table exported whole and loaded back, while the inventory holds
     # the examples and everything that the checks made beside them; and a person made in
-    # one request, which the restore below takes away again with the rest.
+    # one request, which the restore below takes away again with the rest. From 0.9.14:
+    # a person's own profile, a retired account and a person retired together.
     every_table
     people_at_once
+    own_and_retired
 
     section "files: the examples taken out again by hirdir admin reset, and the inventory from before them restored, under $prefix/"
     # A file and a link on a location of the examples, from 0.9.0, for the reset to clear
@@ -4838,16 +4872,16 @@ print(json.dumps([len(grid), sorted({len(row) for row in grid}), len(set(every))
     expect "pkg POST $prefix/api/v1/users/export gives an Admin the users as CSV, named for the product and the moment, a row to each user, by username, in the thirteen columns of R11.10" \
         "$status $(header content-type | cut -d';' -f1) $(printf '%s\n' "$name" | grep -cE '^hirdir-users-[0-9]{8}T[0-9]{6}[-+][0-9]{4}\.csv$') $(table head "$work/users.csv") $(table '[r["username"] for r in rows]' "$work/users.csv")" \
         "200 text/csv 1 [\"username\", \"name\", \"email\", \"phone\", \"phone2\", \"role\", \"groups\", \"operators\", \"kind\", \"state\", \"record_status\", \"last_sign_in_at\", \"notes\"] $usernames"
-    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact alone; the service account its role and its kind; and $admin its role, and that it has signed in" \
-        "$(table '[[r["username"], r["name"], r["email"], r["phone"], r["role"], r["groups"], r["operators"], r["kind"], r["state"], bool(r["last_sign_in_at"]), r["notes"]] for r in rows if r["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]' "$work/users.csv")" \
+    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact alone; the service account its role and its kind; and $admin its role, and that it has signed in; and each is active, none of them retired" \
+        "$(table '[[r["username"], r["name"], r["email"], r["phone"], r["role"], r["groups"], r["operators"], r["kind"], r["state"], r["record_status"], bool(r["last_sign_in_at"]), r["notes"]] for r in rows if r["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]' "$work/users.csv")" \
         "$(python3 -c '
 import json, sys
 
 print(json.dumps([
-    [sys.argv[1], "", "", "", "admin", "", "", "person", "enabled", True, ""],
-    ["pkg-desk-reader", "", "", "", "viewer", "", "", "service", "enabled", False, ""],
-    ["pkg-onboarded", "Example Onboarded Person", "onboarded.person@example.net", "'"'"'+1 555 0171", "inventory", "Package Test Engineers;Package Test Night Shift", "pkg-onboarded", "person", "enabled", True, "Made in one step by the package test"],
-    ["pkg-plain", "Example Plain Person", "", "", "", "", "", "person", "enabled", False, ""],
+    [sys.argv[1], "", "", "", "admin", "", "", "person", "enabled", "active", True, ""],
+    ["pkg-desk-reader", "", "", "", "viewer", "", "", "service", "enabled", "active", False, ""],
+    ["pkg-onboarded", "Example Onboarded Person", "onboarded.person@example.net", "'"'"'+1 555 0171", "inventory", "Package Test Engineers;Package Test Night Shift", "pkg-onboarded", "person", "enabled", "active", True, "Made in one step by the package test"],
+    ["pkg-plain", "Example Plain Person", "", "", "", "", "", "person", "enabled", "active", False, ""],
 ]))' "$admin")"
     for value in "$admin_code" "$onboarded_code" "$secret" "$first_token" \
         $(sqlite_text 'SELECT access_code_hash FROM users WHERE access_code_hash IS NOT NULL UNION ALL SELECT token_hash FROM service_tokens'); do
@@ -4870,6 +4904,341 @@ print(json.dumps([
     token=$admin_token
     expect "pkg the file is refused to the person made here, who holds Inventory, and to the View-only token" \
         "$made" "403 403"
+}
+
+# own_and_retired: S56 to S58 (R12.9 to R12.11; P-294 to P-298), from 0.9.14, through
+# nginx and by the client commands of the package. A View-only person changes what is
+# their own, the contact they are, their operator and their access code, and nothing of
+# another; an account in two groups with a role of its own is retired, left out of the
+# list and of the users' file until the retired are asked for, keeps its username, and
+# is brought back with a new code and nothing else; and a person, a user who is a
+# contact behind two operators, is retired together or not at all, and brought back by
+# an Admin alone. Every access code that is typed here has the least length of a typed
+# code or more, but the one that is to be refused. files() runs it before the restore
+# that takes it all away again.
+own_and_retired() {
+    section "a person's own profile, a retired account and a person retired together, through nginx under $prefix/ and by the client commands: hirdir profile, whoami, users, contacts retire and operators retire"
+    local admin_token=$token made got request row code=0 events back
+    local own own_contact own_label other other_contact other_label here elsewhere mine secret
+    local own_code=pkg-own-code-0001 own_new=pkg-own-code-0002 own_cli=pkg-own-code-0003
+    local east west leaver gone leaver_code=pkg-leaver-code-01
+    local mover mover_contact first second successor
+
+    # S56. Two persons, each a View-only user, a contact and behind an operator, and a
+    # service account with a token.
+    api POST /users "{\"username\": \"pkg-own\", \"access_code\": \"$own_code\", \"role\": \"viewer\", \"contact\": {\"name\": \"Example Own Person\", \"email\": \"own.person@example.net\", \"phone\": \"+1 555 0181\"}, \"operator\": {\"label\": \"PKO\"}}"
+    made=$status
+    own=$(json 'd["user"]["hid"]')
+    own_contact=$(json 'd["user"]["contact_hid"]')
+    own_label=$(json 'd["operator"]["hid"]')
+    api POST /users '{"username": "pkg-other", "access_code": "pkg-other-code-0001", "role": "viewer", "contact": {"name": "Example Other Person", "email": "other.person@example.net"}, "operator": {"label": "PKT"}}'
+    made="$made $status"
+    other=$(json 'd["user"]["hid"]')
+    other_contact=$(json 'd["user"]["contact_hid"]')
+    other_label=$(json 'd["operator"]["hid"]')
+    api POST /users '{"username": "pkg-own-robot", "is_service_account": true, "role": "viewer"}'
+    api POST "/users/$(json 'd["user"]["hid"]')/service-tokens" '{"name": "package test, the profile"}'
+    made="$made $status"
+    secret=$(json_field secret)
+    sign_in pkg-own "$own_code"
+    made="$made $status"
+    here=$token
+    sign_in pkg-own "$own_code"
+    made="$made $status"
+    elsewhere=$token
+    api GET /auth/me
+    expect "S56 a View-only user who is a contact and behind an operator reads at GET $prefix/api/v1/auth/me the contact they are, with its organization and the row_version to change it at, and their operator with its own" \
+        "$made $status $(json '[d["role"], d["contact"]["name"], d["contact"]["organization"], d["contact"]["row_version"], [[o["label"], o["row_version"]] for o in d["operators"]]]')" \
+        '201 201 201 200 200 200 ["viewer", "Example Own Person", null, 1, [["PKO", 1]]]'
+
+    token=$here
+    api PATCH /auth/me/contact '{"row_version": 1, "name": "Example Own Person-Lee", "email": "own.person-lee@example.net", "phone": "+1 555 0182", "phone2": "+1 555 0183", "organization": "Example Networks"}'
+    made=$status
+    api PATCH "/auth/me/operators/$own_label" '{"row_version": 1, "label": "PKO2", "colour": "#1f6feb"}'
+    made="$made $status $(json '[[o["label"], o["colour"]] for o in d["operators"]]')"
+    token=$admin_token
+    api GET "/contacts/$own_contact"
+    expect "S56 they change their own name, email, numbers and organization by PATCH /auth/me/contact and their label and colour by PATCH /auth/me/operators/{hid}, and an Admin reads them on the contact" \
+        "$made $(json '[d["name"], d["email"], d["phone"], d["phone2"], d["organization"]]')" \
+        '200 200 [["PKO2", "#1f6feb"]] ["Example Own Person-Lee", "own.person-lee@example.net", "+1 555 0182", "+1 555 0183", "Example Networks"]'
+
+    # The access code: a wrong current code, then a new one that is too short.
+    token=$here
+    api POST /auth/me/access-code "{\"current_access_code\": \"not-the-code-i-have\", \"access_code\": \"$own_new\"}"
+    made="$status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
+    api POST /auth/me/access-code "{\"current_access_code\": \"$own_code\", \"access_code\": \"eleven-char\"}"
+    made="$made $status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
+    api GET /auth/me
+    made="$made $status"
+    token=$elsewhere
+    api GET /auth/me
+    made="$made $status"
+    sign_in pkg-own "$own_code"
+    made="$made $status"
+    token=$admin_token
+    api GET "/audit-events?action=set_access_code&record_hid=$own"
+    expect "S56 a wrong current code and a new code that is too short are each a 422 on its field that says why, and change nothing: both sessions stand, the code signs in, and no code was set" \
+        "$made $(json_field total)" \
+        '422 [["current_access_code", "this is not the access code you have"]] 422 [["access_code", "at least 12 characters (access_code_min_length)"]] 200 200 200 0'
+
+    token=$here
+    api POST /auth/me/access-code "{\"current_access_code\": \"$own_code\", \"access_code\": \"$own_new\"}"
+    made="$status $(json 'sorted(d)')"
+    mine=$(json_field token)
+    token=$mine
+    api GET /auth/me
+    made="$made $status $(json 'd["contact"]["name"]')"
+    token=$here
+    api GET /auth/me
+    made="$made $status"
+    token=$elsewhere
+    api GET /auth/me
+    made="$made $status"
+    sign_in pkg-own "$own_code"
+    made="$made $status"
+    sign_in pkg-own "$own_new"
+    expect "S56 with the code they have, the code is changed: the answer carries a new session for the one in hand, which stays signed in; the token that asked and the other session are ended; the old code signs in no longer, and the new one does" \
+        "$made $status" '200 ["expires_at", "token", "user"] 200 Example Own Person-Lee 401 401 401 200'
+
+    token=$admin_token
+    api GET "/audit-events?record_type=contact&record_hid=$own_contact&action=update&actor_hid=$own"
+    made=$(json '[sorted(c["field"] for c in e["changes"]) for e in d["items"]]')
+    api GET "/audit-events?record_type=operator&record_hid=$own_label&action=update"
+    made="$made $(json '[[e["actor_hid"] == "'"$own"'", sorted(c["field"] for c in e["changes"])] for e in d["items"]]')"
+    api GET "/audit-events?action=set_access_code&record_hid=$own"
+    made="$made $(json '[e["actor_name"] for e in d["items"]]')"
+    api GET "/audit-events?action=access_code_refused&record_hid=$own"
+    expect "S56 each change is in the audit trail by that user: the five fields of the contact, the label and the colour of the operator, and the access code; and so is the code that was refused" \
+        "$made $(json '[e["actor_name"] for e in d["items"]]')" \
+        '[["email", "name", "organization", "phone", "phone2"]] [[true, ["colour", "label"]]] ["pkg-own"] ["pkg-own"]'
+
+    # Nothing of another person, and nothing for a service token.
+    token=$mine
+    api PATCH "/auth/me/operators/$other_label" '{"row_version": 1, "label": "taken"}'
+    made=$status
+    api PATCH "/contacts/$other_contact" '{"row_version": 1, "name": "Taken"}'
+    made="$made $status"
+    api PATCH "/operators/$other_label" '{"row_version": 1, "label": "taken"}'
+    made="$made $status"
+    api POST "/users/$other/access-code" '{}'
+    made="$made $status"
+    api GET /auth/me
+    api PATCH /auth/me/contact "{\"row_version\": $(json 'd["contact"]["row_version"]'), \"email\": \"other.person@example.net\"}"
+    made="$made $status $(json '[[e["field"] for e in d["errors"]], d["existing"]["label"]]')"
+    token=$secret
+    api PATCH /auth/me/contact '{"row_version": 1, "name": "Taken"}'
+    made="$made $status"
+    api POST /auth/me/access-code "{\"current_access_code\": \"$secret\", \"access_code\": \"$own_cli\"}"
+    made="$made $status"
+    token=$admin_token
+    api GET "/contacts/$other_contact"
+    made="$made $(json '[d["name"], d["email"], d["row_version"]]')"
+    api GET "/operators/$other_label"
+    expect "S56 and the user changes nothing of another person: the operator of another is not found by the routes of their own, the contact, the operator and the access code of another are not theirs by the routes of the inventory, and an email that another contact has is refused with that contact named; a service token is refused by the routes of a person's own; the other person is as it was" \
+        "$made $(json_field label)" \
+        '404 403 403 403 409 [["email"], "Example Other Person"] 403 403 ["Example Other Person", "other.person@example.net", 1] PKT'
+
+    # The same by the client commands, as that person.
+    token=$mine
+    cli_run "$work/cli.profile" profile show
+    made="$code $(matches '^name +Example Own Person-Lee$' "$work/cli.profile") $(matches '^organization +Example Networks$' "$work/cli.profile") $(matches '^operator +PKO2  #1f6feb$' "$work/cli.profile")"
+    cli_run "$work/cli-profile.json" profile show --format json
+    api GET /auth/me
+    made="$made $code $(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8")) == json.load(open(sys.argv[2], encoding="utf-8")))' "$work/cli-profile.json" "$work/body" 2>&1)"
+    cli_run "$work/cli.profile-set" profile set --phone2 '' --label PKO3
+    made="$made $code"
+    api GET /auth/me
+    made="$made $(json '[d["contact"]["phone2"], [o["label"] for o in d["operators"]]]')"
+    cli_run "$work/cli.whoami" whoami
+    expect "S56 hirdir profile show prints the profile of whoever is signed in, and with --format json the answer of GET /auth/me; hirdir profile set clears the second number and changes the label; and hirdir whoami says who is signed in, with their contact and their operator" \
+        "$made $code $(head -n 1 "$work/cli.whoami") | $(matches '^operator +PKO3  #1f6feb$' "$work/cli.whoami")" \
+        '0 1 1 1 0 True 0 [null, ["PKO3"]] 0 pkg-own  role: viewer  groups: - | 1'
+    code=0
+    inside env XDG_CONFIG_HOME=/tmp/pkg-own HIRDIR_URL=http://127.0.0.1:8715 HIRDIR_TOKEN="$mine" \
+        bash -c 'printf "%s\n" "$1" "$2" "$2" | hirdir profile access-code' _ "$own_new" "$own_cli" >"$work/cli.code" 2>"$work/cli.err" || code=$?
+    made="$code $(matches 'the access code of pkg-own is changed; every other session has ended, and this one goes on until ' "$work/cli.code") $(matches 'the token given by --token or HIRDIR_TOKEN has ended: use the one kept' "$work/cli.err")"
+    api GET /auth/me
+    made="$made $status"
+    code=0
+    inside env XDG_CONFIG_HOME=/tmp/pkg-own HIRDIR_URL=http://127.0.0.1:8715 hirdir whoami >"$work/cli.whoami" 2>&1 || code=$?
+    made="$made $code $(head -n 1 "$work/cli.whoami")"
+    inside rm -rf /tmp/pkg-own
+    sign_in pkg-own "$own_new"
+    made="$made $status"
+    sign_in pkg-own "$own_cli"
+    token=$admin_token
+    expect "S56 hirdir profile access-code asks for the code they have and twice for the new one, changes it and keeps the new session: the token it was given has ended, which it says; the session it kept answers; the code before signs in no longer, and the new one does" \
+        "$made $status" '0 1 1 401 0 pkg-own  role: viewer  groups: - 401 200'
+
+    # S57. An account in two groups with a role of its own.
+    api POST /user-groups '{"name": "Package Test East"}'
+    east=$(json_field hid)
+    api POST /user-groups '{"name": "Package Test West"}'
+    west=$(json_field hid)
+    api POST /users "{\"username\": \"pkg-leaver\", \"access_code\": \"$leaver_code\", \"role\": \"inventory\", \"group_hids\": [\"$east\", \"$west\"]}"
+    made=$status
+    leaver=$(json 'd["user"]["hid"]')
+    row=$(json 'd["user"]["row_version"]')
+    sign_in pkg-leaver "$leaver_code"
+    gone=$token
+    api GET /auth/me
+    made="$made $status $(json '[d["role"], sorted(g["name"] for g in d["groups"])]')"
+    token=$admin_token
+    api POST "/users/$leaver/retire" "{\"row_version\": $row}"
+    request=$(header x-request-id)
+    made="$made $status $(json '[d["record_status"], d["role"], d["groups"]]')"
+    row=$(json_field row_version)
+    token=$gone
+    api GET /auth/me
+    made="$made $status"
+    sign_in pkg-leaver "$leaver_code"
+    made="$made $status"
+    token=$admin_token
+    expect "S57 an Admin retires the account of a user in two groups with a role of its own: it is retired, in no group and holds no role, its session is ended and its code signs in no longer; and each is in the audit trail under the one request, the two memberships, the role and the retirement" \
+        "$made $(events_of "$request")" \
+        '201 200 ["inventory", ["Package Test East", "Package Test West"]] 200 ["retired", null, []] 401 401 [["remove_member", "user_group"], ["remove_member", "user_group"], ["revoke_role", "user"], ["retire", "user"]]'
+
+    got=""
+    for request in 'limit=1000' 'retired=yes&limit=1000' 'retired=only&limit=1000'; do
+        api GET "/users?$request"
+        got="$got $status $(json '[[u["username"], u["record_status"]] for u in d["items"] if u["username"] in ("pkg-leaver", "pkg-own")]')"
+    done
+    made=""
+    for request in '' '?retired=yes' '?retired=only'; do
+        authorized POST "$prefix/api/v1/users/export$request"
+        made="$made $status $(table '[[r["username"], r["state"], r["record_status"]] for r in rows if r["username"] in ("pkg-leaver", "pkg-own")]')"
+    done
+    expect "S57 the list of users leaves the retired account out until the retired are asked for, retired=yes listing it with the rest and retired=only alone; and so does the users' file, which says in its record_status column which each is" \
+        "$got |$made" \
+        ' 200 [["pkg-own", "active"]] 200 [["pkg-leaver", "retired"], ["pkg-own", "active"]] 200 [["pkg-leaver", "retired"]] | 200 [["pkg-own", "enabled", "active"]] 200 [["pkg-leaver", "enabled", "retired"], ["pkg-own", "enabled", "active"]] 200 [["pkg-leaver", "enabled", "retired"]]'
+    cli_run "$work/cli.users" users list
+    made="$code $(matches '^pkg-leaver ' "$work/cli.users") $(matches '^pkg-own +viewer +person +active' "$work/cli.users")"
+    cli_run "$work/cli.users" users list --retired
+    made="$made $code $(matches '^pkg-leaver +- +person +retired' "$work/cli.users") $(matches '^pkg-own +viewer +person +active' "$work/cli.users")"
+    cli_run "$work/cli-users.json" users list --retired-only --format json
+    expect "S57 hirdir users list leaves it out too; --retired lists it with the rest, its state retired; and --retired-only lists the retired alone" \
+        "$made $code $(python3 -c 'import json, sys; users = json.load(open(sys.argv[1], encoding="utf-8")); print(json.dumps([sorted({u["record_status"] for u in users}), "pkg-leaver" in [u["username"] for u in users]]))' "$work/cli-users.json" 2>&1)" \
+        '0 0 1 0 1 1 0 [["retired"], true]'
+
+    api POST /users '{"username": "pkg-leaver"}'
+    made="$status $(json '[[e["field"] for e in d["errors"]], d["existing"]["hid"] == "'"$leaver"'", d["existing"]["record_type"], d["existing"]["label"], "retired" in d["detail"]]')"
+    api POST "/users/$leaver/access-code" '{}'
+    made="$made $status"
+    api PUT "/user-groups/$east/members/$leaver"
+    made="$made $status"
+    api POST /role-grants "{\"role\": \"viewer\", \"user_hid\": \"$leaver\"}"
+    made="$made $status"
+    api PATCH "/users/$leaver" "{\"row_version\": $row, \"disabled\": true}"
+    made="$made $status"
+    code=0
+    inside hirdir admin reset-access-code pkg-leaver >"$work/admin-code.log" 2>&1 || code=$?
+    api GET "/users/$leaver"
+    expect "S57 a new account of its username is refused with a 409 on username that names the retired one; and while it is retired the account is given no access code, by the API or by hirdir admin reset-access-code, no group and no role, and is not disabled: it is as its retirement left it" \
+        "$made $code $(matches 'retired' "$work/admin-code.log") $(json '[d["record_status"], d["disabled"], d["role"], d["groups"], d["row_version"]]')" \
+        "409 [[\"username\"], true, \"user\", \"pkg-leaver\", true] 409 409 409 409 4 1 [\"retired\", false, null, [], $row]"
+
+    cli_run "$work/cli.back" users bring-back pkg-leaver
+    back=$(sed -n 's/^access code, shown this once: //p' "$work/cli.back")
+    made="$code $(matches '^pkg-leaver is active again, with no role and no group$' "$work/cli.back") $([ -n "$back" ] && [ "$back" != "$leaver_code" ] && echo new)"
+    sign_in pkg-leaver "$leaver_code"
+    made="$made $status"
+    sign_in pkg-leaver "$back"
+    made="$made $status"
+    api GET /auth/me
+    made="$made $(json '[d["role"], d["groups"]]')"
+    code=0
+    inside env XDG_CONFIG_HOME=/tmp/pkg-leaver bash -c 'printf "%s\n" "$1" | hirdir sign-in --url http://127.0.0.1:8715 --username pkg-leaver' _ "$back" >"$work/cli.sign-in" 2>"$work/cli.err" || code=$?
+    made="$made $code $(matches 'signed in as pkg-leaver \(no role\) until ' "$work/cli.sign-in")"
+    inside rm -rf /tmp/pkg-leaver
+    token=$admin_token
+    api GET '/users?limit=1000'
+    expect "S57 hirdir users bring-back makes the account active again and prints a new access code once: the code before signs in no longer, the new one does, and the account has no role and no group; hirdir sign-in takes an account with no role; and the list of users has it again" \
+        "$made $(json '[[u["username"], u["record_status"], u["disabled"]] for u in d["items"] if u["username"] == "pkg-leaver"]')" \
+        '0 1 new 401 200 [null, []] 0 1 [["pkg-leaver", "active", false]]'
+
+    # S58. A user who is a contact behind two operators, the person a label goes to, and
+    # somebody of the Inventory role.
+    api POST /users '{"username": "pkg-mover", "access_code": "pkg-mover-code-01", "role": "viewer", "contact": {"name": "Example Moving Person", "email": "moving.person@example.net"}}'
+    made=$status
+    mover=$(json 'd["user"]["hid"]')
+    mover_contact=$(json 'd["user"]["contact_hid"]')
+    api POST /operators "{\"label\": \"PKM1\", \"contact_hid\": \"$mover_contact\"}"
+    made="$made $status"
+    first=$(json_field hid)
+    api POST /operators "{\"label\": \"PKM2\", \"contact_hid\": \"$mover_contact\"}"
+    made="$made $status"
+    second=$(json_field hid)
+    api POST /contacts '{"name": "Example Successor Person", "email": "successor.person@example.net"}'
+    made="$made $status"
+    successor=$(json_field hid)
+    api POST /users '{"username": "pkg-keeper", "access_code": "pkg-keeper-code-01", "role": "inventory"}'
+    made="$made $status"
+    api GET "/contacts/$mover_contact"
+    row=$(json_field row_version)
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+
+    cli_run "$work/cli.bare" contacts retire moving.person@example.net
+    made="$made | $code $(matches 'not said$' "$work/cli.bare") $(matches 'operator PKM1, operator PKM2, user pkg-mover' "$work/cli.err")"
+    api POST "/contacts/$mover_contact/retire" "{\"row_version\": $row}"
+    made="$made $status $(json '[sorted(e["field"] for e in d["errors"]), [[r["record_type"], r["label"]] for r in d["depends_on"]]]')"
+    cli_run "$work/cli.dry" contacts retire moving.person@example.net --user retire --operator 'PKM1=hand_over:successor.person@example.net' --operator PKM2=retire --dry-run
+    made="$made $code $(matches '^nothing was sent: this is what would be done$' "$work/cli.dry") $(matches 'hand over to successor.person@example.net$' "$work/cli.dry")"
+    api GET "/contacts/$mover_contact/linked"
+    made="$made $(json '[d["user"]["record_status"], d["contact"]["record_status"], [o["record_status"] for o in d["operators"]]]')"
+    api GET '/audit-events?limit=1'
+    expect "S58 retiring the contact of a user behind two operators and saying nothing of the rest is refused, by hirdir contacts retire with exit code 5 and by the API with a 409, the user and both operators named; --dry-run prints the plan and sends nothing; nothing is changed and no event is written" \
+        "$made $(($(json_field total) - events))" \
+        '201 201 201 201 201 | 5 3 1 409 [["linked.operators", "linked.user"], [["operator", "PKM1"], ["operator", "PKM2"], ["user", "pkg-mover"]]] 0 1 1 ["active", "active", ["active", "active"]] 0'
+
+    cli_run "$work/cli.together" contacts retire moving.person@example.net --user retire --operator 'PKM1=hand_over:successor.person@example.net' --operator PKM2=retire
+    made="$code $(matches '^Example Moving Person is retired$' "$work/cli.together")"
+    api GET "/audit-events?record_hid=$mover_contact&action=retire&limit=1"
+    request=$(json 'd["items"][0]["request_id"]')
+    got=$(events_of "$request")
+    api GET "/users/$mover/linked"
+    made="$made $(json '[d["user"]["record_status"], d["contact"]["record_status"], [[o["label"], o["record_status"]] for o in d["operators"]]]')"
+    api GET "/operators/$first"
+    expect "S58 with the user retired, one operator handed over to another person and one released, hirdir contacts retire retires the person in one change: the user and the contact are retired, the first label is behind the other person and the second is retired, each audited under the one request, the contact being told that it is no user's before it is retired" \
+        "$made $(json '[d["contact_hid"] == "'"$successor"'", d["record_status"]]') $got" \
+        '0 1 ["retired", "retired", [["PKM2", "retired"]]] [true, "active"] [["update", "operator"], ["retire", "operator"], ["revoke_role", "user"], ["retire", "user"], ["update", "contact"], ["retire", "contact"]]'
+
+    sign_in pkg-keeper pkg-keeper-code-01
+    api GET "/contacts/$mover_contact"
+    api PATCH "/contacts/$mover_contact" "{\"row_version\": $(json_field row_version), \"record_status\": \"active\"}"
+    made=$status
+    cli_run "$work/cli.refused" users retire pkg-other --contact keep --operator PKT=keep
+    made="$made $code"
+    token=$admin_token
+    api GET "/contacts/$mover_contact"
+    made="$made $(json_field record_status)"
+    api GET "/users/$other"
+    expect "S58 somebody of the Inventory role cannot bring the contact back, a 403, and does not retire a user, which hirdir users retire exits from with 3: the contact stays retired and the user active" \
+        "$made $(json_field record_status)" '403 3 retired active'
+
+    cli_run "$work/cli.alone" users bring-back pkg-mover
+    made="$code $(matches 'Example Moving Person, is retired' "$work/cli.err")"
+    cli_run "$work/cli.back" users bring-back pkg-mover --contact
+    back=$(sed -n 's/^access code, shown this once: //p' "$work/cli.back")
+    made="$made $code $(matches '^pkg-mover is active again, with no role and no group$' "$work/cli.back")"
+    api GET "/users/$mover/linked"
+    made="$made $(json '[d["user"]["record_status"], d["contact"]["record_status"], [[o["label"], o["record_status"]] for o in d["operators"]]]')"
+    sign_in pkg-mover "$back"
+    api GET /auth/me
+    token=$admin_token
+    expect "S58 an Admin brings the user back with hirdir users bring-back: alone it is refused, exit code 5, the retired contact named; with --contact both are active again, the released label stays retired, and the person signs in with the new code and holds no role" \
+        "$made $status $(json_field role)" \
+        '5 1 0 1 ["active", "active", [["PKM2", "retired"]]] 200 null'
+
+    cli_run "$work/cli.label" operators retire PKM1
+    made="$code $(matches 'not said$' "$work/cli.label")"
+    cli_run "$work/cli.label" operators retire PKM1 --contact keep
+    made="$made $code $(matches '^PKM1 is released; it was on 0 records of its own$' "$work/cli.label")"
+    api GET "/operators/$first"
+    made="$made $(json_field record_status)"
+    api GET "/contacts/$successor"
+    expect "S58 hirdir operators retire of the label that was handed over is refused, exit code 5, until it says what becomes of the person behind it; with --contact keep the label is retired and that person stays" \
+        "$made $(json_field record_status)" '5 1 0 1 retired active'
 }
 
 # ---- reference files --------------------------------------------------------------------

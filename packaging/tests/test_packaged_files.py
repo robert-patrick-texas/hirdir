@@ -456,11 +456,17 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
     table and writes no event, and the file of the package test declares the column as
     the model does (P-296); and the access codes that the file types to the previous
     release are shorter than a code may be typed from this one, so that the upgrade is
-    held to keep them (P-295)."""
+    held to keep them (P-295). The setting, the routes and the commands that the page
+    names are the code's, and the package test asks for the three scenarios of the
+    release, S56 to S58, on the fresh install and on what the upgrade carried over."""
+    import json
+
     from sqlalchemy import ColumnDefault, String, inspect
     from sqlalchemy.dialects import sqlite
 
     from hirdir.db.models import User
+    from hirdir.domain import settings
+    from hirdir.io import users_file
 
     versions = ROOT / "src/hirdir/db/migrations/versions"
     revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
@@ -512,12 +518,73 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
     # The least length of a typed code, as the page gives it to an operator, and the two
     # codes that the file types to the previous release, which takes them: each is
     # shorter, so that a code from before which could not be typed now is carried over.
-    least = 12
+    name = settings.CODE_LENGTH_SETTING
+    least = settings.SPECS[name].default
+    assert least == settings.DEFAULT_CODE_LENGTH
     assert f"**A typed access code has at least {least} characters.**" in page
-    assert f"`access_code_min_length`, {least} unless set, a whole number from 1 to 64" in page
+    assert (
+        f"`{name}`, {least} unless set, a whole number from 1 to {settings.MOST_CODE_LENGTH}"
+        in page
+    )
+    assert f"shorter than {least} characters" in page
     typed = re.findall(r"^typed(?:_cli)?_0017=(\S+)$", hook, re.M)
     assert len(typed) == 2
     assert all(0 < len(code) < least for code in typed)
+    # The package test sets the setting by its name, and looks for what the server says
+    # of a code that is too short as the server says it.
+    assert f"put_setting {name} " in hook
+    assert f"at least {least} characters ({name})" in hook
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    assert f"at least {least} characters ({name})" in script
+    # Every code that the package test types to this version is long enough, but the one
+    # that is to be refused and the one typed under a setting that the test lowered.
+    sent = re.findall(r'access_code\\?": \\?"([^"\\$]+)\\?"', script + hook)
+    sent += re.findall(r"=(pkg-[a-z-]+-code-\d+)\b", script)
+    assert len(sent) > 10
+    assert {code for code in sent if len(code) < least} == {"eleven-char"}
+
+    # The routes and the commands that the page names are those of the contract and of
+    # the command line, and the column of the users' file is the file's.
+    contract = json.loads((ROOT / "contract" / "openapi.json").read_text(encoding="utf-8"))
+    for method, path in (
+        ("patch", "/auth/me/contact"),
+        ("patch", "/auth/me/operators/{hid}"),
+        ("post", "/auth/me/access-code"),
+        ("post", "/users/{hid}/retire"),
+        ("post", "/users/{hid}/bring-back"),
+        ("get", "/users/{hid}/linked"),
+        ("get", "/contacts/{hid}/linked"),
+        ("get", "/operators/{hid}/linked"),
+        ("post", "/contacts/{hid}/retire"),
+        ("post", "/operators/{hid}/retire"),
+        ("post", "/users/export"),
+    ):
+        assert method in contract["paths"][f"/api/v1{path}"]
+        assert f"`{method.upper()} {path}`" in page
+    asked = contract["paths"]["/api/v1/users"]["get"]["parameters"]
+    (retired,) = [one for one in asked if one["name"] == "retired"]
+    assert retired["schema"]["enum"] == ["no", "yes", "only"]
+    assert "take `retired`, `no`, `yes` or `only`" in page
+    assert "record_status" in users_file.COLUMNS
+    main = (ROOT / "src/hirdir/cli/main.py").read_text(encoding="utf-8")
+    inventory = (ROOT / "src/hirdir/cli/inventory.py").read_text(encoding="utf-8")
+    assert 'app.add_typer(profile.group, name="profile")' in main
+    for group, command, source in (
+        ("users", "retire", main),
+        ("users", "bring-back", main),
+        ("contacts", "retire", inventory),
+        ("operators", "retire", inventory),
+    ):
+        assert f'@{group}.command("{command}")' in source
+        assert f"`hirdir {group} {command}`" in page
+    assert "`hirdir profile`" in page
+
+    # The package test runs the three scenarios on the fresh install, and the file of
+    # the migration on what the upgrade carried over.
+    assert "\n    own_and_retired\n" in script
+    for scenario in ("S56", "S57", "S58"):
+        assert f'expect "{scenario} ' in script
+        assert f'expect "{scenario} after the upgrade, ' in hook
 
 
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
