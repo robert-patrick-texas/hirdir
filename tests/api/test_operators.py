@@ -330,8 +330,11 @@ def test_a_label_is_handed_over_left_open_and_released_in_one_change(
     summary = make.get("/reports/summary", by="operator")
     assert [(row["label"], row["component_count"]) for row in summary["rows"]] == [(None, 3)]
     # Brought back, it is on everything it was on, and none of it was ever written to.
-    # By an Admin: a retired operator is brought back by nobody else (P-298).
-    _patch(Maker(make.client, admin), lm, record_status="active")
+    # By an Admin: a retired operator is brought back by nobody else, and not onto its
+    # retired contact, which is taken off it in the same change (P-298).
+    desk = Maker(make.client, admin)
+    desk.patch(lm, {"row_version": make.get(lm)["row_version"], "record_status": "active"}, 409)
+    _patch(desk, lm, record_status="active", contact_hid=None)
     assert _in_force(make, switches[1]) == ("LM", "device_group", stack["hid"])
     assert [make.get(f"/items/{switch['hid']}")["row_version"] for switch in switches] == versions
 
