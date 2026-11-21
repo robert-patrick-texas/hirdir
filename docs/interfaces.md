@@ -258,8 +258,10 @@ that is not retired whose contact is theirs, in the order of their labels, each 
 `hid`, `label`, `colour`, `record_status` and `row_version`. A person whose contact is
 retired has none: nobody is behind the labels of a retired contact (P-280). The answer
 of signing in carries the same as its `user`. The three routes below are
-for a session of any role, View-only too; an account that holds no role is refused by
-each with a `403`, as it is by the rest of the inventory. They carry no HID of a user
+for a session of any role, View-only too, and of an account that holds no role, as
+`GET /auth/me` and `POST /auth/sign-out-everywhere` are: an account that is brought
+back has a new code and no role (P-296), and that person changes the code an Admin
+gave them, and what is their own, before a role is theirs. They carry no HID of a user
 or of a contact: they change the records of whoever is signed in and no other. A
 service token is refused by each with a `403`.
 
@@ -287,10 +289,10 @@ is the one of signing in, by the username and by the address the request came fr
 person delayed here is delayed at sign-in too, and the other way round, and the right
 code clears it. While the person is delayed the codes are not looked at, and the
 attempt is written as `access_code_delayed`. Both events are kept though the request
-is refused. A new code
-shorter than the setting `access_code_min_length`, or blank, or beginning or ending
-with a space, is a `422` on `access_code`; the current code is looked at first, so a
-request with both wrong is counted. Accepted, the code is changed, every other
+is refused. A new code shorter than the setting `access_code_min_length`, or blank, or
+beginning or ending with a space, is a `422` on `access_code`; the current code is
+looked at first, so a request with both wrong is counted. Accepted, the code is
+changed, every other
 session of the person ends, and the answer is that of `POST /auth/sign-in`: a new
 `token` and `expires_at` for the session in hand, and the `user`. The token sent with
 the request is ended with the others. It is audited as `set_access_code`, by the
@@ -2719,6 +2721,11 @@ body whole before it passes it on, always says it.
 
 ```bash
 hirdir sign-in                                   # asks for username and access code
+hirdir whoami                                    # who is signed in, their role, contact and operators
+hirdir profile show                              # your own profile
+hirdir profile set --phone '+1 555 0100' --organization 'Example Networks'
+hirdir profile set --label KL --colour '#1f6feb' # of your operator; --operator LABEL where you have several
+hirdir profile access-code                       # asks for the code you have and the new one
 hirdir items list --filter 'lifecycle_state:eq:Prod location:within:Americas > Central'
 hirdir items show FCW0000X001                    # by HID, serial number, asset tag or name
 hirdir items set <hid> disposition=Spare expected_online=false
@@ -2860,6 +2867,7 @@ refused leaves the others as they went.
 | Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
+| Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself, and an account with no role too; the server refuses a service token (P-294, P-295) |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the
@@ -2867,6 +2875,7 @@ database directly, because it must work before any account exists:
 
 ```bash
 hirdir admin create-user --role admin NAME       # prints a new access code once
+hirdir admin create-user --access-code CODE NAME # a code of your choosing, of access_code_min_length at the least
 hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org NAME   # and its contact
 hirdir admin reset-access-code NAME
 hirdir admin migrate

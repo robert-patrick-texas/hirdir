@@ -46,9 +46,9 @@ from hirdir.db.engine import make_engine, make_sessions
 from hirdir.domain import accounts, audit, load
 from hirdir.io import measures
 
-ADMIN_CODE = "admin-code"
+ADMIN_CODE = "admin-code-01"
 INVENTORY_CODE = "inventory-code"
-VIEWER_CODE = "viewer-code"
+VIEWER_CODE = "viewer-code-01"
 USERS = (
     ("ada", ADMIN_CODE, "admin"),
     ("ivy", INVENTORY_CODE, "inventory"),
