@@ -451,7 +451,7 @@ def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_t
 
 
 def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_code_says() -> None:
-    """The notes of the upgrade to 0.9.14, the newest, and what the package test asks for
+    """The notes of the upgrade to 0.9.14, and what the package test asks for
     it: migration 0017 adds `users.record_status`, `active` for every user, creates no
     table and writes no event, and the file of the package test declares the column as
     the model does (P-296); and the access codes that the file types to the previous
@@ -596,6 +596,89 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
     for scenario in ("S56", "S57", "S58"):
         assert f'expect "{scenario} ' in script
         assert f'expect "{scenario} after the upgrade, ' in hook
+
+
+def test_the_install_page_and_the_package_test_say_of_no_role_what_the_code_says() -> None:
+    """The notes of the upgrade to 0.9.15, the newest, and what the package test asks for
+    it: no migration, and an account that holds no role refused at sign-in, its session
+    and its token refused, and given a role when it is made or brought back (P-299); a
+    new code that is the one in hand refused, and a code made as long as the setting asks
+    (P-300). The routes and the commands that the page names are the code's, the words
+    that the package test looks for are those the server says, and the package test asks
+    for S59 and S60 on the fresh install and, by the file of the release, for what an
+    account with no role held before the upgrade."""
+    import json
+
+    from hirdir.auth import codes
+    from hirdir.domain import accounts, settings
+
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    assert max(path.name[:4] for path in versions.glob("[0-9]*.py")) == "0017"
+    assert "### From 0.9.14 to 0.9.15" in INSTALL
+    notes = INSTALL.split("### From 0.9.14 to 0.9.15\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    assert "The schema stays at revision `0017`: 0.9.15 has no migration." in page
+    assert "it writes no audit event" in page
+    assert "does not come back when the account is given a role" in page
+    assert "sudo apt install --allow-downgrades ./hirdir_0.9.14_amd64.deb" in page
+
+    contract = json.loads((ROOT / "contract" / "openapi.json").read_text(encoding="utf-8"))
+    for method, path in (
+        ("post", "/auth/sign-in"),
+        ("post", "/users"),
+        ("post", "/users/{hid}/bring-back"),
+        ("post", "/auth/me/access-code"),
+        ("get", "/auth/new-access-code"),
+    ):
+        assert method in contract["paths"][f"/api/v1{path}"]
+        assert f"`{method.upper()} {path}`" in page
+    assert '"sign_in_no_role"' in (ROOT / "src/hirdir/domain/accounts.py").read_text(
+        encoding="utf-8"
+    )
+    assert "`sign_in_no_role`" in page
+    main = (ROOT / "src/hirdir/cli/main.py").read_text(encoding="utf-8")
+    profile = (ROOT / "src/hirdir/cli/profile.py").read_text(encoding="utf-8")
+    assert "role: Annotated[" in main.split('@users.command("bring-back")', 1)[1]
+    assert '"--generate"' in profile
+    for named in (
+        "`--role` of `hirdir users bring-back`",
+        "`--generate` of `hirdir profile access-code`",
+        "`hirdir sign-in` of an account with no role exits `3`",
+    ):
+        assert named in page
+
+    # What the package test looks for, in the words the server says it in.
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    hook = (PACKAGING / "package-test.d" / "release-0.9.15.sh").read_text(encoding="utf-8")
+    session = "the session has been ended: this account holds no role"
+    token = "the token is not accepted: its service account holds no role"
+    source = (ROOT / "src/hirdir/domain/accounts.py").read_text(encoding="utf-8")
+    for words in (session, token):
+        assert f'NotSignedIn("{words}")' in source
+        assert words in script
+        assert words in hook
+    assert f'"No role", "{accounts.NO_ROLE}"' in script
+    assert f'"No role", "{accounts.NO_ROLE}"' in hook
+    assert f"^hirdir: {accounts.NO_ROLE}$" in script
+    assert f'[["role", "{accounts.GIVE_A_ROLE}"]]' in script
+    assert '\\"role\\", \\"give the role the account is to hold\\"' in script
+    assert "this is the access code you have now" in source
+    assert '[["access_code", "this is the access code you have now"]]' in script
+
+    # The lengths of a made code that the package test looks for are the generator's.
+    least = settings.SPECS[settings.CODE_LENGTH_SETTING].default
+    assert len(codes.generate(least)) == 14
+    assert len(codes.generate(20)) == 24
+    assert '"200 20 200 [24, 4] ' in script
+    assert "14, true] another" in script
+
+    # The package test runs the two scenarios on the fresh install, and the file of the
+    # release on what the upgrade carried over.
+    assert "\n    roles_and_codes\n" in script
+    for scenario in ("S59", "S60"):
+        assert f'expect "{scenario} ' in script
+    for function in ("before_0_9_15", "changed_0_9_15", "after_0_9_15"):
+        assert f"\n{function}() {{\n" in hook
 
 
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:

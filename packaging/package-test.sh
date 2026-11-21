@@ -60,7 +60,8 @@
 #                      user, a contact and an operator in one request, the gaps of the
 #                      users, the colours and the users as a file, a person's own
 #                      profile and access code, an account retired and brought
-#                      back and a person retired together, reference files
+#                      back and a person retired together, an account with no role
+#                      refused and the access codes that the server makes, reference files
 #                      uploaded and downloaded through nginx and a backup of them restored
 #                      on a second, clean host, then the inventory made by hand, and the
 #                      capacity balance of the worked example; and, where the package has
@@ -105,8 +106,8 @@
 # S28 for places, contacts, a site that is moved and an owner outside the team, S29 to
 # S35 for contracts and coverage, the end of life, the portfolio of a vendor, purchases,
 # registrations, drafts and archived items, S39 and S40 for the capacity balance, S56
-# to S58 for a person's own profile, a retired account and a person retired together. The
-# others, marked pkg, are about the package alone, or about a record that has no
+# to S58 for a person's own profile, a retired account and a person retired together, S59
+# and S60 for an account with no role and the access codes that are made. The others, marked pkg, are about the package alone, or about a record that has no
 # scenario of its own yet, such as the condition of an item and the health of a stack.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
@@ -116,7 +117,9 @@
 # hirdir registrations, hirdir capacity and hirdir vendors) are then run in the
 # container, from the package, by client_commands(), and hirdir profile, hirdir
 # whoami, hirdir sign-in, hirdir users, hirdir contacts retire and hirdir operators
-# retire by own_and_retired().
+# retire by own_and_retired(), and hirdir sign-in of an account with no role, hirdir
+# admin create-user without a role and hirdir profile access-code --generate by
+# roles_and_codes().
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -4605,10 +4608,12 @@ files() {
     # From 0.9.13: every table exported whole and loaded back, while the inventory holds
     # the examples and everything that the checks made beside them; and a person made in
     # one request, which the restore below takes away again with the rest. From 0.9.14:
-    # a person's own profile, a retired account and a person retired together.
+    # a person's own profile, a retired account and a person retired together. From
+    # 0.9.15: an account with no role, and the access codes that are made.
     every_table
     people_at_once
     own_and_retired
+    roles_and_codes
 
     section "files: the examples taken out again by hirdir admin reset, and the inventory from before them restored, under $prefix/"
     # A file and a link on a location of the examples, from 0.9.0, for the reset to clear
@@ -4850,8 +4855,9 @@ print(json.dumps([len(grid), sorted({len(row) for row in grid}), len(set(every))
     expect "pkg a second such request, refused in its last part, an operator of a label that the first one's has, is a 409 that names that field and that operator, and leaves nothing: no user, no contact, no operator, no grant, no membership and no event more ($held)" \
         "$made $(people_held)" "409 [[\"operator.label\"], \"pkg-onboarded\"] 0 0 $held"
 
-    # The gaps of the list of users, among those of this pass.
-    api POST /users '{"username": "pkg-plain", "contact": {"name": "Example Plain Person"}}'
+    # The gaps of the list of users, among those of this pass. From 0.9.15 a person is
+    # made with a role (P-299).
+    api POST /users '{"username": "pkg-plain", "contact": {"name": "Example Plain Person"}, "role": "viewer"}'
     made="$status $(json '[d["operator"], d["user"]["operators"]]')"
     got=""
     for gap in contact=none contact=some operator=none operator=some; do
@@ -4872,7 +4878,7 @@ print(json.dumps([len(grid), sorted({len(row) for row in grid}), len(set(every))
     expect "pkg POST $prefix/api/v1/users/export gives an Admin the users as CSV, named for the product and the moment, a row to each user, by username, in the thirteen columns of R11.10" \
         "$status $(header content-type | cut -d';' -f1) $(printf '%s\n' "$name" | grep -cE '^hirdir-users-[0-9]{8}T[0-9]{6}[-+][0-9]{4}\.csv$') $(table head "$work/users.csv") $(table '[r["username"] for r in rows]' "$work/users.csv")" \
         "200 text/csv 1 [\"username\", \"name\", \"email\", \"phone\", \"phone2\", \"role\", \"groups\", \"operators\", \"kind\", \"state\", \"record_status\", \"last_sign_in_at\", \"notes\"] $usernames"
-    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact alone; the service account its role and its kind; and $admin its role, and that it has signed in; and each is active, none of them retired" \
+    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact and its role; the service account its role and its kind; and $admin its role, and that it has signed in; and each is active, none of them retired" \
         "$(table '[[r["username"], r["name"], r["email"], r["phone"], r["role"], r["groups"], r["operators"], r["kind"], r["state"], r["record_status"], bool(r["last_sign_in_at"]), r["notes"]] for r in rows if r["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]' "$work/users.csv")" \
         "$(python3 -c '
 import json, sys
@@ -4881,7 +4887,7 @@ print(json.dumps([
     [sys.argv[1], "", "", "", "admin", "", "", "person", "enabled", "active", True, ""],
     ["pkg-desk-reader", "", "", "", "viewer", "", "", "service", "enabled", "active", False, ""],
     ["pkg-onboarded", "Example Onboarded Person", "onboarded.person@example.net", "'"'"'+1 555 0171", "inventory", "Package Test Engineers;Package Test Night Shift", "pkg-onboarded", "person", "enabled", "active", True, "Made in one step by the package test"],
-    ["pkg-plain", "Example Plain Person", "", "", "", "", "", "person", "enabled", "active", False, ""],
+    ["pkg-plain", "Example Plain Person", "", "", "viewer", "", "", "person", "enabled", "active", False, ""],
 ]))' "$admin")"
     for value in "$admin_code" "$onboarded_code" "$secret" "$first_token" \
         $(sqlite_text 'SELECT access_code_hash FROM users WHERE access_code_hash IS NOT NULL UNION ALL SELECT token_hash FROM service_tokens'); do
@@ -4911,9 +4917,9 @@ print(json.dumps([
 # their own, the contact they are, their operator and their access code, and nothing of
 # another; an account in two groups with a role of its own is retired, left out of the
 # list and of the users' file until the retired are asked for, keeps its username, and
-# is brought back with a new code and nothing else; and a person, a user who is a
-# contact behind two operators, is retired together or not at all, and brought back by
-# an Admin alone. Every access code that is typed here has the least length of a typed
+# is brought back with a new code, the role it is given, from 0.9.15, and nothing else;
+# and a person, a user who is a contact behind two operators, is retired together or not
+# at all, and brought back by an Admin alone. Every access code that is typed here has the least length of a typed
 # code or more, but the one that is to be refused. files() runs it before the restore
 # that takes it all away again.
 own_and_retired() {
@@ -5120,7 +5126,7 @@ own_and_retired() {
         "$made $code $(python3 -c 'import json, sys; users = json.load(open(sys.argv[1], encoding="utf-8")); print(json.dumps([sorted({u["record_status"] for u in users}), "pkg-leaver" in [u["username"] for u in users]]))' "$work/cli-users.json" 2>&1)" \
         '0 0 1 0 1 1 0 [["retired"], true]'
 
-    api POST /users '{"username": "pkg-leaver"}'
+    api POST /users '{"username": "pkg-leaver", "role": "viewer"}'
     made="$status $(json '[[e["field"] for e in d["errors"]], d["existing"]["hid"] == "'"$leaver"'", d["existing"]["record_type"], d["existing"]["label"], "retired" in d["detail"]]')"
     api POST "/users/$leaver/access-code" '{}'
     made="$made $status"
@@ -5137,9 +5143,19 @@ own_and_retired() {
         "$made $code $(matches 'retired' "$work/admin-code.log") $(json '[d["record_status"], d["disabled"], d["role"], d["groups"], d["row_version"]]')" \
         "409 [[\"username\"], true, \"user\", \"pkg-leaver\", true] 409 409 409 409 4 1 [\"retired\", false, null, [], $row]"
 
+    # From 0.9.15 a person is brought back with a role, or not at all (P-299).
+    api POST "/users/$leaver/bring-back" "{\"row_version\": $row}"
+    made="$status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
     cli_run "$work/cli.back" users bring-back pkg-leaver
+    made="$made $code $(matches '^  role: give the role the account is to hold$' "$work/cli.err")"
+    api GET "/users/$leaver"
+    made="$made $(json '[d["record_status"], d["role"], d["row_version"]]')"
+    expect "S59 bringing the account back without a role is refused, by the API with a 422 on role and by hirdir users bring-back, which exits with 4 and says why; nothing changes: the account is retired still, with no role" \
+        "$made" "422 [[\"role\", \"give the role the account is to hold\"]] 4 1 [\"retired\", null, $row]"
+
+    cli_run "$work/cli.back" users bring-back pkg-leaver --role viewer
     back=$(sed -n 's/^access code, shown this once: //p' "$work/cli.back")
-    made="$code $(matches '^pkg-leaver is active again, with no role and no group$' "$work/cli.back") $([ -n "$back" ] && [ "$back" != "$leaver_code" ] && echo new)"
+    made="$code $(matches '^pkg-leaver is active again, with the viewer role and no group$' "$work/cli.back") $([ -n "$back" ] && [ "$back" != "$leaver_code" ] && echo new)"
     sign_in pkg-leaver "$leaver_code"
     made="$made $status"
     sign_in pkg-leaver "$back"
@@ -5148,13 +5164,13 @@ own_and_retired() {
     made="$made $(json '[d["role"], d["groups"]]')"
     code=0
     inside env XDG_CONFIG_HOME=/tmp/pkg-leaver bash -c 'printf "%s\n" "$1" | hirdir sign-in --url http://127.0.0.1:8715 --username pkg-leaver' _ "$back" >"$work/cli.sign-in" 2>"$work/cli.err" || code=$?
-    made="$made $code $(matches 'signed in as pkg-leaver \(no role\) until ' "$work/cli.sign-in")"
+    made="$made $code $(matches 'signed in as pkg-leaver \(viewer\) until ' "$work/cli.sign-in")"
     inside rm -rf /tmp/pkg-leaver
     token=$admin_token
     api GET '/users?limit=1000'
-    expect "S57 hirdir users bring-back makes the account active again and prints a new access code once: the code before signs in no longer, the new one does, and the account has no role and no group; hirdir sign-in takes an account with no role; and the list of users has it again" \
+    expect "S57 hirdir users bring-back --role viewer makes the account active again and prints a new access code once: the code before signs in no longer, the new one does, and the account holds the role it was given and no group; hirdir sign-in says so; and the list of users has it again" \
         "$made $(json '[[u["username"], u["record_status"], u["disabled"]] for u in d["items"] if u["username"] == "pkg-leaver"]')" \
-        '0 1 new 401 200 [null, []] 0 1 [["pkg-leaver", "active", false]]'
+        '0 1 new 401 200 ["viewer", []] 0 1 [["pkg-leaver", "active", false]]'
 
     # S58. A user who is a contact behind two operators, the person a label goes to, and
     # somebody of the Inventory role.
@@ -5230,19 +5246,19 @@ own_and_retired() {
         "$made $status $(json '[d["record_status"], d["contact_hid"], d["is_open"]]')" \
         '409 [["record_status"], "contact", "Example Moving Person"] ["retired", true, true] 200 ["active", null, true]'
 
-    cli_run "$work/cli.alone" users bring-back pkg-mover
+    cli_run "$work/cli.alone" users bring-back pkg-mover --role viewer
     made="$code $(matches 'Example Moving Person, is retired' "$work/cli.err")"
-    cli_run "$work/cli.back" users bring-back pkg-mover --contact
+    cli_run "$work/cli.back" users bring-back pkg-mover --contact --role viewer
     back=$(sed -n 's/^access code, shown this once: //p' "$work/cli.back")
-    made="$made $code $(matches '^pkg-mover is active again, with no role and no group$' "$work/cli.back")"
+    made="$made $code $(matches '^pkg-mover is active again, with the viewer role and no group$' "$work/cli.back")"
     api GET "/users/$mover/linked"
     made="$made $(json '[d["user"]["record_status"], d["contact"]["record_status"], [[o["label"], o["record_status"]] for o in d["operators"]]]')"
     sign_in pkg-mover "$back"
     api GET /auth/me
     token=$admin_token
-    expect "S58 an Admin brings the user back with hirdir users bring-back: alone it is refused, exit code 5, the retired contact named; with --contact both are active again, with no label behind the contact, the one having gone to another person and the other having come back open, and the person signs in with the new code and holds no role" \
+    expect "S58 an Admin brings the user back with hirdir users bring-back: alone it is refused, exit code 5, the retired contact named; with --contact both are active again, with no label behind the contact, the one having gone to another person and the other having come back open, and the person signs in with the new code and holds View-only, the role given with --role" \
         "$made $status $(json_field role)" \
-        '5 1 0 1 ["active", "active", []] 200 null'
+        '5 1 0 1 ["active", "active", []] 200 viewer'
 
     cli_run "$work/cli.label" operators retire PKM1
     made="$code $(matches 'not said$' "$work/cli.label")"
@@ -5253,6 +5269,226 @@ own_and_retired() {
     api GET "/contacts/$successor"
     expect "S58 hirdir operators retire of the label that was handed over is refused, exit code 5, until it says what becomes of the person behind it; with --contact keep the label is retired and that person stays" \
         "$made $(json_field record_status)" '5 1 0 1 retired active'
+}
+
+# roles_and_codes: S59 and S60 (P-299, P-300), from 0.9.15, through nginx and by the
+# client commands of the package. An account that holds no role does not sign in: its
+# right code is a 403 that names whom to ask, by the API and by hirdir sign-in, and the
+# refusal is in the audit trail; the last role taken away through a group ends the
+# session, which a role given again does not bring back; a service account with no role
+# has its token refused; and a person is made with a role by the API, while hirdir admin
+# still makes one without and says that it cannot sign in. A new access code on the
+# profile is not the code in hand, for an Admin too; a code that the server makes, by
+# GET /auth/new-access-code and by hirdir profile access-code --generate, is as long as
+# a raised access_code_min_length asks and is saved as a typed one is; and an Admin
+# sets another's code to the one they had. files() runs it before the restore that
+# takes it all away again, and it leaves the settings at their defaults.
+roles_and_codes() {
+    section "an account with no role and the access codes that are made, through nginx under $prefix/ and by the client commands: hirdir sign-in, hirdir admin create-user, hirdir profile access-code --generate"
+    local admin_token=$token made code=0 events group grant stores session robot secret
+    local coder typed again kept
+    local stores_code=pkg-stores-code-01 desk_code=pkg-desk-code-0001 desk_new=pkg-desk-code-0002
+    local coder_code=pkg-coder-code-01
+
+    # S59. Whom to ask is set, and the sign-in page does not list it.
+    made="$(put_setting help_organization '"Example Service Desk"') $(put_setting help_email '"service.desk@example.net"') $(put_setting help_phone '"+1 555 0190"') $(put_setting help_url '"https://help.example.net/desk"') $(put_setting help_on_sign_in false)"
+    expect "S59 an Admin sets whom to ask, and leaves the sign-in page not listing them" \
+        "$made" "200 Example Service Desk 200 service.desk@example.net 200 +1 555 0190 200 https://help.example.net/desk 200 false"
+
+    # A person whose one role is that of its group, signed in, loses it.
+    api POST /user-groups '{"name": "Package Test Stores"}'
+    made=$status
+    group=$(json_field hid)
+    api POST /role-grants "{\"role\": \"inventory\", \"group_hid\": \"$group\"}"
+    made="$made $status"
+    grant=$(json_field hid)
+    api POST /users "{\"username\": \"pkg-stores\", \"access_code\": \"$stores_code\", \"contact\": {\"name\": \"Example Stores Person\"}, \"group_hids\": [\"$group\"]}"
+    made="$made $status $(json 'd["user"]["role"]')"
+    stores=$(json 'd["user"]["hid"]')
+    sign_in pkg-stores "$stores_code"
+    made="$made $status"
+    session=$token
+    api GET /auth/me
+    made="$made $(json_field role)"
+    token=$admin_token
+    api DELETE "/role-grants/$grant"
+    made="$made $status"
+    token=$session
+    api GET /auth/me
+    expect "S59 a person in a group that grants Inventory, and with no role of its own, is made by the role of the group, signs in and holds it; with the grant of the group revoked, the session is refused at its next request, a 401 that says the account holds no role" \
+        "$made $status $(json_field detail)" \
+        "201 201 201 inventory 200 inventory 204 401 the session has been ended: this account holds no role"
+
+    sign_in pkg-stores "$stores_code"
+    made="$status $(json '[d["title"], d["detail"], d["help"], "token" in d]')"
+    code=0
+    inside env XDG_CONFIG_HOME=/tmp/pkg-stores bash -c 'printf "%s\n" "$1" | hirdir sign-in --url http://127.0.0.1:8715 --username pkg-stores' _ "$stores_code" >"$work/cli.sign-in" 2>"$work/cli.err" || code=$?
+    made="$made | $code $(matches '^hirdir: this account holds no role, and so cannot sign in: an Admin gives it one$' "$work/cli.err") $(matches '^whom to ask: Example Service Desk, service.desk@example.net, \+1 555 0190, https://help.example.net/desk$' "$work/cli.err") $(matches 'signed in' "$work/cli.sign-in") $( (inside find /tmp/pkg-stores -type f 2>/dev/null || true) | wc -l)"
+    inside rm -rf /tmp/pkg-stores
+    token=$admin_token
+    api GET "/audit-events?action=sign_in_no_role&record_hid=$stores"
+    expect "S59 its right code is then a 403, No role, that says the account holds no role and that an Admin gives it one, and names whom to ask though the sign-in page does not, with no session; hirdir sign-in prints the same and whom to ask, exits with 3 and keeps no session; and each refusal is in the audit trail as sign_in_no_role, by the account itself" \
+        "$made | $(json '[[e["record_type"], e["actor_hid"] == "'"$stores"'"] for e in d["items"]]')" \
+        '403 ["No role", "this account holds no role, and so cannot sign in: an Admin gives it one", {"email": "service.desk@example.net", "organization": "Example Service Desk", "phone": "+1 555 0190", "url": "https://help.example.net/desk"}, false] | 3 1 1 0 0 | [["user", true], ["user", true]]'
+
+    api POST /role-grants "{\"role\": \"inventory\", \"group_hid\": \"$group\"}"
+    made=$status
+    token=$session
+    api GET /auth/me
+    made="$made $status"
+    sign_in pkg-stores "$stores_code"
+    made="$made $status"
+    api GET /auth/me
+    token=$admin_token
+    expect "S59 with the role granted to the group again, the session from before stays ended, and the person signs in again and holds Inventory" \
+        "$made $(json_field role)" "201 401 200 inventory"
+
+    # A service account with no role, given a token.
+    api POST /users '{"username": "pkg-idle-robot", "is_service_account": true}'
+    made="$status $(json 'd["user"]["role"]')"
+    robot=$(json 'd["user"]["hid"]')
+    api POST "/users/$robot/service-tokens" '{"name": "package test, no role"}'
+    made="$made $status"
+    secret=$(json_field secret)
+    token=$secret
+    api GET /auth/me
+    made="$made $status $(json_field detail)"
+    token=$admin_token
+    api POST /role-grants "{\"role\": \"viewer\", \"user_hid\": \"$robot\"}"
+    made="$made | $status"
+    token=$secret
+    api GET /auth/me
+    token=$admin_token
+    expect "S59 a service account is made with no role and given a token, whose requests are refused, a 401 that says the account holds no role; given View-only, the same token is taken" \
+        "$made $status $(json_field role)" \
+        "201 null 201 401 the token is not accepted: its service account holds no role | 201 200 viewer"
+
+    # A person with no role is not made by the API; hirdir admin makes one, and says so.
+    api POST /users '{"username": "pkg-no-role", "contact": {"name": "Example Roleless Person"}, "operator": {}}'
+    made="$status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
+    api GET '/users?q=pkg-no-role'
+    made="$made $(json_field total)"
+    authorized GET "$prefix/api/v1/contacts" --get --data-urlencode 'filter=name:eq:Example Roleless Person'
+    made="$made $(json_field total)"
+    api POST /users "{\"username\": \"pkg-no-role\", \"group_hids\": [\"$group\"], \"contact\": {\"name\": \"Example Roleless Person\"}}"
+    made="$made $status $(json 'd["user"]["role"]')"
+    code=0
+    inside hirdir admin create-user pkg-admin-made >"$work/create-user.log" 2>&1 || code=$?
+    typed=$(sed -n 's/^access code: //p' "$work/create-user.log")
+    made="$made | $code $(matches '^created pkg-admin-made$' "$work/create-user.log") $(matches '^pkg-admin-made holds no role, and cannot sign in until an Admin gives it one$' "$work/create-user.log") ${#typed}"
+    sign_in pkg-admin-made "$typed"
+    made="$made $status $(json_field title)"
+    token=$admin_token
+    expect "S59 a person with neither a role nor a group that grants one is refused by POST $prefix/api/v1/users, a 422 on role, and nothing is made, neither the user nor its contact; with the group that grants Inventory it is made, holding that role; hirdir admin create-user without --role makes the person all the same, and says that it holds no role and cannot sign in, and its code, made of 14 characters, is refused at sign-in for want of a role" \
+        "$made" \
+        '422 [["role", "give a role, or a group that grants one"]] 0 0 201 inventory | 0 1 1 14 403 No role'
+
+    # S60. An Admin changes their own access code on the profile with the code in hand.
+    api POST /users "{\"username\": \"pkg-desk-admin\", \"access_code\": \"$desk_code\", \"role\": \"admin\"}"
+    made=$status
+    sign_in pkg-desk-admin "$desk_code"
+    made="$made $status"
+    kept=$token
+    token=$admin_token
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+    token=$kept
+    api POST /auth/me/access-code "{\"current_access_code\": \"$desk_code\", \"access_code\": \"$desk_code\"}"
+    made="$made $status $(json '[d["detail"], [[e["field"], e["message"]] for e in d["errors"]]]')"
+    token=$admin_token
+    api GET '/audit-events?limit=1'
+    made="$made $(($(json_field total) - events))"
+    token=$kept
+    api GET /auth/me
+    made="$made $status"
+    api POST /auth/me/access-code "{\"current_access_code\": \"not-the-code-i-have\", \"access_code\": \"$desk_new\"}"
+    made="$made $status $(json '[e["field"] for e in d["errors"]]')"
+    api POST /auth/me/access-code "{\"current_access_code\": \"$desk_code\", \"access_code\": \"$desk_new\"}"
+    made="$made $status"
+    sign_in pkg-desk-admin "$desk_code"
+    made="$made $status"
+    sign_in pkg-desk-admin "$desk_new"
+    made="$made $status"
+    api GET /auth/me
+    token=$admin_token
+    expect "S60 an Admin who gives the code in hand as the new one is refused, a 422 on access_code that says it is the one they have, and nothing changes: no event is written and the session stands; a wrong current code is refused for an Admin as for anybody; with the code they have, the new one is set, the old code signs in no longer and the new one does" \
+        "$made $(json_field role)" \
+        '201 200 422 ["the new access code is the one you have now: choose another", [["access_code", "this is the access code you have now"]]] 0 200 422 ["current_access_code"] 200 401 200 admin'
+
+    # A code that the server makes, for a View-only person and for a View-only token.
+    api POST /users "{\"username\": \"pkg-coder\", \"access_code\": \"$coder_code\", \"role\": \"viewer\"}"
+    made=$status
+    coder=$(json 'd["user"]["hid"]')
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+    sign_in pkg-coder "$coder_code"
+    made="$made $status"
+    api GET /auth/new-access-code
+    made="$made $status $(header cache-control) $(json '[sorted(d), len(d["access_code"]), bool(__import__("re").fullmatch(r"[a-z2-9]{4}(-[a-z2-9]{4}){2}", d["access_code"]))]')"
+    again=$(json_field access_code)
+    api GET /auth/new-access-code
+    made="$made $([ "$(json_field access_code)" != "$again" ] && echo another)"
+    token=$secret
+    api GET /auth/new-access-code
+    made="$made $status $(json 'len(d["access_code"])')"
+    token=""
+    api GET /auth/new-access-code
+    made="$made $status"
+    token=$admin_token
+    api GET '/audit-events?limit=1'
+    expect "S60 GET $prefix/api/v1/auth/new-access-code gives a View-only person a code made as the server makes one, three groups of four, 14 characters against the least length of 12, sent with Cache-Control: no-store, and another each time; a View-only token is given one too, and no request without a session or a token is; and nothing is written but the sign-in" \
+        "$made $(($(json_field total) - events))" \
+        '201 200 200 no-store [["access_code"], 14, true] another 200 14 401 1'
+
+    # The least length raised to 20: the code made is of five groups, and is saved as a
+    # typed one is, with the code in hand.
+    made=$(put_setting access_code_min_length 20)
+    sign_in pkg-coder "$coder_code"
+    api GET /auth/new-access-code
+    made="$made $status $(json '[len(d["access_code"]), d["access_code"].count("-")]')"
+    typed=$(json_field access_code)
+    api POST /auth/me/access-code "{\"current_access_code\": \"$coder_code\", \"access_code\": \"$typed\"}"
+    made="$made $status"
+    sign_in pkg-coder "$coder_code"
+    made="$made $status"
+    sign_in pkg-coder "$typed"
+    made="$made $status"
+    token=$admin_token
+    api POST /users '{"username": "pkg-long", "role": "viewer"}'
+    made="$made $status $(json 'len(d["access_code"])')"
+    expect "S60 with access_code_min_length raised to 20, the code made is of five groups, 24 characters; with the code in hand it is set by POST $prefix/api/v1/auth/me/access-code, the code before signs in no longer and the made one does; and a person made with no code typed is given one of 24 characters too" \
+        "$made" "200 20 200 [24, 4] 200 401 200 201 24"
+
+    # The same by hirdir profile access-code --generate, which asks for the code in hand
+    # alone and prints the code it set once.
+    sign_in pkg-coder "$typed"
+    code=0
+    inside env XDG_CONFIG_HOME=/tmp/pkg-coder HIRDIR_URL=http://127.0.0.1:8715 HIRDIR_TOKEN="$token" \
+        bash -c 'printf "%s\n" "$1" | hirdir profile access-code --generate' _ "$typed" >"$work/cli.code" 2>"$work/cli.err" || code=$?
+    again=$(sed -n 's/^new access code, shown this once: //p' "$work/cli.code")
+    made="$code $(matches 'the access code of pkg-coder is changed; every other session has ended, and this one goes on until ' "$work/cli.code") ${#again}"
+    inside rm -rf /tmp/pkg-coder
+    sign_in pkg-coder "$typed"
+    made="$made $status"
+    sign_in pkg-coder "$again"
+    made="$made $status"
+    token=$admin_token
+    made="$made $(put_setting access_code_min_length null)"
+    api GET "/audit-events?action=set_access_code&record_hid=$coder"
+    expect "S60 hirdir profile access-code --generate asks for the code in hand alone, has the server make the new one, sets it and prints it once, 24 characters; the code before signs in no longer and the printed one does; each change is in the audit trail; and the setting goes back to its default" \
+        "$made $(json_field total)" "0 1 24 401 200 200 12 2"
+
+    # An Admin sets another person's code to the one they had.
+    api POST "/users/$coder/access-code" "{\"access_code\": \"$again\"}"
+    made=$status
+    sign_in pkg-coder "$again"
+    made="$made $status"
+    token=$admin_token
+    expect "S60 an Admin sets the code of another person to the one they had, by POST $prefix/api/v1/users/{hid}/access-code, and it is taken: they sign in with it" \
+        "$made" "200 200"
+
+    made="$(put_setting help_organization null) $(put_setting help_email null) $(put_setting help_phone null) $(put_setting help_url null)"
+    expect "pkg whom to ask goes back to nobody" "$made" "200 null 200 null 200 null 200 null"
 }
 
 # ---- reference files --------------------------------------------------------------------

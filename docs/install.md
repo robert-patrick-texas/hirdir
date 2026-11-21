@@ -2195,9 +2195,12 @@ was before.
 The schema stays at revision `0017`: 0.9.15 has no migration. Nothing that is held is
 changed by the upgrade, and it writes no audit event. It takes its backup and stops and
 starts the service all the same. `/etc/hirdir/config.toml` gains no setting. An account
-that holds no role is refused at sign-in from now on, and its sessions are refused: an
-account brought back under 0.9.14, and not yet given a role, cannot sign in until an
-Admin gives it one.
+that holds no role is refused at sign-in from now on, and so are its sessions and its
+tokens: an account brought back under 0.9.14, and not yet given a role, cannot sign in
+until an Admin gives it one. A session that such an account held before the upgrade is
+refused, and does not come back when the account is given a role, which ends it: the
+person signs in again. Every other account signs in, and keeps its sessions and its
+tokens, as before.
 
 What an Admin sees changed:
 
@@ -2216,8 +2219,10 @@ What an Admin sees changed:
 - **A new code on the Profile is not the one in hand**: the same code again is refused.
   An Admin who sets somebody else's code may give the one they had.
 
-Before the upgrade, look at the accounts of people that hold no role, under Admin,
-Users, where Role is blank: give each the role it is to have, or retire it.
+Before the upgrade, look at the accounts that hold no role, of their own or through a
+group: under Admin, Users, where Role is blank, or in `hirdir users list`, where it is
+`-`. Give each person the role it is to have, or retire the account; give a service
+account whose tokens are in use the role they need.
 
 For a script that reads the API: `POST /auth/sign-in` of an account that holds no role
 with the right code is a `403`, `No role`, with `help`, where it was a session; a
@@ -2226,10 +2231,12 @@ person with no role, and `POST /users/{hid}/bring-back` of a person with no `rol
 each a `422` on `role`. `POST /auth/me/access-code` with the code in hand as the new
 one is a `422` on `access_code`. `GET /auth/new-access-code` is new, and so are
 `--role` of `hirdir users bring-back` and `--generate` of `hirdir profile access-code`;
-`hirdir sign-in` of an account with no role exits `3`. The audit trail has a new
-action, `sign_in_no_role`.
+`hirdir sign-in` of an account with no role exits `3`. `hirdir admin create-user`
+without `--role` still makes the person, and says that it cannot sign in until it is
+given a role. The audit trail has a new action, `sign_in_no_role`.
 
-Going back to 0.9.14 needs no backup, because the schema is the same:
+Going back to 0.9.14 needs no backup, because the schema is the same. An account with
+no role then signs in again, as it did:
 
 ```bash
 sudo apt install --allow-downgrades ./hirdir_0.9.14_amd64.deb

@@ -54,7 +54,8 @@ AHEAD_SETTING = "reports_ahead_after_seconds"
 DEFAULT_AHEAD_AFTER_SECONDS = 30
 MOST_AHEAD_AFTER_SECONDS = 3600
 # The least length of an access code that is typed, by the person whose it is or by an
-# Admin (P-295). A code the server makes is not held to it, nor one that is held already.
+# Admin (P-295). A code the server makes is as long as it asks (P-300); one that is held
+# already is not looked at.
 CODE_LENGTH_SETTING = "access_code_min_length"
 DEFAULT_CODE_LENGTH = 12
 MOST_CODE_LENGTH = 64
@@ -517,12 +518,14 @@ SPECS: dict[str, Spec] = {
         "out again, in seconds. 0: when it starts and at five past midnight alone",
         _whole(AHEAD_SETTING, 0, MOST_AHEAD_AFTER_SECONDS, " of seconds"),
     ),
-    # 0.9.14: the least length of a typed access code (P-295).
+    # 0.9.14: the least length of a typed access code (P-295); 0.9.15: and of a made one
+    # (P-300).
     CODE_LENGTH_SETTING: Spec(
         DEFAULT_CODE_LENGTH,
         "the least length of an access code that is typed, by a person for themselves or "
-        "by an Admin for an account. A code the server makes is not held to it, and a "
-        "code that is held already is not looked at",
+        "by an Admin for an account. A code the server makes, of groups of four, has as "
+        "many groups as make it at least this long, and a code that is held already is not "
+        "looked at: nobody is signed out by the setting",
         _whole(CODE_LENGTH_SETTING, 1, MOST_CODE_LENGTH, " of characters"),
     ),
 }
