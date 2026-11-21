@@ -17,7 +17,7 @@ from typing import Annotated, Any
 import typer
 
 from hirdir import clock
-from hirdir.cli import client
+from hirdir.cli import client, people
 from hirdir.cli.client import Target
 from hirdir.domain import settings
 from hirdir.io.columns import unguarded
@@ -1899,19 +1899,63 @@ def assign_operator(
 
 
 @operators.command("release")
+@operators.command("retire")
 def release_operator(
     operator: Annotated[str, typer.Argument(help="A label or an HID.")],
+    user: people.Fate = None,
+    contact: people.Fate = None,
+    other: people.Labels = None,
+    dry_run: people.DryRun = False,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Release what an operator is on: the label is retired and stands for nothing, and
-    each thing it was on has the operator of the next level up, or none."""
+    each thing it was on has the operator of the next level up, or none. Prints its
+    contact, the user that contact is and the other operators of that contact, and
+    takes what becomes of each: --user, --contact and, for each other, --operator."""
     target = client.load_target(url, token)
     found = find_operator(target, operator)
-    client.call(
-        target, "POST", f"/operators/{found['hid']}/retire", {"row_version": found["row_version"]}
+    people.retire(
+        target,
+        "operator",
+        "/operators",
+        found,
+        found["label"],
+        user=user,
+        contact=contact,
+        operators=other,
+        dry_run=dry_run,
+        find_contact=find_contact,
+        done=f"{found['label']} is released; it was on {found['uses']} records of its own",
     )
-    typer.echo(f"{found['label']} is released; it was on {found['uses']} records of its own")
+
+
+@contacts.command("retire")
+def retire_contact(
+    contact: Annotated[str, typer.Argument(help="An email address, a name or an HID.")],
+    user: people.Fate = None,
+    operator: people.Labels = None,
+    dry_run: people.DryRun = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Retire a contact. Prints the user it is and the operators it stands behind, and
+    takes what becomes of each: --user and, for each, --operator. A contact is not
+    retired while its account or a label stands on it."""
+    target = client.load_target(url, token)
+    found = find_contact(target, contact)
+    people.retire(
+        target,
+        "contact",
+        "/contacts",
+        found,
+        found["name"],
+        user=user,
+        contact=None,
+        operators=operator,
+        dry_run=dry_run,
+        find_contact=find_contact,
+    )
 
 
 # --- contracts -----------------------------------------------------------------------
@@ -2392,10 +2436,13 @@ def _contacts_in_force(record: dict[str, Any]) -> list[tuple[str, str]]:
     return lines
 
 
-def _find_contact(target: Target, text: str) -> dict[str, Any]:
+def find_contact(target: Target, text: str) -> dict[str, Any]:
     """Return the contact a command names: by its HID, its email address or a name that
     one contact alone has."""
     return _one_named(target, "/contacts", "email", text, "contact", also="name")
+
+
+_find_contact = find_contact
 
 
 def _naming(

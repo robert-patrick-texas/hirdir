@@ -707,7 +707,7 @@ def test_who_looks_after_an_item_is_shown_counted_and_handed_over(
     assert len(open_ones.splitlines()) == 4
     run("operators", "assign", "LM", expect=2)
     run("operators", "assign", "LM", "nobody@example.net", expect=4)
-    assert run("operators", "release", "Op2").stdout.strip() == (
+    assert run("operators", "release", "Op2").stdout.strip().splitlines()[-1] == (
         "Op2 is released; it was on 1 records of its own"
     )
     nobody = run("items", "list", "--filter", "effective.operator_hid:empty:true").stdout
