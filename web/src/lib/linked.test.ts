@@ -415,6 +415,17 @@ describe("Bring back of a user offers its retired contact and that contact's lab
     const alone: Linked = { user: left.user, contact: null, operators: [] };
     expect(bringBackBody(alone, [], 3)).toEqual({ row_version: 3 });
   });
+
+  it("sends the role chosen, and none where none is (P-299)", () => {
+    const alone: Linked = { user: left.user, contact: null, operators: [] };
+    expect(bringBackBody(alone, [], 3, "viewer")).toEqual({ row_version: 3, role: "viewer" });
+    expect(bringBackBody(left, [], 5, "admin")).toEqual({
+      row_version: 5,
+      linked: { contact: "bring_back" },
+      role: "admin",
+    });
+    expect(bringBackBody(alone, [], 3, "")).toEqual({ row_version: 3 });
+  });
 });
 
 describe("the linked records a refusal names (P-297)", () => {

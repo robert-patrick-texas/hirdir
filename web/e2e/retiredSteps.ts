@@ -37,7 +37,8 @@ export async function makePerson(
       username,
       contact: { name, email: `${key}.${suffix}@example.net` },
       operator: { label: `${suffix}-${key}` },
-      ...(options.role ? { role: options.role } : {}),
+      // 0.9.15: a person is made holding a role, View-only unless another is asked (P-299).
+      role: options.role ?? "viewer",
     },
   });
   expect(answer.status(), `post /users: ${await answer.text()}`).toBe(201);

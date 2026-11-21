@@ -206,7 +206,7 @@ export function briefText(operator: Schemas["OperatorBrief"]): string {
 /**
  * The cell of a contact's operators on the list of contacts (P-280): each a link to its
  * page, a released one marked so, as the lists of users and the pages mark it, and
- * `no operator` in plain words where there is none.
+ * blank where there is none (P-302).
  */
 export function operatorsCell(operators: readonly Schemas["OperatorBrief"][]): {
   text: string;
@@ -217,7 +217,7 @@ export function operatorsCell(operators: readonly Schemas["OperatorBrief"][]): {
     path: operatorPath(operator.hid),
   }));
   return {
-    text: links.length > 0 ? links.map((link) => link.text).join(", ") : "no operator",
+    text: links.map((link) => link.text).join(", "),
     links,
   };
 }
@@ -379,10 +379,11 @@ export function leastCodeLength(
 
 /**
  * What a form says under an access code that an Admin types for somebody else: a code
- * left empty is made by the server, and is not held to the length; one typed is.
+ * left empty, or put there by Generate, is made by the server, as long as the setting
+ * asks (P-300); one typed is held to the length.
  */
 export function accessCodeHint(least: number | null): string {
-  const made = "Leave empty to have one generated";
+  const made = "Leave empty, or press Generate, to have one made";
   if (least === null) return made;
   return `${made}. One typed here has at least ${least} ${least === 1 ? "character" : "characters"}.`;
 }

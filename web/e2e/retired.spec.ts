@@ -5,7 +5,8 @@
 //          the retired out; Show › Retired users lists them by themselves, an address of
 //          its own, and Export CSV saves what the view shows.
 //   P-296  An Admin retires an account and brings it back, with a new access code shown
-//          once, no role and no group. A retired account's page offers only its
+//          once, the role chosen and no group (0.9.15, P-299: a person is not brought
+//          back without a role, which the dialog asks). A retired account's page offers only its
 //          username, its notes and its contact taken away. A username that a retired
 //          account has is refused to another, with a link to the retired one.
 //   P-291  The pages of a user, a contact and an operator show the chain of the person.
@@ -118,7 +119,7 @@ test("P-292, P-296: an account is retired, left out of the list until asked for,
   expect(made.status(), await made.text()).toBe(201);
   const lone = ((await made.json()) as { user: { hid: string; username: string } }).user;
   madeAccounts.push(lone.hid);
-  const off = await createAccount(request, `e2e-${suffix}-off`, null);
+  const off = await createAccount(request, `e2e-${suffix}-off`, "viewer");
   madeAccounts.push(off.hid);
   const offNow = await read<{ row_version: number }>(request, headers, `/users/${off.hid}`);
   const disabled = await request.patch(`./api/v1/users/${off.hid}`, {
@@ -203,6 +204,7 @@ test("P-292, P-296: an account is retired, left out of the list until asked for,
   const form = region(page, "New user");
   await form.getByLabel("Username (required)").fill(username);
   await form.getByRole("checkbox", { name: "Also a contact" }).uncheck();
+  await form.getByLabel("Role").selectOption({ label: "View-only" });
   await form.getByRole("button", { name: "Create user" }).click();
   await expect(form.getByLabel("Username (required)")).toHaveAttribute("aria-invalid", "true");
   const refusal = form.locator(".alert-error");
@@ -218,21 +220,25 @@ test("P-292, P-296: an account is retired, left out of the list until asked for,
   await expect(page.getByRole("heading", { level: 1, name: renamed })).toBeVisible();
   await expect(page.getByTestId("user-state")).toHaveText("Retired");
 
-  // Brought back: a new access code, shown once, no role and no group.
+  // Brought back: a new access code, shown once, the role chosen and no group. 0.9.15: a
+  // person is not brought back without a role, which an account needs to sign in (P-299).
   await region(page, "Retired").getByRole("button", { name: "Bring back" }).click();
   const back = page.getByTestId("bring-back-user");
   await expect(back.getByRole("heading", { name: `Bring ${renamed} back?` })).toBeVisible();
-  await expect(back).toContainText("It has no role and no group until an Admin gives them");
-  await back.getByRole("button", { name: "Bring back" }).click();
+  await expect(back).toContainText("It has no group until an Admin gives it one");
+  const press = back.getByRole("button", { name: "Bring back" });
+  await expect(press).toBeDisabled();
+  await back.getByLabel("Role").selectOption({ label: "View-only" });
+  await press.click();
   const secret = page.getByTestId("secret-box");
   await expect(
     secret.getByRole("heading", { name: `New access code for ${renamed}` }),
   ).toBeVisible();
-  await expect(secret).toContainText("with no role and no group");
+  await expect(secret).toContainText("with the role View-only and no group");
   const code = await secret.getByLabel("Shown once").inputValue();
   expect(code.length).toBeGreaterThanOrEqual(12);
   await expect(page.getByTestId("user-state")).toHaveText("Active");
-  await expect(page.getByTestId("user-facts")).toContainText("No role");
+  await expect(page.getByTestId("user-facts")).toContainText("View-only");
   await expect(
     region(page, "Groups").getByRole("checkbox", { name: `${suffix}-team` }),
   ).not.toBeChecked();
@@ -372,6 +378,7 @@ test("P-291, P-297: a contact is retired with its account, one label handed over
   const labelBox = back.getByRole("checkbox", { name: `Bring back the label ${second.label}` });
   await expect(labelBox).not.toBeChecked();
   await labelBox.check();
+  await back.getByLabel("Role").selectOption({ label: "Inventory" });
   await back.getByRole("button", { name: "Bring back" }).click();
   await expect(
     page.getByTestId("secret-box").getByRole("heading", {
@@ -820,6 +827,7 @@ test("P-295: an access code typed for somebody else is held to the least length,
   await expect(form).toContainText(hint);
   await form.getByLabel("Username (required)").fill(username);
   await form.getByRole("checkbox", { name: "Also a contact" }).uncheck();
+  await form.getByLabel("Role").selectOption({ label: "View-only" });
   const typed = form.getByLabel("Access code");
   await typed.fill(short);
   await form.getByRole("button", { name: "Create user" }).click();

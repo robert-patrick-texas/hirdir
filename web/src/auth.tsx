@@ -84,7 +84,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
     const controller = new AbortController();
     // Every time on every page is in the application's time zone, so it is known
-    // before the first page is shown. Someone who may not read settings gets the default.
+    // before the first page is shown. Every role reads the settings, and an account with
+    // none is not signed in (P-299): where they cannot be read, the default stands.
     const zone = api.request("get", "/api/v1/settings", { signal: controller.signal }).then(
       (settings) => settings.find((setting) => setting.key === "time_zone")?.value,
       () => undefined,

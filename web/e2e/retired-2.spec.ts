@@ -55,8 +55,8 @@ test("review 1: a new access code is never on show on the page of another accoun
   test.setTimeout(180_000);
   const headers = await session(request, account);
   // Two retired accounts: the one that has a username, and the one that asks for it.
-  const has = await createAccount(request, `e2e-${suffix}-has`, null);
-  const asks = await createAccount(request, `e2e-${suffix}-asks`, null);
+  const has = await createAccount(request, `e2e-${suffix}-has`, "viewer");
+  const asks = await createAccount(request, `e2e-${suffix}-asks`, "viewer");
   madeAccounts.push(has.hid, asks.hid);
   for (const one of [has, asks]) await change(request, headers, "post", `/users/${one.hid}/retire`);
   const seen = await watch(page.context());
@@ -70,9 +70,11 @@ test("review 1: a new access code is never on show on the page of another accoun
   await details.locator(".alert-error").getByRole("link", { name: has.username }).click();
   await expect(page.getByRole("heading", { level: 1, name: has.username })).toBeVisible();
 
-  // Brought back there: its new code is shown, once.
+  // Brought back there, with a role (P-299): its new code is shown, once.
   await region(page, "Retired").getByRole("button", { name: "Bring back" }).click();
-  await page.getByTestId("bring-back-user").getByRole("button", { name: "Bring back" }).click();
+  const back = page.getByTestId("bring-back-user");
+  await back.getByLabel("Role").selectOption({ label: "View-only" });
+  await back.getByRole("button", { name: "Bring back" }).click();
   const secret = page.getByTestId("secret-box");
   await expect(
     secret.getByRole("heading", { name: `New access code for ${has.username}` }),
@@ -134,7 +136,8 @@ test("review 2: a retired service account is offered no new token, and its token
   await expect(tokens.getByRole("heading", { name: "New token" })).toHaveCount(0);
   await expect(tokens.getByLabel("Name (required)")).toHaveCount(0);
 
-  // Brought back: a token can be made again, and the old one stays revoked.
+  // Brought back, with no role, which a service account may be (P-299): a token can be
+  // made again, and the old one stays revoked.
   await region(page, "Retired").getByRole("button", { name: "Bring back" }).click();
   await page.getByTestId("bring-back-user").getByRole("button", { name: "Bring back" }).click();
   await expect(page.getByText(`The service account ${username} is active again`)).toBeVisible();
@@ -306,6 +309,7 @@ test("review 5: Bring back says that the contact is back already, where somebody
     name: `Bring back the contact ${kat.contact.name}`,
   });
   await expect(contactBox).toBeChecked();
+  await back.getByLabel("Role").selectOption({ label: "View-only" });
   // Somebody else brings the contact back while the confirmation is open.
   await change(request, headers, "patch", `/contacts/${kat.contact.hid}`, {
     record_status: "active",

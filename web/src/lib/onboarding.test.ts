@@ -259,7 +259,7 @@ describe("who is what, on the lists of people (P-280)", () => {
   });
 
   it("writes a contact's operators on the list: released ones marked, none in words", () => {
-    expect(operatorsCell([])).toEqual({ text: "no operator", links: [] });
+    expect(operatorsCell([])).toEqual({ text: "", links: [] });
     const cell = operatorsCell([brief("old", "retired"), brief("new", "active")]);
     expect(cell.text).toBe("old (released), new");
     expect(cell.links).toEqual([
@@ -378,11 +378,11 @@ describe("a typed access code has a least length, which the form says (P-295)", 
 
   it("says the length under the field, and that an empty one is generated", () => {
     expect(accessCodeHint(12)).toBe(
-      "Leave empty to have one generated. One typed here has at least 12 characters.",
+      "Leave empty, or press Generate, to have one made. One typed here has at least 12 characters.",
     );
     expect(accessCodeHint(1)).toBe(
-      "Leave empty to have one generated. One typed here has at least 1 character.",
+      "Leave empty, or press Generate, to have one made. One typed here has at least 1 character.",
     );
-    expect(accessCodeHint(null)).toBe("Leave empty to have one generated");
+    expect(accessCodeHint(null)).toBe("Leave empty, or press Generate, to have one made");
   });
 });
