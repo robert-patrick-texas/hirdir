@@ -699,6 +699,47 @@ test("P-297: a refusal by the server stays in the confirmation, and the list is 
   await expectClean(page, seen, ["409 POST"]);
 });
 
+test("P-296: who acted, on the Audit page, still offers a retired account, marked", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  // An account that did something, signed in, and was then retired.
+  const made = await createAccount(request, `e2e-${suffix}-eve`, "viewer");
+  madeAccounts.push(made.hid);
+  await session(request, made);
+  const now = await read<{ row_version: number }>(request, headers, `/users/${made.hid}`);
+  const retired = await request.post(`./api/v1/users/${made.hid}/retire`, {
+    headers,
+    data: { row_version: now.row_version },
+  });
+  expect(retired.status(), await retired.text()).toBe(200);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await page.goto("./audit");
+  const who = page.getByLabel("Who", { exact: true });
+  const marked = `${made.username} (retired)`;
+  await expect(who.locator("option", { hasText: marked })).toHaveCount(1);
+  // An account that is not retired is offered by its username alone.
+  await expect(who.locator("option", { hasText: account.username })).toHaveText(account.username);
+  await who.selectOption({ label: marked });
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]actor_hid=${made.hid}(&|$)`));
+  // What it did is still there: every event on show is its own.
+  const rows = page.locator("table.audit tbody tr");
+  await expect(rows.first()).toBeVisible();
+  for (const cell of await rows.locator("td:nth-child(2)").all()) {
+    await expect(cell).toHaveText(made.username);
+  }
+  // The address is the filter: opened afresh, the choice is still the retired account.
+  await page.reload();
+  await expect(who).toHaveValue(made.hid);
+  await expectClean(page, seen);
+});
+
 // To be run once both server lanes are in: the rule arrives with the server of the
 // profile lane (P-295). Until the server has the setting, the scenario is skipped.
 test("P-295: an access code typed for somebody else is held to the least length, said at its field", async ({

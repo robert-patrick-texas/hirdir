@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deletedRecords, isDeleted } from "./audit";
+import { actorLabel, deletedRecords, isDeleted } from "./audit";
 
 const GROUP = "01a1f0e8-0000-7000-8000-000000000001";
 const ITEM = "01a1f0e8-0000-7000-8000-000000000002";
@@ -26,5 +26,13 @@ describe("the records the audit trail on show says were deleted", () => {
     expect(isDeleted(gone, { action: "create", record_type: "item", record_hid: GROUP })).toBe(
       false,
     );
+  });
+});
+
+describe("who acted, as the Audit page offers them (P-296)", () => {
+  it("still offers a retired account, marked", () => {
+    expect(actorLabel({ username: "klee", record_status: "retired" })).toBe("klee (retired)");
+    expect(actorLabel({ username: "klee", record_status: "active" })).toBe("klee");
+    expect(actorLabel({ username: "sokafor" })).toBe("sokafor");
   });
 });
