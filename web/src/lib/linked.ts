@@ -362,3 +362,20 @@ export function ownAccountGoes(
   if (on.kind === "user") return on.hid === ownHid;
   return othersOf(on, linked).user?.hid === ownHid && held(on, linked, choices, admin).user;
 }
+
+/**
+ * The retired contact that a label was not brought back onto (P-298), or null: the
+ * server answers a `409` on `record_status` that names the contact. The way on is the
+ * contact brought back first, or the label brought back with nobody behind it.
+ */
+export function retiredBehind(
+  error: {
+    status: number;
+    fields: Readonly<Record<string, string>>;
+    existing: { record_type: string; hid: string; label: string } | null;
+  } | null,
+): { hid: string; name: string } | null {
+  if (error?.status !== 409 || error.existing?.record_type !== "contact") return null;
+  if (error.fields.record_status === undefined) return null;
+  return { hid: error.existing.hid, name: error.existing.label };
+}

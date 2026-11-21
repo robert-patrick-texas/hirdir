@@ -735,6 +735,95 @@ test("P-296: an Admin who retires their own account, from the page of their cont
   await expectClean(page, seen);
 });
 
+test("P-298: a label is not brought back onto a retired contact: the contact is named, and the way on offered", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(240_000);
+  const headers = await session(request, account);
+  const sol = await person(request, headers, "sol", { labels: 2 });
+  const [first, second] = sol.labels as [Person["labels"][0], Person["labels"][0]];
+  // The person retired together, in one change: the account, the contact, both labels released.
+  const now = await read<{ row_version: number }>(request, headers, `/contacts/${sol.contact.hid}`);
+  const together = await request.post(`./api/v1/contacts/${sol.contact.hid}/retire`, {
+    headers,
+    data: {
+      row_version: now.row_version,
+      linked: {
+        user: "retire",
+        operators: sol.labels.map((label) => ({ hid: label.hid, action: "retire" })),
+      },
+    },
+  });
+  expect(together.status(), await together.text()).toBe(200);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // The page of the label says who is behind it and that the contact is retired, before a press.
+  await openOperator(page, first);
+  const released = region(page, "Released");
+  const wayOn = released.getByTestId("label-way-on");
+  await expect(wayOn).toContainText(
+    "is retired, and a label is not brought back onto a retired contact",
+  );
+  await expect(wayOn.getByRole("link", { name: sol.contact.name })).toBeVisible();
+
+  // Bring back is refused where it was pressed, with the contact named, as a link.
+  await released.getByRole("button", { name: "Bring back", exact: true }).click();
+  const refusal = released.locator(".alert-error");
+  await expect(refusal).toContainText(
+    `The contact of ${first.label}, ${sol.contact.name}, is retired`,
+  );
+  await expect(refusal).toContainText("The contact that is retired:");
+  await expect(refusal.getByRole("link", { name: sol.contact.name })).toBeVisible();
+  expect((await read<Status>(request, headers, `/operators/${first.hid}`)).record_status).toBe(
+    "retired",
+  );
+
+  // One way on: the label brought back with nobody behind it, an open assignment.
+  await released.getByRole("button", { name: "Bring back with nobody behind it" }).click();
+  await expect(
+    page.getByText(
+      `${first.label} is back with nobody behind it: what it was on has it again, marked as open.`,
+    ),
+  ).toBeVisible();
+  expect(
+    await read<Status & { contact_hid: string | null }>(
+      request,
+      headers,
+      `/operators/${first.hid}`,
+    ),
+  ).toMatchObject({ record_status: "active", contact_hid: null });
+
+  // The other: the contact brought back first, from the link, and the label after it.
+  await openOperator(page, second);
+  await region(page, "Released")
+    .getByTestId("label-way-on")
+    .getByRole("link", { name: sol.contact.name })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: sol.contact.name })).toBeVisible();
+  await region(page, "Retired").getByRole("button", { name: "Bring back as active" }).click();
+  await expect(page.getByText("The contact is active again.")).toBeVisible();
+  await openOperator(page, second);
+  await expect(region(page, "Released").getByTestId("label-way-on")).toHaveCount(0);
+  await expect(
+    region(page, "Released").getByRole("button", { name: "Bring back with nobody behind it" }),
+  ).toHaveCount(0);
+  await region(page, "Released").getByRole("button", { name: "Bring back", exact: true }).click();
+  await expect(
+    page.getByText(`${second.label} is back: what it was on has it again.`),
+  ).toBeVisible();
+  expect(
+    await read<Status & { contact_hid: string | null }>(
+      request,
+      headers,
+      `/operators/${second.hid}`,
+    ),
+  ).toMatchObject({ record_status: "active", contact_hid: sol.contact.hid });
+  await expectClean(page, seen, ["409 PATCH"]);
+});
+
 test("P-296: who acted, on the Audit page, still offers a retired account, marked", async ({
   page,
   account,

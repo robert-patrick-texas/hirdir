@@ -22,6 +22,7 @@ import {
   ownAccountGoes,
   refusedRows,
   retireBody,
+  retiredBehind,
   retiredWords,
   rowOf,
   startChoices,
@@ -431,5 +432,27 @@ describe("an Admin who retires their own account is told so, and signed out by i
     expect(ownAccountGoes(ON_KL, PERSON, startChoices(ON_KL, PERSON, false), false, "U1")).toBe(
       false,
     );
+  });
+});
+
+describe("a label is not brought back onto a retired contact (P-298)", () => {
+  const existing = { record_type: "contact", hid: "C1", label: "Kim Lee" };
+  const refused = {
+    status: 409,
+    fields: { record_status: "a label is not brought back onto a retired contact" },
+    existing,
+  };
+
+  it("names the contact the server refused it for", () => {
+    expect(retiredBehind(refused)).toEqual({ hid: "C1", name: "Kim Lee" });
+  });
+
+  it("names none for another refusal, or for none", () => {
+    expect(retiredBehind(null)).toBeNull();
+    expect(retiredBehind({ ...refused, status: 403 })).toBeNull();
+    expect(retiredBehind({ ...refused, fields: { label: "another operator has it" } })).toBeNull();
+    const other = { record_type: "operator", hid: "O9", label: "KL" };
+    expect(retiredBehind({ ...refused, existing: other })).toBeNull();
+    expect(retiredBehind({ ...refused, existing: null })).toBeNull();
   });
 });

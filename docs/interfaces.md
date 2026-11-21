@@ -3592,7 +3592,14 @@ P-292, P-296 to P-298):
   words that the account has no role and no group; a service account has no code and
   is told the same. On the pages of a contact and of an operator, Bring back is
   offered to an Admin alone; anybody else reads `An Admin brings a person back`,
-  View-only too. Every other kind of record is brought back as before.
+  View-only too. Every other kind of record is brought back as before. A label is not
+  brought back onto a retired contact: where the person behind a released label is
+  retired, the label's page says so under Released before any press, the contact a
+  link to its page, where it is brought back first, and has a second button, Bring
+  back with nobody behind it, which sends `contact_hid` `null` with the status, the
+  label coming back as an open assignment. Bring back pressed all the same, or a
+  contact retired since the page was read, is refused by the server, and the refusal
+  is shown there with the contact as a link and the same way on.
 - **A username a retired account has.** Refused by the server on New user and on the
   Details of a user, the form says, in the server's words above the username, that the
   retired account has it and is renamed or brought back to free it, with a link to

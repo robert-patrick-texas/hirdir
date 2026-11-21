@@ -20,6 +20,7 @@ import { assignmentColumns, totalCount } from "../lib/assignments";
 import { formatTime, plural } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { retiredBehind } from "../lib/linked";
 import { EVERY } from "../lib/lists";
 import { labelFor, OPERATOR_GAPS, operatorsAddress } from "../lib/operatorPage";
 import {
@@ -891,28 +892,51 @@ function HandOver({ operator, onChanged, onReload }: ChangeProps) {
  * Release what the label is on, or bring a released label back. Nothing is deleted.
  * 0.9.14: a label is one of the records of a person, and is released with what is said
  * of its contact, its account and the person's other labels, in one confirmation
- * (P-291); it is brought back by an Admin alone (P-298).
+ * (P-291); it is brought back by an Admin alone (P-298), and not onto a contact that
+ * is retired: the page names that contact, and offers the label with nobody behind it.
  */
 function Release({ operator, onChanged, onReload }: ChangeProps) {
   const { user } = useAuth();
   const admin = allows(user.role, "admin");
   const action = useAction();
 
-  async function bringBack() {
+  /** Bring the label back: as it is, or `open`, with its contact taken off in the same change. */
+  async function bringBack(open: boolean) {
     const result = await action.run(() =>
       api.request("patch", "/api/v1/operators/{hid}", {
         path: { hid: operator.hid },
-        body: { row_version: operator.row_version, record_status: "active" },
+        body: {
+          row_version: operator.row_version,
+          record_status: "active",
+          ...(open ? { contact_hid: null } : {}),
+        },
       }),
     );
-    if (result.ok) onChanged(`${operator.label} is back: what it was on has it again.`);
+    if (!result.ok) return;
+    onChanged(
+      open
+        ? `${operator.label} is back with nobody behind it: what it was on has it again, marked as open.`
+        : `${operator.label} is back: what it was on has it again.`,
+    );
   }
 
   const released = operator.record_status === "retired";
+  // The retired contact the label is not brought back onto: as the page read it, or as
+  // the server refused it, where the contact was retired since.
+  const behind =
+    retiredBehind(action.error) ??
+    (released && operator.contact?.record_status === "retired"
+      ? { hid: operator.contact.hid, name: operator.contact.name }
+      : null);
   return (
     <section aria-labelledby="release">
       <h2 id="release">{released ? "Released" : "Release"}</h2>
-      <Problem error={action.error} onReload={onReload} />
+      <Problem
+        error={action.error}
+        onReload={onReload}
+        shown={retiredBehind(action.error) ? ["record_status"] : []}
+        existingLead="The contact that is retired:"
+      />
       {released ? (
         <>
           <p>
@@ -920,11 +944,25 @@ function Release({ operator, onChanged, onReload }: ChangeProps) {
             the operator of the next level up, or none. It is still on them, and brought back it is
             their operator again.
           </p>
+          {admin && behind && (
+            <p data-testid="label-way-on">
+              The person behind it,{" "}
+              <Link to={`/contacts/${encodeURIComponent(behind.hid)}`}>{behind.name}</Link>, is
+              retired, and a label is not brought back onto a retired contact. Bring the contact
+              back first, on its page, and then the label; or bring the label back with nobody
+              behind it, as an open assignment.
+            </p>
+          )}
           {admin ? (
             <p className="actions">
-              <button type="button" onClick={bringBack} disabled={action.busy}>
+              <button type="button" onClick={() => void bringBack(false)} disabled={action.busy}>
                 Bring back
               </button>
+              {behind && (
+                <button type="button" onClick={() => void bringBack(true)} disabled={action.busy}>
+                  Bring back with nobody behind it
+                </button>
+              )}
             </p>
           ) : (
             <p className="muted" data-testid="admin-brings-back">
