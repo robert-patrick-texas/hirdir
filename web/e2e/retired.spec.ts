@@ -30,6 +30,18 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { type Headers, make, session } from "./referenceSteps";
+import {
+  chain,
+  labelRow,
+  makePerson,
+  openContact,
+  openOperator,
+  openUser,
+  type Person,
+  putAway,
+  read,
+  type Status,
+} from "./retiredSteps";
 import { region } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
@@ -37,81 +49,16 @@ const suffix = mark("retired");
 // Every account the scenarios make, to be put away when they end.
 const madeAccounts: string[] = [];
 
-/** One person: a user who is a contact behind one label, or two. */
-interface Person {
-  user: { hid: string; username: string };
-  contact: { hid: string; name: string };
-  labels: Array<{ hid: string; label: string }>;
-  accessCode: string;
-}
-
-/** Make a person through the API: the user, its contact and its labels, by one name. */
+/** Make a person of this file's own, and keep its account to put away. */
 async function person(
   request: APIRequestContext,
   headers: Headers,
   key: string,
   options: { labels?: number; role?: string } = {},
 ): Promise<Person> {
-  const username = `e2e-${suffix}-${key}`;
-  const name = `${key.charAt(0).toUpperCase()}${key.slice(1)} Example ${suffix}`;
-  const answer = await request.post("./api/v1/users", {
-    headers,
-    data: {
-      username,
-      contact: { name, email: `${key}.${suffix}@example.net` },
-      operator: { label: `${suffix}-${key}` },
-      ...(options.role ? { role: options.role } : {}),
-    },
-  });
-  expect(answer.status(), `post /users: ${await answer.text()}`).toBe(201);
-  const created = (await answer.json()) as {
-    user: { hid: string; username: string; contact: { hid: string; name: string } };
-    operator: { hid: string; label: string };
-    access_code: string;
-  };
-  madeAccounts.push(created.user.hid);
-  const labels = [{ hid: created.operator.hid, label: created.operator.label }];
-  for (let more = 2; more <= (options.labels ?? 1); more += 1) {
-    const label = `${suffix}-${key}${more}`;
-    const made = await make(request, headers, "/operators", {
-      label,
-      contact_hid: created.user.contact.hid,
-      record_status: "active",
-    });
-    labels.push({ hid: made.hid, label });
-  }
-  return {
-    user: { hid: created.user.hid, username: created.user.username },
-    contact: { hid: created.user.contact.hid, name: created.user.contact.name },
-    labels,
-    accessCode: created.access_code,
-  };
-}
-
-/** What the API answers of a record, read as the file's own Admin. */
-async function read<T>(request: APIRequestContext, headers: Headers, path: string): Promise<T> {
-  const answer = await request.get(`./api/v1${path}`, { headers });
-  expect(answer.status(), `get ${path}: ${await answer.text()}`).toBe(200);
-  return (await answer.json()) as T;
-}
-
-interface Status {
-  record_status: string;
-}
-
-async function openUser(page: Page, user: { hid: string; username: string }) {
-  await page.goto(`./admin/users/${encodeURIComponent(user.hid)}`);
-  await expect(page.getByRole("heading", { level: 1, name: user.username })).toBeVisible();
-}
-
-async function openContact(page: Page, contact: { hid: string; name: string }) {
-  await page.goto(`./contacts/${encodeURIComponent(contact.hid)}`);
-  await expect(page.getByRole("heading", { level: 1, name: contact.name })).toBeVisible();
-}
-
-async function openOperator(page: Page, operator: { hid: string; label: string }) {
-  await page.goto(`./operators/${encodeURIComponent(operator.hid)}`);
-  await expect(page.getByTestId("operator-heading")).toContainText(operator.label);
+  const made = await makePerson(request, headers, suffix, key, options);
+  madeAccounts.push(made.user.hid);
+  return made;
 }
 
 /** The rows of the Users list, searched for this file's users and narrowed as asked. */
@@ -146,38 +93,12 @@ async function fitsAt1280(page: Page, what: string) {
     .toBe(true);
 }
 
-/** The chain of a page: its three parts, as they read. */
-function chain(page: Page) {
-  const nav = page.getByTestId("chain");
-  return {
-    nav,
-    operators: nav.locator('[data-part="operator"]'),
-    contact: nav.locator('[data-part="contact"]'),
-    user: nav.locator('[data-part="user"]'),
-    here: nav.locator('[data-here="true"]'),
-  };
-}
-
-/** The row of a label in the confirmation, by its HID. */
-function labelRow(dialog: Locator, operator: { hid: string }): Locator {
-  return dialog.locator(`[data-row="operator"][data-operator="${operator.hid}"]`);
-}
-
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
 });
 
 test.afterAll(async ({ request, accounts }) => {
-  // A run leaves no account of its own that can sign in: a retired one cannot already.
-  const headers = await session(request, await accounts.of("retired"));
-  for (const hid of madeAccounts) {
-    const path = `./api/v1/users/${encodeURIComponent(hid)}`;
-    const found = await request.get(path, { headers });
-    if (found.status() !== 200) continue;
-    const user = (await found.json()) as { row_version: number; record_status: string };
-    if (user.record_status === "retired") continue;
-    await request.patch(path, { headers, data: { disabled: true, row_version: user.row_version } });
-  }
+  await putAway(request, await session(request, await accounts.of("retired")), madeAccounts);
 });
 
 test("P-292, P-296: an account is retired, left out of the list until asked for, and brought back", async ({

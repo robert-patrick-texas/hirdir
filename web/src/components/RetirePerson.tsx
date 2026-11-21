@@ -254,6 +254,7 @@ function RetireAsk(props: RetireAskProps) {
           <button
             type="button"
             className="danger"
+            data-testid="retire-go"
             onClick={() => void retire()}
             disabled={action.busy || !linked}
           >
