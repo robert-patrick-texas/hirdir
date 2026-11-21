@@ -44,11 +44,10 @@ export function PersonChain({ kind, hid, turn }: PersonChainProps) {
     <>
       <Problem error={linked.error} />
       {data && (
-        <nav className="person-chain" aria-label="The person this belongs to" data-testid="chain">
-          <span className="person-chain-label" aria-hidden="true">
-            One person
-          </span>
-          <ol>
+        // No nav: its links read as links of the page, not as the pages of a menu.
+        <div className="person-chain" data-testid="chain">
+          <span className="person-chain-label">One person</span>
+          <ol aria-label="The person this belongs to: operator, contact, user">
             <li className="chain-part" data-part="operator">
               <span className="chain-kind">
                 {data.operators.length > 1 ? "Operators" : "Operator"}
@@ -100,7 +99,7 @@ export function PersonChain({ kind, hid, turn }: PersonChainProps) {
               )}
             </li>
           </ol>
-        </nav>
+        </div>
       )}
     </>
   );

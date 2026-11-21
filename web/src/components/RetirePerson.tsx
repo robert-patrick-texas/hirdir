@@ -405,7 +405,7 @@ function RetireRows({ on, linked, choices, admin, rows, disabled, onChoose }: Re
           A contact is not retired while its account or a label stands on it.{" "}
           {going
             ? "With the contact retired, its account is retired too, and each label is released, handed over or left open: Keep is not offered."
-            : "Keep the contact to keep its account or a label."}
+            : "The contact stays: its account and each label are kept or not, as chosen."}
         </p>
       )}
     </div>
