@@ -3596,17 +3596,23 @@ previous_release() {
     else
         person='"display_name": "An engineer of the upgrade test"'
     fi
+    api POST /user-groups '{"name": "Network Engineering", "description": "Made before the upgrade"}'
+    expect "pkg a user group is created" "$status" 201
+    group_hid=$(json_field hid)
+    api POST /role-grants "{\"role\": \"inventory\", \"group_hid\": \"$group_hid\"}"
+    expect "pkg the Inventory role is granted to the group" "$status" 201
+    # From 0.9.15 a person is made with a role, of its own or through a group (P-299),
+    # and from 0.9.13 New user puts the person in its groups (P-283): the engineer is
+    # made in the group, whose role it holds. The membership put again changes nothing.
+    if dpkg --compare-versions "$previous_version" ge 0.9.13; then
+        person="$person, \"group_hids\": [\"$group_hid\"]"
+    fi
     api POST /users "{\"username\": \"upgrade-engineer\", $person}"
     expect "pkg a second user is created" "$status" 201
     engineer_hid=$(json 'd["user"]["hid"]')
     engineer_code=$(json 'd["access_code"]')
-    api POST /user-groups '{"name": "Network Engineering", "description": "Made before the upgrade"}'
-    expect "pkg a user group is created" "$status" 201
-    group_hid=$(json_field hid)
     api PUT "/user-groups/$group_hid/members/$engineer_hid"
     expect "pkg the second user is put in the group" "$status" 204
-    api POST /role-grants "{\"role\": \"inventory\", \"group_hid\": \"$group_hid\"}"
-    expect "pkg the Inventory role is granted to the group" "$status" 201
     api POST /users '{"username": "upgrade-robot", "is_service_account": true, "role": "viewer"}'
     expect "pkg a service account is created with the View-only role" "$status" 201
     robot_hid=$(json 'd["user"]["hid"]')
