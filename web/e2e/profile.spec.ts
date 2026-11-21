@@ -736,9 +736,10 @@ test("P-300: Generate on the profile fills both new boxes with a code made by th
   await part.getByRole("button", { name: "Generate", exact: true }).click();
   await expect(wanted).not.toHaveValue("");
   const first = await wanted.inputValue();
-  expect(first.length, "a made code is at least as long as the setting asks").toBeGreaterThanOrEqual(
-    12,
-  );
+  expect(
+    first.length,
+    "a made code is at least as long as the setting asks",
+  ).toBeGreaterThanOrEqual(12);
   await expect(again).toHaveValue(first);
   await expect(wanted).toHaveAttribute("type", "text");
   await expect(again).toHaveAttribute("type", "text");
