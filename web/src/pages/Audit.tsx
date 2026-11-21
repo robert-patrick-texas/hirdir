@@ -25,7 +25,11 @@ type AuditEvent = Schemas["AuditEventOut"];
 // Suggestions for the filters: what this release writes to the trail. The server matches
 // whatever is typed, so a value not listed here can still be asked for.
 const ACTIONS = [
+  // 0.9.14: a code refused or delayed (P-295), and an account brought back (P-296).
+  "access_code_delayed",
+  "access_code_refused",
   "add_member",
+  "bring_back",
   "create",
   "delete",
   "export",
