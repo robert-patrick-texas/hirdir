@@ -7,6 +7,7 @@ import {
   type Choices,
   contactGoes,
   contactUses,
+  goWords,
   held,
   keptChoices,
   LINKED_LABELS,
@@ -542,5 +543,43 @@ describe("Bring back says what changed while it was open (review 5)", () => {
     expect(
       backChanged(was, { user, contact: { ...gone, uses: 7 }, operators: [label] }),
     ).toBeNull();
+  });
+});
+
+describe("the button that goes ahead says what it will do (review 9)", () => {
+  it("counts what is retired with a label as it opens: the account, the contact, the other label", () => {
+    expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, true), true)).toBe(
+      "Release KL and retire 3 more",
+    );
+  });
+
+  it("follows the ticks, and says only where nothing else is retired", () => {
+    let asked = { ...startChoices(ON_KL, PERSON, true), contact: false };
+    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and retire 2 more");
+    asked = { ...asked, user: false };
+    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and retire 1 more");
+    // A label handed over, left open or kept is not retired.
+    for (const action of ["open", "hand_over", "keep"]) {
+      expect(goWords(ON_KL, PERSON, choose(asked, "O2", action, "C9"), true)).toBe(
+        "Release KL only",
+      );
+    }
+  });
+
+  it("is of the same manner on the page of the account and of the contact", () => {
+    expect(goWords(ON_USER, PERSON, startChoices(ON_USER, PERSON, true), true)).toBe(
+      "Retire klee and 3 more",
+    );
+    let kept = { ...startChoices(ON_USER, PERSON, true), contact: false };
+    kept = choose(choose(kept, "O1", "keep"), "O2", "keep");
+    expect(goWords(ON_USER, PERSON, kept, true)).toBe("Retire klee only");
+    const open = choose(startChoices(ON_CONTACT, PERSON, true), "O2", "open");
+    expect(goWords(ON_CONTACT, PERSON, open, true)).toBe("Retire Kim Lee and 2 more");
+  });
+
+  it("counts no account for somebody who is no Admin, who retires none", () => {
+    expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, false), false)).toBe(
+      "Release KL and retire 1 more",
+    );
   });
 });

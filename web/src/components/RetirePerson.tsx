@@ -20,6 +20,7 @@ import {
   type Choices,
   contactGoes,
   contactUses,
+  goWords,
   held,
   keptChoices,
   LINKED_LABELS,
@@ -338,7 +339,9 @@ function RetireAsk(props: RetireAskProps) {
             onClick={() => void retire()}
             disabled={action.busy || !linked}
           >
-            {label}
+            {/* What it will do, as the ticks stand (review 9); the page's own words
+                where nothing is linked. */}
+            {linked && choices && !plain ? goWords(on, linked, choices, admin) : label}
           </button>
         )}
       </p>

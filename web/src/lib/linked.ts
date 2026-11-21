@@ -426,3 +426,24 @@ export function backChanged(was: Linked, now: Linked): string | null {
     [offer.contact?.hid ?? "", ...offer.operators.map((operator) => operator.hid).sort()].join(" ");
   return named(before) === named(after) ? null : LIST_CHANGED;
 }
+
+/**
+ * What the button that goes ahead says (review 9): the record, and how many more are
+ * retired with it as the ticks stand, so that nobody retires a person thinking that
+ * they release a label. An account ticked, a contact ticked and a label released are
+ * each one more; a label handed over, left open or kept is not retired, and is not
+ * counted. `Release KL only`, `Release KL and retire 2 more`, `Retire klee and 1 more`.
+ */
+export function goWords(on: On, linked: Linked, choices: Choices, admin: boolean): string {
+  const others = othersOf(on, linked);
+  const firm = held(on, linked, choices, admin);
+  const more =
+    (others.user && firm.user ? 1 : 0) +
+    (others.contact && firm.contact ? 1 : 0) +
+    others.operators.filter((operator) => firm.operators[operator.hid]?.action === "retire").length;
+  const name = nameOf(on, linked);
+  if (on.kind === "operator") {
+    return more === 0 ? `Release ${name} only` : `Release ${name} and retire ${more} more`;
+  }
+  return more === 0 ? `Retire ${name} only` : `Retire ${name} and ${more} more`;
+}

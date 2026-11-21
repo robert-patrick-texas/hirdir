@@ -32,6 +32,7 @@ import {
 import { type Headers, make, session } from "./referenceSteps";
 import {
   chain,
+  goAhead,
   labelRow,
   makePerson,
   openContact,
@@ -145,7 +146,7 @@ test("P-292, P-296: an account is retired, left out of the list until asked for,
   await expect(ask.getByRole("heading", { name: `Retire ${username}?` })).toBeVisible();
   await expect(ask).toContainText(`${username} signs in no longer`);
   await expect(ask.getByTestId("retire-rows")).toHaveCount(0);
-  await ask.getByRole("button", { name: "Retire account" }).click();
+  await goAhead(ask).click();
   await expect(page.getByText(`${username} was retired.`)).toBeVisible();
 
   // Retired: said at its name and in State, with why the rest is not offered.
@@ -314,7 +315,7 @@ test("P-291, P-297: a contact is retired with its account, one label handed over
   // Hand over to nobody is said at its row, and nothing is sent.
   const handed = labelRow(ask, first);
   await handed.getByRole("radio", { name: "Hand over to", exact: true }).check();
-  await ask.getByRole("button", { name: "Retire contact" }).click();
+  await goAhead(ask).click();
   await expect(handed).toContainText("Choose the person the label is handed over to");
   await expect(ask).toBeVisible();
   // Handed over to Sam; the other released, as it was ticked.
@@ -324,7 +325,7 @@ test("P-291, P-297: a contact is retired with its account, one label handed over
     .getByRole("list", { name: "Contacts that match" })
     .getByRole("button", { name: new RegExp(`^Sam Example ${suffix}`) })
     .click();
-  await ask.getByRole("button", { name: "Retire contact" }).click();
+  await goAhead(ask).click();
   await expect(
     page.getByText(
       `${kim.contact.name} was retired, with the account ${kim.user.username}. ${first.label} was handed over and ${second.label} was released.`,
@@ -427,7 +428,7 @@ test("P-297: a label is released with the rest kept, and an account retired with
   await contactBox.uncheck();
   await accountBox.uncheck();
   await other.getByRole("radio", { name: "Keep", exact: true }).check();
-  await ask.getByRole("button", { name: "Release", exact: true }).click();
+  await goAhead(ask).click();
   await expect(
     page.getByText(
       `${first.label} was released. The account ${lee.user.username}, the contact ${lee.contact.name} and the label ${second.label} stay.`,
@@ -453,7 +454,7 @@ test("P-297: a label is released with the rest kept, and an account retired with
   await ask.getByRole("checkbox", { name: `Retire the contact ${lee.contact.name}` }).uncheck();
   const open = labelRow(ask, second);
   await open.getByRole("radio", { name: "Leave open", exact: true }).check();
-  await ask.getByRole("button", { name: "Retire account" }).click();
+  await goAhead(ask).click();
   await expect(
     page.getByText(
       `${lee.user.username} was retired. ${second.label} was left open. The contact ${lee.contact.name} stays.`,
@@ -523,7 +524,7 @@ test("P-297, P-298: somebody of the Inventory role retires no account, and bring
   await expect(ask.getByTestId("retire-blocked")).toContainText(
     `An Admin retires an account, and a contact is not retired while its account stands on it. Ask an Admin to retire ${max.user.username} with this contact.`,
   );
-  await expect(ask.getByRole("button", { name: "Retire contact" })).toHaveCount(0);
+  await expect(goAhead(ask)).toHaveCount(0);
   await ask.getByRole("button", { name: "Close" }).click();
   await expect(ask).toHaveCount(0);
 
@@ -543,7 +544,7 @@ test("P-297, P-298: somebody of the Inventory role retires no account, and bring
   const other = labelRow(ask, second);
   await expect(other.getByRole("radio", { name: "Release", exact: true })).toBeChecked();
   await other.getByRole("radio", { name: "Keep", exact: true }).check();
-  await ask.getByRole("button", { name: "Release", exact: true }).click();
+  await goAhead(ask).click();
   await expect(page.getByText(`${first.label} was released.`, { exact: false })).toBeVisible();
   for (const kept of [
     `/users/${max.user.hid}`,
@@ -594,7 +595,7 @@ test("P-297: a refusal by the server stays in the confirmation, and the list is 
   });
 
   // Refused: nothing was said of the new label. It is named, and listed, ticked.
-  await ask.getByRole("button", { name: "Retire account" }).click();
+  await goAhead(ask).click();
   await expect(ask.locator(".alert-error")).toBeVisible();
   await expect(
     ask.getByTestId("problem-depends-on").getByRole("link", { name: late }),
@@ -614,7 +615,7 @@ test("P-297: a refusal by the server stays in the confirmation, and the list is 
 
   // Said, the one request goes through.
   await added.getByRole("radio", { name: "Leave open", exact: true }).check();
-  await ask.getByRole("button", { name: "Retire account" }).click();
+  await goAhead(ask).click();
   await expect(
     page.getByText(
       `${ann.user.username} was retired. ${late} was left open. The contact ${ann.contact.name} and the label ${first.label} stay.`,
@@ -643,7 +644,7 @@ test("P-296: an Admin who retires their own account, from the page of their cont
   await expect(ask.getByTestId("retire-own")).toHaveText(
     "This is your own account: you are signed out at once, and cannot sign in again.",
   );
-  await ask.getByRole("button", { name: "Retire contact" }).click();
+  await goAhead(ask).click();
   // Signed out by it: the sign-in page, and the account signs in no longer.
   await expect(page.getByRole("heading", { level: 1, name: "Sign in to hirdir" })).toBeVisible();
   expect((await read<Status>(request, headers, `/users/${own.user.hid}`)).record_status).toBe(

@@ -3578,7 +3578,11 @@ P-292, P-296 to P-298):
   be ticked, with the words that an Admin retires an account, and so the contact
   stays, its box unticked too; on the page of a contact that has an account, the
   dialog says to ask an Admin and has no Retire. A label handed over to nobody, or to
-  the person it has, is said at its row and nothing is sent. One press sends the one
+  the person it has, is said at its row and nothing is sent. The button that goes
+  ahead says what it will do as the ticks stand, the record and how many more are
+  retired with it: `Release KL and retire 3 more` as the dialog opens on a label,
+  `Release KL only` with all else unticked, `Retire klee and 1 more`; a label handed
+  over, left open or kept is not retired and is not counted. One press sends the one
   request, which says every linked record, the kept among them. A refusal, `409`,
   `422` or `403`, is shown in the dialog with nothing chosen lost: what the server
   says of `linked.user` and of `linked.contact` at the row of each, and what it says
