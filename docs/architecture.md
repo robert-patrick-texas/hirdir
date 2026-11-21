@@ -1051,9 +1051,13 @@ what an ordinary file leaves half done but as it would read any other file's rec
 theirs fails too; only a run that is killed outright leaves a setting changed, and the
 next full run starts from a fresh inventory.
 
-A release's host run is `make browser ARGS="--since v<previous version>"`: the package
-test of `make e2e` runs every browser scenario against the fresh install, so the host
-run is for the files that changed, where a failure is quickest to see and to rerun.
+A release's host run is `make browser ARGS="--since v<previous version>"`, and for a
+small change the spec files it reaches (P-305): the host run is for the files that
+changed, where a failure is quickest to see and to rerun. Every browser scenario is run
+again against the fresh install, by `make e2e`, only for a release that changes the
+packaging, `hirdir-setup`, nginx, the prefix or the frame of the page, and for 1.0.0;
+otherwise the package is checked through nginx by its other passes, and, once it is
+built, by a short browser check of what only the package can get wrong.
 
 Measured against a development server on the four-core build host, the browser in
 Playwright's container: one file after another, which is how they ran before 0.5.0, the

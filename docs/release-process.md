@@ -45,24 +45,37 @@ A hold is never left in place silently.
 
 1. `make upgrade`.
 2. Set the version.
-3. `make check`, `make acceptance`, `make browser ARGS="--since v<previous version>"`,
-   `make docs`, `make deb`, `make e2e`. The host run of the browser scenarios, `make
-   browser`, runs on a fresh scratch inventory only the spec files that changed since
-   the previous release, every project that runs alone among them whatever failed
-   before, and ends with one list of every scenario that failed; `make browser
-   ARGS="--last-failed --built"` checks a fix ("The browser scenarios on the host" in
-   [architecture.md](architecture.md#testing)). The last, `make e2e`, installs the
-   package in containers and runs every package check, the upgrade from the previous
-   release among them, and every browser scenario; `make package-test` is the same
-   without the browser. See "The previous release's package" below. `make deb` builds
-   the web UI and the documentation first, because the package carries both.
-4. `make facts > /tmp/facts.md`, and write `docs/releases/v<version>.md` from the
-   template below.
-5. `make docs`, and read the built pages once. Then `make deb` and `make package-test`
-   once more: the package carries the notes of its own release, so the one that is
-   published is built after they are written, and it is the one that was tested.
-6. Commit, tag `v<version>`, push.
-7. `make -s release-body > /tmp/body.md`, then
+3. Say which tier the release is (P-305). A **small change** is one more choice of a
+   list, a label or an option of a command, with no migration and nothing of the
+   packaging; anything else is an **ordinary release**. While it is built, a lane runs
+   `make test-changed` and the spec files it touches; what follows is run once, on the
+   commit that is packaged.
+4. `make check` and `make acceptance`. Then the browser scenarios on the host: for a
+   small change the spec files it reaches (`make browser ARGS="<spec files>"`), for an
+   ordinary release `make browser ARGS="--since v<previous version>"`, which runs on a
+   fresh scratch inventory only the spec files that changed since the previous
+   release, every project that runs alone among them whatever failed before, and ends
+   with one list of every scenario that failed; `make browser ARGS="--last-failed
+   --built"` checks a fix ("The browser scenarios on the host" in
+   [architecture.md](architecture.md#testing)).
+5. `make facts > /tmp/facts.md`, and write `docs/releases/v<version>.md` from the
+   template below. With no package of the version built yet, `make facts` reads the
+   versions from `.python-version` and the lock files, which are what the package is
+   built from. Then `make docs`, and read the built pages once.
+6. `make deb`, once: the package carries the notes of its own release, so it is built
+   after they are written, and the package that is published is the one that was
+   tested (D-76). `make deb` builds the web UI and the documentation first. Then the
+   passes of the package test, one after another, never two at once:
+   `packaging/package-test.sh --upgrade` (the upgrade from the previous release; see
+   "The previous release's package" below) and `--fresh`, and for an ordinary release
+   `--failed-upgrade` and the short check of the package through nginx. The browser
+   scenarios against the installed package, every one of them (`--e2e`, which `make
+   e2e` runs), are run for a release that changes the packaging, `hirdir-setup`, nginx,
+   the prefix or the frame of the page, and for 1.0.0. The short check is built with
+   the next ordinary release after 0.9.16; until it is there, an ordinary release runs
+   `--e2e --fresh` in place of `--fresh`.
+7. Commit, tag `v<version>`, push.
+8. `make -s release-body > /tmp/body.md`, then
    `gh release create v<version> --notes-file /tmp/body.md` with
    `dist/hirdir_<version>_amd64.deb` and `dist/hirdir_<version>_amd64.deb.sha256`
    attached. The text of the release is the notes with each paragraph on one line;
