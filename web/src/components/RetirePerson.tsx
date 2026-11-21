@@ -22,8 +22,8 @@ import {
   held,
   keptChoices,
   LINKED_LABELS,
+  LIST_CHANGED,
   type Linked,
-  namesUnlisted,
   nothingLinked,
   notSaidLead,
   type On,
@@ -31,10 +31,12 @@ import {
   operatorUses,
   othersOf,
   ownAccountGoes,
+  refusedHandOvers,
   refusedRows,
   retireBody,
   retiredWords,
   rowOf,
+  sameOthers,
   startChoices,
   userState,
 } from "../lib/linked";
@@ -148,7 +150,16 @@ function RetireAsk(props: RetireAskProps) {
   );
   // What is chosen, of the records as they were last read: kept when they are read again.
   const [asked, setAsked] = useState<{ linked: Linked; choices: Choices } | null>(null);
+  // A refusal has the list read again (review 3). Where it then holds other records
+  // than it did, somebody changed what is linked while this was open: that is said, in
+  // place of the refusal, which was of a list that is no longer so.
+  const [rereading, setRereading] = useState(false);
+  const [changed, setChanged] = useState(false);
   if (read.data && asked?.linked !== read.data) {
+    if (asked && rereading) {
+      setChanged(!sameOthers(on, asked.linked, read.data));
+      setRereading(false);
+    }
     setAsked({
       linked: read.data,
       choices: asked
@@ -167,9 +178,14 @@ function RetireAsk(props: RetireAskProps) {
   // Where the server names records that were not listed, they are listed now, and the
   // box says so with each as a link: what it says of each field is not said again.
   const unlisted = (action.error?.dependsOn.length ?? 0) > 0;
-  const refused = unlisted
-    ? { rows: {}, shown: ["linked.user", "linked.contact", "linked.operators"] }
-    : refusedRows(action.error?.fields ?? {});
+  const fields = action.error?.fields ?? {};
+  // A list that is being read again, or has changed, is not said the server's words of
+  // the list it was. Of one that stands, they are said at the rows: of the labels, at
+  // the hand-over the server refused, to somebody retired or gone since.
+  const refused =
+    unlisted || rereading || changed || !linked || !choices
+      ? { rows: {}, shown: ["linked.user", "linked.contact", "linked.operators"] }
+      : refusedRows(fields, refusedHandOvers(fields["linked.operators"], on, linked, choices));
   const rows: Readonly<Record<string, string | undefined>> = { ...refused.rows, ...found };
 
   function choose(next: Choices) {
@@ -187,12 +203,17 @@ function RetireAsk(props: RetireAskProps) {
       return;
     }
     setFound({});
-    let reread = false;
+    setChanged(false);
+    let again = false;
     const result = await action.run(async () => {
       try {
         return await sendRetire(on, built.body);
       } catch (thrown) {
-        reread = thrown instanceof ApiError && namesUnlisted(thrown, on, linked);
+        // Refused for what was said of the linked records, and not as stale.
+        again =
+          thrown instanceof ApiError &&
+          !thrown.stale &&
+          (thrown.status === 409 || thrown.status === 422);
         throw thrown;
       }
     });
@@ -202,8 +223,12 @@ function RetireAsk(props: RetireAskProps) {
       else onRetired(retiredWords(on, linked, choices, admin));
       return;
     }
-    // Something is linked that was not listed: the list is read again, what was chosen kept.
-    if (reread) read.reload();
+    // What is linked may be other than it was when this opened, a record added, parted
+    // or retired since: the list is read again, with what was chosen kept.
+    if (again) {
+      setRereading(true);
+      read.reload();
+    }
   }
 
   return (
@@ -211,12 +236,17 @@ function RetireAsk(props: RetireAskProps) {
       <div className="dialog-body">
         <Problem error={read.error} />
         <Problem
-          error={action.error}
+          error={changed && !unlisted ? null : action.error}
           shown={refused.shown}
           onReload={onReload}
           labels={LINKED_LABELS}
           dependsLead={notSaidLead}
         />
+        {changed && !unlisted && (
+          <p className="alert alert-info" data-testid="retire-list-changed">
+            {LIST_CHANGED}
+          </p>
+        )}
         {read.loading && !linked && (
           <p role="status" className="muted">
             Reading what is linked…

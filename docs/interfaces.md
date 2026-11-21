@@ -3582,7 +3582,13 @@ P-292, P-296 to P-298):
   of the labels, `linked.operators`, above the rows as a sentence. Where the server
   names in `depends_on` a record that was not listed, the list is read again, the new
   record ticked and what was chosen kept, and the dialog says that it is listed now,
-  each record a link, in place of the server's words of each field. Done, the page
+  each record a link, in place of the server's words of each field. Any refusal of
+  what was said, a `409` or a `422`, has the list read again: where a linked record
+  was parted, retired or taken off by somebody else while the dialog was open, the
+  dialog says in plain words that the linked records have changed, in place of the
+  refusal, which was of a list that is no longer so, and the next press is of the
+  list as it is. A label handed over to somebody who was retired before the press is
+  refused at the field of that hand-over. Done, the page
   says what became of each: `Kim Lee was retired, with the account klee. KL was handed
   over and Op2 was released.`
 - **Bring back.** On the page of a retired account, Bring back opens a dialog that

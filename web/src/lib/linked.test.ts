@@ -9,22 +9,24 @@ import {
   held,
   keptChoices,
   LINKED_LABELS,
+  LIST_CHANGED,
   type Linked,
   type LinkedContact,
   type LinkedOperator,
   type LinkedUser,
-  namesUnlisted,
   nothingLinked,
   notSaidLead,
   type On,
   operatorUses,
   othersOf,
   ownAccountGoes,
+  refusedHandOvers,
   refusedRows,
   retireBody,
   retiredBehind,
   retiredWords,
   rowOf,
+  sameOthers,
   startChoices,
   userState,
 } from "./linked";
@@ -287,16 +289,12 @@ describe("a refusal is said in the confirmation, at the record it names", () => 
     expect(LINKED_LABELS["linked.operators"]).toBe("");
   });
 
-  it("reads the list again where the server names a record that was not listed", () => {
-    const alone: Linked = { user: USER, contact: CONTACT, operators: [] };
-    const named = [
-      { record_type: "user", hid: "U1" },
-      { record_type: "operator", hid: "O1" },
-    ];
-    expect(namesUnlisted({ status: 409, dependsOn: named }, ON_CONTACT, alone)).toBe(true);
-    expect(namesUnlisted({ status: 409, dependsOn: named }, ON_CONTACT, PERSON)).toBe(false);
-    expect(namesUnlisted({ status: 422, dependsOn: named }, ON_CONTACT, alone)).toBe(false);
-    expect(namesUnlisted({ status: 409, dependsOn: [] }, ON_CONTACT, alone)).toBe(false);
+  it("puts what is said of the labels at each hand-over it is given", () => {
+    const fields = { "linked.operators": "the operator KL: the contact Sam Okafor is retired" };
+    expect(refusedRows(fields, ["O1"])).toEqual({
+      rows: { [rowOf("operator", "O1")]: "the operator KL: the contact Sam Okafor is retired" },
+      shown: ["linked.operators"],
+    });
   });
 
   it("keeps what was chosen when the list is read again, and ticks what is new", () => {
@@ -454,5 +452,57 @@ describe("a label is not brought back onto a retired contact (P-298)", () => {
     const other = { record_type: "operator", hid: "O9", label: "KL" };
     expect(retiredBehind({ ...refused, existing: other })).toBeNull();
     expect(retiredBehind({ ...refused, existing: null })).toBeNull();
+  });
+});
+
+describe("a list that changed while the confirmation was open (review 3)", () => {
+  it("is the same list where the records to be said are the same, whatever else changed", () => {
+    expect(sameOthers(ON_USER, PERSON, { ...PERSON, operators: [OP2, KL, OLD] })).toBe(true);
+    const renamed: Linked = { ...PERSON, contact: { ...CONTACT, name: "Kim Okafor", uses: 9 } };
+    expect(sameOthers(ON_USER, PERSON, renamed)).toBe(true);
+  });
+
+  it("is another list where a record is parted, retired or added", () => {
+    // The label is parted from the contact.
+    expect(sameOthers(ON_USER, PERSON, { ...PERSON, operators: [OP2, OLD] })).toBe(false);
+    // The contact is taken off the account.
+    expect(sameOthers(ON_USER, PERSON, { user: USER, contact: null, operators: [] })).toBe(false);
+    // A label is released by somebody else.
+    const released: Linked = { ...PERSON, operators: [{ ...KL, record_status: "retired" }, OP2] };
+    expect(sameOthers(ON_CONTACT, PERSON, released)).toBe(false);
+    // A label is added.
+    const more: Linked = { ...PERSON, operators: [KL, OP2, { ...OLD, record_status: "active" }] };
+    expect(sameOthers(ON_CONTACT, PERSON, more)).toBe(false);
+  });
+
+  it("says so in plain words, with no name of a field", () => {
+    expect(LIST_CHANGED).toMatch(/^The linked records have changed since this was opened\./);
+    expect(LIST_CHANGED).not.toMatch(/linked\.|row_version/);
+  });
+});
+
+describe("a hand-over the server refuses is said at its field (review 3)", () => {
+  const handed = (hids: string[]) => {
+    let asked = startChoices(ON_CONTACT, PERSON, true);
+    for (const hid of hids) asked = choose(asked, hid, "hand_over", "C9");
+    return asked;
+  };
+
+  it("marks the label the sentence names, among those handed over", () => {
+    const message = "the operator KL: the contact Sam Okafor is retired";
+    expect(refusedHandOvers(message, ON_CONTACT, PERSON, handed(["O1", "O2"]))).toEqual(["O1"]);
+  });
+
+  it("marks each hand-over where the sentence names none of them", () => {
+    const message = "a label is handed over to a contact that is not retired";
+    expect(refusedHandOvers(message, ON_CONTACT, PERSON, handed(["O1", "O2"]))).toEqual([
+      "O1",
+      "O2",
+    ]);
+  });
+
+  it("marks none where nothing is handed over, or nothing is refused of the labels", () => {
+    expect(refusedHandOvers("the operator KL is kept", ON_CONTACT, PERSON, handed([]))).toEqual([]);
+    expect(refusedHandOvers(undefined, ON_CONTACT, PERSON, handed(["O1"]))).toEqual([]);
   });
 });

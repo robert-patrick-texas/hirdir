@@ -4,15 +4,39 @@
 // file's own, people of its own with the file's mark in their names, each scenario
 // making those it retires, and the accounts put away when the file ends.
 
-import { expect } from "@playwright/test";
-import { session } from "./referenceSteps";
-import { change, goAhead, openUser, putAway } from "./retiredSteps";
+import { type APIRequestContext, expect } from "@playwright/test";
+import { type Headers, make, session } from "./referenceSteps";
+import {
+  change,
+  goAhead,
+  type Label,
+  labelRow,
+  makePerson,
+  openContact,
+  openUser,
+  type Person,
+  putAway,
+  read,
+  type Status,
+} from "./retiredSteps";
 import { region } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
 const suffix = mark("retired-2");
 // Every account the scenarios make, to be put away when they end.
 const madeAccounts: string[] = [];
+
+/** Make a person of this file's own, and keep its account to put away. */
+async function person(
+  request: APIRequestContext,
+  headers: Headers,
+  key: string,
+  options: { labels?: number; role?: string } = {},
+): Promise<Person> {
+  const made = await makePerson(request, headers, suffix, key, options);
+  madeAccounts.push(made.user.hid);
+  return made;
+}
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -116,4 +140,81 @@ test("review 2: a retired service account is offered no new token, and its token
   await expect(tokens.getByLabel("Name", { exact: true })).toBeVisible();
   await expect(row).toContainText("Revoked");
   await expectClean(page, seen);
+});
+
+test("review 3: a linked record that goes away under the confirmation is read out of it, and the next press goes through", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const hugo = await person(request, headers, "hugo");
+  const [first] = hugo.labels as [Label];
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await openUser(page, hugo.user);
+  await region(page, "Retire").getByRole("button", { name: "Retire account" }).click();
+  const ask = page.getByTestId("retire-person");
+  const contactBox = ask.getByRole("checkbox", { name: `Retire the contact ${hugo.contact.name}` });
+  await contactBox.uncheck();
+  await labelRow(ask, first).getByRole("radio", { name: "Keep", exact: true }).check();
+  // Somebody else parts the label from the contact while the confirmation is open.
+  await change(request, headers, "patch", `/operators/${first.hid}`, { contact_hid: null });
+
+  // Refused: the list is read again, said in plain words, and what was chosen is kept.
+  await goAhead(ask).click();
+  await expect(ask.getByTestId("retire-list-changed")).toContainText("have changed");
+  await expect(labelRow(ask, first)).toHaveCount(0);
+  await expect(contactBox).not.toBeChecked();
+  await expect(ask).not.toContainText("linked.");
+  expect((await read<Status>(request, headers, `/users/${hugo.user.hid}`)).record_status).toBe(
+    "active",
+  );
+  // The next press is of the list as it is now, and goes through.
+  await goAhead(ask).click();
+  await expect(
+    page.getByText(`${hugo.user.username} was retired. The contact ${hugo.contact.name} stays.`),
+  ).toBeVisible();
+  await expectClean(page, seen, ["422 POST"]);
+});
+
+test("review 3: a label handed over to somebody retired since is refused at its field", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const ines = await person(request, headers, "ines");
+  const [first] = ines.labels as [Label];
+  const samName = `Sam Example ${suffix}`;
+  const sam = await make(request, headers, "/contacts", { name: samName, record_status: "active" });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await openContact(page, ines.contact);
+  await region(page, "Retire").getByRole("button", { name: "Retire contact" }).click();
+  const ask = page.getByTestId("retire-person");
+  const row = labelRow(ask, first);
+  await row.getByRole("radio", { name: "Hand over to", exact: true }).check();
+  const field = row.getByLabel(`Person to hand ${first.label} over to`);
+  await field.fill(samName);
+  await row
+    .getByRole("list", { name: "Contacts that match" })
+    .getByRole("button", { name: new RegExp(`^${samName}`) })
+    .click();
+  // The person chosen is retired before the press.
+  await change(request, headers, "post", `/contacts/${sam.hid}/retire`);
+
+  await goAhead(ask).click();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(row.locator(".field-error")).toBeVisible();
+  await expect(ask).toBeVisible();
+  // Another choice for the label, and it goes through.
+  await row.getByRole("radio", { name: "Release", exact: true }).check();
+  await goAhead(ask).click();
+  await expect(page.getByText(`${ines.contact.name} was retired`, { exact: false })).toBeVisible();
+  await expectClean(page, seen, ["422 POST"]);
 });
