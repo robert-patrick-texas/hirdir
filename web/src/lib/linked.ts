@@ -347,3 +347,35 @@ export function notSaidLead(count: number): string {
     ? "Linked, and not listed when this opened. It is listed now: say what becomes of it."
     : `${count.toLocaleString("en-US")} are linked, and were not listed when this opened. They are listed now: say what becomes of each.`;
 }
+
+/**
+ * Whether a retirement retires the account of whoever asks for it, by its own route or
+ * as a linked record: they are told so before, and are signed out by it.
+ */
+export function ownAccountGoes(
+  on: On,
+  linked: Linked,
+  choices: Choices,
+  admin: boolean,
+  ownHid: string,
+): boolean {
+  if (on.kind === "user") return on.hid === ownHid;
+  return othersOf(on, linked).user?.hid === ownHid && held(on, linked, choices, admin).user;
+}
+
+/**
+ * The retired contact that a label was not brought back onto (P-298), or null: the
+ * server answers a `409` on `record_status` that names the contact. The way on is the
+ * contact brought back first, or the label brought back with nobody behind it.
+ */
+export function retiredBehind(
+  error: {
+    status: number;
+    fields: Readonly<Record<string, string>>;
+    existing: { record_type: string; hid: string; label: string } | null;
+  } | null,
+): { hid: string; name: string } | null {
+  if (error?.status !== 409 || error.existing?.record_type !== "contact") return null;
+  if (error.fields.record_status === undefined) return null;
+  return { hid: error.existing.hid, name: error.existing.label };
+}

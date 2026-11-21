@@ -30,6 +30,7 @@ import {
   type OperatorAction,
   operatorUses,
   othersOf,
+  ownAccountGoes,
   refusedRows,
   retireBody,
   retiredWords,
@@ -196,7 +197,9 @@ function RetireAsk(props: RetireAskProps) {
       }
     });
     if (result.ok) {
-      onRetired(retiredWords(on, linked, choices, admin));
+      // Whoever retires their own account is signed out by it.
+      if (ownAccountGoes(on, linked, choices, admin, auth.user.hid)) auth.signOut();
+      else onRetired(retiredWords(on, linked, choices, admin));
       return;
     }
     // Something is linked that was not listed: the list is read again, what was chosen kept.
@@ -226,6 +229,7 @@ function RetireAsk(props: RetireAskProps) {
             linked={linked}
             choices={choices}
             admin={admin}
+            ownHid={auth.user.hid}
             rows={rows}
             disabled={action.busy || blocked !== null}
             onChoose={choose}
@@ -266,6 +270,8 @@ interface RetireRowsProps {
   linked: Linked;
   choices: Choices;
   admin: boolean;
+  /** The account of whoever asks: its retirement signs them out. */
+  ownHid: string;
   /** What is said at a row: a choice still to make, or what the server refused. */
   rows: Readonly<Record<string, string | undefined>>;
   disabled: boolean;
@@ -290,7 +296,8 @@ function actionHint(action: OperatorAction, person: string): string {
 }
 
 /** Each linked record that is not retired, with what is asked of it. */
-function RetireRows({ on, linked, choices, admin, rows, disabled, onChoose }: RetireRowsProps) {
+function RetireRows(props: RetireRowsProps) {
+  const { on, linked, choices, admin, ownHid, rows, disabled, onChoose } = props;
   const others = othersOf(on, linked);
   const going = contactGoes(on, linked, choices);
   const person = linked.contact?.name ?? "";
@@ -327,6 +334,13 @@ function RetireRows({ on, linked, choices, admin, rows, disabled, onChoose }: Re
             )}{" "}
             · {roleLabel(others.user.role)} · {userState(others.user)}
           </p>
+          {choices.user && others.user.hid === ownHid && (
+            <p data-testid="retire-own">
+              <strong>
+                This is your own account: you are signed out at once, and cannot sign in again.
+              </strong>
+            </p>
+          )}
         </div>
       )}
       {others.contact && (

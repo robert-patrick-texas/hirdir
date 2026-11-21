@@ -29,6 +29,12 @@ interface ProblemProps {
    * are not what runs on an item: the linked records a retirement did not say (P-297).
    */
   dependsLead?: (count: number) => string;
+  /**
+   * 0.9.14: what is said before the record a refusal names as `existing`, where it is
+   * not one that has a value already: the retired contact a label is not brought back
+   * onto (P-298).
+   */
+  existingLead?: string;
 }
 
 /**
@@ -37,6 +43,7 @@ interface ProblemProps {
  */
 export function Problem(props: ProblemProps) {
   const { error, shown = [], onReload, labels = {}, dependsLead = runOnItLead } = props;
+  const { existingLead: lead } = props;
   const visible = error && !error.aborted ? error : null;
   const cause = useContext(StaleCause);
   // A message about a field the form shows is shown beside its input, not here.
@@ -80,7 +87,7 @@ export function Problem(props: ProblemProps) {
           )}
           {existing && (
             <p>
-              {existingLead(existing)}{" "}
+              {lead ?? existingLead(existing)}{" "}
               {existingTo ? (
                 <Link to={existingTo}>{existing.label}</Link>
               ) : (

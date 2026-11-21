@@ -3537,14 +3537,16 @@ P-292, P-296 to P-298):
   member of a group, read `GET /users` as before and so leave the retired out.
 - **A user's page.** State says Active, Disabled or Retired, and a retired account is
   marked at its name. Retire, at the foot of the page of an account that is not
-  retired, opens the confirmation below; an Admin who retires their own account is
-  told so there, and is signed out by it. The page of a retired account says that it
+  retired, opens the confirmation below; an Admin who retires their own account, here
+  or as the account of a contact or of a label, is told so there, and is signed out
+  by it. The page of a retired account says that it
   signs in with nothing, is in no group and holds no role, and offers only what the
   server changes of it: its username, with the words that no other account takes the
   name until it is given another, its notes, and Take its contact away. The box
   Disabled, the groups, the form of the contact, another contact, the access code, the
   sessions and a new token are not offered, and the page says that they are given once
-  the account is brought back. Bring back is there in the place of Retire.
+  the account is brought back; nor is Make an operator. Bring back is there in the
+  place of Retire.
 - **The chain.** The pages of a user, of a contact and of an operator show, under the
   heading, One person: the operators, the contact and the user of the person the
   record belongs to, in that order, each a link to its page, read from
@@ -3574,12 +3576,14 @@ P-292, P-296 to P-298):
   dialog says to ask an Admin and has no Retire. A label handed over to nobody, or to
   the person it has, is said at its row and nothing is sent. One press sends the one
   request, which says every linked record, the kept among them. A refusal, `409`,
-  `422` or `403`, is shown in the dialog, the fields of `linked` at their rows and the
-  records of `depends_on` as links, with nothing chosen lost; where the server names a
-  record that was not listed, the list is read again, the new record ticked and what
-  was chosen kept, and the dialog says that they are listed now in place of the
-  server's words of each field. Done, the page says what became of each: `Kim Lee was retired, with
-  the account klee. KL was handed over and Op2 was released.`
+  `422` or `403`, is shown in the dialog with nothing chosen lost: what the server
+  says of `linked.user` and of `linked.contact` at the row of each, and what it says
+  of the labels, `linked.operators`, above the rows as a sentence. Where the server
+  names in `depends_on` a record that was not listed, the list is read again, the new
+  record ticked and what was chosen kept, and the dialog says that it is listed now,
+  each record a link, in place of the server's words of each field. Done, the page
+  says what became of each: `Kim Lee was retired, with the account klee. KL was handed
+  over and Op2 was released.`
 - **Bring back.** On the page of a retired account, Bring back opens a dialog that
   reads `GET /users/{hid}/linked`: the contact, where it is retired, ticked and not to
   be unticked, with the words that the two are brought back together unless the
@@ -3588,7 +3592,14 @@ P-292, P-296 to P-298):
   words that the account has no role and no group; a service account has no code and
   is told the same. On the pages of a contact and of an operator, Bring back is
   offered to an Admin alone; anybody else reads `An Admin brings a person back`,
-  View-only too. Every other kind of record is brought back as before.
+  View-only too. Every other kind of record is brought back as before. A label is not
+  brought back onto a retired contact: where the person behind a released label is
+  retired, the label's page says so under Released before any press, the contact a
+  link to its page, where it is brought back first, and has a second button, Bring
+  back with nobody behind it, which sends `contact_hid` `null` with the status, the
+  label coming back as an open assignment. Bring back pressed all the same, or a
+  contact retired since the page was read, is refused by the server, and the refusal
+  is shown there with the contact as a link and the same way on.
 - **A username a retired account has.** Refused by the server on New user and on the
   Details of a user, the form says, in the server's words above the username, that the
   retired account has it and is renamed or brought back to free it, with a link to
@@ -3598,7 +3609,8 @@ P-292, P-296 to P-298):
   account of `GET /users?retired=yes`, by username, a retired one written
   `klee (retired)`, since what it did is still in the trail; the choice is sent as
   `actor_hid` and kept in the address. The other roles, who do not read the list of
-  users, have no Who.
+  users, have no Who. Action suggests the three actions that 0.9.14 writes as well,
+  `access_code_delayed`, `access_code_refused` and `bring_back`.
 - **An access code typed for somebody else.** The New user form and Access code on a
   user's page say under the field the least length of a code that is typed, the setting
   `access_code_min_length` as `GET /settings` gives it (P-295), and that one left empty
