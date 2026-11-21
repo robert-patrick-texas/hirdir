@@ -289,7 +289,10 @@ the next request. And a change that takes the last role from an account ends eve
 session of that account, so that a role given again later brings no old session
 back: `DELETE /role-grants/{hid}` of a grant of the account or of a group it is in,
 `DELETE /user-groups/{hid}/members/{user_hid}`, and `DELETE /user-groups/{hid}`. Each
-is audited by its own event, as before, with nothing added to it. A token of a service
+is audited by its own event, as before, with nothing added to it. Each takes the one
+writer's place before it reads the roles, so that of two at the same moment, a grant of
+the account's own and one of its group revoked together, the second sees the first and
+ends the sessions. A token of a service
 account that holds no role is refused, a `401` that says the account holds no role;
 an Admin may make a token for it all the same, which works once the account is given
 a role.

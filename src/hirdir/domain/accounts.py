@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -112,12 +112,19 @@ def _keeping_an_admin(db: Session) -> Generator[None]:
 
 
 @contextmanager
-def _ending_with_the_last_role(db: Session, users: Sequence[User]) -> Generator[None]:
+def _ending_with_the_last_role(db: Session, who: Callable[[], Sequence[User]]) -> Generator[None]:
     """End every session of each of the users that the change takes the last role from
     (P-299): an account with no role has no session, and a role given again later brings
     no old one back. The change is audited by its own event, and this adds nothing to it.
     The roles are read for all the users at once, before and after, however many a group
-    holds."""
+    holds. The writer's place is taken before anything is read, the users `who` gives
+    among it: of two such changes at the same moment, an own grant and a group's revoked
+    together, the second waits and then sees the first, so that one of them finds the
+    last role gone and ends the sessions. It is entered before `_keeping_an_admin`, so
+    that the count of Admins is read in the writer's place too.
+    """
+    dialect.hold_other_writers(db)
+    users = who()
     before = roles_of(db, users)
     held = [user for user in users if before[user.hid] is not None]
     yield
@@ -970,7 +977,7 @@ def delete_group(db: Session, context: AuditContext, hid: str) -> None:
     """Remove a user group, its memberships and the roles granted to it. A member that
     it gave the last role to has every session ended (P-299)."""
     group = get_group(db, hid)
-    with _keeping_an_admin(db), _ending_with_the_last_role(db, _members(db, hid)):
+    with _ending_with_the_last_role(db, lambda: _members(db, hid)), _keeping_an_admin(db):
         for grant in db.scalars(select(RoleGrant).where(RoleGrant.group_hid == hid)):
             db.delete(grant)
         db.delete(group)
@@ -996,7 +1003,7 @@ def remove_member(db: Session, context: AuditContext, group_hid: str, user_hid: 
     member = db.get(UserGroupMember, (user_hid, get_group(db, group_hid).hid))
     if member is None:
         raise NotFound("that user is not in that group")
-    with _keeping_an_admin(db), _ending_with_the_last_role(db, [get_user(db, user_hid)]):
+    with _ending_with_the_last_role(db, lambda: [get_user(db, user_hid)]), _keeping_an_admin(db):
         db.delete(member)
     audit.record(
         db, context, "remove_member", "user_group", group_hid, [change("user_hid", user_hid, None)]
@@ -1065,10 +1072,13 @@ def revoke_grant(db: Session, context: AuditContext, hid: str) -> None:
     grant = db.get(RoleGrant, hid)
     if grant is None:
         raise NotFound(f"there is no role grant {hid}")
-    holders = (
-        [get_user(db, grant.user_hid)] if grant.user_hid else _members(db, grant.group_hid or "")
-    )
-    with _keeping_an_admin(db), _ending_with_the_last_role(db, holders):
+
+    def holders() -> list[User]:
+        if grant.user_hid:
+            return [get_user(db, grant.user_hid)]
+        return _members(db, grant.group_hid or "")
+
+    with _ending_with_the_last_role(db, holders), _keeping_an_admin(db):
         db.delete(grant)
     audit.record(
         db,
