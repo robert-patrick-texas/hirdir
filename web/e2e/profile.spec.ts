@@ -442,6 +442,12 @@ test("P-294, P-295: a View-only person changes their details, their operator and
   await expect(wanted).toHaveValue("");
   await expect(again).toHaveValue("");
   expect(sent).toBe(3);
+  // The keyboard is on the words that say so: the boxes and the button it could have
+  // been on were held while the change was sent.
+  await expect(code.getByTestId("profile-said")).toBeFocused();
+  await expect(code.getByTestId("profile-said")).toHaveText(
+    "Your access code is changed. Your other sessions have ended.",
+  );
   await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
   await expect(name).toHaveValue(renamed);
   // The session in hand goes on: the page changes something more, and is loaded anew.
@@ -641,6 +647,7 @@ test("P-296: an account that holds no role sees nothing of the inventory, and ch
     "Your access code is changed. Your other sessions have ended.",
   );
   await expect(current).toHaveValue("");
+  await expect(code.getByTestId("profile-said")).toBeFocused();
   await expect(colour).toHaveValue("#8250df");
   // Four requests were refused by now: the settings at sign-in, the two refusals above,
   // and the settings again, as the frame learned who is signed in by the session kept.

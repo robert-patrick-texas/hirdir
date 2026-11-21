@@ -3501,6 +3501,9 @@ What 0.9.14 adds, a person's own profile (P-289, P-294, P-295):
     Changed, the page keeps the token and the expiry that `POST /auth/me/access-code`
     answered in place of the ones it had, as signing in keeps them, says "Your access
     code is changed. Your other sessions have ended.", and empties the three boxes.
+    The boxes and the button are held while a change is sent, so the keyboard is put
+    where the answer is: on the words that say the code is changed, in the first box a
+    refusal is about, and on the words of a refusal that is about no box, as a wait.
     The page is not drawn anew: what is typed in its other forms stays. A request
     that was on its way with the session that the change ended, and is refused for it,
     does not sign the page out: only a refusal of the session the page holds does.

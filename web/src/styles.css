@@ -3544,6 +3544,12 @@ table.colour-grid {
   margin-bottom: 0.75rem;
 }
 
+/* What became of a change of the access code takes the keyboard, to be read: it is no
+   control, and is not ringed as one. */
+.profile-said:focus {
+  outline: none;
+}
+
 /* Each operator of somebody behind several, under the one before. */
 .profile-operator + .profile-operator {
   margin-top: 1.5rem;

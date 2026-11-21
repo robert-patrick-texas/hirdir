@@ -272,7 +272,10 @@ function AccessCode({ username, role }: { username: string; role: string | null 
   const waiting = useHeld(waitUntil);
   const action = useAction();
   const form = useRef<HTMLFormElement>(null);
+  // Where the page says what became of a change: that it was made, or why it was not.
+  const said = useRef<HTMLDivElement>(null);
   const [refusals, setRefusals] = useState(0);
+  const [changes, setChanges] = useState(0);
   const refused = { ...action.error?.fields, ...found };
 
   // After too many wrong codes the server says how long to wait: Save is held until then.
@@ -283,10 +286,19 @@ function AccessCode({ username, role }: { username: string; role: string | null 
     }
   }, [refusal]);
 
-  // A refusal puts the keyboard in the first box it is about.
+  // The boxes and the button are held while a change is sent, so the keyboard is on
+  // none of them when the answer comes. A refusal puts it in the first box it is about,
+  // and one that is about no box, as a wait, on its words.
   useEffect(() => {
-    if (refusals > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    if (refusals === 0) return;
+    const box = form.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    (box ?? said.current)?.focus();
   }, [refusals]);
+
+  // A change that was made puts it on the words that say so.
+  useEffect(() => {
+    if (changes > 0) said.current?.focus();
+  }, [changes]);
 
   function type(box: keyof CodeBoxes, field: string) {
     return (value: string) => {
@@ -319,6 +331,7 @@ function AccessCode({ username, role }: { username: string; role: string | null 
     adopt(result.value);
     setBoxes(NO_CODES);
     setDone("Your access code is changed. Your other sessions have ended.");
+    setChanges((count) => count + 1);
   }
 
   return (
@@ -331,9 +344,12 @@ function AccessCode({ username, role }: { username: string; role: string | null 
       <p className="hint" data-testid="profile-code-words">
         {codeWords(minLengthOf(settings.data))}
       </p>
-      <Notice text={done} />
-      <form onSubmit={submit} className="stack" noValidate ref={form}>
+      {/* What became of a change, which takes the keyboard when it is said. */}
+      <div className="profile-said" data-testid="profile-said" tabIndex={-1} ref={said}>
+        <Notice text={done} />
         <Problem error={action.error} shown={["current_access_code", "access_code"]} />
+      </div>
+      <form onSubmit={submit} className="stack" noValidate ref={form}>
         {/* Not shown: it tells a password manager whose code the three boxes are. */}
         <input
           type="text"
