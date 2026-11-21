@@ -172,8 +172,10 @@ export function retireBody(
         errors[rowOf("operator", operator.hid)] =
           "Choose the person the label is handed over to, or another choice.";
       } else if (choice.contactHid === linked.contact?.hid) {
-        errors[rowOf("operator", operator.hid)] =
-          "This is the person behind the label now: choose another, or Keep.";
+        // Keep is said only where it is a choice: not with the contact going (review 6).
+        errors[rowOf("operator", operator.hid)] = contactGoes(on, linked, firm)
+          ? "This is the person behind the label now: choose another person."
+          : "This is the person behind the label now: choose another person, or Keep.";
       }
       return { hid: operator.hid, action: "hand_over", contact_hid: choice.contactHid };
     });

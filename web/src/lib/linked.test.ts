@@ -251,7 +251,19 @@ describe("one Retire sends one request that says every linked record (P-297)", (
       ok: false,
       errors: {
         "operator O1": "Choose the person the label is handed over to, or another choice.",
-        "operator O2": "This is the person behind the label now: choose another, or Keep.",
+        "operator O2": "This is the person behind the label now: choose another person.",
+      },
+    });
+  });
+
+  it("says Keep only where Keep is a choice: with the contact kept (review 6)", () => {
+    // With the contact going, as above, Keep is not offered, and is not said.
+    let asked = { ...startChoices(ON_USER, PERSON, true), contact: false };
+    asked = choose(asked, "O2", "hand_over", "C1");
+    expect(retireBody(ON_USER, PERSON, asked, 4, true)).toEqual({
+      ok: false,
+      errors: {
+        "operator O2": "This is the person behind the label now: choose another person, or Keep.",
       },
     });
   });

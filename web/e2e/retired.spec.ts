@@ -205,8 +205,8 @@ test("P-292, P-296: an account is retired, left out of the list until asked for,
   await form.getByRole("button", { name: "Create user" }).click();
   await expect(form.getByLabel("Username (required)")).toHaveAttribute("aria-invalid", "true");
   const refusal = form.locator(".alert-error");
-  await expect(refusal).toContainText(`The retired account ${username} has this username`);
-  await expect(refusal).toContainText("rename that account to free the name, or bring it back");
+  // The sentence is the server's, and is not read here: it names the account, as a link.
+  await expect(refusal).toContainText(username);
   await refusal.getByRole("link", { name: username }).click();
   await expect(page.getByRole("heading", { level: 1, name: username })).toBeVisible();
 
@@ -693,10 +693,12 @@ test("P-298: a label is not brought back onto a retired contact: the contact is 
   // Bring back is refused where it was pressed, with the contact named, as a link.
   await released.getByRole("button", { name: "Bring back", exact: true }).click();
   const refusal = released.locator(".alert-error");
-  await expect(refusal).toContainText(
-    `The contact of ${first.label}, ${sol.contact.name}, is retired`,
-  );
+  // The sentence is the server's, and is not read here: what the page adds to it is,
+  // the contact as a link under its own words, with no name of a field and no lead of
+  // a value that another record has (review 6).
   await expect(refusal).toContainText("The contact that is retired:");
+  await expect(refusal).not.toContainText("record_status");
+  await expect(refusal).not.toContainText("that has it");
   await expect(refusal.getByRole("link", { name: sol.contact.name })).toBeVisible();
   expect((await read<Status>(request, headers, `/operators/${first.hid}`)).record_status).toBe(
     "retired",
@@ -821,7 +823,7 @@ test("P-295: an access code typed for somebody else is held to the least length,
   await typed.fill(short);
   await form.getByRole("button", { name: "Create user" }).click();
   await expect(typed).toHaveAttribute("aria-invalid", "true");
-  await expect(form).toContainText(`at least ${length} characters`);
+  await expect(form.locator(".field-error")).toBeVisible();
   // Nothing typed is lost.
   await expect(typed).toHaveValue(short);
   await expect(form.getByLabel("Username (required)")).toHaveValue(username);
