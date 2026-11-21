@@ -18,7 +18,9 @@ import { toApiError } from "./lib/hooks";
 import { site, siteOfAbout, useSite } from "./lib/product";
 import { SignIn } from "./pages/SignIn";
 
-type User = Schemas["UserOut"];
+// 0.9.14: the user as `GET /auth/me` answers it, with the contact and the operators that are
+// the person's own and the version of each (P-294).
+type User = Schemas["MeOut"];
 
 export interface Auth {
   /** The signed-in user, with the role they hold now. */
