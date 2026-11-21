@@ -3035,6 +3035,7 @@ database directly, because it must work before any account exists:
 hirdir admin create-user --role admin NAME       # prints a new access code once, as long as access_code_min_length asks
 hirdir admin create-user --access-code CODE NAME # a code of your choosing, of access_code_min_length at the least
 hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org NAME   # and its contact
+hirdir admin create-user --group NOC --group 'Field team' NAME   # in each group by its name; a group's role is the user's (P-304)
 hirdir admin reset-access-code NAME
 hirdir admin migrate
 hirdir admin backup

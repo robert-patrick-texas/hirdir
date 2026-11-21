@@ -216,12 +216,21 @@ def create_user(
     service_account: Annotated[
         bool, typer.Option("--service-account", help="An account that holds tokens.")
     ] = False,
+    group: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--group",
+            help="A group to put the user in, by its name; again for another. A group "
+            "that grants a role gives the user that role.",
+        ),
+    ] = None,
 ) -> None:
     """Create a user and print the access code, which is not shown again.
 
     The person is a contact: --name, with --email, --phone and --phone2 where known,
     makes it with the user. Without them the user has no contact until an Admin gives
-    it one, and is shown by its username.
+    it one, and is shown by its username. --group puts it in each group named, and a
+    group that grants a role gives it that role (P-304).
     """
     if role is not None and role not in [r.value for r in Role]:
         raise _fail("the role must be viewer, inventory or admin", 2)
@@ -231,6 +240,7 @@ def create_user(
     config = _load()
     with make_sessions(make_engine(config.database_url))() as db:
         try:
+            groups = accounts.groups_named(db, group or [])
             user, code = accounts.create_user(
                 db,
                 audit.SYSTEM,
@@ -241,13 +251,23 @@ def create_user(
             )
             if role:
                 accounts.grant_role(db, audit.SYSTEM, role=role, user_hid=user.hid)
+            for each in groups:
+                accounts.add_member(db, audit.SYSTEM, each.hid, user.hid)
+            db.flush()
+            held = accounts.effective_role(db, user)
             db.commit()
         except DomainError as error:
             raise _fail(str(error), 4) from error
     typer.echo(f"created {user.username}" + (f" with the {role} role" if role else ""))
+    if groups:
+        typer.echo(
+            f"in the group{'s' if len(groups) > 1 else ''} " + ", ".join(g.name for g in groups)
+        )
+        if not role and held is not None:
+            typer.echo(f"{user.username} holds the {held.value} role through its groups")
     if code and access_code is None:
         typer.echo(f"access code: {code}")
-    if not role:
+    if held is None:
         # An account with no role does not sign in, and the tokens of a service account
         # with none are refused (P-299).
         held = (

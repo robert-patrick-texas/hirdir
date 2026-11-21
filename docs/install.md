@@ -2233,7 +2233,8 @@ one is a `422` on `access_code`. `GET /auth/new-access-code` is new, and so are
 `--role` of `hirdir users bring-back` and `--generate` of `hirdir profile access-code`;
 `hirdir sign-in` of an account with no role exits `3`. `hirdir admin create-user`
 without `--role` still makes the person, and says that it cannot sign in until it is
-given a role. The audit trail has a new action, `sign_in_no_role`.
+given a role; from 0.9.16 it takes `--group NAME` as well, and a group that grants a
+role gives it (P-304). The audit trail has a new action, `sign_in_no_role`.
 
 Going back to 0.9.14 needs no backup, because the schema is the same. An account with
 no role then signs in again, as it did:

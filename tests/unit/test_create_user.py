@@ -5,11 +5,13 @@ from pathlib import Path
 from sqlalchemy import select
 from typer.testing import CliRunner
 
+from hirdir.auth.roles import Role
 from hirdir.cli.main import app
 from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.db.models import Contact, User
+from hirdir.db.models import AuditEvent, Contact, User
+from hirdir.domain import accounts, audit
 
 runner = CliRunner()
 
@@ -83,3 +85,39 @@ def test_an_account_made_with_no_role_is_told_what_that_means_for_it(
     assert "sign in" not in service.output
     held = runner.invoke(app, ["admin", "create-user", "--role", "viewer", "vic"])
     assert "holds no role" not in held.output
+
+
+def test_a_user_is_put_in_groups_by_name_and_has_a_groups_role(tmp_path: Path, monkeypatch) -> None:
+    """P-304: `--group NAME`, again for another; a group that grants a role gives the
+    user that role, and a name that no group has makes nothing."""
+    config = _installed(tmp_path, monkeypatch)
+    sessions = make_sessions(make_engine(config.database_url))
+    with sessions() as db:
+        noc = accounts.create_group(db, audit.SYSTEM, name="NOC")
+        accounts.grant_role(db, audit.SYSTEM, role="inventory", group_hid=noc.hid)
+        accounts.create_group(db, audit.SYSTEM, name="Field team")
+        db.commit()
+    made = runner.invoke(
+        app, ["admin", "create-user", "--group", "noc", "--group", "Field team", "lee"]
+    )
+    assert made.exit_code == 0, made.output
+    assert "in the groups NOC, Field team" in made.output
+    assert "lee holds the inventory role through its groups" in made.output
+    assert "holds no role" not in made.output
+    plain = runner.invoke(app, ["admin", "create-user", "--group", "Field team", "kai"])
+    assert plain.exit_code == 0, plain.output
+    assert "kai holds no role, and cannot sign in until an Admin gives it one" in plain.output
+    refused = runner.invoke(app, ["admin", "create-user", "--group", "Nobody", "sam"])
+    assert refused.exit_code == 4
+    assert "there is no user group named Nobody" in refused.output
+    with sessions() as db:
+        lee = accounts.find_user(db, "lee")
+        assert lee is not None
+        assert accounts.effective_role(db, lee) is Role.INVENTORY
+        assert accounts.find_user(db, "sam") is None
+        joined = db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.action == "add_member", AuditEvent.record_hid == noc.hid
+            )
+        ).all()
+        assert len(joined) == 1

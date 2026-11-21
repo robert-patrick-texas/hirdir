@@ -914,6 +914,26 @@ def get_group(db: Session, hid: str) -> UserGroup:
     return group
 
 
+def groups_named(db: Session, names: Sequence[str]) -> list[UserGroup]:
+    """Return the user groups of names, each compared without regard to case, in the
+    order given and each once, or refuse every name that no group has (P-304)."""
+    found: list[UserGroup] = []
+    missing: list[str] = []
+    for name in names:
+        group = db.scalar(select(UserGroup).where(UserGroup.name_key == _key(name)))
+        if group is None:
+            missing.append(name.strip())
+        elif group not in found:
+            found.append(group)
+    if missing:
+        listed = ", ".join(missing)
+        raise Invalid(
+            f"there is no user group named {listed}",
+            {"group": "give the name of a group there is"},
+        )
+    return found
+
+
 def list_groups(db: Session) -> list[UserGroup]:
     """Return every user group, by name."""
     return list(db.scalars(select(UserGroup).order_by(UserGroup.name_key)))
