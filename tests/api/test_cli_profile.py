@@ -177,6 +177,43 @@ def test_profile_set_asks_which_operator_where_the_person_is_behind_several(
     ]
 
 
+def test_profile_set_says_that_the_contact_was_changed_where_the_operator_is_refused(
+    client: TestClient, admin: dict, hirdir
+) -> None:
+    """The contact and an operator are two changes: the first is kept where the second
+    is refused, and the command says so before the refusal, with its exit code."""
+    kim, _ = _person(client, admin)
+    Maker(client, admin).post("/operators", {"label": "TAKEN"})
+    refused = hirdir(
+        kim,
+        "profile",
+        "set",
+        "--phone",
+        "+1 555 0199",
+        "--name",
+        "Kim A. Lee",
+        "--label",
+        "taken",
+        expect=5,
+    )
+    said = refused.output.splitlines()
+    first = said.index("your contact is changed (name, phone); your operator klee is not:")
+    assert said[first + 1] == "hirdir: there is already an operator TAKEN"
+    # The profile is not printed as if all of it had been done.
+    assert not [line for line in said if line.startswith("username")]
+    me = _me(client, kim)
+    assert (me["contact"]["name"], me["contact"]["phone"]) == ("Kim A. Lee", "+1 555 0199")
+    assert me["operators"][0]["label"] == "klee"
+
+    # A contact that the request left as it was is not said to be changed, and an
+    # operator refused by itself is refused with nothing before it.
+    same = hirdir(kim, "profile", "set", "--phone", "+1 555 0199", "--label", "taken", expect=5)
+    alone = hirdir(kim, "profile", "set", "--label", "taken", expect=5)
+    for result in (same, alone):
+        assert "your contact is changed" not in result.output
+        assert "there is already an operator TAKEN" in result.output
+
+
 def test_profile_set_says_what_it_needs_and_what_the_server_refuses(
     client: TestClient, admin: dict, viewer: dict, hirdir
 ) -> None:

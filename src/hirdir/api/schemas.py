@@ -419,8 +419,10 @@ class OwnOperator(Model):
 class MeOut(Model):
     """The signed-in user, with what is their own: the answer of `GET /auth/me` and of
     the routes under it, and `user` in the answer of signing in. It is a user as the
-    routes of users answer one, but for three things: `contact` and `operators` carry
-    what the profile changes, and the version of each, and `notes` is null."""
+    routes of users answer one, but for four things: `contact` and `operators` carry
+    what the profile changes, and the version of each; `notes` is null; and there is no
+    `record_status`, which would say `active` always, since whoever reads this is
+    signed in and a retired account signs in nowhere (P-296)."""
 
     hid: str
     username: str
