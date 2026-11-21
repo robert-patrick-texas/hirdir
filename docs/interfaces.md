@@ -256,6 +256,20 @@ taken. The order begins with the darker shades, eight hues far apart. The colour
 fixed in `hirdir.domain.colours`. They are what is offered and not what is allowed: a
 colour is stored as `#rrggbb` whatever it is.
 
+Since 0.9.17 a contact answers `same_name` (P-315): how many other contacts that are
+not retired have its name, compared without regard to case or to the spaces round it,
+as a file matches a contact by its name. It is read when the contact is read, by
+`GET /contacts`, `GET /contacts/{hid}` and the routes that make and change a contact,
+for a whole page of contacts in one statement and never for a row; and so is the
+`contact` of `GET /auth/me` and of the routes of a person's own. A name that another
+contact has is no fault: `POST /contacts`, `PATCH /contacts/{hid}` and
+`PATCH /auth/me/contact` save it as before, nothing is refused and nothing is written
+for it, and the field is not filtered or sorted by. It lets a page and the CLI say,
+after a save and on the contact's page, that another contact is named so and that a
+file then tells them apart by the email or the HID. A file is not changed: a row that
+names a contact by a name two have is rejected and asks for the email or the HID, as
+before.
+
 ### Signing in with no role
 
 An account that holds no role does not sign in (P-299). `POST /auth/sign-in` of a
@@ -307,8 +321,9 @@ a role.
 
 A person who signs in changes what is their own (P-289, P-294, P-295). `GET /auth/me`
 answers the user as before and, with it, `contact`, the contact the person is, with its
-`hid`, `name`, `email`, `phone`, `phone2`, `organization`, `record_status` and
-`row_version`, or null where the account has none; and `operators`, every operator
+`hid`, `name`, `email`, `phone`, `phone2`, `organization`, `record_status`,
+`row_version` and, since 0.9.17, `same_name`, as a contact answers it (P-315), or null
+where the account has none; and `operators`, every operator
 that is not retired whose contact is theirs, in the order of their labels, each with
 `hid`, `label`, `colour`, `record_status` and `row_version`. A person whose contact is
 retired has none: nobody is behind the labels of a retired contact (P-280). It does
@@ -3025,7 +3040,7 @@ refused leaves the others as they went.
 | Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
-| Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. The contact and an operator are two changes, the contact first: where the change of the operator is refused, as for a label that another has, the change of the contact is kept, and the command says so on a line before the refusal, `your contact is changed (phone); your operator klee is not:`, and exits with the code of the refusal. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself; an account with no role is not signed in (P-299). `hirdir profile access-code --generate` asks for the code the person has alone, has the server make the new one by `GET /auth/new-access-code`, sets it as a typed one is set, and prints it once (P-300). `hirdir sign-in` of an account that holds no role prints the server's words and whom to ask, each that is set, keeps no session and exits `3`; the server refuses a service token (P-294, P-295) |
+| Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. The contact and an operator are two changes, the contact first: where the change of the operator is refused, as for a label that another has, the change of the contact is kept, and the command says so on a line before the refusal, `your contact is changed (phone); your operator klee is not:`, and exits with the code of the refusal. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself; an account with no role is not signed in (P-299). `hirdir profile access-code --generate` asks for the code the person has alone, has the server make the new one by `GET /auth/new-access-code`, sets it as a typed one is set, and prints it once (P-300). Since 0.9.17, where a name saved by `hirdir profile set --name` is one that another contact has, which is saved as any other, the command says so on a line after the change, with how many and how to list them: `another contact is named Kim Lee: a file tells you apart by your email or your HID; hirdir contacts list --filter 'name:eq:Kim Lee' lists them` (P-315). `hirdir contacts` has no command that makes or changes a contact: a contact is made and changed on the web or by a file. `hirdir sign-in` of an account that holds no role prints the server's words and whom to ask, each that is set, keeps no session and exits `3`; the server refuses a service token (P-294, P-295) |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the
@@ -3761,6 +3776,21 @@ server (P-299, P-300):
   refused by the server at New access code, in its words, "this is the access code you
   have now", with the three boxes as typed and no session ended. An Admin who sets the
   code of somebody else may give the one they had.
+
+What 0.9.17 adds of contacts, a name that another contact has (P-315):
+
+- **A contact's page.** Where `same_name` of the contact is more than none, the page
+  says, under its heading, that another contact is named so, or how many are, and that
+  a file then tells them apart by the email or the HID: "Another contact is named Kim
+  Lee: a file tells them apart by the email or the HID.", or "2 other contacts are
+  named Kim Lee: …", with a link, "The contacts named Kim Lee", to the list of contacts
+  with that name, a filter `name:eq:` on it. So it is said after New contact, which
+  opens the contact's page, after each save on it, and whenever the page is opened.
+  Nothing is held back: the name is saved as typed.
+- **The Profile.** After Save details that sent the name, where the name is one that
+  another contact has, the page says beside "Your details were saved." that another
+  contact is named so and that a file tells the person apart by their email or their
+  HID, with the same link.
 
 ### The grid
 

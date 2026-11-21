@@ -10393,6 +10393,8 @@ export interface components {
       phone2: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
+      /** How many other contacts that are not retired have its name, compared without regard to case as a file matches a contact by its name (P-315). A name another has is saved as any other; a file then tells them apart by the email or the HID. */
+      same_name: number;
       tags: string[];
       updated_at: string;
       /** The user this contact is, where it is one. */
@@ -12876,6 +12878,8 @@ export interface components {
       phone2: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
+      /** How many other contacts that are not retired have this name, as `same_name` of a contact (P-315). */
+      same_name: number;
     };
     /**
      * What a person changes of the contact they are, and the version it was read at.

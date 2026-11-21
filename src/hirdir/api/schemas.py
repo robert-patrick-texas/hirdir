@@ -441,6 +441,10 @@ class OwnContact(Model):
     organization: str | None
     record_status: Literal["draft", "active", "retired"]
     row_version: int
+    same_name: int = Field(
+        description="How many other contacts that are not retired have this name, as "
+        "`same_name` of a contact (P-315)."
+    )
 
 
 class OwnOperator(Model):

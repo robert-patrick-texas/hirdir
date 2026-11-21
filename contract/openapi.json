@@ -8530,6 +8530,11 @@
             "title": "Row Version",
             "type": "integer"
           },
+          "same_name": {
+            "description": "How many other contacts that are not retired have its name, compared without regard to case as a file matches a contact by its name (P-315). A name another has is saved as any other; a file then tells them apart by the email or the HID.",
+            "title": "Same Name",
+            "type": "integer"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -8574,6 +8579,7 @@
           "is_operator",
           "operators",
           "uses",
+          "same_name",
           "row_version",
           "created_at",
           "updated_at"
@@ -23277,6 +23283,11 @@
           "row_version": {
             "title": "Row Version",
             "type": "integer"
+          },
+          "same_name": {
+            "description": "How many other contacts that are not retired have this name, as `same_name` of a contact (P-315).",
+            "title": "Same Name",
+            "type": "integer"
           }
         },
         "required": [
@@ -23287,7 +23298,8 @@
           "phone2",
           "organization",
           "record_status",
-          "row_version"
+          "row_version",
+          "same_name"
         ],
         "title": "OwnContact",
         "type": "object"
