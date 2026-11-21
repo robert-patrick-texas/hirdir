@@ -135,6 +135,28 @@ def _ending_with_the_last_role(db: Session, who: Callable[[], Sequence[User]]) -
             _end_sessions(user)
 
 
+@contextmanager
+def _ending_with_the_first_role(db: Session, who: Callable[[], Sequence[User]]) -> Generator[None]:
+    """End every session of each of the users that the change gives a role to where it
+    held none (P-299). No session is given to an account with no role, but one that an
+    earlier release gave, as 0.9.14 did to an account brought back, is refused and not
+    ended: it would answer again once a role is given. So whatever gives the first role,
+    a grant to the user or to a group of its, or its being put in a group that grants
+    one, ends what sessions it had first, as `_ending_with_the_last_role` does for the
+    last role, in the writer's place in the same way.
+    """
+    dialect.hold_other_writers(db)
+    users = who()
+    before = roles_of(db, users)
+    roleless = [user for user in users if before[user.hid] is None]
+    yield
+    db.flush()
+    after = roles_of(db, roleless)
+    for user in roleless:
+        if after[user.hid] is not None:
+            _end_sessions(user)
+
+
 def _members(db: Session, group_hid: str) -> list[User]:
     """Return the users in a group, by its HID."""
     return list(
@@ -985,13 +1007,15 @@ def delete_group(db: Session, context: AuditContext, hid: str) -> None:
 
 
 def add_member(db: Session, context: AuditContext, group_hid: str, user_hid: str) -> None:
-    """Put a user in a group. Doing it twice changes nothing."""
+    """Put a user in a group. Doing it twice changes nothing. Where the group gives it
+    its first role, every session it had ends (P-299)."""
     group, user = get_group(db, group_hid), get_user(db, user_hid)
     if is_retired(user):
         raise _retired(user, None, "is put in no group")
     if db.get(UserGroupMember, (user.hid, group.hid)) is not None:
         return
-    db.add(UserGroupMember(user_hid=user.hid, group_hid=group.hid))
+    with _ending_with_the_first_role(db, lambda: [user]):
+        db.add(UserGroupMember(user_hid=user.hid, group_hid=group.hid))
     audit.record(
         db, context, "add_member", "user_group", group.hid, [change("user_hid", None, user.hid)]
     )
@@ -1026,7 +1050,9 @@ def grant_role(
     user_hid: str | None = None,
     group_hid: str | None = None,
 ) -> RoleGrant:
-    """Grant a role to one user or one group. Granting it twice returns the first grant."""
+    """Grant a role to one user or one group. Granting it twice returns the first grant.
+    Each user it gives the first role to, the user or a member of the group, has every
+    session it had ended (P-299)."""
     if (user_hid is None) == (group_hid is None):
         raise Invalid(
             "a role is granted to a user or to a group",
@@ -1053,7 +1079,12 @@ def grant_role(
     grant = RoleGrant(
         role=role, user_hid=user_hid, group_hid=group_hid, created_by=context.actor_hid
     )
-    db.add(grant)
+
+    def holders() -> list[User]:
+        return [get_user(db, user_hid)] if user_hid else _members(db, group_hid or "")
+
+    with _ending_with_the_first_role(db, holders):
+        db.add(grant)
     db.flush()
     audit.record(
         db,

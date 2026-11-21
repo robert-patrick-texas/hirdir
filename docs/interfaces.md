@@ -292,7 +292,13 @@ back: `DELETE /role-grants/{hid}` of a grant of the account or of a group it is 
 is audited by its own event, as before, with nothing added to it. Each takes the one
 writer's place before it reads the roles, so that of two at the same moment, a grant of
 the account's own and one of its group revoked together, the second sees the first and
-ends the sessions. A token of a service
+ends the sessions. The other way round, a change that gives an account its first role,
+`POST /role-grants` to the account or to a group it is in, and
+`PUT /user-groups/{hid}/members/{user_hid}` of a group that grants one, ends every
+session the account had, in the writer's place in the same way: no session is given
+to an account with no role, but one that 0.9.14 gave, as to an account it brought
+back, is refused and would otherwise answer again once a role is given. Bring back
+ends the sessions of the account as before. A token of a service
 account that holds no role is refused, a `401` that says the account holds no role;
 an Admin may make a token for it all the same, which works once the account is given
 a role.

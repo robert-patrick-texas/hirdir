@@ -2,11 +2,15 @@
 with whom to ask, a session and a token of such an account are refused, the last role
 taken away ends the sessions, and a person is made and brought back with a role."""
 
+import time
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
+from hirdir import clock
+from hirdir.auth import tokens
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.db.models import RoleGrant
@@ -135,6 +139,65 @@ def test_a_session_with_no_role_is_ended_and_a_role_given_again_does_not_bring_i
     _grant(client, admin, user_hid=user["user"]["hid"])
     assert client.get(f"{API}/auth/me", headers=kim).status_code == 401
     assert client.get(f"{API}/auth/me", headers=sign_in(client, "klee", CODE)).status_code == 200
+
+
+def _old_session(client: TestClient, user_hid: str) -> dict[str, str]:
+    """A session of an account with no role, issued as 0.9.14 issued one, as after a
+    bring back: no session is given to such an account from 0.9.15."""
+    time.sleep(0.01)  # after the end of the sessions the revocation made
+    app: Any = client.app
+    key = app.state.signing_key
+    token, _ = tokens.issue_session(key, user_hid, clock.now_ms(), 8)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.parametrize("way", ["own grant", "grant to its group", "put in a group"])
+def test_a_session_from_before_does_not_come_back_with_a_first_role(
+    client: TestClient, admin: dict, way: str
+) -> None:
+    """A session an account had while it held no role is refused, and is ended when the
+    account is given its first role, whichever way, so that it does not answer again
+    (P-299)."""
+    user = _roleless(client, admin)
+    desk = Maker(client, admin)
+    group = desk.post("/user-groups", {"name": "Example Stores"})
+    if way == "grant to its group":
+        path = f"{API}/user-groups/{group['hid']}/members/{user['hid']}"
+        assert client.put(path, headers=admin).status_code == 204
+    old = _old_session(client, user["hid"])
+    assert client.get(f"{API}/auth/me", headers=old).status_code == 401
+    if way == "own grant":
+        _grant(client, admin, user_hid=user["hid"])
+    elif way == "grant to its group":
+        _grant(client, admin, group_hid=group["hid"])
+    else:
+        _grant(client, admin, group_hid=group["hid"])
+        path = f"{API}/user-groups/{group['hid']}/members/{user['hid']}"
+        assert client.put(path, headers=admin).status_code == 204
+    assert client.get(f"{API}/auth/me", headers=old).status_code == 401
+    # Signing in again gives a session that holds.
+    fresh = sign_in(client, "klee", CODE)
+    assert client.get(f"{API}/auth/me", headers=fresh).json()["role"] == "viewer"
+
+
+def test_a_session_from_before_does_not_come_back_when_its_account_is_brought_back(
+    client: TestClient, admin: dict
+) -> None:
+    """Brought back with a role, as from 0.9.15 a person is, its sessions from before
+    stay ended."""
+    user = _roleless(client, admin)
+    old = _old_session(client, user["hid"])
+    desk = Maker(client, admin)
+    now = desk.get(f"/users/{user['hid']}")
+    desk.post(f"/users/{user['hid']}/retire", {"row_version": now["row_version"]}, 200)
+    now = desk.get(f"/users/{user['hid']}")
+    back = desk.post(
+        f"/users/{user['hid']}/bring-back",
+        {"row_version": now["row_version"], "role": "viewer"},
+        200,
+    )
+    assert back["user"]["role"] == "viewer"
+    assert client.get(f"{API}/auth/me", headers=old).status_code == 401
 
 
 def test_a_live_session_with_no_role_is_told_so_and_an_ended_one_is_not(

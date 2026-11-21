@@ -2197,7 +2197,8 @@ changed by the upgrade, and it writes no audit event. It takes its backup and st
 starts the service all the same. `/etc/hirdir/config.toml` gains no setting. An account
 that holds no role is refused at sign-in from now on, and its sessions are refused: an
 account brought back under 0.9.14, and not yet given a role, cannot sign in until an
-Admin gives it one.
+Admin gives it one. A session such an account still holds from 0.9.14 is refused, and
+is ended when it is given a role: the person signs in again.
 
 What an Admin sees changed:
 
