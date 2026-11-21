@@ -551,9 +551,10 @@ test("P-297: a label is released with the rest kept, and an account retired with
       `/operators/${second.hid}`,
     ),
   ).toMatchObject({ record_status: "active", contact_hid: null });
-  // A retired account is behind no label, and none is made for it.
+  // A retired account stands behind no label that is not released, and none is made for it.
   const marks = page.getByTestId("user-operators");
-  await expect(marks).toContainText("no operator");
+  await expect(marks.locator(".operator-mark")).toHaveCount(1);
+  await expect(marks).toContainText("released");
   await expect(marks.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
   await expectClean(page, seen);
 });
