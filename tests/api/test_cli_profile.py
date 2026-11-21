@@ -245,7 +245,9 @@ def test_profile_access_code_asks_for_both_codes_and_keeps_the_new_session(
     )
     assert "current_access_code: this is not the access code you have" in wrong.output
     short = hirdir(kim, "profile", "access-code", expect=4, typed=f"{CODE}\nshort\nshort\n")
-    assert "access_code: at least 12 characters (access_code_min_length)" in short.output
+    assert "access_code: at least 12 characters\n" in short.output
+    # The words a person reads do not name the setting.
+    assert "access_code_min_length" not in short.output
     # Neither refusal kept a session, or ended one.
     assert not cli_client.settings_path().exists()
     assert client.get(f"{API}/auth/me", headers=elsewhere).status_code == 200

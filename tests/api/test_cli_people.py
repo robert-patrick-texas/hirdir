@@ -232,3 +232,29 @@ def test_each_command_takes_an_hid_where_it_takes_a_name(
         assert f"there is no user {nobody}" in refused.output
     run("contacts", "retire", nobody, expect=4)
     run("operators", "retire", nobody, expect=4)
+
+
+def test_a_username_in_the_form_of_an_hid_is_a_username_first(
+    run: Any, desk: Maker, as_admin: tuple[str, str]
+) -> None:
+    """A username may have the form of an HID, another account's too: what a command is
+    given is looked for as a whole username first, and as an HID after."""
+    first = desk.post("/users", {"username": "klee"})["user"]
+    # An account named as the HID of another, and one named as an HID that is nobody's.
+    desk.post("/users", {"username": first["hid"]})
+    nobody = "00000000-0000-7000-8000-000000000000"
+    desk.post("/users", {"username": nobody})
+
+    said = run("users", "retire", first["hid"], "--dry-run", *as_admin).stdout
+    assert said.splitlines()[0] == f"user {first['hid']}, and what is linked to it:"
+    said = run("users", "retire", nobody, "--dry-run", *as_admin).stdout
+    assert said.splitlines()[0] == f"user {nobody}, and what is linked to it:"
+    # The account whose HID that is, is named by its own username.
+    said = run("users", "retire", "KLee", "--dry-run", *as_admin).stdout
+    assert said.splitlines()[0] == "user klee, and what is linked to it:"
+
+    # Retired by its HID-shaped username, and brought back by it: the other is left.
+    run("users", "retire", first["hid"], *as_admin)
+    assert desk.get(f"/users/{first['hid']}")["record_status"] == "active"
+    back = run("users", "bring-back", first["hid"], *as_admin).stdout
+    assert back.splitlines()[-2] == f"{first['hid']} is active again, with no role and no group"

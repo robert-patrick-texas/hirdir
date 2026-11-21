@@ -355,7 +355,7 @@ def test_what_is_said_of_a_record_that_is_not_linked_or_is_retired_already_is_re
     assert "twice" in refused("contacts", kim.contact, operators_, user="retire", operators=said)
     # A label is handed over to a contact: one that is there, not retired, and another.
     for to, why in (
-        (None, "names the contact"),
+        (None, "say which"),
         (kim.contact_hid, "another contact"),
         (gone["hid"], "is retired"),
         ("no-such-contact", "there is no contact"),
@@ -363,7 +363,7 @@ def test_what_is_said_of_a_record_that_is_not_linked_or_is_retired_already_is_re
         said = [{"hid": kim.kl["hid"], "action": "hand_over", "contact_hid": to}, both[1]]
         assert why in refused("contacts", kim.contact, operators_, user="retire", operators=said)
     said = [{"hid": kim.kl["hid"], "action": "open", "contact_hid": kim.sam["hid"]}, both[1]]
-    assert "hand_over alone" in refused(
+    assert "only where it is handed over" in refused(
         "contacts", kim.contact, operators_, user="retire", operators=said
     )
     # A contact with no user, and a user with no contact, have none to say anything of.
@@ -383,6 +383,91 @@ def test_what_is_said_of_a_record_that_is_not_linked_or_is_retired_already_is_re
         "contacts", kim.contact, "linked.user", user="retire", operators=[both[0]]
     )
     kim.retire("contacts", kim.contact, operators=[both[0]])
+
+
+def test_a_refusal_of_a_plan_names_each_record_as_a_person_knows_it(kim: Kim, desk: Maker) -> None:
+    """An operator by its label, a contact by its name, a user by its username, never by
+    an HID where the record can be read; and what becomes of a record is said in words,
+    not in the values the API takes."""
+    other = desk.post("/operators", {"label": "OTHER"})
+    both = kim.every()
+    words: list[str] = []
+
+    def said(problem: dict, field: str) -> str:
+        words.extend([problem["detail"], *errors(problem).values()])
+        return errors(problem)[field]
+
+    # An operator that is there, and is another's: by its label. What is no record at
+    # all: as it was sent.
+    plan = [*both, {"hid": other["hid"], "action": "retire"}]
+    problem = kim.retire("contacts", kim.contact, 422, user="retire", operators=plan)
+    assert said(problem, "linked.operators") == "the operator OTHER is not linked to this record"
+    plan = [*both, {"hid": "no-such-operator", "action": "retire"}]
+    problem = kim.retire("contacts", kim.contact, 422, user="retire", operators=plan)
+    assert said(problem, "linked.operators") == "there is no operator no-such-operator"
+
+    # What is unsaid is asked for in words.
+    problem = kim.retire("contacts", kim.contact, 409)
+    assert said(problem, "linked.operators") == (
+        "say what becomes of each of the operators KL, LM: retire it, keep it, leave it "
+        "open or hand it over"
+    )
+    assert said(problem, "linked.user") == "say what becomes of the user klee: retire it or keep it"
+    assert "the operator KL, the operator LM, the user klee" in problem["detail"]
+    problem = kim.retire("contacts", kim.contact, 409, user="retire", operators=[both[0]])
+    assert said(problem, "linked.operators") == (
+        "say what becomes of the operator LM: retire it, keep it, leave it open or hand it over"
+    )
+    problem = kim.retire("users", kim.user, 409, operators=both)
+    assert said(problem, "linked.contact") == (
+        "say what becomes of the contact Kim Lee: retire it or keep it"
+    )
+
+    # The other refusals of a plan, each read for its words.
+    plans: list[tuple[str, str | None, list[dict[str, Any]]]] = [
+        ("retire", "retire", both),
+        ("keep", None, kim.every("open")),
+        ("retire", None, kim.every("keep")),
+        ("retire", None, [{**both[0], "action": "hand_over"}, both[1]]),
+        ("retire", None, [{**both[0], "contact_hid": kim.sam["hid"]}, both[1]]),
+        ("retire", None, [*both, both[0]]),
+    ]
+    for user, contact, operators_ in plans:
+        problem = kim.retire(
+            "contacts", kim.contact, 422, user=user, contact=contact, operators=operators_
+        )
+        words.extend([problem["detail"], *errors(problem).values()])
+    plan = [{"hid": kim.kl["hid"], "action": "hand_over", "contact_hid": kim.contact_hid}, both[1]]
+    problem = kim.retire("contacts", kim.contact, 422, user="retire", operators=plan)
+    assert "KL" in said(problem, "linked.operators")
+    problem = kim.retire("operators", kim.kl, 422, user="keep", contact="keep", operators=both)
+    assert "KL" in said(problem, "linked.operators")
+
+    # And of a bringing back.
+    kim.retire("users", kim.user, contact="retire", operators=both)
+    problem = bring_back(
+        desk,
+        kim.user,
+        422,
+        contact="bring_back",
+        operators=[{"hid": other["hid"], "action": "bring_back"}],
+    )
+    assert said(problem, "linked.operators") == "the operator OTHER is not of this user's contact"
+    problem = bring_back(
+        desk, kim.user, 422, operators=[{"hid": "no-such-operator", "action": "bring_back"}]
+    )
+    assert said(problem, "linked.operators") == "there is no operator no-such-operator"
+    problem = bring_back(desk, kim.user, 409)
+    assert "Kim Lee" in said(problem, "linked.contact")
+    problem = kim.retire("contacts", kim.contact, 409, operators=both)
+    words.append(problem["detail"])
+
+    # No HID of a record that has a name, and no value or word of the API, is in them.
+    hids = (other["hid"], kim.kl["hid"], kim.lm["hid"], kim.contact_hid, kim.user["hid"])
+    for text in words:
+        assert not [hid for hid in hids if hid in text], text
+        for word in ("hand_over", "bring_back", "contact_hid", "route", "request"):
+            assert word not in text, text
 
 
 def test_a_request_that_retires_a_user_is_an_admins(
