@@ -21,7 +21,6 @@ import {
   othersOf,
   refusedRows,
   retireBody,
-  retiredAccount,
   retiredWords,
   rowOf,
   startChoices,
@@ -401,32 +400,6 @@ describe("Bring back of a user offers its retired contact and that contact's lab
   it("sends the version alone for an account with nothing retired to bring", () => {
     const alone: Linked = { user: left.user, contact: null, operators: [] };
     expect(bringBackBody(alone, [], 3)).toEqual({ row_version: 3 });
-  });
-});
-
-describe("a username that a retired account has (P-296)", () => {
-  const existing = { record_type: "user", hid: "U9", label: "klee" };
-
-  it("names the retired account the server refused it for", () => {
-    const refused = {
-      status: 409,
-      fields: { username: "a retired account has this username" },
-      existing,
-    };
-    expect(retiredAccount(refused)).toEqual({ hid: "U9", label: "klee" });
-  });
-
-  it("names none where the account that has it is not retired, or nothing is refused", () => {
-    const taken = { status: 409, fields: { username: "another user has this username" }, existing };
-    expect(retiredAccount(taken)).toBeNull();
-    expect(retiredAccount(null)).toBeNull();
-    expect(
-      retiredAccount({ status: 422, fields: { username: "is retired" }, existing: null }),
-    ).toBeNull();
-    const other = { record_type: "contact", hid: "C1", label: "Kim Lee" };
-    expect(
-      retiredAccount({ status: 409, fields: { username: "is retired" }, existing: other }),
-    ).toBeNull();
   });
 });
 

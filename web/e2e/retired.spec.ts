@@ -283,9 +283,10 @@ test("P-292, P-296: an account is retired, left out of the list until asked for,
   await form.getByRole("checkbox", { name: "Also a contact" }).uncheck();
   await form.getByRole("button", { name: "Create user" }).click();
   await expect(form.getByLabel("Username (required)")).toHaveAttribute("aria-invalid", "true");
-  const hasIt = form.getByTestId("retired-has-it");
-  await expect(hasIt).toContainText(`The retired account ${username} has this username`);
-  await hasIt.getByRole("link", { name: username }).click();
+  const refusal = form.locator(".alert-error");
+  await expect(refusal).toContainText(`The retired account ${username} has this username`);
+  await expect(refusal).toContainText("rename that account to free the name, or bring it back");
+  await refusal.getByRole("link", { name: username }).click();
   await expect(page.getByRole("heading", { level: 1, name: username })).toBeVisible();
 
   // Renamed, a retired account frees its name; and it is the same account.
@@ -550,6 +551,10 @@ test("P-297: a label is released with the rest kept, and an account retired with
       `/operators/${second.hid}`,
     ),
   ).toMatchObject({ record_status: "active", contact_hid: null });
+  // A retired account is behind no label, and none is made for it.
+  const marks = page.getByTestId("user-operators");
+  await expect(marks).toContainText("no operator");
+  await expect(marks.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
   await expectClean(page, seen);
 });
 

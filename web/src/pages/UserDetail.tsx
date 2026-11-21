@@ -10,7 +10,6 @@ import { OperatorMark } from "../components/Operator";
 import { ContactChanges, PersonChooser } from "../components/Person";
 import { PersonChain } from "../components/PersonChain";
 import { Notice, Problem } from "../components/Problem";
-import { RetiredHasIt } from "../components/RetiredHasIt";
 import { BringBackUser, RetirePerson } from "../components/RetirePerson";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
@@ -254,7 +253,7 @@ function Facts({ user }: { user: User }) {
             )}
             {user.operators.length === 0 && <span className="people-gap">no operator</span>}
             {/* A retired contact stands behind no operator: none is offered for it. */}
-            {user.contact?.record_status === "retired" && (
+            {user.contact?.record_status === "retired" && userState(user) !== "Retired" && (
               <span className="muted" data-testid="contact-retired">
                 {" "}
                 · its contact,{" "}
@@ -265,8 +264,10 @@ function Facts({ user }: { user: User }) {
                 given another
               </span>
             )}
+            {/* 0.9.14: nor is one made for an account that is retired (P-296). */}
             {user.contact &&
               user.contact.record_status !== "retired" &&
+              userState(user) !== "Retired" &&
               !behindOperator(user.operators) && (
                 <MakeOperator
                   contactHid={user.contact.hid}
@@ -274,7 +275,7 @@ function Facts({ user }: { user: User }) {
                   who={user.username}
                 />
               )}
-            {!user.contact && (
+            {!user.contact && userState(user) !== "Retired" && (
               <span className="muted"> · an operator stands for a contact: give it one first</span>
             )}
           </dd>
@@ -353,7 +354,6 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
           }
           error={fields.username}
         />
-        <RetiredHasIt error={action.error} />
         {!retired && (
           <CheckField
             label="Disabled"
@@ -395,8 +395,10 @@ function Person({ user, reload }: { user: User; reload: () => void }) {
     <section aria-labelledby="person">
       <h2 id="person">The person</h2>
       <p className="hint">
-        The name, the email and the numbers of a user are those of its contact. Changed here, they
-        are changed on the contact, and so wherever that person is named.
+        The name, the email and the numbers of a user are those of its contact.{" "}
+        {retired
+          ? "They are changed on the page of the contact."
+          : "Changed here, they are changed on the contact, and so wherever that person is named."}
       </p>
       <Notice text={done} />
       {contact ? (

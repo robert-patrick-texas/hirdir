@@ -341,23 +341,6 @@ export function bringBackBody(
   return body;
 }
 
-/**
- * The retired account that has a username refused to another (P-296), or null: the
- * server answers a `409` on `username` that says the account is retired, and names it.
- */
-export function retiredAccount(
-  error: {
-    status: number;
-    fields: Readonly<Record<string, string>>;
-    existing: { record_type: string; hid: string; label: string } | null;
-  } | null,
-): { hid: string; label: string } | null {
-  if (error?.status !== 409 || error.existing?.record_type !== "user") return null;
-  const said = error.fields.username;
-  if (said === undefined || !/retired/i.test(said)) return null;
-  return { hid: error.existing.hid, label: error.existing.label };
-}
-
 /** What is said before the linked records a refusal names as not said (P-297). */
 export function notSaidLead(count: number): string {
   return count === 1

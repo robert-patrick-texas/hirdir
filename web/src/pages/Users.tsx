@@ -17,7 +17,6 @@ import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
-import { RetiredHasIt } from "../components/RetiredHasIt";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
@@ -583,8 +582,6 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. An Admin can change it later."
           error={fields.username}
         />
-        {/* 0.9.14: a username that a retired account has, with a link to it (P-296). */}
-        <RetiredHasIt error={action.error} />
         <CheckField
           label="Service account"
           name="is_service_account"

@@ -163,7 +163,12 @@ function RetireAsk(props: RetireAskProps) {
   const choices = asked?.choices;
   const plain = linked ? nothingLinked(on, linked) : false;
   const blocked = linked ? blockedWords(on, linked, admin) : null;
-  const refused = refusedRows(action.error?.fields ?? {});
+  // Where the server names records that were not listed, they are listed now, and the
+  // box says so with each as a link: what it says of each field is not said again.
+  const unlisted = (action.error?.dependsOn.length ?? 0) > 0;
+  const refused = unlisted
+    ? { rows: {}, shown: ["linked.user", "linked.contact", "linked.operators"] }
+    : refusedRows(action.error?.fields ?? {});
   const rows: Readonly<Record<string, string | undefined>> = { ...refused.rows, ...found };
 
   function choose(next: Choices) {
@@ -181,12 +186,12 @@ function RetireAsk(props: RetireAskProps) {
       return;
     }
     setFound({});
-    let unlisted = false;
+    let reread = false;
     const result = await action.run(async () => {
       try {
         return await sendRetire(on, built.body);
       } catch (thrown) {
-        unlisted = thrown instanceof ApiError && namesUnlisted(thrown, on, linked);
+        reread = thrown instanceof ApiError && namesUnlisted(thrown, on, linked);
         throw thrown;
       }
     });
@@ -195,7 +200,7 @@ function RetireAsk(props: RetireAskProps) {
       return;
     }
     // Something is linked that was not listed: the list is read again, what was chosen kept.
-    if (unlisted) read.reload();
+    if (reread) read.reload();
   }
 
   return (

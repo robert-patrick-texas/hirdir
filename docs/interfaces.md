@@ -3472,7 +3472,8 @@ P-292, P-296 to P-298):
   `422` or `403`, is shown in the dialog, the fields of `linked` at their rows and the
   records of `depends_on` as links, with nothing chosen lost; where the server names a
   record that was not listed, the list is read again, the new record ticked and what
-  was chosen kept. Done, the page says what became of each: `Kim Lee was retired, with
+  was chosen kept, and the dialog says that they are listed now in place of the
+  server's words of each field. Done, the page says what became of each: `Kim Lee was retired, with
   the account klee. KL was handed over and Op2 was released.`
 - **Bring back.** On the page of a retired account, Bring back opens a dialog that
   reads `GET /users/{hid}/linked`: the contact, where it is retired, ticked and not to
@@ -3484,8 +3485,10 @@ P-292, P-296 to P-298):
   offered to an Admin alone; anybody else reads `An Admin brings a person back`,
   View-only too. Every other kind of record is brought back as before.
 - **A username a retired account has.** Refused by the server on New user and on the
-  Details of a user, the form says at the username that a retired account has it, with
-  a link to that account, where it is renamed or brought back.
+  Details of a user, the form says, in the server's words above the username, that the
+  retired account has it and is renamed or brought back to free it, with a link to
+  that account, as a form links to any record that has a value already (P-207); the
+  field is marked.
 - **Audit.** For an Admin, the filters have Who beside Action and Record type: every
   account of `GET /users?retired=yes`, by username, a retired one written
   `klee (retired)`, since what it did is still in the trail; the choice is sent as
