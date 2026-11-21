@@ -1741,7 +1741,7 @@ and is refused, not rounded, when it has more.
 | `busy_cpu_percent` | 95 | the processor time the server's process may use over the last `busy_over_seconds`, as a percentage of one processor, before the health of the server is very slow at the least, and reports, exports and previews are answered `503` Busy. The processor alone never makes it busy. The process passes 100 where several requests are in the database at once, so it is a whole number from 0 to 100 for each processor of the host; 0 is not looked at, and both at 0 is no ceiling |
 | `busy_over_seconds` | 30 | over how long the two measures of the ceiling are read, in seconds, and for how long after it last refused its reads the server refuses what is long. A whole number from 5 to 300 |
 | `reports_ahead_after_seconds` | 30 | how long after the newest change of the inventory or its settings the second process of the service works out again the long reports that the change left stale, in seconds: the coverage report, the renewal worklist, the renewal alert and the capacity balance, each for the view its page opens with. Somebody who asks sooner is answered by the server, which works the report out itself. A whole number from 0 to 3,600; 0, not by day, and they are worked out when the second process starts and at five minutes past midnight alone (P-276) |
-| `access_code_min_length` | 12 | the least length of an access code that is typed, by a person for themselves on their profile or by an Admin for an account, in characters. A whole number from 1 to 64. A code the server makes, three groups of four, is not held to it, and a code that is held already is not looked at: nobody is signed out by the setting (P-295) |
+| `access_code_min_length` | 12 | the least length of an access code that is typed, by a person for themselves on their profile or by an Admin for an account, in characters. A whole number from 1 to 64. A code the server makes is of groups of four, three or as many more as make it at least this long (P-300), and a code that is held already is not looked at: nobody is signed out by the setting (P-295) |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
@@ -1763,7 +1763,8 @@ here, because it is needed before the database can be asked. See
 | `service_tokens` | `user_hid` (a service account), `name`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` |
 
 A user's role is the highest of the roles granted to the user and to every group the
-user is in. A user with no grant can sign in and see nothing.
+user is in. A user with no role, granted to it or through a group, does not sign in,
+and its sessions and tokens are refused (P-299).
 
 A user is the part of a person who signs in (P-172). Its name, its email and its
 numbers are those of its contact, read when the user is read: the user answers
@@ -1775,7 +1776,7 @@ username. A service account, which is no person, has no contact.
 
 Append-only. `at`, `actor_hid`, `via` (`web`, `api`, `cli`, `import`, `system`),
 `request_id`, `action` (`create`, `update`, `retire`, `transition`, `sign_in`,
-`sign_in_failed`, `preview`, `apply`, and so on), `record_type`, `record_hid`, and
+`sign_in_failed`, `sign_in_no_role`, `preview`, `apply`, and so on), `record_type`, `record_hid`, and
 `changes`, a list of `{field, old, new}`. One import or bulk edit shares one
 `request_id`. A record changed by an import has `via` of `import`; one changed by a
 bulk edit has the door the edit came through. A change of an item, or the removal of

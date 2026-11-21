@@ -34,7 +34,7 @@ and CLI's types are generated from it.
 
 | Area | Routes |
 |---|---|
-| Access | `POST /auth/sign-in`, `POST /auth/sign-out-everywhere`, `GET /auth/me` |
+| Access | `POST /auth/sign-in`, `POST /auth/sign-out-everywhere`, `GET /auth/me`, `PATCH /auth/me/contact`, `PATCH /auth/me/operators/{hid}`, `POST /auth/me/access-code`, `GET /auth/new-access-code` |
 | Accounts (Admin) | `/users`, `/user-groups`, `/role-grants`, `/users/{hid}/access-code`, `/users/{hid}/service-tokens` |
 | Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio`; `GET` and `POST /vendors/{hid}/contacts`, `PATCH` and `DELETE /vendors/{hid}/contacts/{link_hid}` |
 | Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/hosted`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`, `POST /items/{hid}/make-stack`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once; for an Admin, `POST /item-replacements/{hid}/remove` |
@@ -72,7 +72,12 @@ and CLI's types are generated from it.
 | List and check the kept answers of the long reports | | | yes |
 | Users, groups, role grants, access codes, service tokens | | | yes |
 | Read audit events | yes | yes | yes |
-| Read the server's own measures, `GET /about/load`, as `GET /about` is read: signed in, with any role or none | yes | yes | yes |
+| Read the server's own measures, `GET /about/load`, as `GET /about` is read: signed in, with any role | yes | yes | yes |
+| Change what is one's own on the profile, and have an access code made, `GET /auth/new-access-code` | yes | yes | yes |
+
+An account that holds no role, none granted to it and none through any of its groups,
+is refused at sign-in and has no session (P-299): see
+[Signing in with no role](#signing-in-with-no-role).
 
 ### Settings
 
@@ -108,7 +113,7 @@ out, these decide it:
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 | `busy_response_ms`, `busy_cpu_percent`, `busy_over_seconds` | the health of the server and what it answers `503` Busy for it, and `ceiling` of `GET /about/load`: the thirds of `busy_response_ms` are the bounds of `health`, of `X-Hirdir-Health` and of `totals.bands`. Each holds from the moment it is saved, and no request reads the database to learn it. `busy_response_ms` or `busy_cpu_percent` at 0 refuses nothing, and both at 0 is no ceiling (P-265). See [The server's own measures](#the-servers-own-measures) |
 | `reports_ahead_after_seconds` | how long after the newest change of the inventory or its settings the second process works out again the long reports that the change left stale, each for the view its page opens with; until then, and where it is 0, the first to ask for one is answered by the server, which works it out itself. It changes no answer, only which process works it out and when (P-276). See [Kept answers](#kept-answers) |
-| `access_code_min_length` | the least length of an access code that is typed: `access_code` of `POST /auth/me/access-code`, of `POST /users` and of `POST /users/{hid}/access-code`, and the code that `hirdir admin` is given. A shorter one is a `422` on `access_code` that says the length and names the setting. A code the server makes is not held to it, and a code that is held already is not looked at (P-295) |
+| `access_code_min_length` | the least length of an access code that is typed: `access_code` of `POST /auth/me/access-code`, of `POST /users` and of `POST /users/{hid}/access-code`, and the code that `hirdir admin` is given. A shorter one is a `422` on `access_code` that says the length. A code the server makes, by `GET /auth/new-access-code` and for an empty box, has as many groups of four as make it at least as long (P-300), and a code that is held already is not looked at (P-295) |
 
 The fixed values are these. What was decided:
 
@@ -147,7 +152,10 @@ a user's, and filters and sorts by it, and `user`, the `hid` and `username` of t
 user, or nothing. Every role reads both.
 
 `POST /users` takes `username`, `is_service_account`, `access_code` and `role` as
-before, and the person: `contact_hid`, a contact that is no other user's and is not
+before. A person is made with a role, `role` or a group in `group_hids` that grants
+one, since an account with none does not sign in (P-299): one that would hold none is
+a `422` on `role` and nothing is made. A service account may be made with none. And it
+takes the person: `contact_hid`, a contact that is no other user's and is not
 retired, or `contact`, with `name`, `email`, `organization`, `phone` and `phone2`, a
 new contact made in the same change, or neither. A service account takes neither.
 `PATCH /users/{hid}` takes `username`, another name that the same rule holds
@@ -248,6 +256,44 @@ taken. The order begins with the darker shades, eight hues far apart. The colour
 fixed in `hirdir.domain.colours`. They are what is offered and not what is allowed: a
 colour is stored as `#rrggbb` whatever it is.
 
+### Signing in with no role
+
+An account that holds no role does not sign in (P-299). `POST /auth/sign-in` of a
+person who is active, not disabled and not retired, whose access code is right and who
+holds no role, is a `403`, titled `No role`, where a wrong code is a `401`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "No role",
+  "status": 403,
+  "detail": "this account holds no role, and so cannot sign in: an Admin gives it one",
+  "errors": [],
+  "help": {"organization": "Example Network Tools", "email": "tools@example.net", "phone": null, "url": null}
+}
+```
+
+`help` is whom to ask, the four settings of P-169, each null where it is not set, and
+is given whatever `help_on_sign_in` says, since the person gave the right code. It is
+on this answer alone. The throttle counts it as a success, so that a person told this
+is not delayed for trying again once given a role, and it is written to the audit
+trail as `sign_in_no_role`, of the user, by the user, with the username typed, as
+`sign_in_failed` is, kept though the request is refused. Every other refusal is as it
+was, in its words and after the same work: a wrong code, an unknown username, a
+disabled or retired account and a service account are each the `401` of a wrong code,
+whatever role they hold.
+
+A session of an account that holds no role is refused as an ended one, a `401`: a
+role lost while signed in, of the account's own or through a group, takes effect at
+the next request. And a change that takes the last role from an account ends every
+session of that account, so that a role given again later brings no old session
+back: `DELETE /role-grants/{hid}` of a grant of the account or of a group it is in,
+`DELETE /user-groups/{hid}/members/{user_hid}`, and `DELETE /user-groups/{hid}`. Each
+is audited by its own event, as before, with nothing added to it. A token of a service
+account that holds no role is refused, a `401` that says the account holds no role;
+an Admin may make a token for it all the same, which works once the account is given
+a role.
+
 ### A person's own profile
 
 A person who signs in changes what is their own (P-289, P-294, P-295). `GET /auth/me`
@@ -260,13 +306,11 @@ retired has none: nobody is behind the labels of a retired contact (P-280). It d
 not answer the `record_status` of the user, which the routes of users answer (P-296):
 whoever reads `/auth/me` is signed in, and a retired account signs in nowhere, so it
 would say `active` always. The answer of signing in carries the same as its `user`.
-The three routes below are for a session of any role, View-only too, and of an
-account that holds no role, as
-`GET /auth/me` and `POST /auth/sign-out-everywhere` are: an account that is brought
-back has a new code and no role (P-296), and that person changes the code an Admin
-gave them, and what is their own, before a role is theirs. They carry no HID of a user
-or of a contact: they change the records of whoever is signed in and no other. A
-service token is refused by each with a `403`.
+The three routes below are for a session of any role, View-only too, as `GET /auth/me`
+and `POST /auth/sign-out-everywhere` are. An account that holds no role has no session
+(P-299), so none of them is for it: in 0.9.14 they were, and are no longer. They carry
+no HID of a user or of a contact: they change the records of whoever is signed in and
+no other. A service token is refused by each with a `403`.
 
 `PATCH /auth/me/contact` takes `row_version` and any of `name`, `email`, `phone`,
 `phone2` and `organization`; a field it does not know is a `422`, so that the notes,
@@ -292,9 +336,13 @@ is the one of signing in, by the username and by the address the request came fr
 person delayed here is delayed at sign-in too, and the other way round, and the right
 code clears it. While the person is delayed the codes are not looked at, and the
 attempt is written as `access_code_delayed`. Both events are kept though the request
-is refused. A new code shorter than the setting `access_code_min_length`, or blank, or
-beginning or ending with a space, is a `422` on `access_code`; the current code is
-looked at first, so a request with both wrong is counted. Accepted, the code is
+is refused. A new code that is the current one is a `422` on `access_code`, "this is
+the access code you have now" (P-300); it is looked at once the current code is
+accepted, and before the length. A new code shorter than the setting
+`access_code_min_length`, or blank, or beginning or ending with a space, is a `422` on
+`access_code`; the current code is looked at first, so a request with both wrong is
+counted. A new code that is refused changes nothing, ends no session and is no audit
+event. Accepted, the code is
 changed, every other session of the person ends, and the answer is that of
 `POST /auth/sign-in`: a new `token` and `expires_at` for the session in hand, and the
 `user`. The token sent with the request is ended with the others. It is audited as
@@ -302,8 +350,26 @@ changed, every other session of the person ends, and the answer is that of
 
 `access_code_min_length`, a whole number from 1 to 64 and 12 from the start, is the
 least length of an access code that is typed: here, and by an Admin on `POST /users`
-and `POST /users/{hid}/access-code` and in `hirdir admin`. A code the server makes is
-not held to it, and a code that is held already is not looked at.
+and `POST /users/{hid}/access-code` and in `hirdir admin`. A code that is held already
+is not looked at. A code that an Admin sets for somebody else may be the one they had:
+that a new code is not the current one holds where a person changes their own, an
+Admin too, who gives the current code on the profile as everybody does (P-300).
+
+A code the server makes is of groups of four letters and digits that are hard to
+mistake for one another, parted by hyphens: three groups, or as many more as make it
+at least as long as `access_code_min_length`, 14 characters against the default 12,
+24 against 20 and 64 against 64 (P-300). It is made so wherever the server makes one:
+by `GET /auth/new-access-code`, for an Admin's empty box on `POST /users` and
+`POST /users/{hid}/access-code`, at `POST /users/{hid}/bring-back`, and by
+`hirdir admin`.
+
+`GET /auth/new-access-code`, for a session or a token that holds a role, answers
+`{"access_code": "…"}`, a code made as above. It stores nothing and writes nothing,
+so it is no write and has no audit event, and it is answered with
+`Cache-Control: no-store`, as every answer of the API is. A page's Generate puts it
+in the box, from where it is sent as a typed code is and held to the same checks: on
+the profile, with the code in hand, to `POST /auth/me/access-code`, and on an Admin's
+forms to `POST /users` and `POST /users/{hid}/access-code`.
 
 ### Retired accounts, and a person retired together
 
@@ -351,12 +417,17 @@ is not refused. A username that a retired account has is refused to another, on
 `POST /users` and `PATCH /users/{hid}`, with a `409` on `username` that says so and
 names the retired account as `existing`; and so is its contact, on `contact_hid`.
 
-`POST /users/{hid}/bring-back` is for an Admin and takes `row_version` and `linked`.
-The account is `active` again and not disabled, with a new access code, which the
-answer carries once as `POST /users` does, `access_code` beside `user`; a service
-account has none. It has no role and no group, and its old sessions and its old code
-stay ended. It is audited as `bring_back`, with `disabled` among the changes where it
-was disabled. An account that is not retired is a `409`.
+`POST /users/{hid}/bring-back` is for an Admin and takes `row_version`, `linked` and
+`role`, `viewer`, `inventory` or `admin` (P-299). The account is `active` again and
+not disabled, with a new access code, which the answer carries once as `POST /users`
+does, `access_code` beside `user`; a service account has none. It has no group, and
+the role given, granted in the same change and audited as `POST /role-grants` audits
+it, `grant_role` after `bring_back`; its old sessions and its old code stay ended. A
+person is given a role, since an account with none does not sign in: `role` left out
+or null is a `422` on `role` and nothing changes, and so is a role there is not. A
+service account may be brought back with no role, and its tokens are refused until it
+is given one. It is audited as `bring_back`, with `disabled` among the changes where
+it was disabled. An account that is not retired is a `409`.
 
 `GET /users/{hid}/linked`, `GET /contacts/{hid}/linked` and
 `GET /operators/{hid}/linked`, which every role reads, answer the person a record
@@ -2795,6 +2866,7 @@ hirdir profile show                              # your own profile
 hirdir profile set --phone '+1 555 0100' --organization 'Example Networks'
 hirdir profile set --label KL --colour '#1f6feb' # of your operator; --operator LABEL where you have several
 hirdir profile access-code                       # asks for the code you have and the new one
+hirdir profile access-code --generate            # asks for the code you have; the server makes the new one, printed once
 hirdir items list --filter 'lifecycle_state:eq:Prod location:within:Americas > Central'
 hirdir items show FCW0000X001                    # by HID, serial number, asset tag or name
 hirdir items set <hid> disposition=Spare expected_online=false
@@ -2823,7 +2895,7 @@ hirdir contacts retire kim.lee@example.com --user retire \
     --operator 'KL=hand_over:sam.okafor@example.com' --operator LM=retire   # the person, in one change
 hirdir users list --retired                      # the retired accounts as well; --retired-only for them alone
 hirdir users retire klee --contact keep --operator KL=keep --operator LM=open   # an Admin: the account alone
-hirdir users bring-back klee --contact           # an Admin: with its retired contact, and a new access code
+hirdir users bring-back klee --contact --role viewer   # an Admin: with its retired contact, a role and a new access code
 hirdir items set --filter 'group.name:eq:site2-sw-core' operator=LM --apply
 hirdir items list --filter 'effective.operator_hid:empty:true'    # what nobody is assigned to
 hirdir report summary --by operator              # who looks after how much
@@ -2926,7 +2998,7 @@ refused leaves the others as they went.
 | A stack of one switch | `hirdir items make-stack ITEM [--name NAME] [--member ITEM]...` makes a stack of an item that is in none, by `POST /items/{hid}/make-stack`, and prints the stack; each `--member` is one more member, added as a member that joins with its name and place given up, `drop_identity` (P-243) |
 | A replacement that was a mistake | `hirdir replacements remove HID --reason TEXT`, for an Admin, prints the replacement, its two items and its day, asks `Remove this replacement?`, and goes on only when it is answered yes, or `--yes` is given by a script; it then removes it by `POST /item-replacements/{hid}/remove` (P-238) |
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
-| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. A user is named by its username or its HID, a retired one too, the whole username being looked for first, since a username may have the form of an HID, a contact by its email address, its name or its HID, and an operator by its label or its HID: the record of the command and those its options name. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]...`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named, and prints the new access code once (P-298). `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296) |
+| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. A user is named by its username or its HID, a retired one too, the whole username being looked for first, since a username may have the form of an HID, a contact by its email address, its name or its HID, and an operator by its label or its HID: the record of the command and those its options name. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]... [--role ROLE]`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named and the role given, which the server asks of a person (P-299), and prints the role and the new access code once (P-298). `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, `--filter`, `--sort`, `--columns`, `--own-values`, `--include-sources`, `--place-codes`, `--include-archived` or `--include-drafts`, and refuses each with exit `2`, writing nothing: each table is whole, in the form that loads back, with its stored values and its retired and drafts (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
@@ -2944,14 +3016,14 @@ refused leaves the others as they went.
 | Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
-| Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. The contact and an operator are two changes, the contact first: where the change of the operator is refused, as for a label that another has, the change of the contact is kept, and the command says so on a line before the refusal, `your contact is changed (phone); your operator klee is not:`, and exits with the code of the refusal. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself, and an account with no role too; the server refuses a service token (P-294, P-295) |
+| Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. The contact and an operator are two changes, the contact first: where the change of the operator is refused, as for a label that another has, the change of the contact is kept, and the command says so on a line before the refusal, `your contact is changed (phone); your operator klee is not:`, and exits with the code of the refusal. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself; an account with no role is not signed in (P-299). `hirdir profile access-code --generate` asks for the code the person has alone, has the server make the new one by `GET /auth/new-access-code`, sets it as a typed one is set, and prints it once (P-300). `hirdir sign-in` of an account that holds no role prints the server's words and whom to ask, each that is set, keeps no session and exits `3`; the server refuses a service token (P-294, P-295) |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the
 database directly, because it must work before any account exists:
 
 ```bash
-hirdir admin create-user --role admin NAME       # prints a new access code once
+hirdir admin create-user --role admin NAME       # prints a new access code once, as long as access_code_min_length asks
 hirdir admin create-user --access-code CODE NAME # a code of your choosing, of access_code_min_length at the least
 hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org NAME   # and its contact
 hirdir admin reset-access-code NAME
@@ -3468,7 +3540,7 @@ What 0.9.14 adds, a person's own profile (P-289, P-294, P-295):
   contact: `Kim Lee: your profile`, or `Your profile` for an account with no contact.
   The words on show stay the username, which is what the person signs in with and what
   no form of the profile changes.
-- **Profile**, `/profile`, for every role, and for an account that holds none. At its
+- **Profile**, `/profile`, for every role. At its
   top, as text, what the page does not change: Username, Role and Groups, and that an
   Admin changes them. Under them three parts, each a form of its own with a button of
   its own, which sends that part and nothing of the others. Each button is named for
@@ -3520,15 +3592,8 @@ What 0.9.14 adds, a person's own profile (P-289, P-294, P-295):
   the access code alone. An account whose contact is retired is told that, by the
   contact's name, and to ask an Admin to bring it back or to give it another, and is
   offered the access code alone as well: `PATCH /auth/me/contact` would refuse it.
-- **An account that holds no role**, as one that was brought back is until an Admin
-  gives it one (P-296), sees nothing of the inventory, and has its profile: the name in
-  the menu bar leads to it, and Details, Operator and Access code change what is its
-  own. Two things on the page are read with a role, and such a person is not shown a
-  refusal in their place. The colours to press are those of `GET /colours`: the colour
-  of an operator is a box to type it in, in the form `#1f6feb`, and one that is no
-  colour is the server's to refuse at the box. The least length is a setting: the page
-  says what a change ends and names no length, and a code that is too short is told
-  the length at its box, as the server says it.
+- **An account that holds no role** had its profile in 0.9.14 and has none from
+  0.9.15: it is not signed in (P-299), and the sign-in page tells it why, below.
 - The page reads `GET /auth/me` again as it opens, so that it shows the records as
   they are and sends their versions; a save refused because the record has changed
   offers Reload, which reads it again. It fits a window 1280 pixels wide with nothing
@@ -3618,8 +3683,8 @@ P-292, P-296 to P-298):
   be unticked, with the words that the two are brought back together unless the
   contact is taken away first; and each retired label of that contact, unticked.
   Brought back, the new access code is shown once, as New user shows one, with the
-  words that the account has no role and no group; a service account has no code and
-  is told the same. A refusal has the list read again, and where what it offers has
+  words that the account has the role chosen and no group; a service account has no
+  code and is told the same. From 0.9.15 the dialog asks the role, below. A refusal has the list read again, and where what it offers has
   changed, the dialog says so in place of the refusal: that the contact is back
   already, where somebody else brought it back while the dialog was open, and to
   press again. The code is on show on the page of that account alone: the page
@@ -3647,8 +3712,39 @@ P-292, P-296 to P-298):
 - **An access code typed for somebody else.** The New user form and Access code on a
   user's page say under the field the least length of a code that is typed, the setting
   `access_code_min_length` as `GET /settings` gives it (P-295), and that one left empty
-  is generated, which is not held to it. A shorter one is refused by the server and
-  said at the field, with nothing typed lost.
+  is made by the server, as long as the setting asks (P-300). A shorter one is refused
+  by the server and said at the field, with nothing typed lost.
+
+What 0.9.15 adds and changes, an account with no role and an access code made by the
+server (P-299, P-300):
+
+- **Sign in.** An account that holds no role and gives the right code is answered with
+  the `403` of [Signing in with no role](#signing-in-with-no-role). The sign-in page
+  says the server's words above the form, in plain text and not as a wrong code, and
+  under them whom to ask, each of `help` that is set, as About lists them, whatever
+  `help_on_sign_in` says; where none is set, it says to ask an Admin. Nothing is kept,
+  and the page stays the sign-in page with the username as typed and the code box
+  emptied. A wrong code is said as before.
+- **A role lost while signed in.** The next request of the page is refused as an ended
+  session, and the page is signed out as for any ended session; signing in again is
+  then told the above, until a role is given back.
+- **New user.** A person is made with a role: the role, or a group ticked that grants
+  one. The form says so under the role, and a person with neither is refused by the
+  server at the role, `role`, with nothing typed lost. A service account may have none.
+- **Bring back.** The dialog asks the role, View-only, Inventory or Admin, none chosen
+  at first, and Bring back is not pressed for a person until one is chosen; a service
+  account may be brought back with none. The role is sent as `role` with the rest, and
+  the account is brought back holding it.
+- **Generate.** Beside New access code on the Profile, beside the access code on New
+  user, and under Access code on a user's page, Generate reads
+  `GET /auth/new-access-code` and puts the code in the box, both boxes on the Profile,
+  shown as it is, not masked, so that it can be read and kept; nothing is saved until
+  the form's own button is pressed, and the code is sent and checked as a typed one is.
+  On the Profile the code in hand is still asked for, of an Admin too.
+- **The same code again.** On the Profile, a new code that is the one in hand is
+  refused by the server at New access code, in its words, "this is the access code you
+  have now", with the three boxes as typed and no session ended. An Admin who sets the
+  code of somebody else may give the one they had.
 
 ### The grid
 

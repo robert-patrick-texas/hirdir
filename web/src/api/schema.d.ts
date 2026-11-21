@@ -665,9 +665,10 @@ export interface paths {
   "/api/v1/auth/me/access-code": {
     /**
      * Change the access code of the signed-in person, who gives the code they have. A
-     * wrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every
-     * other session of the person ends, and the answer carries a new token for this one
-     * (P-295). For a session of any role, and of none; a service token is refused.
+     * wrong one is a `422` on `current_access_code`, counted as a failed sign-in is, and a
+     * new one that is the current one a `422` on `access_code` (P-300). Every other session
+     * of the person ends, and the answer carries a new token for this one (P-295). For a
+     * session of any role; a service token is refused.
      */
     post: {
       parameters: {
@@ -706,7 +707,7 @@ export interface paths {
     /**
      * Change the name, the email, the numbers or the organization of the contact the
      * signed-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any
-     * role, and of none; a service token is refused. An account with no contact, or with
+     * role; a service token is refused. An account with no contact, or with
      * one that is retired, is a `409` (P-294).
      */
     patch: {
@@ -739,8 +740,8 @@ export interface paths {
   "/api/v1/auth/me/operators/{hid}": {
     /**
      * Change the label or the colour of an operator the signed-in person is behind, by
-     * the rules of `PATCH /operators/{hid}`. For a session of any role, and of none; a
-     * service token is refused. An operator that is another's, or retired, is a `404`
+     * the rules of `PATCH /operators/{hid}`. For a session of any role; a service token
+     * is refused. An operator that is another's, or retired, is a `404`
      * (P-294).
      */
     patch: {
@@ -772,8 +773,35 @@ export interface paths {
       };
     };
   };
+  "/api/v1/auth/new-access-code": {
+    /**
+     * Make an access code for a form to send, as the server makes every code: groups of
+     * four, as many as make it as long as `access_code_min_length` asks (P-300). Nothing is
+     * stored and nothing is written; it is saved as a typed code is, by the route of the
+     * form, through the same checks. For a session or a token that holds a role.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["NewAccessCode"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/auth/sign-in": {
-    /** Exchange a username and access code for a session token. */
+    /**
+     * Exchange a username and access code for a session token. An account that holds no
+     * role is refused with a `403` that says so and whom to ask (P-299).
+     */
     post: {
       parameters: {
         query?: never;
@@ -794,6 +822,12 @@ export interface paths {
         };
         /** Unauthorized */
         401: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** The access code is right and the account holds no role, of its own or through a group: it does not sign in. `help` is whom to ask (P-299). */
+        403: {
           content: {
             "application/json": components["schemas"]["Problem"];
           };
@@ -8460,8 +8494,9 @@ export interface paths {
     /**
      * Create a user, and in the same change the contact it is, the operator it works
      * as, its role and its groups, each audited as if made by itself: where any part is
-     * refused, nothing is made (P-282, P-283). The access code in the answer is not shown
-     * again.
+     * refused, nothing is made (P-282, P-283). A person is made with a role, of its own or
+     * through a group, or it is a `422` on `role` (P-299). The access code in the answer is
+     * not shown again.
      */
     post: {
       parameters: {
@@ -8622,8 +8657,10 @@ export interface paths {
   "/api/v1/users/{hid}/bring-back": {
     /**
      * Bring a retired account back (P-296, P-298): active and not disabled, with a new
-     * access code, which is not shown again, no role and no group. `linked` brings back
-     * its retired contact with it, and those of that contact's retired operators it names.
+     * access code, which is not shown again, the role given and no group. A person is
+     * given a role, since an account with none does not sign in (P-299). `linked` brings
+     * back its retired contact with it, and those of that contact's retired operators it
+     * names.
      */
     post: {
       parameters: {
@@ -8651,10 +8688,10 @@ export interface paths {
             "application/json": components["schemas"]["Problem"];
           };
         };
-        /** Validation Error */
+        /** A person is brought back with no `role`, or a role there is not, on `role` (P-299); or `linked` says what is not so. */
         422: {
           content: {
-            "application/json": components["schemas"]["HTTPValidationError"];
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
@@ -9468,9 +9505,14 @@ export interface components {
       request_id: string;
       via: string;
     };
-    /** A retired user brought back, and what is brought back with it (P-298). */
+    /**
+     * A retired user brought back, the role it is given and what is brought back with
+     * it (P-298, P-299).
+     */
     BringBack: {
       linked?: components["schemas"]["LinkedBack"] | null;
+      /** `viewer`, `inventory` or `admin`, granted in the same change. A person is given one, since an account with no role does not sign in: left out, it is a `422` on `role`. A service account may be brought back with none (P-299). */
+      role?: string | null;
       row_version: number;
     };
     /** One change to many items. The rows are named by a filter, by HIDs, or as all. */
@@ -12641,6 +12683,11 @@ export interface components {
       hid: string;
       label: string;
     };
+    /** An access code made by the server for a form to send, stored nowhere (P-300). */
+    NewAccessCode: {
+      /** Groups of four, three or as many more as make it at least as long as the setting `access_code_min_length` asks. */
+      access_code: string;
+    };
     /** A new operator, made with the user whose contact stands behind it (P-283). */
     NewOperator: {
       /** In the form #1f6feb. Left out, the next that no operator has, as `next_for_operators` of `GET /colours` gives it; blank or null, none. */
@@ -12815,7 +12862,7 @@ export interface components {
     };
     /** The access code a person has, and the one they take in its place. */
     OwnAccessCode: {
-      /** At least as long as the setting `access_code_min_length` says, not blank, and with no space at its beginning or end. */
+      /** At least as long as the setting `access_code_min_length` says, not blank, with no space at its beginning or end, and not the current one (P-300). */
       access_code: string;
       current_access_code: string;
     };
@@ -13308,6 +13355,8 @@ export interface components {
       errors?: components["schemas"]["ProblemField"][];
       /** On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem. */
       existing?: components["schemas"]["ProblemRecord"] | null;
+      /** On the 403 of `POST /auth/sign-in` of an account that gave the right access code and holds no role (P-299): whom to ask, as `help` of `GET /about` gives it, each blank one null, whatever `help_on_sign_in` says. Left out of every other problem. */
+      help?: components["schemas"]["AboutHelp"] | null;
       status: number;
       title: string;
       type?: string;
@@ -14425,7 +14474,7 @@ export interface components {
       notes?: string | null;
       /** An operator to make in the same change, whose contact is the user's: it needs `contact` or `contact_hid` (P-283). */
       operator?: components["schemas"]["NewOperator"] | null;
-      /** A role to grant at once. */
+      /** A role to grant at once. A person is given one, or a group in `group_hids` that grants one, or it is a `422` on `role` (P-299); a service account may have none. */
       role?: string | null;
       /** What the person signs in with. An Admin can change it later. */
       username: string;
