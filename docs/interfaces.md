@@ -2969,6 +2969,7 @@ Accounts and settings are not touched.
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on. A file chosen before the page has read the kinds of file is given its first kind when they are read, a picture a photograph, unless the person has chosen one |
 | Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. While the form of a row is open, the row's buttons stand at the foot of the row, directly above the form, so that the button that opened it is in view with it however tall the row is, as the row of a setting with a long description is; closed, they are at the head of the row again (P-278). It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin. Under it, for everyone signed in, the server's own measures, from `GET /about/load` (P-266, P-270 to P-273): its health in words, of speed where nothing is refused and of a busy server with what it does not answer where something is, with the measure it is read from, and, where answers are very slow or past the ceiling and nothing is refused, why not; the measures the health is read from, the 95th percentile of the time of a request with how many requests it is of, the same of the reads alone with how many they are, by which what is refused is decided, and the processor time, each with its ceiling or that it is not looked at; over the last ten minutes the lowest, the average and the highest time of an answer with its 50th, 95th and 99th percentile, and the lowest, the average and the highest processor time; the reads and changes counted by band of time, each band named from `bounds_ms` and marked with the shape and colour of its level; how many requests were answered well, not taken as asked, failed, and answered as busy; the requests in flight and how long the oldest has waited; one graph; when the server started; the memory of the server's process, the memory of the host used and free, the space free where the inventory is kept, the processors of the host and its load; whether the background work is being done, by a process of its own or by the server itself, and where it is not, that imports and bulk edits wait; the slowest requests, and those long by nature apart; and who is active. A value the host does not say is "not known", never 0. See [The server's measures on About](#the-servers-measures-on-about) |
+| Profile | A person's own page, `/profile`, for every role, reached from their name in the menu bar (P-289): their username, role and groups as text, and three forms, each with its own Save: the details of the contact they are, the label and the colour of each operator they are behind, and their access code. What 0.9.14 adds, below, says each |
 | The mark of health | In the menu bar of every page, before the name of who is signed in, for everyone signed in (P-270, P-272): what the newest answer of the server said in `X-Hirdir-Health`, as a mark that is green, yellow, orange or red and a circle, a triangle, a diamond or a square, with its words as its name and where it is pointed at, and a link to About. It asks the server nothing. See [The mark of health](#the-mark-of-health) |
 
 What 0.9.5 adds to these pages, for the work of each day:
@@ -3368,6 +3369,65 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   each as CSV and as JSON, one press each, the same files, under the same names, as on
   the Import page whatever the view counts; the words beneath say that a table that
   holds nothing gives its CSV template, its header row alone (P-287).
+
+What 0.9.14 adds, a person's own profile (P-289, P-294, P-295):
+
+- **The name in the menu bar.** The name of who is signed in, their username, between
+  the mark of health and the role, is a link to `/profile`. Tab reaches it as it reaches
+  every link, Enter opens it, and it is marked as the page on show while the profile
+  is open. Pointed at, it says whose profile it leads to, by the name of the person's
+  contact: `Kim Lee: your profile`, or `Your profile` for an account with no contact.
+  The words on show stay the username, which is what the person signs in with and what
+  no form of the profile changes.
+- **Profile**, `/profile`, for every role, and for an account that holds none. At its
+  top, as text, what the page does not change: Username, Role and Groups, and that an
+  Admin changes them. Under them three parts, each a form of its own with its own Save,
+  which sends that part and nothing of the others:
+  - **Details**: Name, Email, Phone, Second phone and Organization, which are those of
+    the contact the person is. Save sends what was changed, with the version the
+    contact was read at, to `PATCH /auth/me/contact`; Undo changes puts back what the
+    contact has. A refusal is shown at its field, with nothing typed lost, and the
+    keyboard is put in that field: a name left blank, and an email that another
+    contact has, with that contact as a link above the form, "The contact that has
+    it:". Saved, the page says "Your details were saved.", and the
+    frame takes the answer, so that the name shows at once wherever a page says it:
+    in what the link of the menu bar says, and in the welcome of the first page.
+  - **Operator**, or **Operators** for somebody behind several: each operator of
+    `operators` of `GET /auth/me`, in the order of their labels, one after another,
+    under its label as a link to the operator's page, with a form of its own: Label,
+    and Colour by the picker that every colour is entered with (P-285), the label
+    being typed shown beside the chip as the lists will show it. Save sends what was
+    changed to `PATCH /auth/me/operators/{hid}`; a label that another operator has is
+    refused at the field, with that operator as a link, and the colour chosen with it
+    is kept. Saved, the page says "The operator KL was saved." Somebody behind no
+    operator has no such part, and the line "You are behind no operator."
+  - **Access code**: Access code you have, New access code, and New access code again.
+    All three are masked, and each is named for a password manager, the first
+    `current-password` and the other two `new-password`, with the username in a field
+    that is not shown. Above them the page says the least length, read from the setting
+    `access_code_min_length`, and what a change ends: "At least 12 characters. Your
+    other sessions end when it is changed; this one stays signed in." A box left empty,
+    and two new codes that differ, are said before anything is sent, the two that
+    differ at the second: an empty code in hand is not sent to be counted as a wrong
+    one. A wrong code in hand and a new one that is too short are the server's to say,
+    each at its box, with the three boxes as typed; after too many wrong codes the
+    page says how long to wait, as the sign-in page does, and holds Save until then.
+    Changed, the page keeps the token and the expiry that `POST /auth/me/access-code`
+    answered in place of the ones it had, as signing in keeps them, says "Your access
+    code is changed. Your other sessions have ended.", and empties the three boxes.
+    The page is not drawn anew: what is typed in its other forms stays. A request
+    that was on its way with the session that the change ended, and is refused for it,
+    does not sign the page out: only a refusal of the session the page holds does.
+- **An account with no contact** has neither Details nor an operator. The page says
+  "You have no contact. Ask an Admin to give you one.", and under it whom to ask, as
+  About lists them from `help` of `GET /about` (P-169), where any is set; and it offers
+  the access code alone. An account whose contact is retired is told that, by the
+  contact's name, and to ask an Admin to bring it back or to give it another, and is
+  offered the access code alone as well: `PATCH /auth/me/contact` would refuse it.
+- The page reads `GET /auth/me` again as it opens, so that it shows the records as
+  they are and sends their versions; a save refused because the record has changed
+  offers Reload, which reads it again. It fits a window 1280 pixels wide with nothing
+  to scroll sideways, and is used at 360.
 
 ### The grid
 

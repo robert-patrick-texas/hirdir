@@ -197,7 +197,14 @@ export function Shell() {
         {/* 0.9.10: the health of the server, from the answers the page gets anyway (P-270). */}
         <HealthMark />
         <p className="who">
-          <span className="who-name">{user.username}</span>
+          {/* 0.9.14: the name of who is signed in leads to their profile (P-289). */}
+          <NavLink
+            className="who-name"
+            to="/profile"
+            title={user.display_name ? `${user.display_name}: your profile` : "Your profile"}
+          >
+            {user.username}
+          </NavLink>
           <span className="who-role">{roleLabel(user.role)}</span>
         </p>
         <button type="button" onClick={signOut}>
