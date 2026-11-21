@@ -4,7 +4,6 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { BoxTree } from "../components/BoxTree";
 import { ColourShown, useNextColour } from "../components/ColourPicker";
-import { ConfirmButton } from "../components/ConfirmButton";
 import { Created, useCreated } from "../components/Created";
 import { FormFields } from "../components/FormFields";
 import { GapLinks, useGridGaps } from "../components/GapLinks";
@@ -12,8 +11,10 @@ import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { OperatorMark } from "../components/Operator";
 import { ContactChanges, PersonChooser } from "../components/Person";
+import { PersonChain } from "../components/PersonChain";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { RetirePerson } from "../components/RetirePerson";
 import { Time } from "../components/Time";
 import { assignmentColumns, totalCount } from "../lib/assignments";
 import { formatTime, plural } from "../lib/format";
@@ -331,6 +332,8 @@ export function OperatorDetail() {
       {operator.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
+          {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). */}
+          <PersonChain kind="operator" hid={record.hid} turn={record.row_version} />
           <dl className="facts" data-testid="operator-facts">
             <dt>Label</dt>
             <dd>{record.label}</dd>
@@ -396,7 +399,15 @@ export function OperatorDetail() {
                   ) : (
                     <span className="mono">{record.user.username}</span>
                   )}
-                  <span className="muted"> · the person behind it signs in as this user</span>
+                  {/* 0.9.14: a retired account is shown still, marked (P-296). */}
+                  {record.user.record_status === "retired" ? (
+                    <>
+                      <span className="badge">Retired</span>
+                      <span className="muted"> · the person behind it signs in no longer</span>
+                    </>
+                  ) : (
+                    <span className="muted"> · the person behind it signs in as this user</span>
+                  )}
                 </dd>
               </>
             )}
@@ -462,7 +473,8 @@ export function OperatorDetail() {
               onReload={operator.reload}
             />
           )}
-          {mayEdit && (
+          {/* 0.9.14: a released label says to everybody who brings it back (P-298). */}
+          {(mayEdit || record.record_status === "retired") && (
             <Release
               key={`status ${record.hid} ${record.row_version}`}
               operator={record}
@@ -875,19 +887,16 @@ function HandOver({ operator, onChanged, onReload }: ChangeProps) {
   );
 }
 
-/** Release what the label is on, or bring a released label back. Nothing is deleted. */
+/**
+ * Release what the label is on, or bring a released label back. Nothing is deleted.
+ * 0.9.14: a label is one of the records of a person, and is released with what is said
+ * of its contact, its account and the person's other labels, in one confirmation
+ * (P-291); it is brought back by an Admin alone (P-298).
+ */
 function Release({ operator, onChanged, onReload }: ChangeProps) {
+  const { user } = useAuth();
+  const admin = allows(user.role, "admin");
   const action = useAction();
-
-  async function release() {
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/operators/{hid}/retire", {
-        path: { hid: operator.hid },
-        body: { row_version: operator.row_version },
-      }),
-    );
-    if (result.ok) onChanged(`${operator.label} was released.`);
-  }
 
   async function bringBack() {
     const result = await action.run(() =>
@@ -911,35 +920,44 @@ function Release({ operator, onChanged, onReload }: ChangeProps) {
             the operator of the next level up, or none. It is still on them, and brought back it is
             their operator again.
           </p>
-          <p className="actions">
-            <button type="button" onClick={bringBack} disabled={action.busy}>
-              Bring back
-            </button>
-          </p>
+          {admin ? (
+            <p className="actions">
+              <button type="button" onClick={bringBack} disabled={action.busy}>
+                Bring back
+              </button>
+            </p>
+          ) : (
+            <p className="muted" data-testid="admin-brings-back">
+              An Admin brings a person back: ask one to bring this label back.
+            </p>
+          )}
         </>
       ) : (
         <>
           <p>
             Releasing lets go of everything the label is on, all at once: each item, group and place
-            then has the operator of the next level up, or none. Nothing is written to any of them,
-            and the label can be brought back.
+            then has the operator of the next level up, or none. Nothing is written to any of them.
+            Where a person is behind the label, the confirmation asks what becomes of the contact,
+            its account and its other labels.
           </p>
-          <p className="actions">
-            <ConfirmButton
+          <div className="actions">
+            <RetirePerson
+              on={{ kind: "operator", hid: operator.hid }}
+              rowVersion={operator.row_version}
               label="Release"
               title={`Release ${operator.label}?`}
-              confirmLabel="Release"
-              onConfirm={release}
+              onRetired={onChanged}
+              onReload={onReload}
               disabled={action.busy}
             >
               <p>
                 {operator.uses > 0
                   ? `It is given to ${plural(operator.uses, "item, group or place", "items, groups and places")}, which then have the operator of the next level up, or none.`
                   : "It is given to nothing."}{" "}
-                The label can be brought back.
+                An Admin can bring the label back.
               </p>
-            </ConfirmButton>
-          </p>
+            </RetirePerson>
+          </div>
         </>
       )}
     </section>

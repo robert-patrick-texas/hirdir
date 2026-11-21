@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessCodeHint,
   behindOperator,
   briefMark,
   briefText,
@@ -13,6 +14,7 @@ import {
   goneWords,
   groupGrants,
   labelProblem,
+  leastCodeLength,
   NEW_USER_FIELDS,
   type NewUserForm,
   newUserBody,
@@ -274,7 +276,12 @@ describe("who is what, on the lists of people (P-280)", () => {
   });
 
   it("keeps the gap of the users in the address, and asks the server for it", () => {
-    expect(USERS_GAPS.map((gap) => gap.value)).toEqual(["", "no-contact", "no-operator"]);
+    expect(USERS_GAPS.map((gap) => gap.value)).toEqual([
+      "",
+      "no-contact",
+      "no-operator",
+      "retired",
+    ]);
     expect(usersGapOf(new URLSearchParams("contact=none"))).toBe("no-contact");
     expect(usersGapOf(new URLSearchParams("operator=none&q=ex"))).toBe("no-operator");
     expect(usersGapOf(new URLSearchParams("contact=some"))).toBe("");
@@ -285,6 +292,16 @@ describe("who is what, on the lists of people (P-280)", () => {
       "?q=ex+ops&operator=none&offset=50",
     );
     expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("keeps the retired accounts, asked for by themselves, in the address (P-292)", () => {
+    expect(USERS_GAPS.find((gap) => gap.value === "retired")?.label).toBe("Retired users");
+    expect(usersGapOf(new URLSearchParams("retired=only"))).toBe("retired");
+    // Retired with the rest is no view of the page, and a retired account is in no gap.
+    expect(usersGapOf(new URLSearchParams("retired=yes"))).toBe("");
+    expect(usersGapOf(new URLSearchParams("retired=only&contact=none"))).toBe("retired");
+    expect(usersGapQuery("retired")).toEqual({ retired: "only" });
+    expect(queryOf(usersAddress("lee", "retired", 50))).toBe("?q=lee&retired=only&offset=50");
   });
 
   it("marks a gap of a grid only while the grid's filter is that gap's", () => {
@@ -340,5 +357,32 @@ describe("a refusal of a new user is said at its field (P-283)", () => {
     for (const field of ["operator.label", "group_hids", "contact.name", "notes", "operator"]) {
       expect(NEW_USER_FIELDS).toContain(field);
     }
+  });
+});
+
+describe("a typed access code has a least length, which the form says (P-295)", () => {
+  it("reads the length from the settings, a whole number of 1 or more", () => {
+    const settings = [
+      { key: "currency", value: "USD" },
+      { key: "access_code_min_length", value: 12 },
+    ];
+    expect(leastCodeLength(settings)).toBe(12);
+    expect(leastCodeLength([{ key: "access_code_min_length", value: 1 }])).toBe(1);
+    // Not read yet, not there, or no length: the form says none.
+    expect(leastCodeLength(undefined)).toBeNull();
+    expect(leastCodeLength([{ key: "currency", value: "USD" }])).toBeNull();
+    for (const value of ["12", 0, 12.5, null]) {
+      expect(leastCodeLength([{ key: "access_code_min_length", value }])).toBeNull();
+    }
+  });
+
+  it("says the length under the field, and that an empty one is generated", () => {
+    expect(accessCodeHint(12)).toBe(
+      "Leave empty to have one generated. One typed here has at least 12 characters.",
+    );
+    expect(accessCodeHint(1)).toBe(
+      "Leave empty to have one generated. One typed here has at least 1 character.",
+    );
+    expect(accessCodeHint(null)).toBe("Leave empty to have one generated");
   });
 });

@@ -24,13 +24,19 @@ interface ProblemProps {
    * is not named at all, and its message stands as a sentence of its own.
    */
   labels?: Readonly<Record<string, string>>;
+  /**
+   * 0.9.14: what is said before the records a refusal names in `depends_on`, where they
+   * are not what runs on an item: the linked records a retirement did not say (P-297).
+   */
+  dependsLead?: (count: number) => string;
 }
 
 /**
  * What the server said went wrong. The region is always in the page, so that a screen
  * reader announces the message when it appears.
  */
-export function Problem({ error, shown = [], onReload, labels = {} }: ProblemProps) {
+export function Problem(props: ProblemProps) {
+  const { error, shown = [], onReload, labels = {}, dependsLead = runOnItLead } = props;
   const visible = error && !error.aborted ? error : null;
   const cause = useContext(StaleCause);
   // A message about a field the form shows is shown beside its input, not here.
@@ -83,7 +89,9 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
             </p>
           )}
           {/* 0.9.8: what runs on a stack or a cluster refused retirement, as links (P-247). */}
-          {visible.dependsOn.length > 0 && <DependsOn records={visible.dependsOn} />}
+          {visible.dependsOn.length > 0 && (
+            <DependsOn records={visible.dependsOn} lead={dependsLead} />
+          )}
           {others.length > 0 && (
             <ul>
               {others.map(([field, message]) => (
@@ -118,10 +126,16 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
  * run on a stack or a cluster, which the server's words say to give another host, or to
  * retire, first. Each is a link to its page.
  */
-function DependsOn({ records }: { records: readonly ExistingRecord[] }) {
+function DependsOn({
+  records,
+  lead,
+}: {
+  records: readonly ExistingRecord[];
+  lead: (count: number) => string;
+}) {
   return (
     <div data-testid="problem-depends-on">
-      <p>{runOnItLead(records.length)}</p>
+      <p>{lead(records.length)}</p>
       <ul className="removal-refused">
         {records.map((record) => {
           const to = existingPath(record);

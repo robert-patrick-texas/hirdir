@@ -2,15 +2,16 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
-import { ConfirmButton } from "../components/ConfirmButton";
 import { Created, createdState, useCreated } from "../components/Created";
 import { GapLinks, useGridGaps } from "../components/GapLinks";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { MakeOperator } from "../components/MakeOperator";
 import { OperatorMark } from "../components/Operator";
+import { PersonChain } from "../components/PersonChain";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { RetirePerson } from "../components/RetirePerson";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import {
@@ -329,6 +330,8 @@ export function ContactDetail() {
       {contact.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
+          {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). */}
+          <PersonChain kind="contact" hid={record.hid} turn={record.row_version} />
           <dl className="facts" data-testid="contact-facts">
             <dt>Name</dt>
             <dd>{record.name}</dd>
@@ -352,7 +355,15 @@ export function ContactDetail() {
                   ) : (
                     <span className="mono">{record.user.username}</span>
                   )}
-                  <span className="muted"> · this person signs in to hirdir as this user</span>
+                  {/* 0.9.14: a retired account is shown still, marked (P-296). */}
+                  {record.user.record_status === "retired" ? (
+                    <>
+                      <span className="badge">Retired</span>
+                      <span className="muted"> · this person signs in to hirdir no longer</span>
+                    </>
+                  ) : (
+                    <span className="muted"> · this person signs in to hirdir as this user</span>
+                  )}
                 </>
               ) : record.is_user ? (
                 <>A user: this person signs in to hirdir</>
@@ -411,7 +422,8 @@ export function ContactDetail() {
               />
             </section>
           )}
-          {mayEdit && (
+          {/* 0.9.14: a retired contact says to everybody who brings it back (P-298). */}
+          {(mayEdit || record.record_status === "retired") && (
             <ContactStatus
               key={`status ${record.hid} ${record.row_version}`}
               contact={record}
@@ -558,19 +570,16 @@ interface ContactStatusProps {
   onReload: () => void;
 }
 
-/** Retire a contact, or bring a retired one back. Its assignments stay either way. */
+/**
+ * Retire a contact, or bring a retired one back. Its assignments stay either way.
+ * 0.9.14: a contact is one of the records of a person, and is retired with what is said
+ * of its account and its labels, in one confirmation (P-291); it is brought back by an
+ * Admin alone (P-298).
+ */
 function ContactStatus({ contact, onChanged, onReload }: ContactStatusProps) {
+  const { user } = useAuth();
+  const admin = allows(user.role, "admin");
   const action = useAction();
-
-  async function retire() {
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/contacts/{hid}/retire", {
-        path: { hid: contact.hid },
-        body: { row_version: contact.row_version },
-      }),
-    );
-    if (result.ok) onChanged("The contact was retired.");
-  }
 
   async function bringBack() {
     const result = await action.run(() =>
@@ -592,34 +601,43 @@ function ContactStatus({ contact, onChanged, onReload }: ContactStatusProps) {
             This contact is retired. The places and owners it is assigned to keep it, and show it as
             retired.
           </p>
-          <p className="actions">
-            <button type="button" onClick={bringBack} disabled={action.busy}>
-              Bring back as active
-            </button>
-          </p>
+          {admin ? (
+            <p className="actions">
+              <button type="button" onClick={bringBack} disabled={action.busy}>
+                Bring back as active
+              </button>
+            </p>
+          ) : (
+            <p className="muted" data-testid="admin-brings-back">
+              An Admin brings a person back: ask one to bring this contact back.
+            </p>
+          )}
         </>
       ) : (
         <>
           <p>
             A retired contact is given no further assignment. The ones it has stay, and show it as
-            retired, until they are removed where they are.
+            retired, until they are removed where they are. Its account and its labels are retired
+            with it, or parted from it: the confirmation asks what becomes of each.
           </p>
-          <p className="actions">
-            <ConfirmButton
+          <div className="actions">
+            <RetirePerson
+              on={{ kind: "contact", hid: contact.hid }}
+              rowVersion={contact.row_version}
               label="Retire contact"
               title={`Retire ${contact.name}?`}
-              confirmLabel="Retire contact"
-              onConfirm={retire}
+              onRetired={onChanged}
+              onReload={onReload}
               disabled={action.busy}
             >
               <p>
                 {contact.uses > 0
                   ? `It is named by ${plural(contact.uses, "record")}, listed under Where it is named, which keep it and show it as retired.`
                   : "It is assigned nowhere."}{" "}
-                The contact can be brought back.
+                An Admin can bring the contact back.
               </p>
-            </ConfirmButton>
-          </p>
+            </RetirePerson>
+          </div>
         </>
       )}
     </section>

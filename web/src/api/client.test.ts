@@ -656,6 +656,18 @@ describe("download", () => {
     expect(init?.headers).not.toHaveProperty("Content-Type");
     await client.download("/api/v1/users/export", {});
   });
+
+  // 0.9.14: what a route takes in its address is sent there, as the users' file takes
+  // `retired` (P-296).
+  it("sends what a route takes in its address", async () => {
+    const { client, fetch } = setup(
+      () => new Response("username\n", { status: 200, headers: { "Content-Type": "text/csv" } }),
+    );
+    await client.download("/api/v1/users/export", { query: { retired: "only" } });
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe("https://inventory.example/hirdir/api/v1/users/export?retired=only");
+    expect(init?.body).toBeUndefined();
+  });
 });
 
 describe("fileNameOf", () => {

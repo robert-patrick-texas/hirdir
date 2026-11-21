@@ -34,3 +34,11 @@ export function isDeleted(gone: ReadonlySet<string>, event: Named): boolean {
     Boolean(event.record_hid) && gone.has(recordKey(event.record_type, event.record_hid ?? ""))
   );
 }
+
+/**
+ * 0.9.14: an account as the list of who acted offers it (P-296): its username, a
+ * retired one marked, since what it did is still in the trail.
+ */
+export function actorLabel(user: { username: string; record_status?: string | null }): string {
+  return user.record_status === "retired" ? `${user.username} (retired)` : user.username;
+}

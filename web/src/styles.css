@@ -3552,3 +3552,93 @@ table.colour-grid {
 }
 
 /* End of 0.9.14, the profile page */
+
+/* 0.9.14, lane w-retire: a person's three records, and their retirement together */
+
+/* The chain of one person (P-291): operator, contact, user, each a link, in one row
+   that wraps where the page is narrow. */
+.person-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.person-chain-label {
+  font-weight: 600;
+}
+
+.person-chain ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0;
+  margin: 0;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  list-style: none;
+}
+
+.chain-part {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.4rem;
+}
+
+/* The link between two parts of the chain: drawn, and said by the list it is in. */
+.chain-part + .chain-part::before {
+  content: "›";
+  margin: 0 0.6rem;
+  color: var(--muted);
+}
+
+.chain-kind {
+  color: var(--muted);
+}
+
+/* The record the page is of. */
+.chain-here {
+  font-weight: 700;
+}
+
+/* The confirmation of a retirement (P-291): a row to each linked record. */
+dialog.person-dialog {
+  width: 44rem;
+  max-width: calc(100vw - 2rem);
+}
+
+.person-rows {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.person-lead {
+  margin: 0;
+}
+
+.person-row {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.person-about {
+  margin: 0.15rem 0 0.25rem;
+}
+
+.field-check + .person-about {
+  margin-left: 1.6rem;
+  color: var(--muted);
+}
+
+.person-choice > fieldset {
+  padding: 0;
+  border: 0;
+}
+
+.person-hand-over {
+  margin-top: 0.5rem;
+}

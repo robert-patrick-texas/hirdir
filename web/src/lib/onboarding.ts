@@ -230,31 +230,43 @@ export function behindOperator(operators: readonly Schemas["OperatorBrief"][]): 
   return operators.some((operator) => operator.record_status !== "retired");
 }
 
-/** The gaps a list of users is narrowed to (P-280): no contact, or no operator. */
-export type UsersGap = "" | "no-contact" | "no-operator";
+/**
+ * What a list of users is narrowed to: a gap (P-280), no contact or no operator, or,
+ * since 0.9.14, the retired accounts by themselves (P-292), which the list leaves out
+ * until they are asked for.
+ */
+export type UsersGap = "" | "no-contact" | "no-operator" | "retired";
 
 /** What a gap asks `GET /users` for, and what the address of the page holds of it. */
 export const USERS_GAPS: readonly {
   value: UsersGap;
   label: string;
-  param: "contact" | "operator" | null;
+  param: "contact" | "operator" | "retired" | null;
 }[] = [
   { value: "", label: "Every user", param: null },
   { value: "no-contact", label: "Users with no contact", param: "contact" },
   { value: "no-operator", label: "Users with no operator", param: "operator" },
+  { value: "retired", label: "Retired users", param: "retired" },
 ];
 
 /** The gap a list of users is narrowed to, as the address of the page says it. */
 export function usersGapOf(params: URLSearchParams): UsersGap {
+  // A retired account is in no gap: the retired are asked for by themselves.
+  if (params.get("retired") === "only") return "retired";
   if (params.get("contact") === "none") return "no-contact";
   if (params.get("operator") === "none") return "no-operator";
   return "";
 }
 
 /** What `GET /users` is asked, for a gap. */
-export function usersGapQuery(gap: UsersGap): { contact?: "none"; operator?: "none" } {
+export function usersGapQuery(gap: UsersGap): {
+  contact?: "none";
+  operator?: "none";
+  retired?: "only";
+} {
   if (gap === "no-contact") return { contact: "none" };
   if (gap === "no-operator") return { operator: "none" };
+  if (gap === "retired") return { retired: "only" };
   return {};
 }
 
@@ -351,4 +363,26 @@ export function newUserErrors(fields: Readonly<Record<string, string>>): Record<
     else if ((USER_FIELDS as readonly string[]).includes(field)) put(field, message);
   }
   return found;
+}
+
+/**
+ * 0.9.14: the least length of an access code that is typed, as the setting
+ * `access_code_min_length` says it (P-295), or null while the settings are not read or
+ * hold none: a whole number from 1 to 64.
+ */
+export function leastCodeLength(
+  settings: readonly { key: string; value: unknown }[] | undefined,
+): number | null {
+  const value = settings?.find((setting) => setting.key === "access_code_min_length")?.value;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+/**
+ * What a form says under an access code that an Admin types for somebody else: a code
+ * left empty is made by the server, and is not held to the length; one typed is.
+ */
+export function accessCodeHint(least: number | null): string {
+  const made = "Leave empty to have one generated";
+  if (least === null) return made;
+  return `${made}. One typed here has at least ${least} ${least === 1 ? "character" : "characters"}.`;
 }
