@@ -5775,7 +5775,9 @@ export interface paths {
      * Change an operator. Given another contact, everything the label is on is handed
      * over at once; given none, it is an open assignment. Nothing else is written to. A
      * retired operator is brought back, by `record_status`, by an Admin alone: a `403`
-     * for any other role (P-298).
+     * for any other role. It is not brought back onto a contact that is retired: a `409`
+     * on `record_status` that names the contact, which is brought back first or taken
+     * off the label, in the same change or before (P-298).
      */
     patch: {
       parameters: {
@@ -12448,8 +12450,10 @@ export interface components {
     /**
      * The signed-in user, with what is their own: the answer of `GET /auth/me` and of
      * the routes under it, and `user` in the answer of signing in. It is a user as the
-     * routes of users answer one, but for three things: `contact` and `operators` carry
-     * what the profile changes, and the version of each, and `notes` is null.
+     * routes of users answer one, but for four things: `contact` and `operators` carry
+     * what the profile changes, and the version of each; `notes` is null; and there is no
+     * `record_status`, which would say `active` always, since whoever reads this is
+     * signed in and a retired account signs in nowhere (P-296).
      */
     MeOut: {
       /** The contact the person is, with the version to change it at. None for a service account, or a user not given one. */

@@ -86,6 +86,11 @@ def test_me_carries_the_contact_and_the_operators_with_their_versions(
         "Kim Lee",
         None,
     )
+    # It is a user as the routes of users answer one, but for the record status: who
+    # reads this is signed in, and a retired account signs in nowhere (P-296).
+    user = Maker(client, admin).get(f"/users/{made['user']['hid']}")
+    assert set(user) - set(me) == {"record_status"}
+    assert set(me) - set(user) == set()
 
 
 def test_signing_in_answers_the_same_as_me(client: TestClient, admin: dict) -> None:

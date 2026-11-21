@@ -383,14 +383,6 @@ def test_what_is_said_of_a_record_that_is_not_linked_or_is_retired_already_is_re
         "contacts", kim.contact, "linked.user", user="retire", operators=[both[0]]
     )
     kim.retire("contacts", kim.contact, operators=[both[0]])
-    # A label brought back on a contact that is retired: of the contact nothing is said.
-    now = kim.now("operators", kim.kl)
-    desk.patch(
-        f"/operators/{kim.kl['hid']}",
-        {"row_version": now["row_version"], "record_status": "active"},
-    )
-    assert "retired already" in refused("operators", kim.kl, "linked.contact", contact="keep")
-    assert kim.retire("operators", kim.kl)["record_status"] == "retired"
 
 
 def test_a_request_that_retires_a_user_is_an_admins(
@@ -635,6 +627,111 @@ def test_a_retired_contact_or_operator_is_brought_back_by_an_admin_alone(
         # To retire one is the Inventory role's still, and to make a draft of one.
         draft = ivy.patch(path, {"row_version": back["row_version"], "record_status": "draft"})
         assert draft["record_status"] == "draft"
+
+
+def test_a_label_is_not_brought_back_onto_a_retired_contact(
+    kim: Kim, desk: Maker, client: TestClient, admin: dict, inventory: dict
+) -> None:
+    """A contact is not retired while a label stands on it, and a label is not brought
+    back onto a retired contact either: the contact first, or the contact taken off."""
+    kim.retire("users", kim.user, contact="retire", operators=kim.every())
+    retired = {"KL": "retired", "LM": "retired", "contact": "retired", "user": "retired"}
+    path = f"/operators/{kim.kl['hid']}"
+    version = desk.get(path)["row_version"]
+    before = desk.get("/audit-events", limit=1)["total"]
+    for status in ("active", "draft"):
+        refused = desk.patch(path, {"row_version": version, "record_status": status}, 409)
+        assert set(errors(refused)) == {"record_status"}
+        assert "retired contact" in errors(refused)["record_status"]
+        assert refused["existing"] == {
+            "hid": kim.contact_hid,
+            "record_type": "contact",
+            "label": "Kim Lee",
+        }
+    assert kim.statuses() == retired
+    assert desk.get("/audit-events", limit=1)["total"] == before
+    # A row of a file likewise, in the preview and at the apply.
+    files = Files(client, admin)
+    preview = files.preview("operators", "label,record_status\nKL,active\n")
+    rejected = preview["rows"][0]
+    assert rejected["outcome"] == "rejected"
+    assert "retired contact" in " ".join(one["message"] for one in rejected["reasons"])
+    files.apply(preview, expect=422)
+    assert kim.statuses() == retired
+
+    # The contact taken off in the same change: the label comes back, open.
+    back = desk.patch(
+        path, {"row_version": version, "record_status": "active", "contact_hid": None}
+    )
+    assert (back["record_status"], back["contact_hid"], back["is_open"]) == ("active", None, True)
+    # Or taken off before, which the Inventory role may do of a retired label still.
+    ivy = Maker(client, inventory)
+    other = f"/operators/{kim.lm['hid']}"
+    bare = ivy.patch(other, {"row_version": desk.get(other)["row_version"], "contact_hid": None})
+    assert (bare["record_status"], bare["contact_hid"]) == ("retired", None)
+    back = desk.patch(other, {"row_version": bare["row_version"], "record_status": "active"})
+    assert back["record_status"] == "active"
+
+
+def test_a_label_is_brought_back_once_its_contact_is(kim: Kim, desk: Maker) -> None:
+    kim.retire("users", kim.user, contact="retire", operators=kim.every())
+    path = f"/operators/{kim.kl['hid']}"
+    desk.patch(path, {"row_version": desk.get(path)["row_version"], "record_status": "active"}, 409)
+    contact = kim.contact
+    desk.patch(
+        f"/contacts/{kim.contact_hid}",
+        {"row_version": contact["row_version"], "record_status": "active"},
+    )
+    back = desk.patch(
+        path, {"row_version": desk.get(path)["row_version"], "record_status": "active"}
+    )
+    assert (back["record_status"], back["contact_hid"]) == ("active", kim.contact_hid)
+    assert kim.statuses() == {
+        "KL": "active",
+        "LM": "retired",
+        "contact": "active",
+        "user": "retired",
+    }
+
+
+def test_a_contact_is_not_retired_while_a_label_is_being_brought_back_onto_it(
+    desk: Maker, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sam = desk.contact("Sam Okafor")
+    label = desk.post("/operators", {"label": "SO", "contact_hid": sam["hid"]})
+    gone = desk.release(label)
+    looked = threading.Event()
+    real = operators.not_onto_a_retired_contact
+
+    def checked(*args: Any) -> Any:
+        found = real(*args)
+        # The label's request has seen the contact in order. The other request is let go
+        # now, and has a moment to retire the contact before the label is written.
+        looked.set()
+        threading.Event().wait(0.5)
+        return found
+
+    monkeypatch.setattr(operators, "not_onto_a_retired_contact", checked)
+
+    def bring_back(caller: TestClient) -> Any:
+        return caller.patch(
+            f"{API}/operators/{label['hid']}",
+            json={"row_version": gone["row_version"], "record_status": "active"},
+            headers=desk.headers,
+        )
+
+    def retire(caller: TestClient) -> Any:
+        looked.wait(5)
+        return caller.post(
+            f"{API}/contacts/{sam['hid']}/retire",
+            json={"row_version": sam["row_version"]},
+            headers=desk.headers,
+        )
+
+    # The label took its turn before it looked, so the retiring waits, and then finds it.
+    assert _together(client, [bring_back, retire]) == [200, 409]
+    assert desk.get(f"/operators/{label['hid']}")["record_status"] == "active"
+    assert desk.get(f"/contacts/{sam['hid']}")["record_status"] == "active"
 
 
 def test_an_inventory_user_still_brings_back_a_site_and_an_item(make: Maker) -> None:

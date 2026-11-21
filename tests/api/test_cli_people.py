@@ -186,3 +186,49 @@ def test_an_operator_is_retired_with_what_the_options_say_of_the_rest(
         "OPEN is released; it was on 0 records of its own"
     )
     assert desk.get(f"/operators/{label['hid']}")["record_status"] == "retired"
+
+
+def test_each_command_takes_an_hid_where_it_takes_a_name(
+    run: Any, kim: Kim, desk: Maker, as_admin: tuple[str, str]
+) -> None:
+    """A user, a contact and an operator are each named by an HID as by a name, the
+    record of the command and those its options name, and a retired user too."""
+    user, contact, kl, lm = kim.user["hid"], kim.contact_hid, kim.kl["hid"], kim.lm["hid"]
+    said = run("users", "retire", user, "--dry-run", *as_admin).stdout
+    assert said.splitlines()[0] == "user klee, and what is linked to it:"
+    said = run("contacts", "retire", contact, "--dry-run").stdout
+    assert said.splitlines()[0] == "contact Kim Lee, and what is linked to it:"
+    said = run("operators", "retire", kl, "--dry-run").stdout
+    assert said.splitlines()[0] == "operator KL, and what is linked to it:"
+    assert kim.statuses() == {"KL": "active", "LM": "active", "contact": "active", "user": "active"}
+
+    done = run(
+        "users",
+        "retire",
+        user,
+        "--contact",
+        "retire",
+        "--operator",
+        f"{kl}=hand_over:{kim.sam['hid']}",
+        "--operator",
+        f"{lm}=retire",
+        *as_admin,
+    ).stdout
+    assert done.splitlines()[-1] == "klee is retired"
+    assert kim.statuses() == {"LM": "retired", "contact": "retired", "user": "retired"}
+    assert desk.get(f"/operators/{kl}")["contact_hid"] == kim.sam["hid"]
+
+    # The retired account is found by its HID, to be brought back.
+    planned = run("users", "bring-back", user, "--contact", "--dry-run", *as_admin).stdout
+    assert planned.splitlines()[0] == "user klee, and what is linked to it:"
+    back = run("users", "bring-back", user, "--contact", "--operator", lm, *as_admin).stdout
+    assert back.splitlines()[-2] == "klee is active again, with no role and no group"
+    assert kim.statuses() == {"LM": "active", "contact": "active", "user": "active"}
+
+    # An HID of nobody is no user, and a username is not looked for under it.
+    nobody = "00000000-0000-7000-8000-000000000000"
+    for command in ("retire", "bring-back"):
+        refused = run("users", command, nobody, *as_admin, expect=4)
+        assert f"there is no user {nobody}" in refused.output
+    run("contacts", "retire", nobody, expect=4)
+    run("operators", "retire", nobody, expect=4)

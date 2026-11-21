@@ -100,11 +100,15 @@ def call(
     content_type: str | None = None,
     length: int | None = None,
     timeout: float = 30,
+    done_before: str | None = None,
 ) -> Any:
     """Call the API and return the decoded answer, or exit with the code for the error.
 
     `body` is sent as JSON. `content` is sent as it is, as a file is, with its type: a
     file read in pieces says its `length`, so that it is not sent in chunks.
+    `done_before` is what a command of several changes has done already: where this
+    call fails it is said first, on stderr, so that the error is not read as nothing
+    having been changed.
     """
     more = {"Content-Type": content_type} if content_type else {}
     if length is not None:
@@ -122,9 +126,13 @@ def call(
             timeout=timeout,
         )
     except httpx2.HTTPError as error:
+        if done_before:
+            typer.echo(done_before, err=True)
         raise fail(f"cannot reach {target.url}: {error}", EXIT_SERVER) from error
     if response.is_success:
         return response.json() if response.content else None
+    if done_before:
+        typer.echo(done_before, err=True)
     raise _refusal(response)
 
 

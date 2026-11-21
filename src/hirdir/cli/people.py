@@ -11,6 +11,7 @@ from typing import Annotated, Any
 
 import typer
 
+from hirdir import ids
 from hirdir.cli import client
 from hirdir.cli.client import Target
 
@@ -45,12 +46,19 @@ WORDS = {
 
 
 def find_user(target: Target, text: str) -> dict[str, Any]:
-    """Return the user with an HID or a username, a retired one too."""
+    """Return the user with an HID or a username, a retired one too.
+
+    An HID is read by itself: the list of users finds part of a username or of the name
+    of a contact, and never an HID. A username is found without regard to case, among
+    the retired as among the rest.
+    """
+    if ids.is_hid(text):
+        return client.call(target, "GET", f"/users/{text}")
     found = client.call(
         target, "GET", "/users", params={"q": text, "retired": "yes", "limit": 1000}
     )["items"]
     for user in found:
-        if text in (user["hid"], user["username"]) or user["username"].lower() == text.lower():
+        if user["username"].lower() == text.lower():
             return user
     raise client.fail(f"there is no user {text}", client.EXIT_INVALID)
 

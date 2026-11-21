@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate } from "react-router";
 import { type ApiError, api, type Schemas, sessions } from "./api";
 import { Problem } from "./components/Problem";
@@ -31,6 +32,17 @@ export interface Auth {
   signOutEverywhere: () => Promise<void>;
   /** Read the user again, as after a change to roles or groups. */
   refresh: () => void;
+  /**
+   * 0.9.14: take the user as a route of the person's own has just answered it (P-294),
+   * so that the frame and every page show the change at once, with nothing read again.
+   */
+  took: (user: User) => void;
+  /**
+   * 0.9.14: keep the session a change of the person's own access code answered, in place
+   * of the one in hand, which that change ended (P-295). The page stays as it is: what is
+   * on it is not drawn anew, as it is when somebody else signs in.
+   */
+  adopt: (answer: Schemas["SessionOut"]) => void;
 }
 
 const AuthContext = createContext<Auth | null>(null);
@@ -112,10 +124,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => setTurn((count) => count + 1), []);
 
+  const took = useCallback((user: User) => {
+    const held = sessions.get()?.token ?? null;
+    setKnown((was) => (was && was.token === held ? { token: was.token, user } : was));
+  }, []);
+
+  const adopt = useCallback((answer: Schemas["SessionOut"]) => {
+    // The token and the user it is known for change in one drawing of the page: between
+    // the two the gate would know nobody, and would take the page away.
+    flushSync(() => {
+      setKnown({ token: answer.token, user: answer.user });
+      sessions.set(answer);
+    });
+  }, []);
+
   const user = known && known.token === token ? known.user : null;
   const auth = useMemo<Auth | null>(
-    () => (user ? { user, signOut, signOutEverywhere, refresh } : null),
-    [user, signOut, signOutEverywhere, refresh],
+    () => (user ? { user, signOut, signOutEverywhere, refresh, took, adopt } : null),
+    [user, signOut, signOutEverywhere, refresh, took, adopt],
   );
 
   if (token === null) return <SignIn />;

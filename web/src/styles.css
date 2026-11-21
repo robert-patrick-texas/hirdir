@@ -3532,6 +3532,27 @@ table.colour-grid {
     0 0 0 3px var(--text);
 }
 
+/* 0.9.14, the profile page (P-289, P-294) */
+
+/* Who changes what the page shows as text: close under it. */
+.profile-fixed {
+  margin: -0.5rem 0 1rem;
+}
+
+/* What a part says of itself stands clear of its first field. */
+.profile-part > .hint {
+  margin-bottom: 0.75rem;
+}
+
+/* Each operator of somebody behind several, under the one before. */
+.profile-operator + .profile-operator {
+  margin-top: 1.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+/* End of 0.9.14, the profile page */
+
 /* 0.9.14, lane w-retire: a person's three records, and their retirement together */
 
 /* The chain of one person (P-291): operator, contact, user, each a link, in one row

@@ -52,6 +52,8 @@ const pages = {
   // End of 0.8.0, web lane B.
   // 0.9.0: every reference, Admin › Files (P-162).
   files: part(() => import("./pages/Files")),
+  // 0.9.14: a person's own profile (P-289).
+  profile: part(() => import("./pages/Profile")),
 };
 
 const AgreementDetail = retriedPart(() =>
@@ -178,6 +180,8 @@ const CircuitCostsReport = retriedPart(() =>
 // End of 0.8.0, web lane B.
 // 0.9.0: every reference, Admin › Files (P-162).
 const Files = retriedPart(() => pages.files().then((page) => ({ default: page.Files })));
+// 0.9.14: a person's own profile, for every role (P-289).
+const Profile = retriedPart(() => pages.profile().then((page) => ({ default: page.Profile })));
 
 // How long after the first page is shown the other pages are fetched, in milliseconds.
 const WARM_AFTER = 400;
@@ -646,6 +650,8 @@ export function App() {
                 </RequireRole>
               }
             />
+            {/* 0.9.14: a person's own profile, whatever their role (P-289). */}
+            <Route path="profile" element={<Profile />} />
             <Route path="about" element={<About />} />
             <Route path="*" element={<NotFound />} />
           </Route>
