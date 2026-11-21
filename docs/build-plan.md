@@ -47,7 +47,7 @@ outward change feed and host lists for monitoring tools; the names and addresses
 editing in the grid; a row of a list shown as selected by its colour or another mark, where the column of boxes is not on show (P-233); an Admin's deletion of a mistake for the kinds of record other than
 items and device groups, which have it from 0.9.7, under the same rule, that nothing else
 depends on the record and that the deletion is audited (P-227); choosing a place from a map,
-Google Maps first, where 0.9.7 opens a map from a place's coordinates (P-229); the codes of places looked at again, whether one may be shared and a location is found before a site and a site before a region (P-237); a report of discrepancies, the gaps that should be filled, each with a link to where its fix is begun, made when asked for and, where it is turned on, once a day (P-254); mail by SMTP through a smart host, for notices and for reports on a schedule (P-255), a report that is mailed carrying its detail, a link to it, or both, the link asking for a sign-in unless an option lets anybody with it read the report (P-256); a message of the day for everybody who signs in (P-257); a maintenance mode, which holds what runs by itself, refuses every sign-in but an Admin's and ends the sessions that are open (P-258); each connector and each recurring task paused and resumed by itself, and all at once (P-259); the words the pages show gone over for plain writing, by the Army's rules of effective writing and ASD-STE100, concise, active and quickly understood (P-290); what is typed or pasted put into one form, a telephone number, an email address, a name, by formats an Admin turns on and defines (P-293); PostgreSQL; a container image; a colour theme for the web page that
+Google Maps first, where 0.9.7 opens a map from a place's coordinates (P-229); the codes of places looked at again, whether one may be shared and a location is found before a site and a site before a region (P-237); a report of discrepancies, the gaps that should be filled, each with a link to where its fix is begun, made when asked for and, where it is turned on, once a day (P-254); mail by SMTP through a smart host, for notices and for reports on a schedule (P-255), a report that is mailed carrying its detail, a link to it, or both, the link asking for a sign-in unless an option lets anybody with it read the report (P-256); a message of the day for everybody who signs in (P-257); a maintenance mode, which holds what runs by itself, refuses every sign-in but an Admin's and ends the sessions that are open (P-258); each connector and each recurring task paused and resumed by itself, and all at once (P-259); the words the pages show gone over for plain writing, by the Army's rules of effective writing and ASD-STE100, concise, active and quickly understood (P-290); PostgreSQL; a container image; a colour theme for the web page that
 each person chooses, kept in the browser's local storage and never in a cookie, from the
 themes of the owner's Texas2Step project, with a reminder to the owner to make them easy
 to reuse there first if they cannot be taken as they stand (P-144). Then views of the data,
@@ -180,7 +180,9 @@ user's (P-304); it has no migration. 0.9.17, the last before 1.0.0, settles the 
 that stand unconfirmed, says on a user's page where its role comes from (P-307), writes
 into the install guide how roles are best given (P-308), makes a release quick to test
 (P-309), checks that the audit trail holds what a later sync will read (P-310), and
-mends small leftovers (P-311).
+mends small leftovers (P-311). 0.9.18 puts what is typed or pasted into one form, a
+telephone number, an email address, a name, by formats an Admin turns on and defines
+(P-293).
 
 ## From 0.6.1 to 0.9.0
 
