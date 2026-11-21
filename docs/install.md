@@ -38,7 +38,8 @@ sudo hirdir admin create-user --role admin --name 'Ada Example' --email ada@exam
 ```
 
 The command prints an access code once. Give `--access-code` to choose the code instead:
-one of at least 12 characters, or as many as the setting `access_code_min_length` says.
+a code that is typed has at least 12 characters, unless the setting
+`access_code_min_length` says another length.
 `--name`, `--email`, `--phone` and `--phone2` make the contact that the user is: every
 person is a contact, and a user is a contact who signs in. Left out, the user has no
 contact and is shown by its username until an Admin gives it one.
@@ -145,13 +146,23 @@ ends every session that user has. From the server:
 sudo hirdir admin reset-access-code ada
 ```
 
-Whoever is signed in changes what is their own on their profile, reached from their
-name in the menu bar, or with `hirdir profile`: their name, email, numbers and
-organization, the label and colour of their operator, and their access code, for which
-the code they have is asked. Changing it ends every other session they have. A code
-that is typed, by the person or by an Admin, has at least 12 characters, or as many as
-the setting `access_code_min_length` says, from 1 to 64; a code that `hirdir` makes is
-not held to it, and nobody is signed out when the setting changes.
+An access code that is typed, by an Admin for a user or by a person for themselves, has
+at least 12 characters. The length is a setting of the inventory,
+`access_code_min_length`, from 1 to 64, that an Admin changes on the Settings page. A
+code that `hirdir` makes is not held to it, and a code that is held already is not
+looked at: nobody is signed out when the setting changes.
+
+A person who signs in changes what is their own on their profile, which the name in
+the menu bar opens, or with `hirdir profile`: the name, email, numbers and organization
+of the contact they are, the label and colour of each operator they stand behind, and
+their access code, for which the code they have is asked. Changing it ends every other
+session they have. Every role does that for itself, and nobody for another.
+
+An account is active, disabled or retired. A disabled account may not sign in for now
+and is to come back. A retired account is that of somebody who has left: it signs in
+with nothing, is in no group and holds no role, and the list of users leaves it out
+until the retired are asked for. An Admin retires an account and brings one back, and
+an Admin alone brings back a retired contact or operator.
 
 ## Automation
 
@@ -2060,6 +2071,94 @@ group that has one keeps its name until it is renamed.
 Going back to 0.9.12 is by the backup the upgrade took, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the
 schema changed: what was entered since is lost, the notes of the users with it.
+
+### From 0.9.13 to 0.9.14
+
+The schema goes from revision `0016` to `0017`. One column is added, `record_status` of
+the users, `active` for every user; no table is added, nothing that is held is changed,
+and the upgrade writes no audit event. It takes its backup and stops and starts the
+service as every upgrade does. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+Every user from before is as it was, and active: it signs in with its access code, its
+sessions and its service tokens go on, and it keeps its contact, its role and its
+groups. The upgrade works nothing out of what is held. A user that is disabled stays
+disabled and is not retired, and neither is a user whose contact is retired: an Admin
+retires the accounts of those who have left, each when it is looked at.
+
+What an Admin sees changed:
+
+- **A typed access code has at least 12 characters.** The length is a new setting,
+  under Admin, Settings: `access_code_min_length`, 12 unless set, a whole number from 1
+  to 64. It holds wherever a code is typed: by an Admin for a new user or as a user's
+  new code, on the page, by `POST /users` and `POST /users/{hid}/access-code`, and by
+  `--access-code` of `hirdir admin create-user` and `hirdir admin reset-access-code`;
+  and by a person for themselves. A shorter code is refused, and the refusal says the
+  length. A code that `hirdir` makes, three groups of four, is not held to it. A code
+  that is held is not looked at: nobody is signed out by the upgrade or by the
+  setting, and a shorter code from before signs in until it is changed.
+- **A person changes what is their own.** The name in the menu bar opens the profile
+  of whoever is signed in: the name, email, numbers and organization of the contact
+  they are, the label and colour of each operator they stand behind, and their access
+  code, for which the code they have is asked and which ends their other sessions.
+  Every role does that for itself, View-only too, and nobody for another; each change
+  is audited as that person's. An account with no contact changes its access code
+  alone and is told whom to ask: an Admin gives an account its contact.
+- **A retired account.** A user is active, disabled or retired. Disabled is what it
+  was, an account that may not sign in for now. Retired is the account of somebody who
+  has left, kept for the audit trail. Retiring an account ends its sessions, erases its
+  access code, takes it out of its groups, and revokes its own roles and the tokens of
+  a service account, each audited; the last Admin is not retired. The list of users
+  and the users' file leave the retired out until they are asked for. A retired
+  account keeps its username, which is refused to a new account, with the retired one
+  named, until an Admin renames the retired one. An Admin brings an account back: it
+  is active, with a new access code shown once, and no role and no group.
+- **A person is retired together.** The page of a user, of a contact and of an
+  operator shows the chain, operator, contact, user. Retiring one of them names the
+  others and asks what becomes of each in one confirmation: the user and the contact
+  retired or kept, and each operator retired, kept, left open or handed over to
+  another person. All of it is one change. A contact is not retired while its account
+  or a label stands on it.
+- **A retired user, contact or operator is brought back by an Admin alone.** Until now
+  the Inventory role brought back a contact or an operator. Retiring one is still the
+  Inventory role's, and every other kind of record is brought back as before.
+
+Before the upgrade, look at what types an access code: a script that gives a code
+shorter than 12 characters to `POST /users`, to `POST /users/{hid}/access-code` or to
+`--access-code` of `hirdir admin` is refused from 0.9.14. Lengthen the code, leave it
+out so that `hirdir` makes one, or set `access_code_min_length` once the upgrade is
+done.
+
+After the upgrade:
+
+- Set `access_code_min_length` under Admin, Settings, where 12 does not suit the site.
+- Retire the accounts of those who have left. Under Admin, Users, Show narrows the
+  list to the users with no contact, where a user whose contact is retired is found,
+  and the disabled are said to be so in the list.
+- Tell those with the Inventory role that a retired contact or operator is now an
+  Admin's to bring back.
+
+For a script that reads the API: a user answers `record_status`, and `GET /users` and
+`POST /users/export` take `retired`, `no`, `yes` or `only`, the users' file having a
+`record_status` column. `PATCH /auth/me/contact`, `PATCH /auth/me/operators/{hid}`,
+`POST /auth/me/access-code`, `POST /users/{hid}/retire`, `POST /users/{hid}/bring-back`,
+`GET /users/{hid}/linked`, `GET /contacts/{hid}/linked` and `GET /operators/{hid}/linked`
+are new, and so are `hirdir profile`, `hirdir users retire`, `hirdir contacts retire`
+and `hirdir operators retire`. Four things are newly refused:
+
+- an access code that is typed shorter than the setting, a `422` on `access_code`;
+- `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` of a record with
+  something linked that is not retired, until the request says in `linked` what becomes
+  of each, a `409` that names them; a row of a file that retires such a record is
+  rejected likewise;
+- `record_status` of a contact or an operator changed from `retired` by anybody but an
+  Admin, a `403`, by `PATCH`, in a file and in the CLI;
+- a username that a retired account has, a `409` on `username`.
+
+Going back to 0.9.13 is by the backup the upgrade took, as
+[Going back to the release before](#going-back-to-the-release-before) says, since the
+schema changed: what was entered since is lost, and an account retired since is as it
+was before.
 
 ### If the upgrade stops
 
