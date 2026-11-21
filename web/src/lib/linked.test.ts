@@ -8,6 +8,7 @@ import {
   contactUses,
   held,
   keptChoices,
+  LINKED_LABELS,
   type Linked,
   type LinkedContact,
   type LinkedOperator,
@@ -263,44 +264,26 @@ describe("one Retire sends one request that says every linked record (P-297)", (
 });
 
 describe("a refusal is said in the confirmation, at the record it names", () => {
-  const sent = {
-    row_version: 4,
-    linked: {
-      user: "keep" as const,
-      operators: [
-        { hid: "O1", action: "keep" as const },
-        { hid: "O2", action: "hand_over" as const, contact_hid: "C9" },
-      ],
-    },
-  };
-
-  it("puts each field of `linked` at its row, an operator by its place in what was sent", () => {
-    const found = refusedRows(
-      {
-        "linked.user": "is kept, and its contact is retired",
-        "linked.operators.0.action": "is kept, and its contact is retired",
-        "linked.operators.1.contact_hid": "is retired",
-        row_version: "is needed",
-      },
-      sent,
-    );
-    expect(found.rows).toEqual({
-      user: "is kept, and its contact is retired",
-      [rowOf("operator", "O1")]: "is kept, and its contact is retired",
-      [rowOf("operator", "O2")]: "is retired",
+  it("puts what is said of the account and of the contact at the row of each", () => {
+    const found = refusedRows({
+      "linked.user": "the contact is retired, so the user klee is retired with it",
+      "linked.contact": "say what becomes of the contact Kim Lee: retire or keep",
+      "linked.operators": "the contact is retired, so KL is retired, opened or handed over",
+      row_version: "is needed",
     });
-    expect(found.shown).toEqual([
-      "linked.user",
-      "linked.operators.0.action",
-      "linked.operators.1.contact_hid",
-    ]);
+    expect(found.rows).toEqual({
+      [rowOf("user")]: "the contact is retired, so the user klee is retired with it",
+      [rowOf("contact")]: "say what becomes of the contact Kim Lee: retire or keep",
+    });
+    expect(found.shown).toEqual(["linked.user", "linked.contact"]);
   });
 
-  it("leaves to the words above what is said of the labels as a whole", () => {
-    expect(refusedRows({ "linked.operators": "say what becomes of each" }, sent)).toEqual({
+  it("leaves above the rows what is said of the labels as a whole, as a sentence", () => {
+    expect(refusedRows({ "linked.operators": "say what becomes of KL and Op2" })).toEqual({
       rows: {},
       shown: [],
     });
+    expect(LINKED_LABELS["linked.operators"]).toBe("");
   });
 
   it("reads the list again where the server names a record that was not listed", () => {

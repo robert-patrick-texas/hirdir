@@ -185,32 +185,30 @@ export function retireBody(
 }
 
 /**
- * Where a refusal is said: the message of each field the server names under `linked`,
- * by the row of the confirmation it belongs to, an operator by its place in what was
- * sent; and the rest, which is said above the rows.
+ * Where a refusal is said: what the server says of `linked.user` and of
+ * `linked.contact` at the row of each, and of `linked.operators`, which it says of the
+ * labels as a whole, above the rows with the rest.
  */
-export function refusedRows(
-  fields: Readonly<Record<string, string>>,
-  sent: RetireBody | BringBackBody | null,
-): { rows: Record<string, string>; shown: string[] } {
+export function refusedRows(fields: Readonly<Record<string, string>>): {
+  rows: Record<string, string>;
+  shown: string[];
+} {
   const rows: Record<string, string> = {};
   const shown: string[] = [];
-  const put = (row: string, field: string, message: string) => {
-    rows[row] = rows[row] === undefined ? message : `${rows[row]}; ${message}`;
-    shown.push(field);
-  };
-  const operators = sent?.linked?.operators ?? [];
-  for (const [field, message] of Object.entries(fields)) {
-    const [first, second, third] = field.split(".");
-    if (first !== "linked") continue;
-    if (second === "user" || second === "contact") put(second, field, message);
-    else if (second === "operators" && third !== undefined) {
-      const operator = operators[Number(third)];
-      if (operator) put(rowOf("operator", operator.hid), field, message);
-    }
+  for (const kind of ["user", "contact"] as const) {
+    const message = fields[`linked.${kind}`];
+    if (message === undefined) continue;
+    rows[rowOf(kind)] = message;
+    shown.push(`linked.${kind}`);
   }
   return { rows, shown };
 }
+
+/**
+ * What a refusal says of the labels is a sentence of its own, with the labels named in
+ * it: it is said as it is, with no name of a field before it.
+ */
+export const LINKED_LABELS: Readonly<Record<string, string>> = { "linked.operators": "" };
 
 /**
  * Whether a refusal says that something is linked which the confirmation did not list,

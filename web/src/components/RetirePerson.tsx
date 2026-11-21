@@ -21,6 +21,7 @@ import {
   contactUses,
   held,
   keptChoices,
+  LINKED_LABELS,
   type Linked,
   namesUnlisted,
   nothingLinked,
@@ -29,7 +30,6 @@ import {
   type OperatorAction,
   operatorUses,
   othersOf,
-  type RetireBody,
   refusedRows,
   retireBody,
   retiredWords,
@@ -157,14 +157,13 @@ function RetireAsk(props: RetireAskProps) {
   }
   // What is still to be chosen, said at its row before anything is sent.
   const [found, setFound] = useState<Record<string, string>>({});
-  const [sent, setSent] = useState<RetireBody | null>(null);
   const action = useAction();
 
   const linked = asked?.linked;
   const choices = asked?.choices;
   const plain = linked ? nothingLinked(on, linked) : false;
   const blocked = linked ? blockedWords(on, linked, admin) : null;
-  const refused = refusedRows(action.error?.fields ?? {}, sent);
+  const refused = refusedRows(action.error?.fields ?? {});
   const rows: Readonly<Record<string, string | undefined>> = { ...refused.rows, ...found };
 
   function choose(next: Choices) {
@@ -182,7 +181,6 @@ function RetireAsk(props: RetireAskProps) {
       return;
     }
     setFound({});
-    setSent(built.body);
     let unlisted = false;
     const result = await action.run(async () => {
       try {
@@ -208,6 +206,7 @@ function RetireAsk(props: RetireAskProps) {
           error={action.error}
           shown={refused.shown}
           onReload={onReload}
+          labels={LINKED_LABELS}
           dependsLead={notSaidLead}
         />
         {read.loading && !linked && (
@@ -474,16 +473,14 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
     readLinked({ kind: "user", hid: user.hid }, signal),
   );
   const [ticked, setTicked] = useState<readonly string[]>([]);
-  const [sent, setSent] = useState<ReturnType<typeof bringBackBody> | null>(null);
   const action = useAction();
   const linked = read.data;
   const offer = linked ? bringBackOffer(linked) : null;
-  const refused = refusedRows(action.error?.fields ?? {}, sent);
+  const refused = refusedRows(action.error?.fields ?? {});
 
   async function bringBack() {
     if (!linked) return;
     const body = bringBackBody(linked, ticked, user.row_version);
-    setSent(body);
     const result = await action.run(() => sendBringBack(user.hid, body));
     if (result.ok) onBroughtBack(result.value);
     // A contact retired since the page was read is offered once the list is read again.
@@ -494,7 +491,12 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
     <>
       <div className="dialog-body">
         <Problem error={read.error} />
-        <Problem error={action.error} shown={refused.shown} onReload={onReload} />
+        <Problem
+          error={action.error}
+          shown={refused.shown}
+          onReload={onReload}
+          labels={LINKED_LABELS}
+        />
         {read.loading && !linked && (
           <p role="status" className="muted">
             Reading what is linked…
