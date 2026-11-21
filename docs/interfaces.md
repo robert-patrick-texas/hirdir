@@ -3497,6 +3497,15 @@ What 0.9.14 adds, a person's own profile (P-289, P-294, P-295):
   the access code alone. An account whose contact is retired is told that, by the
   contact's name, and to ask an Admin to bring it back or to give it another, and is
   offered the access code alone as well: `PATCH /auth/me/contact` would refuse it.
+- **An account that holds no role**, as one that was brought back is until an Admin
+  gives it one (P-296), sees nothing of the inventory, and has its profile: the name in
+  the menu bar leads to it, and Details, Operator and Access code change what is its
+  own. Two things on the page are read with a role, and such a person is not shown a
+  refusal in their place. The colours to press are those of `GET /colours`: the colour
+  of an operator is a box to type it in, in the form `#1f6feb`, and one that is no
+  colour is the server's to refuse at the box. The least length is a setting: the page
+  says what a change ends and names no length, and a code that is too short is told
+  the length at its box, as the server says it.
 - The page reads `GET /auth/me` again as it opens, so that it shows the records as
   they are and sends their versions; a save refused because the record has changed
   offers Reload, which reads it again. It fits a window 1280 pixels wide with nothing
