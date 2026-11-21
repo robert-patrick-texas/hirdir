@@ -1561,8 +1561,10 @@ def test_the_measures_are_read_by_everyone_signed_in(
     for headers in (admin, inventory, viewer):
         assert client.get(f"{API}/about/load", headers=headers).status_code == 200
     # Signed in with no role at all, as About is read.
-    client.post(f"{API}/users", headers=admin, json={"username": "nia", "access_code": "nia-code"})
-    nia = sign_in(client, "nia", "nia-code")
+    client.post(
+        f"{API}/users", headers=admin, json={"username": "nia", "access_code": "nia-code-0001"}
+    )
+    nia = sign_in(client, "nia", "nia-code-0001")
     assert client.get(f"{API}/about/load", headers=nia).status_code == 200
     assert client.get(f"{API}/about", headers=nia).status_code == 200
     # Each of them reads the slowest requests and who met what, the others by name:

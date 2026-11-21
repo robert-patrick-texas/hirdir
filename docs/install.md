@@ -37,7 +37,8 @@ On a host that already has `hirdir`, the same command upgrades it: see
 sudo hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org ada
 ```
 
-The command prints an access code once. Give `--access-code` to choose the code instead.
+The command prints an access code once. Give `--access-code` to choose the code instead:
+one of at least 12 characters, or as many as the setting `access_code_min_length` says.
 `--name`, `--email`, `--phone` and `--phone2` make the contact that the user is: every
 person is a contact, and a user is a contact who signs in. Left out, the user has no
 contact and is shown by its username until an Admin gives it one.
@@ -143,6 +144,14 @@ ends every session that user has. From the server:
 ```bash
 sudo hirdir admin reset-access-code ada
 ```
+
+Whoever is signed in changes what is their own on their profile, reached from their
+name in the menu bar, or with `hirdir profile`: their name, email, numbers and
+organization, the label and colour of their operator, and their access code, for which
+the code they have is asked. Changing it ends every other session they have. A code
+that is typed, by the person or by an Admin, has at least 12 characters, or as many as
+the setting `access_code_min_length` says, from 1 to 64; a code that `hirdir` makes is
+not held to it, and nobody is signed out when the setting changes.
 
 ## Automation
 
