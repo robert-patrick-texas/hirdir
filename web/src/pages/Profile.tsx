@@ -23,7 +23,7 @@ import {
   DETAIL_SPECS,
   minLengthOf,
   NO_CODES,
-  OPERATOR_SPECS,
+  operatorSpecs,
 } from "../lib/profile";
 import { roleLabel } from "../lib/roles";
 
@@ -33,19 +33,23 @@ type Operator = Me["operators"][number];
 
 export function Profile() {
   useTitle("Profile");
-  const { user, refresh } = useAuth();
+  const { user, took } = useAuth();
 
   // The frame read who is signed in when it was loaded, which may be hours ago: the page
-  // reads it again as it opens, and shows what it has meanwhile.
+  // reads it again as it opens, shows what it has meanwhile, and hands the frame the
+  // answer. It asks for that alone, which a person who holds no role reads as well.
+  const read = useLoad("profile", (signal) => api.request("get", "/api/v1/auth/me", { signal }));
+  const answered = read.data;
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (answered) took(answered);
+  }, [answered, took]);
 
   const contact = user.contact;
   const own = contact !== null && contact.record_status !== "retired" ? contact : null;
   return (
     <>
       <h1>Profile</h1>
+      <Problem error={read.error} />
       <dl className="facts" data-testid="profile-facts">
         <dt>Username</dt>
         <dd className="mono">{user.username}</dd>
@@ -63,13 +67,13 @@ export function Profile() {
       <p className="hint profile-fixed">An Admin changes your username, role and groups.</p>
       {own ? (
         <>
-          <Details key={own.hid} contact={own} />
-          <Operators operators={user.operators} />
+          <Details key={own.hid} contact={own} reload={read.reload} />
+          <Operators operators={user.operators} role={user.role} reload={read.reload} />
         </>
       ) : (
         <NoContact retired={contact} />
       )}
-      <AccessCode username={user.username} />
+      <AccessCode username={user.username} role={user.role} />
     </>
   );
 }
@@ -80,8 +84,8 @@ export function Profile() {
  * field, an email that another contact has with that contact as a link, and nothing
  * typed is lost.
  */
-function Details({ contact }: { contact: Contact }) {
-  const { took, refresh } = useAuth();
+function Details({ contact, reload }: { contact: Contact; reload: () => void }) {
+  const { took } = useAuth();
   const [done, setDone] = useState("");
   return (
     <section
@@ -102,7 +106,7 @@ function Details({ contact }: { contact: Contact }) {
           return me.contact;
         }}
         onSaved={() => setDone("Your details were saved.")}
-        onReload={refresh}
+        onReload={reload}
       />
     </section>
   );
@@ -112,7 +116,15 @@ function Details({ contact }: { contact: Contact }) {
  * The operators the person is behind, one after another, each with a form of its own.
  * Somebody behind none has no such part, and a line that says so.
  */
-function Operators({ operators }: { operators: readonly Operator[] }) {
+function Operators({
+  operators,
+  role,
+  reload,
+}: {
+  operators: readonly Operator[];
+  role: string | null;
+  reload: () => void;
+}) {
   if (operators.length === 0) {
     return (
       <p className="muted" data-testid="profile-no-operator">
@@ -133,14 +145,27 @@ function Operators({ operators }: { operators: readonly Operator[] }) {
           : "The labels that stand for you on items, groups and places, each with its colour."}
       </p>
       {operators.map((operator) => (
-        <OperatorPart key={operator.hid} operator={operator} />
+        <OperatorPart key={operator.hid} operator={operator} role={role} reload={reload} />
       ))}
     </section>
   );
 }
 
-function OperatorPart({ operator }: { operator: Operator }) {
-  const { took, refresh } = useAuth();
+/**
+ * One operator: its label as a link to its page, and the form of its label and colour.
+ * A person who holds no role types the colour, the colours to press being read with a
+ * role (`operatorSpecs`).
+ */
+function OperatorPart({
+  operator,
+  role,
+  reload,
+}: {
+  operator: Operator;
+  role: string | null;
+  reload: () => void;
+}) {
+  const { took } = useAuth();
   const [done, setDone] = useState("");
   // The label as the server answered the save, for the page to say what was saved.
   const saved = useRef(operator.label);
@@ -166,7 +191,7 @@ function OperatorPart({ operator }: { operator: Operator }) {
       </h3>
       <Notice text={done} />
       <EditForm<Operator, Schemas["OwnOperatorPatch"]>
-        specs={OPERATOR_SPECS}
+        specs={operatorSpecs(role)}
         record={operator}
         save={async (body) => {
           const me = await api.request("patch", "/api/v1/auth/me/operators/{hid}", {
@@ -179,7 +204,7 @@ function OperatorPart({ operator }: { operator: Operator }) {
           return now;
         }}
         onSaved={() => setDone(`The operator ${saved.current} was saved.`)}
-        onReload={refresh}
+        onReload={reload}
       />
     </section>
   );
@@ -233,10 +258,12 @@ function useHeld(until: number): boolean {
  * too short are the server's to say, each at its box. Changed, the page keeps the new
  * session in place of the old, says so, and empties the boxes.
  */
-function AccessCode({ username }: { username: string }) {
+function AccessCode({ username, role }: { username: string; role: string | null }) {
   const { adopt } = useAuth();
-  const settings = useLoad("profile settings", (signal) =>
-    api.request("get", "/api/v1/settings", { signal }),
+  // The settings are read with a role. A person who holds none is not told the least
+  // length before they type: the server says it at the box.
+  const settings = useLoad(`profile settings ${role !== null}`, async (signal) =>
+    role === null ? [] : api.request("get", "/api/v1/settings", { signal }),
   );
   const [boxes, setBoxes] = useState<CodeBoxes>(NO_CODES);
   const [found, setFound] = useState<Record<string, string>>({});

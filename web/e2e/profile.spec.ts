@@ -14,12 +14,17 @@
 //          are said at the second before anything is sent, a wrong code in hand and a
 //          new one that is too short each at its box. Changed, the page stays signed in,
 //          another session of the person has ended, and the old code signs in no longer.
+//   P-296  An account that holds no role, as one that was brought back, sees nothing of
+//          the inventory and still changes what is its own on the page: its details, its
+//          operator, the colour typed, and its access code.
 //
 // They keep to the rules of support.ts: every account the scenarios sign in as is made
 // for this file, with its mark in its name, as are the contacts, the labels and the
-// group, and each scenario disables the accounts it made when it ends. Two sign-ins fail
-// on purpose (rule 6): a wrong code in hand, which the server counts as one, and the old
-// code after the change. The setting `access_code_min_length` is read at its default,
+// group, and each scenario disables the accounts it made when it ends. Three sign-ins
+// fail on purpose (rule 6): a wrong code in hand, which the server counts as one, and the
+// old code after each of the two changes. The frame asks for the settings whenever it
+// learns who is signed in, for the time zone, and an account that holds no role is
+// refused them: the scenario of that account names each such `403 GET`. The setting `access_code_min_length` is read at its default,
 // 12, which no file changes; whom to ask is nobody's on a scratch inventory, and no file
 // but product.spec.ts sets it, so the scenario of an account with no contact answers
 // `GET /about` to its own page with a team to ask.
@@ -551,4 +556,110 @@ test("P-294: a person behind two operators has each, one after another, and chan
   await context.close();
 
   await disable(request, headers, [lee, ola]);
+});
+
+test("P-296: an account that holds no role sees nothing of the inventory, and changes its details, its operator and its access code on its profile", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const headers = await session(request, account);
+  const pat = { name: `Pat Example ${suffix}`, email: `pat.${suffix}@example.org` };
+  const person = await createAccount(request, `e2e-${suffix}-pat`, null, pat);
+  const contact = await contactOf(request, headers, person);
+  const label = `PT-${suffix}`;
+  const operator = await make(request, headers, "/operators", {
+    label,
+    contact_hid: contact,
+    colour: "#1f6feb",
+    record_status: "active",
+  });
+
+  const seen = await watch(page.context());
+  await signIn(page, person);
+  // Nothing of the inventory: the first page says so, and the menu has two pages.
+  await expect(page.getByRole("heading", { level: 2, name: "You have no role yet" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link")).toHaveText([
+    "Home",
+    "About",
+  ]);
+  await openProfile(page);
+  const facts = page.getByTestId("profile-facts");
+  await expect(facts.locator("dd").nth(0)).toHaveText(person.username);
+  await expect(facts.locator("dd").nth(1)).toHaveText("No role");
+
+  // Details: a number is given, and saved.
+  const details = region(page, "Details");
+  await expect(details.getByLabel("Name (required)", { exact: true })).toHaveValue(pat.name);
+  await details.getByLabel("Phone", { exact: true }).fill("+1 555 0121");
+  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(details.locator(".alert-ok")).toHaveText("Your details were saved.");
+
+  // The operator: the colours to press are read with a role, so the colour is typed.
+  // One that is none is the server's to refuse, at the field.
+  const part = region(page, "Operator");
+  await expect(part.getByRole("group", { name: "Colour", exact: true })).toHaveCount(0);
+  const colour = part.getByLabel("Colour", { exact: true });
+  await expect(colour).toHaveValue("#1f6feb");
+  await colour.fill("#12345");
+  await part.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(part.locator(".alert-error")).toHaveAttribute("data-status", "422");
+  await expect(colour).toHaveAttribute("aria-invalid", "true");
+  await expect(colour).toHaveValue("#12345");
+  await colour.fill("#8250DF");
+  await part.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(part.locator(".alert-ok")).toHaveText(`The operator ${label} was saved.`);
+  await expect(colour).toHaveValue("#8250df");
+  const stored = await read<{ colour: string }>(request, headers, `/operators/${operator.hid}`);
+  expect(stored.colour).toBe("#8250df");
+  const numbers = await read<{ phone: string }>(request, headers, `/contacts/${contact}`);
+  expect(numbers.phone).toBe("+1 555 0121");
+
+  // The access code. The settings are read with a role, so the page names no length
+  // before one is typed, and the server says it at the box.
+  const code = region(page, "Access code");
+  await expect(code.getByTestId("profile-code-words")).toHaveText(
+    "Your other sessions end when it is changed; this one stays signed in.",
+  );
+  const current = code.getByLabel("Access code you have (required)", { exact: true });
+  const wanted = code.getByLabel("New access code (required)", { exact: true });
+  const again = code.getByLabel("New access code again (required)", { exact: true });
+  const save = code.getByRole("button", { name: "Save", exact: true });
+  await current.fill(person.accessCode);
+  await wanted.fill("too short");
+  await again.fill("too short");
+  await save.click();
+  await expect(wanted).toHaveAttribute("aria-invalid", "true");
+  await expect(code.locator(".field-error")).toContainText("at least 12 characters");
+  const fresh = `Amber-plover-${suffix}`;
+  await wanted.fill(fresh);
+  await again.fill(fresh);
+  await save.click();
+  await expect(code.locator(".alert-ok")).toHaveText(
+    "Your access code is changed. Your other sessions have ended.",
+  );
+  await expect(current).toHaveValue("");
+  await expect(colour).toHaveValue("#8250df");
+  // Four requests were refused by now: the settings at sign-in, the two refusals above,
+  // and the settings again, as the frame learned who is signed in by the session kept.
+  await expect.poll(() => seen.failures.length).toBe(4);
+
+  // The page loaded anew is signed in still; the old code signs in no longer, the new does.
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "Profile", exact: true })).toBeVisible();
+  await expect(who(page)).toHaveText(person.username);
+  await expect(details.getByLabel("Phone", { exact: true })).toHaveValue("+1 555 0121");
+  const old = await request.post("./api/v1/auth/sign-in", {
+    data: { username: person.username, access_code: person.accessCode },
+  });
+  expect(old.status(), "the old code signs in no longer").toBe(401);
+  const now = await request.post("./api/v1/auth/sign-in", {
+    data: { username: person.username, access_code: fresh },
+  });
+  expect(now.status(), "the new code signs in").toBe(200);
+
+  await expectClean(page, seen, ["403 GET", "422 PATCH", "422 POST", "403 GET", "403 GET"]);
+  await disable(request, headers, [person]);
 });

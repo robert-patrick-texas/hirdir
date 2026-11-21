@@ -8,6 +8,8 @@ import {
   minLengthOf,
   NO_CODES,
   OPERATOR_SPECS,
+  OPERATOR_SPECS_TYPED,
+  operatorSpecs,
 } from "./profile";
 
 describe("the forms of a person's own profile (P-294)", () => {
@@ -63,6 +65,31 @@ describe("the forms of a person's own profile (P-294)", () => {
     // The sample beside the chip is the label being typed.
     const colour = OPERATOR_SPECS.find((spec) => spec.name === "colour");
     expect(colour?.sample?.({ label: "KL", colour: "" })).toBe("KL");
+  });
+});
+
+describe("the operator of a person who holds no role (P-296)", () => {
+  it("has the picker with a role, and the colour typed with none", () => {
+    for (const role of ["viewer", "inventory", "admin"]) {
+      expect(operatorSpecs(role)).toBe(OPERATOR_SPECS);
+    }
+    expect(operatorSpecs(null)).toBe(OPERATOR_SPECS_TYPED);
+    expect(operatorSpecs(undefined)).toBe(OPERATOR_SPECS_TYPED);
+    expect(OPERATOR_SPECS_TYPED.map((spec) => [spec.name, spec.kind])).toEqual([
+      ["label", "text"],
+      ["colour", "text"],
+    ]);
+  });
+
+  it("sends the colour as typed, which the server reads, and a blank as none", () => {
+    const operator = { hid: "OPR-1", label: "klee", colour: "#1f6feb", row_version: 2 };
+    expect(
+      buildPatch(OPERATOR_SPECS_TYPED, operator, { label: "klee", colour: " #D4A72C " }).body,
+    ).toEqual({ row_version: 2, colour: "#D4A72C" });
+    expect(buildPatch(OPERATOR_SPECS_TYPED, operator, { label: "klee", colour: "" }).body).toEqual({
+      row_version: 2,
+      colour: null,
+    });
   });
 });
 
