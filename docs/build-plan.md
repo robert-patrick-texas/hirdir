@@ -180,7 +180,8 @@ user's (P-304); it has no migration. 0.9.17, the last before 1.0.0, settles the 
 that stand unconfirmed, says on a user's page where its role comes from (P-307), writes
 into the install guide how roles are best given (P-308), makes a release quick to test
 (P-309), checks that the audit trail holds what a later sync will read (P-310), and
-mends small leftovers (P-311). 0.9.18 puts what is typed or pasted into one form, a
+mends small leftovers (P-311), and has `hirdir admin create-user` refuse a person with
+no role unless `--no-role` is given (P-313). 0.9.18 puts what is typed or pasted into one form, a
 telephone number, an email address, a name, by formats an Admin turns on and defines
 (P-293).
 
