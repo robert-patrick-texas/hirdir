@@ -2172,9 +2172,10 @@ answers `is_user` false, and an operator behind it `scope` `external`.
 - `record_status` of a contact or an operator changed from `retired` by anybody but an
   Admin, a `403` by `PATCH`, and a row of a file that does it is rejected for any other
   role. A row of a file that retires a record was rejected before, and still is;
-- a retired operator brought back while the contact behind it is still retired, by
-  `PATCH` or by a row of a file: it is refused with the contact named, until the
-  contact is brought back or taken off the label;
+- a retired operator brought back while the contact behind it is still retired, a
+  `409` on `record_status` by `PATCH /operators/{hid}` that names the contact, and a
+  row of a file that does it is rejected: bring the contact back first, or take it
+  off the label, which the same request may do, the label then coming back open;
 - a username that a retired account has, a `409` on `username`, and a code, a token, a
   group or a role for a retired account, each a `409`.
 

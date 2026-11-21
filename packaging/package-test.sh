@@ -5216,6 +5216,20 @@ own_and_retired() {
     expect "S58 somebody of the Inventory role cannot bring the contact back, a 403, and does not retire a user, which hirdir users retire exits from with 3: the contact stays retired and the user active" \
         "$made $(json_field record_status)" '403 3 retired active'
 
+    # A label is not brought back onto a retired contact (P-298): the released label is
+    # an Admin's to bring back, and not while the contact it has is retired, unless the
+    # contact is taken off it in the same request.
+    api GET "/operators/$second"
+    row=$(json_field row_version)
+    api PATCH "/operators/$second" "{\"row_version\": $row, \"record_status\": \"active\"}"
+    made="$status $(json '[[e["field"] for e in d["errors"]], d["existing"]["record_type"], d["existing"]["label"]]')"
+    api GET "/operators/$second"
+    made="$made $(json '[d["record_status"], d["contact_hid"] == "'"$mover_contact"'", d["row_version"] == '"$row"']')"
+    api PATCH "/operators/$second" "{\"row_version\": $row, \"record_status\": \"active\", \"contact_hid\": null}"
+    expect "S58 the released label is not brought back onto its contact while that contact is retired: for an Admin it is a 409 on record_status that names the contact, and the label is as it was; with the contact taken off it in the same request, the label is brought back, open" \
+        "$made $status $(json '[d["record_status"], d["contact_hid"], d["is_open"]]')" \
+        '409 [["record_status"], "contact", "Example Moving Person"] ["retired", true, true] 200 ["active", null, true]'
+
     cli_run "$work/cli.alone" users bring-back pkg-mover
     made="$code $(matches 'Example Moving Person, is retired' "$work/cli.err")"
     cli_run "$work/cli.back" users bring-back pkg-mover --contact
@@ -5226,9 +5240,9 @@ own_and_retired() {
     sign_in pkg-mover "$back"
     api GET /auth/me
     token=$admin_token
-    expect "S58 an Admin brings the user back with hirdir users bring-back: alone it is refused, exit code 5, the retired contact named; with --contact both are active again, the released label stays retired, and the person signs in with the new code and holds no role" \
+    expect "S58 an Admin brings the user back with hirdir users bring-back: alone it is refused, exit code 5, the retired contact named; with --contact both are active again, with no label behind the contact, the one having gone to another person and the other having come back open, and the person signs in with the new code and holds no role" \
         "$made $status $(json_field role)" \
-        '5 1 0 1 ["active", "active", [["PKM2", "retired"]]] 200 null'
+        '5 1 0 1 ["active", "active", []] 200 null'
 
     cli_run "$work/cli.label" operators retire PKM1
     made="$code $(matches 'not said$' "$work/cli.label")"

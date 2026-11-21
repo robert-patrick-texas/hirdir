@@ -578,6 +578,13 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
         assert f'@{group}.command("{command}")' in source
         assert f"`hirdir {group} {command}`" in page
     assert "`hirdir profile`" in page
+    # A label is not brought back onto a retired contact: the page names the field that
+    # the rule refuses on, and the package test asks for that answer.
+    assert '"record_status": "a label is not brought back onto a retired contact' in (
+        ROOT / "src/hirdir/domain/operators.py"
+    ).read_text(encoding="utf-8")
+    assert "a `409` on `record_status` by `PATCH /operators/{hid}` that names the contact" in page
+    assert '409 [["record_status"], "contact", ' in script
 
     # The package test runs the three scenarios on the fresh install, and the file of
     # the migration on what the upgrade carried over.
