@@ -1,20 +1,21 @@
 // 0.9.14: a person's own profile (P-289, P-294, P-295), reached from their name in the
-// menu bar, for every role. Three parts, each a form of its own with its own Save: the
+// menu bar, for every role. Three parts, each a form of its own with a button of its
+// own, named for the part (Save details, Save KL, Change access code): the
 // details of the contact the person is, the label and the colour of each operator they
 // are behind, and their access code. Each is changed by a route of the person's own,
 // which names no record: the server changes those of whoever is signed in. What the page
 // does not change it shows as text: the username, the role and the groups.
 
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
+import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { TextField } from "../components/Field";
-import { OperatorMark } from "../components/Operator";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { HelpList } from "../components/WhomToAsk";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { safeColour } from "../lib/operators";
+import { operatorPath, safeColour } from "../lib/operators";
 import { helpOf } from "../lib/product";
 import {
   type CodeBoxes,
@@ -107,6 +108,7 @@ function Details({ contact, reload }: { contact: Contact; reload: () => void }) 
         }}
         onSaved={() => setDone("Your details were saved.")}
         onReload={reload}
+        submitLabel="Save details"
       />
     </section>
   );
@@ -170,6 +172,7 @@ function OperatorPart({
   // The label as the server answered the save, for the page to say what was saved.
   const saved = useRef(operator.label);
   const heading = `profile-operator-${operator.hid.replace(/[^A-Za-z0-9_-]/g, "")}`;
+  const colour = safeColour(operator.colour);
   return (
     <section
       className="profile-operator"
@@ -178,16 +181,16 @@ function OperatorPart({
       data-operator={operator.hid}
     >
       <h3 id={heading}>
-        <OperatorMark
-          mark={{
-            hid: operator.hid,
-            label: operator.label,
-            colour: safeColour(operator.colour),
-            person: "",
-            open: false,
-            released: false,
-          }}
-        />
+        {/* The mark of an operator, as the lists show it, its label free to break where
+            the page ends: a label may be 40 characters long. */}
+        <Link to={operatorPath(operator.hid)} className="profile-operator-name">
+          <span
+            className="swatch operator-dot"
+            aria-hidden="true"
+            {...(colour ? { style: { backgroundColor: colour } } : {})}
+          />
+          {operator.label}
+        </Link>
       </h3>
       <Notice text={done} />
       <EditForm<Operator, Schemas["OwnOperatorPatch"]>
@@ -205,6 +208,8 @@ function OperatorPart({
         }}
         onSaved={() => setDone(`The operator ${saved.current} was saved.`)}
         onReload={reload}
+        // Named for its operator: somebody behind two has no two buttons of one name.
+        submitLabel={`Save ${operator.label}`}
       />
     </section>
   );
@@ -289,7 +294,7 @@ function AccessCode({ username, role }: { username: string; role: string | null 
   const [changes, setChanges] = useState(0);
   const refused = { ...action.error?.fields, ...found };
 
-  // After too many wrong codes the server says how long to wait: Save is held until then.
+  // After too many wrong codes the server says how long to wait: the button is held until then.
   const refusal = action.error;
   useEffect(() => {
     if (refusal?.status === 429 && refusal.retryAfter !== null) {
@@ -408,7 +413,7 @@ function AccessCode({ username, role }: { username: string; role: string | null 
         />
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || waiting}>
-            Save
+            Change access code
           </button>
         </p>
       </form>

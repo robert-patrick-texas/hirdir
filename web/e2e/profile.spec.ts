@@ -3,7 +3,7 @@
 //   P-289  The name of who is signed in, in the menu bar, is a link to their profile,
 //          reached by the keyboard. The page is for every role: a View-only person
 //          changes everything of their own there.
-//   P-294  Three parts, each a form of its own: the details of the contact the person
+//   P-294  Three parts, each a form of its own, with a button named for it: the details of the contact the person
 //          is, the label and the colour of each operator they are behind, and their
 //          access code. A refusal is shown at its field with nothing typed lost, an
 //          email or a label that another has with that other as a link. Somebody behind
@@ -182,7 +182,7 @@ test("P-289: the name in the menu bar leads to the profile by the keyboard, and 
     "At least 12 characters. Your other sessions end when it is changed; this one stays signed in.",
   );
 
-  // Too many wrong codes: the page says how long to wait and holds Save, and when the
+  // Too many wrong codes: the page says how long to wait and holds the button, and when the
   // wait is over the words are taken away with it. The refusal is answered to this page
   // alone: five wrong codes would delay the sign-ins of every file beside this one.
   await page.route("**/api/v1/auth/me/access-code", (route) =>
@@ -198,7 +198,7 @@ test("P-289: the name in the menu bar leads to the profile by the keyboard, and 
       }),
     }),
   );
-  const saveCode = code.getByRole("button", { name: "Save", exact: true });
+  const saveCode = code.getByRole("button", { name: "Change access code", exact: true });
   const current = code.getByLabel("Access code you have (required)", { exact: true });
   await current.fill("a code of some length");
   await code.getByLabel("New access code (required)", { exact: true }).fill("another long code");
@@ -210,7 +210,7 @@ test("P-289: the name in the menu bar leads to the profile by the keyboard, and 
   await expect(wait).toHaveAttribute("data-status", "429");
   await expect(wait).toHaveText("Too many attempts. Try again in 2 seconds.");
   await expect(saveCode).toBeDisabled();
-  // A refusal that is about no box has the keyboard on its words, Save being held.
+  // A refusal that is about no box has the keyboard on its words, the button being held.
   await expect(code.getByTestId("profile-said")).toBeFocused();
   await expect(saveCode).toBeEnabled({ timeout: 10_000 });
   await expect(wait).toHaveCount(0);
@@ -285,7 +285,7 @@ test("P-294, P-295: a View-only person changes their details, their operator and
   const phone = details.getByLabel("Phone", { exact: true });
   const phone2 = details.getByLabel("Second phone", { exact: true });
   const organization = details.getByLabel("Organization", { exact: true });
-  const saveDetails = details.getByRole("button", { name: "Save", exact: true });
+  const saveDetails = details.getByRole("button", { name: "Save details", exact: true });
   await expect(name).toHaveValue(kim.name);
   await expect(email).toHaveValue(kim.email);
   await expect(phone).toHaveValue(kim.phone);
@@ -366,7 +366,7 @@ test("P-294, P-295: a View-only person changes their details, their operator and
   const labelBox = operators.getByLabel("Label (required)", { exact: true });
   const colour = operators.getByRole("group", { name: "Colour", exact: true });
   const colourBox = colour.getByRole("textbox", { name: "Colour", exact: true });
-  const saveOperator = operators.getByRole("button", { name: "Save", exact: true });
+  const saveOperator = operators.getByRole("button", { name: /^Save K[LA]-/ });
   await expect(labelBox).toHaveValue(label);
   await expect(colourBox).toHaveValue("#1f6feb");
   // The label on show beside the chip, as the lists show it.
@@ -422,7 +422,7 @@ test("P-294, P-295: a View-only person changes their details, their operator and
   const current = code.getByLabel("Access code you have (required)", { exact: true });
   const wanted = code.getByLabel("New access code (required)", { exact: true });
   const again = code.getByLabel("New access code again (required)", { exact: true });
-  const saveCode = code.getByRole("button", { name: "Save", exact: true });
+  const saveCode = code.getByRole("button", { name: "Change access code", exact: true });
   const fresh = `Violet-heron-${suffix}`;
   let sent = 0;
   page.on("request", (asked) => {
@@ -523,8 +523,10 @@ test("P-294: a person behind two operators has each, one after another, and chan
   });
   const contact = await contactOf(request, headers, lee);
   // Made last first: the page lists them by their labels.
-  const second = `Y2-${suffix}`;
+  // The second is as long as a label may be, 40 characters.
+  const second = `Y2${"W".repeat(37 - suffix.length)}-${suffix}`;
   const first = `Y1-${suffix}`;
+  expect(second).toHaveLength(40);
   const made: Record<string, string> = {};
   for (const [label, colour] of [
     [second, "#d4a72c"],
@@ -552,10 +554,22 @@ test("P-294: a person behind two operators has each, one after another, and chan
   await expect(parts).toHaveCount(2);
   await expect(parts.nth(0)).toHaveAttribute("data-operator", made[first] ?? "");
   await expect(parts.nth(1)).toHaveAttribute("data-operator", made[second] ?? "");
-  // Each a form of its own, with its own Save.
-  await expect(operators.getByRole("button", { name: "Save", exact: true })).toHaveCount(2);
+  // Each a form of its own, with a Save of its own that is named for it, and the page
+  // has no two buttons of one name.
+  await expect(operators).toBeVisible();
   const one = region(page, first);
   const two = region(page, second);
+  const saveOne = one.getByRole("button", { name: `Save ${first}`, exact: true });
+  const saveTwo = two.getByRole("button", { name: `Save ${second}`, exact: true });
+  await expect(saveOne).toHaveCount(1);
+  await expect(saveTwo).toHaveCount(1);
+  const names = await page.getByRole("main").getByRole("button").allTextContents();
+  expect(names.filter((name) => name.startsWith("Save") || name.startsWith("Change"))).toEqual([
+    "Save details",
+    `Save ${first}`,
+    `Save ${second}`,
+    "Change access code",
+  ]);
   await expect(one.getByLabel("Label (required)", { exact: true })).toHaveValue(first);
   await expect(two.getByLabel("Label (required)", { exact: true })).toHaveValue(second);
   const colourOf = (part: Locator) =>
@@ -567,8 +581,8 @@ test("P-294: a person behind two operators has each, one after another, and chan
 
   // The second is given another colour, typed: it is saved, and the first is as it was.
   await colourOf(two).fill("#8250DF");
-  await expect(one.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-  await two.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(saveOne).toBeDisabled();
+  await saveTwo.click();
   await expect(two.locator(".alert-ok")).toHaveText(`The operator ${second} was saved.`);
   await expect(one.locator(".alert-ok")).toHaveCount(0);
   await page.goto("./profile");
@@ -581,6 +595,11 @@ test("P-294: a person behind two operators has each, one after another, and chan
   );
   expect(stored).toMatchObject({ label: second, colour: "#8250df" });
   expect(await wider(page), "wider than a window of 1280").toBeLessThanOrEqual(0);
+  // At 360 pixels the longest label fits, in its heading and on its button.
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expect(saveTwo).toBeVisible();
+  expect(await wider(page), "wider than a window of 360").toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await expectClean(page, seen);
 
   // Behind none: no such part, and a line that says so, under the details.
@@ -636,7 +655,7 @@ test("P-296: an account that holds no role sees nothing of the inventory, and ch
   const details = region(page, "Details");
   await expect(details.getByLabel("Name (required)", { exact: true })).toHaveValue(pat.name);
   await details.getByLabel("Phone", { exact: true }).fill("+1 555 0121");
-  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await details.getByRole("button", { name: "Save details", exact: true }).click();
   await expect(details.locator(".alert-ok")).toHaveText("Your details were saved.");
 
   // The operator: the colours to press are read with a role, so the colour is typed.
@@ -646,12 +665,12 @@ test("P-296: an account that holds no role sees nothing of the inventory, and ch
   const colour = part.getByLabel("Colour", { exact: true });
   await expect(colour).toHaveValue("#1f6feb");
   await colour.fill("#12345");
-  await part.getByRole("button", { name: "Save", exact: true }).click();
+  await part.getByRole("button", { name: `Save ${label}`, exact: true }).click();
   await expect(part.locator(".alert-error")).toHaveAttribute("data-status", "422");
   await expect(colour).toHaveAttribute("aria-invalid", "true");
   await expect(colour).toHaveValue("#12345");
   await colour.fill("#8250DF");
-  await part.getByRole("button", { name: "Save", exact: true }).click();
+  await part.getByRole("button", { name: `Save ${label}`, exact: true }).click();
   await expect(part.locator(".alert-ok")).toHaveText(`The operator ${label} was saved.`);
   await expect(colour).toHaveValue("#8250df");
   const stored = await read<{ colour: string }>(request, headers, `/operators/${operator.hid}`);
@@ -668,7 +687,7 @@ test("P-296: an account that holds no role sees nothing of the inventory, and ch
   const current = code.getByLabel("Access code you have (required)", { exact: true });
   const wanted = code.getByLabel("New access code (required)", { exact: true });
   const again = code.getByLabel("New access code again (required)", { exact: true });
-  const save = code.getByRole("button", { name: "Save", exact: true });
+  const save = code.getByRole("button", { name: "Change access code", exact: true });
   await current.fill(person.accessCode);
   await wanted.fill("too short");
   await again.fill("too short");

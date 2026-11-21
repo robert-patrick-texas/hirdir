@@ -3550,6 +3550,20 @@ table.colour-grid {
   outline: none;
 }
 
+/* A label may be 40 characters with nowhere to break: it is broken where the page
+   ends, in its heading, beside its colour and on its button, and never makes the page
+   scroll sideways. */
+.profile-operator-name,
+.profile-operator button,
+.profile-operator .colour-sample {
+  overflow-wrap: anywhere;
+}
+
+/* The label beside its colour is a mark, kept on one line everywhere else. */
+.profile-operator .colour-sample {
+  white-space: normal;
+}
+
 /* Each operator of somebody behind several, under the one before. */
 .profile-operator + .profile-operator {
   margin-top: 1.5rem;
