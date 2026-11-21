@@ -2090,38 +2090,46 @@ What an Admin sees changed:
 
 - **A typed access code has at least 12 characters.** The length is a new setting,
   under Admin, Settings: `access_code_min_length`, 12 unless set, a whole number from 1
-  to 64. It holds wherever a code is typed: by an Admin for a new user or as a user's
-  new code, on the page, by `POST /users` and `POST /users/{hid}/access-code`, and by
-  `--access-code` of `hirdir admin create-user` and `hirdir admin reset-access-code`;
-  and by a person for themselves. A shorter code is refused, and the refusal says the
-  length. A code that `hirdir` makes, three groups of four, is not held to it. A code
-  that is held is not looked at: nobody is signed out by the upgrade or by the
-  setting, and a shorter code from before signs in until it is changed.
-- **A person changes what is their own.** The name in the menu bar opens the profile
-  of whoever is signed in: the name, email, numbers and organization of the contact
-  they are, the label and colour of each operator they stand behind, and their access
-  code, for which the code they have is asked and which ends their other sessions.
-  Every role does that for itself, View-only too, and nobody for another; each change
-  is audited as that person's. An account with no contact changes its access code
-  alone and is told whom to ask: an Admin gives an account its contact.
-- **A retired account.** A user is active, disabled or retired. Disabled is what it
-  was, an account that may not sign in for now. Retired is the account of somebody who
-  has left, kept for the audit trail. Retiring an account ends its sessions, erases its
-  access code, takes it out of its groups, and revokes its own roles and the tokens of
-  a service account, each audited; the last Admin is not retired. The list of users
-  and the users' file leave the retired out until they are asked for. A retired
-  account keeps its username, which is refused to a new account, with the retired one
-  named, until an Admin renames the retired one. An Admin brings an account back: it
-  is active, with a new access code shown once, and no role and no group.
-- **A person is retired together.** The page of a user, of a contact and of an
-  operator shows the chain, operator, contact, user. Retiring one of them names the
-  others and asks what becomes of each in one confirmation: the user and the contact
-  retired or kept, and each operator retired, kept, left open or handed over to
-  another person. All of it is one change. A contact is not retired while its account
-  or a label stands on it.
+  to 64. It holds wherever a code is typed: by an Admin on the New user form and under
+  Access code on a user's page, which say the length under the field, by `POST /users`
+  and `POST /users/{hid}/access-code`, and by `--access-code` of `hirdir admin
+  create-user` and `hirdir admin reset-access-code`; and by a person for themselves. A
+  shorter code is refused, and the refusal says the length. A code that `hirdir`
+  makes, three groups of four, is not held to it. The length holds for the codes typed
+  from now on and for none that is held: nobody is signed out by the upgrade or when
+  the setting changes, and a shorter code from before signs in until it is changed.
+- **Profile**, at `/profile`, which the name in the menu bar opens for whoever is
+  signed in. Details is the name, email, numbers and organization of the contact they
+  are; Operator is the label and the colour of each operator they stand behind; and
+  Access code asks for the code they have and for the new one twice, and ends their
+  other sessions. Every role changes these for itself, View-only too, and nobody for
+  another; each change is audited as that person's. An account with no contact is told
+  to ask an Admin for one, and changes its access code alone.
+- **A retired account.** A user is active, disabled or retired, and State says which,
+  in the list and on the user's page. Disabled is what it was, an account that may not
+  sign in for now. Retired is the account of somebody who has left, kept for the audit
+  trail. Retire, at the foot of a user's page, ends its sessions, erases its access
+  code, takes it out of its groups, and revokes its own roles and the tokens of a
+  service account, each audited; the last Admin who can sign in is not retired. The
+  list of users leaves the retired out, and Show has Retired users for them alone;
+  Export CSV saves what the view shows. A retired account keeps its username, which
+  is refused to another account, with the retired one named, until an Admin renames
+  the retired one. Bring back, in the place of Retire, makes the account active
+  again, with a new access code shown once, and no role and no group.
+- **One person, retired together.** The pages of a user, of a contact and of an
+  operator show, under One person, the operators, the contact and the user of the
+  person the record belongs to, each a link. Retire account, Retire contact and
+  Release open one confirmation, which lists each linked record that is not retired,
+  with Retire ticked: the account, the contact, and each label with a choice of
+  Release, Hand over to, Leave open and Keep. One press makes one change. A contact
+  is not retired while its account or a label stands on it, which the confirmation
+  holds before anything is sent.
 - **A retired user, contact or operator is brought back by an Admin alone.** Until now
   the Inventory role brought back a contact or an operator. Retiring one is still the
-  Inventory role's, and every other kind of record is brought back as before.
+  Inventory role's, where no account is retired with it, and every other kind of
+  record is brought back as before.
+- **Who**, among the filters of the audit trail, for an Admin: every account by its
+  username, a retired one marked, since what it did is still in the trail.
 
 Before the upgrade, look at what types an access code: a script that gives a code
 shorter than 12 characters to `POST /users`, to `POST /users/{hid}/access-code` or to
@@ -2134,26 +2142,41 @@ After the upgrade:
 - Set `access_code_min_length` under Admin, Settings, where 12 does not suit the site.
 - Retire the accounts of those who have left. Under Admin, Users, Show narrows the
   list to the users with no contact, where a user whose contact is retired is found,
-  and the disabled are said to be so in the list.
+  and State says which accounts are disabled. An account whose contact was retired
+  under it before the upgrade is retired by itself, with nothing to say of the
+  contact.
 - Tell those with the Inventory role that a retired contact or operator is now an
   Admin's to bring back.
 
 For a script that reads the API: a user answers `record_status`, and `GET /users` and
-`POST /users/export` take `retired`, `no`, `yes` or `only`, the users' file having a
-`record_status` column. `PATCH /auth/me/contact`, `PATCH /auth/me/operators/{hid}`,
-`POST /auth/me/access-code`, `POST /users/{hid}/retire`, `POST /users/{hid}/bring-back`,
-`GET /users/{hid}/linked`, `GET /contacts/{hid}/linked` and `GET /operators/{hid}/linked`
-are new, and so are `hirdir profile`, `hirdir users retire`, `hirdir contacts retire`
-and `hirdir operators retire`. Four things are newly refused:
+`POST /users/export` take `retired`, `no`, `yes` or `only`, and leave the retired out
+unless it is given; the users' file has a `record_status` column after `state`.
+`GET /auth/me` answers the contact the person is with `organization` and
+`row_version`, and of their operators those that are not retired, each with
+`row_version`, where it listed the retired too. A contact whose account is retired
+answers `is_user` false, and an operator behind it `scope` `external`.
+`PATCH /auth/me/contact`, `PATCH /auth/me/operators/{hid}`, `POST /auth/me/access-code`,
+`POST /users/{hid}/retire`, `POST /users/{hid}/bring-back`, `GET /users/{hid}/linked`,
+`GET /contacts/{hid}/linked` and `GET /operators/{hid}/linked` are new, and so are
+`hirdir profile`, `hirdir users retire`, `hirdir users bring-back`,
+`hirdir contacts retire` and `hirdir operators retire`, and `--retired` and
+`--retired-only` of `hirdir users list`. These are newly refused:
 
 - an access code that is typed shorter than the setting, a `422` on `access_code`;
 - `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` of a record with
   something linked that is not retired, until the request says in `linked` what becomes
-  of each, a `409` that names them; a row of a file that retires such a record is
-  rejected likewise;
+  of each, a `409` that names them. `hirdir operators release` is the same request:
+  for a label with somebody behind it, it now takes `--contact keep`, `--user keep`
+  where that person has an account, and `--operator LABEL=keep` for each other label
+  of theirs;
 - `record_status` of a contact or an operator changed from `retired` by anybody but an
-  Admin, a `403`, by `PATCH`, in a file and in the CLI;
-- a username that a retired account has, a `409` on `username`.
+  Admin, a `403` by `PATCH`, and a row of a file that does it is rejected for any other
+  role. A row of a file that retires a record was rejected before, and still is;
+- a retired operator brought back while the contact behind it is still retired, by
+  `PATCH` or by a row of a file: it is refused with the contact named, until the
+  contact is brought back or taken off the label;
+- a username that a retired account has, a `409` on `username`, and a code, a token, a
+  group or a role for a retired account, each a `409`.
 
 Going back to 0.9.13 is by the backup the upgrade took, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the
