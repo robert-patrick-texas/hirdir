@@ -19,6 +19,7 @@ import {
   type On,
   operatorUses,
   othersOf,
+  ownAccountGoes,
   refusedRows,
   retireBody,
   retiredWords,
@@ -410,6 +411,25 @@ describe("the linked records a refusal names (P-297)", () => {
     );
     expect(notSaidLead(2)).toBe(
       "2 are linked, and were not listed when this opened. They are listed now: say what becomes of each.",
+    );
+  });
+});
+
+describe("an Admin who retires their own account is told so, and signed out by it", () => {
+  it("is so on the account's own page, and where the account is ticked on another", () => {
+    const start = startChoices(ON_CONTACT, PERSON, true);
+    expect(ownAccountGoes(ON_USER, PERSON, start, true, "U1")).toBe(true);
+    expect(ownAccountGoes(ON_USER, PERSON, start, true, "U7")).toBe(false);
+    expect(ownAccountGoes(ON_CONTACT, PERSON, start, true, "U1")).toBe(true);
+    expect(ownAccountGoes(ON_CONTACT, PERSON, start, true, "U7")).toBe(false);
+  });
+
+  it("is not so where the account is kept", () => {
+    const kept = { ...startChoices(ON_KL, PERSON, true), contact: false, user: false };
+    expect(ownAccountGoes(ON_KL, PERSON, kept, true, "U1")).toBe(false);
+    // Somebody who is no Admin retires no account, their own neither.
+    expect(ownAccountGoes(ON_KL, PERSON, startChoices(ON_KL, PERSON, false), false, "U1")).toBe(
+      false,
     );
   });
 });

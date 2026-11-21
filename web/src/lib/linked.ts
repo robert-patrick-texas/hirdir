@@ -347,3 +347,18 @@ export function notSaidLead(count: number): string {
     ? "Linked, and not listed when this opened. It is listed now: say what becomes of it."
     : `${count.toLocaleString("en-US")} are linked, and were not listed when this opened. They are listed now: say what becomes of each.`;
 }
+
+/**
+ * Whether a retirement retires the account of whoever asks for it, by its own route or
+ * as a linked record: they are told so before, and are signed out by it.
+ */
+export function ownAccountGoes(
+  on: On,
+  linked: Linked,
+  choices: Choices,
+  admin: boolean,
+  ownHid: string,
+): boolean {
+  if (on.kind === "user") return on.hid === ownHid;
+  return othersOf(on, linked).user?.hid === ownHid && held(on, linked, choices, admin).user;
+}

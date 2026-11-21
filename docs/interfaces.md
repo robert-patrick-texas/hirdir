@@ -3452,8 +3452,9 @@ P-292, P-296 to P-298):
   member of a group, read `GET /users` as before and so leave the retired out.
 - **A user's page.** State says Active, Disabled or Retired, and a retired account is
   marked at its name. Retire, at the foot of the page of an account that is not
-  retired, opens the confirmation below; an Admin who retires their own account is
-  told so there, and is signed out by it. The page of a retired account says that it
+  retired, opens the confirmation below; an Admin who retires their own account, here
+  or as the account of a contact or of a label, is told so there, and is signed out
+  by it. The page of a retired account says that it
   signs in with nothing, is in no group and holds no role, and offers only what the
   server changes of it: its username, with the words that no other account takes the
   name until it is given another, its notes, and Take its contact away. The box

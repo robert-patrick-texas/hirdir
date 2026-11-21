@@ -705,6 +705,36 @@ test("P-297: a refusal by the server stays in the confirmation, and the list is 
   await expectClean(page, seen, ["409 POST"]);
 });
 
+test("P-296: an Admin who retires their own account, from the page of their contact, is told so and signed out", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const own = await person(request, headers, "own", { role: "admin" });
+  const seen = await watch(page.context());
+  await signIn(page, { ...own.user, accessCode: own.accessCode });
+
+  await openContact(page, own.contact);
+  await region(page, "Retire").getByRole("button", { name: "Retire contact" }).click();
+  const ask = page.getByTestId("retire-person");
+  await expect(ask.getByTestId("retire-own")).toHaveText(
+    "This is your own account: you are signed out at once, and cannot sign in again.",
+  );
+  await ask.getByRole("button", { name: "Retire contact" }).click();
+  // Signed out by it: the sign-in page, and the account signs in no longer.
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in to hirdir" })).toBeVisible();
+  expect((await read<Status>(request, headers, `/users/${own.user.hid}`)).record_status).toBe(
+    "retired",
+  );
+  const again = await request.post("./api/v1/auth/sign-in", {
+    data: { username: own.user.username, access_code: own.accessCode },
+  });
+  expect(again.status()).toBe(401);
+  await expectClean(page, seen);
+});
+
 test("P-296: who acted, on the Audit page, still offers a retired account, marked", async ({
   page,
   account,
