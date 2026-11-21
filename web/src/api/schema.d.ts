@@ -2641,7 +2641,11 @@ export interface paths {
         };
       };
     };
-    /** Change a contact. Every place and owner it is assigned to shows the change at once. */
+    /**
+     * Change a contact. Every place and owner it is assigned to shows the change at
+     * once. A retired contact is brought back, by `record_status`, by an Admin alone: a
+     * `403` for any other role (P-298).
+     */
     patch: {
       parameters: {
         query?: never;
@@ -5657,7 +5661,9 @@ export interface paths {
     };
     /**
      * Change an operator. Given another contact, everything the label is on is handed
-     * over at once; given none, it is an open assignment. Nothing else is written to.
+     * over at once; given none, it is an open assignment. Nothing else is written to. A
+     * retired operator is brought back, by `record_status`, by an Admin alone: a `403`
+     * for any other role (P-298).
      */
     patch: {
       parameters: {
@@ -8313,7 +8319,7 @@ export interface paths {
           operator?: "any" | "some" | "none";
           /** `no`, the accounts that are not retired; `yes`, the retired with the rest; `only`, the retired alone. A retired account is in no gap: neither `none` holds it (P-296). */
           retired?: "no" | "yes" | "only";
-          /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
+          /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
@@ -8432,7 +8438,9 @@ export interface paths {
     /**
      * Change a user: its username, its contact, its notes, or whether it is disabled.
      * Disabling a user ends every session they have; a new username keeps them. The name,
-     * email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.
+     * email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of
+     * a retired account only the username, the notes and its contact taken off are
+     * changed: anything else is a `409` (P-296).
      */
     patch: {
       parameters: {
@@ -8464,7 +8472,10 @@ export interface paths {
     };
   };
   "/api/v1/users/{hid}/access-code": {
-    /** Give a user a new access code. Every session they have ends. */
+    /**
+     * Give a user a new access code. Every session they have ends. A retired account
+     * is given none: a `409` (P-296).
+     */
     post: {
       parameters: {
         query?: never;

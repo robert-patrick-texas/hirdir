@@ -3,7 +3,7 @@ them, what a place has in force, contacts and their assignments."""
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from hirdir.api import lists, schemas, shapes, views
 from hirdir.api import records as r
@@ -327,10 +327,14 @@ def contact_uses(hid: str, _: Viewer, db: Db) -> r.ContactUses:
 
 @contact_routes.patch("/{hid}")
 def update_contact(
-    hid: str, body: r.ContactPatch, _: Inventory, context: Audit, db: Db
+    hid: str, body: r.ContactPatch, principal: Inventory, context: Audit, db: Db
 ) -> r.ContactOut:
-    """Change a contact. Every place and owner it is assigned to shows the change at once."""
-    changed = contacts.update_contact(db, context, hid, body.row_version, _changes(body))
+    """Change a contact. Every place and owner it is assigned to shows the change at
+    once. A retired contact is brought back, by `record_status`, by an Admin alone: a
+    `403` for any other role (P-298)."""
+    changed = contacts.update_contact(
+        db, context, hid, body.row_version, _changes(body), principal.role
+    )
     return shapes.contacts_out(db, [changed])[0]
 
 
@@ -344,18 +348,15 @@ def contact_linked(hid: str, _: Viewer, db: Db) -> schemas.Person:
 def _retire(
     db: Db, context: Audit, principal: Inventory, kind: str, hid: str, body: schemas.Retirement
 ) -> None:
-    try:
-        people.retire(
-            db,
-            context,
-            principal.role,
-            kind,
-            hid,
-            body.row_version,
-            body.linked.model_dump() if body.linked else None,
-        )
-    except NotImplementedError:
-        raise HTTPException(501, "Not built yet") from None
+    people.retire(
+        db,
+        context,
+        principal.role,
+        kind,
+        hid,
+        body.row_version,
+        body.linked.model_dump() if body.linked else None,
+    )
 
 
 @contact_routes.post("/{hid}/retire", responses=RETIRING)
@@ -416,11 +417,15 @@ def get_operator(hid: str, _: Viewer, db: Db) -> r.OperatorOut:
 
 @operator_routes.patch("/{hid}")
 def update_operator(
-    hid: str, body: r.OperatorPatch, _: Inventory, context: Audit, db: Db
+    hid: str, body: r.OperatorPatch, principal: Inventory, context: Audit, db: Db
 ) -> r.OperatorOut:
     """Change an operator. Given another contact, everything the label is on is handed
-    over at once; given none, it is an open assignment. Nothing else is written to."""
-    changed = operators.update_operator(db, context, hid, body.row_version, _changes(body))
+    over at once; given none, it is an open assignment. Nothing else is written to. A
+    retired operator is brought back, by `record_status`, by an Admin alone: a `403`
+    for any other role (P-298)."""
+    changed = operators.update_operator(
+        db, context, hid, body.row_version, _changes(body), principal.role
+    )
     return shapes.operators_out(db, [changed])[0]
 
 

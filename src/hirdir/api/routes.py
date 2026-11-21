@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select, text
 
 import hirdir
@@ -208,7 +208,9 @@ def update_user(
 ) -> schemas.UserOut:
     """Change a user: its username, its contact, its notes, or whether it is disabled.
     Disabling a user ends every session they have; a new username keeps them. The name,
-    email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`."""
+    email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of
+    a retired account only the username, the notes and its contact taken off are
+    changed: anything else is a `409` (P-296)."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     return views.user_out(db, accounts.update_user(db, context, hid, body.row_version, fields))
 
@@ -229,18 +231,15 @@ def retire_user(
     its own, and a service account's tokens are revoked, each audited as when done by
     itself. `linked` says what becomes of its contact and of the operators of that
     contact (P-297). Refused where it would leave no Admin."""
-    try:
-        people.retire(
-            db,
-            context,
-            principal.role,
-            people.USER,
-            hid,
-            body.row_version,
-            body.linked.model_dump() if body.linked else None,
-        )
-    except NotImplementedError:
-        raise HTTPException(501, "Not built yet") from None
+    people.retire(
+        db,
+        context,
+        principal.role,
+        people.USER,
+        hid,
+        body.row_version,
+        body.linked.model_dump() if body.linked else None,
+    )
     return views.user_out(db, accounts.get_user(db, hid))
 
 
@@ -255,17 +254,19 @@ def retire_user(
     },
 )
 def bring_back_user(
-    hid: str, body: schemas.BringBack, _: Admin, context: Audit, db: Db
+    hid: str, body: schemas.BringBack, principal: Admin, context: Audit, db: Db
 ) -> schemas.UserBroughtBack:
     """Bring a retired account back (P-296, P-298): active and not disabled, with a new
     access code, which is not shown again, no role and no group. `linked` brings back
     its retired contact with it, and those of that contact's retired operators it names."""
-    try:
-        back = people.bring_back(
-            db, context, hid, body.row_version, body.linked.model_dump() if body.linked else None
-        )
-    except NotImplementedError:
-        raise HTTPException(501, "Not built yet") from None
+    back = people.bring_back(
+        db,
+        context,
+        principal.role,
+        hid,
+        body.row_version,
+        body.linked.model_dump() if body.linked else None,
+    )
     return schemas.UserBroughtBack(user=views.user_out(db, back.user), access_code=back.access_code)
 
 
@@ -273,9 +274,10 @@ def bring_back_user(
 def set_access_code(
     hid: str, body: schemas.AccessCodeSet, _: Admin, context: Audit, db: Db
 ) -> schemas.AccessCodeOut:
-    """Give a user a new access code. Every session they have ends."""
+    """Give a user a new access code. Every session they have ends. A retired account
+    is given none: a `409` (P-296)."""
     return schemas.AccessCodeOut(
-        access_code=accounts.set_access_code(db, context, hid, body.access_code)
+        access_code=accounts.give_access_code(db, context, hid, body.access_code)
     )
 
 

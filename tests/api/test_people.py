@@ -5,8 +5,9 @@ editable list (P-170). Through the API."""
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, left_retired
 from tests.api.test_files import Files, table
 from tests.conftest import INVENTORY_CODE, sign_in
 
@@ -314,10 +315,13 @@ def test_every_role_is_told_which_user_a_contact_is(
     assert (operator["scope"], operator["user"]["username"]) == ("internal", "robin")
 
 
-def test_a_label_whose_contact_is_retired_is_open_and_has_no_scope(make: Maker) -> None:
+def test_a_label_whose_contact_is_retired_is_open_and_has_no_scope(
+    make: Maker, db: Session
+) -> None:
     dana = make.contact("Dana Ruiz")
     op2 = make.post("/operators", {"label": "Op2", "contact_hid": dana["hid"]})
-    make.post(f"/contacts/{dana['hid']}/retire", {"row_version": dana["row_version"]}, 200)
+    # Left so before 0.9.14: since then a contact is not retired under a label (P-297).
+    left_retired(db, dana["hid"])
     shown = make.get(f"/operators/{op2['hid']}")
     assert (shown["is_open"], shown["scope"]) == (True, None)
     assert make.get("/operators", filter="scope:empty:true")["total"] == 1

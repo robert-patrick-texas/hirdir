@@ -4,6 +4,10 @@ import time
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy import update
+from sqlalchemy.orm import Session
+
+from hirdir.db.models import Contact
 
 API = "/api/v1"
 # An apply is worked by the server's worker in the background (D-185). A test waits for
@@ -211,6 +215,33 @@ class Maker:
 
     def audit(self, **params: Any) -> list[dict[str, Any]]:
         return self.get("/audit-events", **params)["items"]
+
+    def release(self, operator: dict[str, Any], expect: int = 200) -> dict[str, Any]:
+        """Retire an operator and keep everything linked to it that is not retired: its
+        contact, the user that contact is and the other operators of that contact, each
+        of which a retirement is to say (P-297)."""
+        path = f"/operators/{operator['hid']}"
+        person = self.get(f"{path}/linked")
+        linked: dict[str, Any] = {
+            "operators": [
+                {"hid": one["hid"], "action": "keep"}
+                for one in person["operators"]
+                if one["hid"] != operator["hid"] and one["record_status"] != "retired"
+            ]
+        }
+        for name in ("user", "contact"):
+            if person[name] is not None and person[name]["record_status"] != "retired":
+                linked[name] = "keep"
+        body = {"row_version": self.get(path)["row_version"], "linked": linked}
+        return self.post(f"{path}/retire", body, expect)
+
+
+def left_retired(db: Session, contact_hid: str) -> None:
+    """Leave a contact retired under the account or the label that stands on it, as a
+    release before 0.9.14 could. From 0.9.14 a retirement says what becomes of each, and
+    a contact is not retired so (P-297); what was left so before is still read."""
+    db.execute(update(Contact).where(Contact.hid == contact_hid).values(record_status="retired"))
+    db.commit()
 
 
 def errors(problem: dict[str, Any]) -> dict[str, str]:

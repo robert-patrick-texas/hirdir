@@ -806,7 +806,8 @@ def reset(
     engine = make_engine(config.database_url)
     with make_sessions(engine)() as db:
         held = reset_rules.counts(db)
-        accounts_held = len(accounts.list_users(db, limit=1_000_000)[0])
+        # Every account is kept, the retired too (P-296).
+        accounts_held = len(accounts.list_users(db, limit=1_000_000, retired="yes")[0])
     live = Store(config.files_dir)
     contents, size = live.size()
     typer.echo("This removes, for good:")

@@ -38056,7 +38056,7 @@
         ]
       },
       "patch": {
-        "description": "Change a contact. Every place and owner it is assigned to shows the change at once.",
+        "description": "Change a contact. Every place and owner it is assigned to shows the change at\nonce. A retired contact is brought back, by `record_status`, by an Admin alone: a\n`403` for any other role (P-298).",
         "operationId": "update_contact_api_v1_contacts__hid__patch",
         "parameters": [
           {
@@ -44216,7 +44216,7 @@
         ]
       },
       "patch": {
-        "description": "Change an operator. Given another contact, everything the label is on is handed\nover at once; given none, it is an open assignment. Nothing else is written to.",
+        "description": "Change an operator. Given another contact, everything the label is on is handed\nover at once; given none, it is an open assignment. Nothing else is written to. A\nretired operator is brought back, by `record_status`, by an Admin alone: a `403`\nfor any other role (P-298).",
         "operationId": "update_operator_api_v1_operators__hid__patch",
         "parameters": [
           {
@@ -49788,7 +49788,7 @@
             }
           },
           {
-            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -49804,7 +49804,7 @@
                   "type": "null"
                 }
               ],
-              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
               "title": "Sort"
             }
           },
@@ -49991,7 +49991,7 @@
         ]
       },
       "patch": {
-        "description": "Change a user: its username, its contact, its notes, or whether it is disabled.\nDisabling a user ends every session they have; a new username keeps them. The name,\nemail and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.",
+        "description": "Change a user: its username, its contact, its notes, or whether it is disabled.\nDisabling a user ends every session they have; a new username keeps them. The name,\nemail and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of\na retired account only the username, the notes and its contact taken off are\nchanged: anything else is a `409` (P-296).",
         "operationId": "update_user_api_v1_users__hid__patch",
         "parameters": [
           {
@@ -50044,7 +50044,7 @@
     },
     "/api/v1/users/{hid}/access-code": {
       "post": {
-        "description": "Give a user a new access code. Every session they have ends.",
+        "description": "Give a user a new access code. Every session they have ends. A retired account\nis given none: a `409` (P-296).",
         "operationId": "set_access_code_api_v1_users__hid__access_code_post",
         "parameters": [
           {

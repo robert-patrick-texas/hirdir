@@ -103,9 +103,7 @@ def test_every_kind_names_its_records_with_the_role_the_contact_has_there(
     assert uses["circuits"] == {"total": 0, "records": []}
 
     # A retired record is named as the count counts it, and says that it is retired.
-    retired = make.post(
-        f"/operators/{operator['hid']}/retire", {"row_version": operator["row_version"]}, 200
-    )
+    retired = make.release(operator)
     assert retired["record_status"] == "retired"
     after = make.get(f"/contacts/{person['hid']}/uses")
     assert after["total"] == 7
