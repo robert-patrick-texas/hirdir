@@ -3497,7 +3497,8 @@ What 0.9.14 adds, a person's own profile (P-289, P-294, P-295):
     differ at the second: an empty code in hand is not sent to be counted as a wrong
     one. A wrong code in hand and a new one that is too short are the server's to say,
     each at its box, with the three boxes as typed; after too many wrong codes the
-    page says how long to wait, as the sign-in page does, and holds Save until then.
+    page says how long to wait, as the sign-in page does, and holds Save until then,
+    when it takes those words away.
     Changed, the page keeps the token and the expiry that `POST /auth/me/access-code`
     answered in place of the ones it had, as signing in keeps them, says "Your access
     code is changed. Your other sessions have ended.", and empties the three boxes.

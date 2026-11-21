@@ -182,13 +182,49 @@ test("P-289: the name in the menu bar leads to the profile by the keyboard, and 
     "At least 12 characters. Your other sessions end when it is changed; this one stays signed in.",
   );
 
+  // Too many wrong codes: the page says how long to wait and holds Save, and when the
+  // wait is over the words are taken away with it. The refusal is answered to this page
+  // alone: five wrong codes would delay the sign-ins of every file beside this one.
+  await page.route("**/api/v1/auth/me/access-code", (route) =>
+    route.fulfill({
+      status: 429,
+      contentType: "application/problem+json",
+      headers: { "Retry-After": "2" },
+      body: JSON.stringify({
+        type: "about:blank",
+        title: "Too many attempts",
+        status: 429,
+        detail: "wait before the next attempt",
+      }),
+    }),
+  );
+  const saveCode = code.getByRole("button", { name: "Save", exact: true });
+  const current = code.getByLabel("Access code you have (required)", { exact: true });
+  await current.fill("a code of some length");
+  await code.getByLabel("New access code (required)", { exact: true }).fill("another long code");
+  await code
+    .getByLabel("New access code again (required)", { exact: true })
+    .fill("another long code");
+  await saveCode.click();
+  const wait = code.locator(".alert-error");
+  await expect(wait).toHaveAttribute("data-status", "429");
+  await expect(wait).toHaveText("Too many attempts. Try again in 2 seconds.");
+  await expect(saveCode).toBeDisabled();
+  // A refusal that is about no box has the keyboard on its words, Save being held.
+  await expect(code.getByTestId("profile-said")).toBeFocused();
+  await expect(saveCode).toBeEnabled({ timeout: 10_000 });
+  await expect(wait).toHaveCount(0);
+  // Nothing typed is lost by it.
+  await expect(current).toHaveValue("a code of some length");
+  await page.unroute("**/api/v1/auth/me/access-code");
+
   // Whole in view at 1280 pixels, and at 360, with nothing to scroll sideways.
   expect(await wider(page), "wider than a window of 1280").toBeLessThanOrEqual(0);
   await page.setViewportSize({ width: 360, height: 740 });
-  await expect(code.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+  await expect(saveCode).toBeVisible();
   expect(await wider(page), "wider than a window of 360").toBeLessThanOrEqual(0);
 
-  await expectClean(page, seen);
+  await expectClean(page, seen, ["429 POST"]);
   await disable(request, headers, [clerk]);
 });
 
