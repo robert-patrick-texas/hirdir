@@ -508,8 +508,11 @@ export function createClient(deps: ClientDeps): Client {
     }
     if (response.status === 401) {
       // The session is no longer good. Forgetting it brings the sign-in page back.
+      // 0.9.14: only the session the request was sent with is forgotten. A request that
+      // was on its way while the person changed their own access code is refused with
+      // the session that change ended, and the one kept in its place stays (P-295).
       const problem = await problemOf(response);
-      if (session) deps.sessions.clear("ended");
+      if (session && deps.sessions.get()?.token === session.token) deps.sessions.clear("ended");
       throw problem;
     }
     if (!response.ok) throw await problemOf(response);

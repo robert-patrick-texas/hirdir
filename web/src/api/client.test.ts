@@ -135,6 +135,24 @@ describe("401", () => {
     expect(listener).toHaveBeenCalled();
   });
 
+  it("leaves a session that took the place of the one the request was sent with (P-295)", async () => {
+    // The request leaves with the session in hand; the person's own change of access code
+    // puts another in its place before the answer comes.
+    let answer: (response: Response) => void = () => undefined;
+    const { client, sessions } = setup(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const refused = thrownBy(() => client.request("get", "/api/v1/auth/me"));
+    sessions.set({ token: "token-2", expires_at: LATER });
+    answer(problem(401, "Not signed in", "sign in to continue"));
+    expect((await refused).status).toBe(401);
+    expect(sessions.get()?.token).toBe("token-2");
+    expect(sessions.endReason).toBeNull();
+  });
+
   it("on signing in is a refusal, not the end of a session", async () => {
     const { client, sessions } = setup(
       () => problem(401, "Sign-in refused", "the username or access code was not accepted"),
