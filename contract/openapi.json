@@ -44774,7 +44774,7 @@
         ]
       },
       "patch": {
-        "description": "Change an operator. Given another contact, everything the label is on is handed\nover at once; given none, it is an open assignment. Nothing else is written to. A\nretired operator is brought back, by `record_status`, by an Admin alone: a `403`\nfor any other role (P-298).",
+        "description": "Change an operator. Given another contact, everything the label is on is handed\nover at once; given none, it is an open assignment. Nothing else is written to. A\nretired operator is brought back, by `record_status`, by an Admin alone: a `403`\nfor any other role. It is not brought back onto a contact that is retired: a `409`\non `record_status` that names the contact, which is brought back first or taken\noff the label, in the same change or before (P-298).",
         "operationId": "update_operator_api_v1_operators__hid__patch",
         "parameters": [
           {

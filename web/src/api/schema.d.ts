@@ -5775,7 +5775,9 @@ export interface paths {
      * Change an operator. Given another contact, everything the label is on is handed
      * over at once; given none, it is an open assignment. Nothing else is written to. A
      * retired operator is brought back, by `record_status`, by an Admin alone: a `403`
-     * for any other role (P-298).
+     * for any other role. It is not brought back onto a contact that is retired: a `409`
+     * on `record_status` that names the contact, which is brought back first or taken
+     * off the label, in the same change or before (P-298).
      */
     patch: {
       parameters: {

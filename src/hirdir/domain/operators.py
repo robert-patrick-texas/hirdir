@@ -150,9 +150,42 @@ def brought_back_by_an_admin(
     `record_status` changed from `retired`, to anybody but an Admin (P-298). To retire
     one is the Inventory role's, and every other kind of record is brought back as
     before."""
-    back = record.record_status == "retired" and values.get("record_status", "retired") != "retired"
-    if back and role is not Role.ADMIN:
+    if _brought_back(record, values) and role is not Role.ADMIN:
         raise NotAllowed(f"an Admin brings a retired {what} back: this needs the admin role")
+
+
+def _brought_back(record: Any, values: dict[str, Any]) -> bool:
+    """Say whether a change brings a retired record back: its `record_status` changed
+    from `retired`, to `active` or to `draft`."""
+    return record.record_status == "retired" and values.get("record_status", "retired") != "retired"
+
+
+def not_onto_a_retired_contact(db: Session, operator: Operator, values: dict[str, Any]) -> None:
+    """Refuse a change that brings a retired operator back onto a contact that is retired
+    (P-298): a contact is not retired while a label stands on it, and a label is not put
+    back on a retired contact either. The way on is said: the contact brought back
+    first, or taken off the label, which the same change may do.
+
+    The contact is the one the operator has once the change is made. The writer's place
+    is taken before it is looked at, and it is read anew, so that a retirement of the
+    contact at the same moment waits, and then finds this label, or this finds the
+    contact retired.
+    """
+    hid = values.get("contact_hid", operator.contact_hid)
+    if not _brought_back(operator, values) or hid is None:
+        return
+    dialect.hold_other_writers(db)
+    contact = db.get(Contact, hid, populate_existing=True)
+    if contact is not None and contact.record_status == "retired":
+        raise Conflict(
+            f"the contact of {operator.label}, {contact.name}, is retired: bring the contact "
+            "back first, or take it off the label",
+            {
+                "record_status": "a label is not brought back onto a retired contact: bring "
+                "the contact back first, or take the contact off the label"
+            },
+            Existing("contact", contact.hid, contact.name),
+        )
 
 
 def create_operator(db: Session, context: AuditContext, fields: dict[str, Any]) -> Operator:
@@ -174,11 +207,13 @@ def update_operator(
     person's at once; given none, it is an open assignment. Nothing else is written to.
 
     `role` is the role of whoever asks: a retired operator is brought back, its
-    `record_status` changed from `retired`, by an Admin alone (P-298).
+    `record_status` changed from `retired`, by an Admin alone, and not onto a contact
+    that is retired (P-298).
     """
     operator = get_operator(db, hid)
     values = _checked(db, fields, operator)
     brought_back_by_an_admin(operator, values, role, RECORD_TYPE)
+    not_onto_a_retired_contact(db, operator, values)
     records.apply(db, context, RECORD_TYPE, operator, row_version, values)
     return operator
 
