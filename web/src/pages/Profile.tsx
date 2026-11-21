@@ -1,20 +1,21 @@
 // 0.9.14: a person's own profile (P-289, P-294, P-295), reached from their name in the
-// menu bar, for every role. Three parts, each a form of its own with its own Save: the
+// menu bar, for every role. Three parts, each a form of its own with a button of its
+// own, named for the part (Save details, Save KL, Change access code): the
 // details of the contact the person is, the label and the colour of each operator they
 // are behind, and their access code. Each is changed by a route of the person's own,
 // which names no record: the server changes those of whoever is signed in. What the page
 // does not change it shows as text: the username, the role and the groups.
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
+import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { TextField } from "../components/Field";
-import { OperatorMark } from "../components/Operator";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { HelpList } from "../components/WhomToAsk";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { safeColour } from "../lib/operators";
+import { operatorPath, safeColour } from "../lib/operators";
 import { helpOf } from "../lib/product";
 import {
   type CodeBoxes,
@@ -107,6 +108,7 @@ function Details({ contact, reload }: { contact: Contact; reload: () => void }) 
         }}
         onSaved={() => setDone("Your details were saved.")}
         onReload={reload}
+        submitLabel="Save details"
       />
     </section>
   );
@@ -170,6 +172,7 @@ function OperatorPart({
   // The label as the server answered the save, for the page to say what was saved.
   const saved = useRef(operator.label);
   const heading = `profile-operator-${operator.hid.replace(/[^A-Za-z0-9_-]/g, "")}`;
+  const colour = safeColour(operator.colour);
   return (
     <section
       className="profile-operator"
@@ -178,16 +181,16 @@ function OperatorPart({
       data-operator={operator.hid}
     >
       <h3 id={heading}>
-        <OperatorMark
-          mark={{
-            hid: operator.hid,
-            label: operator.label,
-            colour: safeColour(operator.colour),
-            person: "",
-            open: false,
-            released: false,
-          }}
-        />
+        {/* The mark of an operator, as the lists show it, its label free to break where
+            the page ends: a label may be 40 characters long. */}
+        <Link to={operatorPath(operator.hid)} className="profile-operator-name">
+          <span
+            className="swatch operator-dot"
+            aria-hidden="true"
+            {...(colour ? { style: { backgroundColor: colour } } : {})}
+          />
+          {operator.label}
+        </Link>
       </h3>
       <Notice text={done} />
       <EditForm<Operator, Schemas["OwnOperatorPatch"]>
@@ -205,6 +208,8 @@ function OperatorPart({
         }}
         onSaved={() => setDone(`The operator ${saved.current} was saved.`)}
         onReload={reload}
+        // Named for its operator: somebody behind two has no two buttons of one name.
+        submitLabel={`Save ${operator.label}`}
       />
     </section>
   );
@@ -235,9 +240,14 @@ function NoContact({ retired }: { retired: Contact | null }) {
   );
 }
 
-/** Hold a button until the moment the server said to try again, after too many attempts. */
-function useHeld(until: number): boolean {
+/**
+ * Hold a button until the moment the server said to try again, after too many attempts.
+ * `over` is told when a wait that was held ends, for the page to take away the words
+ * that said how long it was: they are no longer so.
+ */
+function useHeld(until: number, over: () => void): boolean {
   const [held, setHeld] = useState(false);
+  const ended = useEffectEvent(over);
   useEffect(() => {
     const left = until - Date.now();
     if (left <= 0) {
@@ -245,7 +255,10 @@ function useHeld(until: number): boolean {
       return;
     }
     setHeld(true);
-    const timer = window.setTimeout(() => setHeld(false), left);
+    const timer = window.setTimeout(() => {
+      setHeld(false);
+      ended();
+    }, left);
     return () => window.clearTimeout(timer);
   }, [until]);
   return held;
@@ -269,13 +282,19 @@ function AccessCode({ username, role }: { username: string; role: string | null 
   const [found, setFound] = useState<Record<string, string>>({});
   const [done, setDone] = useState("");
   const [waitUntil, setWaitUntil] = useState(0);
-  const waiting = useHeld(waitUntil);
   const action = useAction();
+  // The wait over, its words go: "Try again in 2 seconds" is not so once they have passed.
+  const waiting = useHeld(waitUntil, () => {
+    if (action.error?.status === 429) action.clear();
+  });
   const form = useRef<HTMLFormElement>(null);
+  // Where the page says what became of a change: that it was made, or why it was not.
+  const said = useRef<HTMLDivElement>(null);
   const [refusals, setRefusals] = useState(0);
+  const [changes, setChanges] = useState(0);
   const refused = { ...action.error?.fields, ...found };
 
-  // After too many wrong codes the server says how long to wait: Save is held until then.
+  // After too many wrong codes the server says how long to wait: the button is held until then.
   const refusal = action.error;
   useEffect(() => {
     if (refusal?.status === 429 && refusal.retryAfter !== null) {
@@ -283,10 +302,19 @@ function AccessCode({ username, role }: { username: string; role: string | null 
     }
   }, [refusal]);
 
-  // A refusal puts the keyboard in the first box it is about.
+  // The boxes and the button are held while a change is sent, so the keyboard is on
+  // none of them when the answer comes. A refusal puts it in the first box it is about,
+  // and one that is about no box, as a wait, on its words.
   useEffect(() => {
-    if (refusals > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    if (refusals === 0) return;
+    const box = form.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    (box ?? said.current)?.focus();
   }, [refusals]);
+
+  // A change that was made puts it on the words that say so.
+  useEffect(() => {
+    if (changes > 0) said.current?.focus();
+  }, [changes]);
 
   function type(box: keyof CodeBoxes, field: string) {
     return (value: string) => {
@@ -319,6 +347,7 @@ function AccessCode({ username, role }: { username: string; role: string | null 
     adopt(result.value);
     setBoxes(NO_CODES);
     setDone("Your access code is changed. Your other sessions have ended.");
+    setChanges((count) => count + 1);
   }
 
   return (
@@ -331,9 +360,12 @@ function AccessCode({ username, role }: { username: string; role: string | null 
       <p className="hint" data-testid="profile-code-words">
         {codeWords(minLengthOf(settings.data))}
       </p>
-      <Notice text={done} />
-      <form onSubmit={submit} className="stack" noValidate ref={form}>
+      {/* What became of a change, which takes the keyboard when it is said. */}
+      <div className="profile-said" data-testid="profile-said" tabIndex={-1} ref={said}>
+        <Notice text={done} />
         <Problem error={action.error} shown={["current_access_code", "access_code"]} />
+      </div>
+      <form onSubmit={submit} className="stack" noValidate ref={form}>
         {/* Not shown: it tells a password manager whose code the three boxes are. */}
         <input
           type="text"
@@ -381,7 +413,7 @@ function AccessCode({ username, role }: { username: string; role: string | null 
         />
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || waiting}>
-            Save
+            Change access code
           </button>
         </p>
       </form>
