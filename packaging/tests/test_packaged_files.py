@@ -653,10 +653,14 @@ def test_the_install_page_and_the_package_test_say_of_no_role_what_the_code_says
     session = "the session has been ended: this account holds no role"
     token = "the token is not accepted: its service account holds no role"
     source = (ROOT / "src/hirdir/domain/accounts.py").read_text(encoding="utf-8")
+    # The longer words are said to a session that was never ended, as the one from
+    # before the upgrade is; a revocation of the last role ends the sessions, which are
+    # then refused as any ended one is.
     for words in (session, token):
         assert f'NotSignedIn("{words}")' in source
-        assert words in script
         assert words in hook
+    assert token in script
+    assert '204 401 the session has been ended"' in script
     assert f'"No role", "{accounts.NO_ROLE}"' in script
     assert f'"No role", "{accounts.NO_ROLE}"' in hook
     assert f"^hirdir: {accounts.NO_ROLE}$" in script

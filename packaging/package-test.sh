@@ -5315,9 +5315,9 @@ roles_and_codes() {
     made="$made $status"
     token=$session
     api GET /auth/me
-    expect "S59 a person in a group that grants Inventory, and with no role of its own, is made by the role of the group, signs in and holds it; with the grant of the group revoked, the session is refused at its next request, a 401 that says the account holds no role" \
+    expect "S59 a person in a group that grants Inventory, and with no role of its own, is made by the role of the group, signs in and holds it; with the grant of the group revoked, its last role, the session is ended and refused at its next request, a 401" \
         "$made $status $(json_field detail)" \
-        "201 201 201 inventory 200 inventory 204 401 the session has been ended: this account holds no role"
+        "201 201 201 inventory 200 inventory 204 401 the session has been ended"
 
     sign_in pkg-stores "$stores_code"
     made="$status $(json '[d["title"], d["detail"], d["help"], "token" in d]')"
