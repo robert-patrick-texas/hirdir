@@ -32,7 +32,7 @@ def installed(tmp_path: Path, monkeypatch) -> Config:
     config = Config(state_dir=tmp_path, listen="127.0.0.1:1")
     migrate.upgrade(config.database_url)
     with make_sessions(make_engine(config.database_url))() as db:
-        ada, _ = accounts.create_user(db, audit.SYSTEM, username="ada", access_code="a-code")
+        ada, _ = accounts.create_user(db, audit.SYSTEM, username="ada", access_code="ada-code-0001")
         accounts.grant_role(db, audit.SYSTEM, role="admin", user_hid=ada.hid)
         context = audit.AuditContext(actor_hid=ada.hid, via="api", request_id="r-1")
         settings.set_setting(db, context, "stack_discount_pct", 0, 40)

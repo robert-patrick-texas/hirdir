@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import asdict
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select, text
 
 import hirdir
@@ -17,7 +17,7 @@ from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset
 from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
-from hirdir.domain import accounts, product
+from hirdir.domain import accounts, product, profile
 from hirdir.io import background, measures, tables
 
 health = APIRouter(prefix="/health", tags=["Health"])
@@ -95,34 +95,53 @@ def me(principal: SignedIn, db: Db) -> schemas.MeOut:
 
 @auth.patch("/me/contact")
 def update_own_contact(
-    body: schemas.OwnContactPatch, principal: Viewer, context: Audit, db: Db
+    body: schemas.OwnContactPatch, principal: SignedIn, context: Audit, db: Db
 ) -> schemas.MeOut:
     """Change the name, the email, the numbers or the organization of the contact the
     signed-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any
-    role; a service token is refused. An account with no contact, or with one that is
-    retired, is a `409` (P-294)."""
-    raise HTTPException(501, "Not built yet")
+    role, and of none; a service token is refused. An account with no contact, or with
+    one that is retired, is a `409` (P-294)."""
+    fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
+    profile.update_contact(db, principal, context, body.row_version, fields)
+    return views.me_out(db, principal.user)
 
 
 @auth.patch("/me/operators/{hid}")
 def update_own_operator(
-    hid: str, body: schemas.OwnOperatorPatch, principal: Viewer, context: Audit, db: Db
+    hid: str, body: schemas.OwnOperatorPatch, principal: SignedIn, context: Audit, db: Db
 ) -> schemas.MeOut:
     """Change the label or the colour of an operator the signed-in person is behind, by
-    the rules of `PATCH /operators/{hid}`. For a session of any role; a service token is
-    refused. An operator that is another's, or retired, is a `404` (P-294)."""
-    raise HTTPException(501, "Not built yet")
+    the rules of `PATCH /operators/{hid}`. For a session of any role, and of none; a
+    service token is refused. An operator that is another's, or retired, is a `404`
+    (P-294)."""
+    fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
+    profile.update_operator(db, principal, context, hid, body.row_version, fields)
+    return views.me_out(db, principal.user)
 
 
 @auth.post("/me/access-code", responses={429: {"model": schemas.Problem}})
 def change_own_access_code(
-    body: schemas.OwnAccessCode, request: Request, principal: Viewer, context: Audit, db: Db
+    body: schemas.OwnAccessCode, request: Request, principal: SignedIn, context: Audit, db: Db
 ) -> schemas.SessionOut:
     """Change the access code of the signed-in person, who gives the code they have. A
     wrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every
     other session of the person ends, and the answer carries a new token for this one
-    (P-295). For a session of any role; a service token is refused."""
-    raise HTTPException(501, "Not built yet")
+    (P-295). For a session of any role, and of none; a service token is refused."""
+    state = request.app.state
+    token, expires_at = profile.change_access_code(
+        db,
+        principal,
+        context,
+        current=body.current_access_code,
+        new=body.access_code,
+        address=request.client.host if request.client else "",
+        throttle=state.throttle,
+        signing_key=state.signing_key,
+        session_hours=state.config.session_hours,
+    )
+    return schemas.SessionOut(
+        token=token, expires_at=expires_at, user=views.me_out(db, principal.user)
+    )
 
 
 @auth.post("/sign-out-everywhere", status_code=204)

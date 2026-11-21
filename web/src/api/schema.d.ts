@@ -667,7 +667,7 @@ export interface paths {
      * Change the access code of the signed-in person, who gives the code they have. A
      * wrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every
      * other session of the person ends, and the answer carries a new token for this one
-     * (P-295). For a session of any role; a service token is refused.
+     * (P-295). For a session of any role, and of none; a service token is refused.
      */
     post: {
       parameters: {
@@ -706,8 +706,8 @@ export interface paths {
     /**
      * Change the name, the email, the numbers or the organization of the contact the
      * signed-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any
-     * role; a service token is refused. An account with no contact, or with one that is
-     * retired, is a `409` (P-294).
+     * role, and of none; a service token is refused. An account with no contact, or with
+     * one that is retired, is a `409` (P-294).
      */
     patch: {
       parameters: {
@@ -739,8 +739,9 @@ export interface paths {
   "/api/v1/auth/me/operators/{hid}": {
     /**
      * Change the label or the colour of an operator the signed-in person is behind, by
-     * the rules of `PATCH /operators/{hid}`. For a session of any role; a service token is
-     * refused. An operator that is another's, or retired, is a `404` (P-294).
+     * the rules of `PATCH /operators/{hid}`. For a session of any role, and of none; a
+     * service token is refused. An operator that is another's, or retired, is a `404`
+     * (P-294).
      */
     patch: {
       parameters: {

@@ -34042,7 +34042,7 @@
     },
     "/api/v1/auth/me/access-code": {
       "post": {
-        "description": "Change the access code of the signed-in person, who gives the code they have. A\nwrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every\nother session of the person ends, and the answer carries a new token for this one\n(P-295). For a session of any role; a service token is refused.",
+        "description": "Change the access code of the signed-in person, who gives the code they have. A\nwrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every\nother session of the person ends, and the answer carries a new token for this one\n(P-295). For a session of any role, and of none; a service token is refused.",
         "operationId": "change_own_access_code_api_v1_auth_me_access_code_post",
         "requestBody": {
           "content": {
@@ -34094,7 +34094,7 @@
     },
     "/api/v1/auth/me/contact": {
       "patch": {
-        "description": "Change the name, the email, the numbers or the organization of the contact the\nsigned-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any\nrole; a service token is refused. An account with no contact, or with one that is\nretired, is a `409` (P-294).",
+        "description": "Change the name, the email, the numbers or the organization of the contact the\nsigned-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any\nrole, and of none; a service token is refused. An account with no contact, or with\none that is retired, is a `409` (P-294).",
         "operationId": "update_own_contact_api_v1_auth_me_contact_patch",
         "requestBody": {
           "content": {
@@ -34136,7 +34136,7 @@
     },
     "/api/v1/auth/me/operators/{hid}": {
       "patch": {
-        "description": "Change the label or the colour of an operator the signed-in person is behind, by\nthe rules of `PATCH /operators/{hid}`. For a session of any role; a service token is\nrefused. An operator that is another's, or retired, is a `404` (P-294).",
+        "description": "Change the label or the colour of an operator the signed-in person is behind, by\nthe rules of `PATCH /operators/{hid}`. For a session of any role, and of none; a\nservice token is refused. An operator that is another's, or retired, is a `404`\n(P-294).",
         "operationId": "update_own_operator_api_v1_auth_me_operators__hid__patch",
         "parameters": [
           {

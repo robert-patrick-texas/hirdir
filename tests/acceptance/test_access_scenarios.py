@@ -13,13 +13,15 @@ from tests.acceptance.conftest import ADMIN, Server
 
 def test_s03_highest_role_wins_and_removal_takes_effect_at_once(server: Server) -> None:
     admin = server.sign_in(*ADMIN)
-    user = admin.post("/users", json={"username": "uma", "access_code": "uma-code"}).json()["user"]
+    user = admin.post("/users", json={"username": "uma", "access_code": "uma-code-0001"}).json()[
+        "user"
+    ]
     group = admin.post("/user-groups", json={"name": "Readers"}).json()
     admin.post("/role-grants", json={"role": "viewer", "group_hid": group["hid"]})
     admin.put(f"/user-groups/{group['hid']}/members/{user['hid']}")
     direct = admin.post("/role-grants", json={"role": "admin", "user_hid": user["hid"]}).json()
 
-    uma = server.sign_in("uma", "uma-code")
+    uma = server.sign_in("uma", "uma-code-0001")
     assert uma.get("/auth/me").json()["role"] == "admin"
     assert uma.post("/users", json={"username": "made-by-uma"}).status_code == 201
 
@@ -30,8 +32,8 @@ def test_s03_highest_role_wins_and_removal_takes_effect_at_once(server: Server) 
 
 def test_s04_resetting_an_access_code_ends_the_users_sessions(server: Server) -> None:
     admin = server.sign_in(*ADMIN)
-    admin.post("/users", json={"username": "vic", "access_code": "first-code", "role": "viewer"})
-    vic = server.sign_in("vic", "first-code")
+    admin.post("/users", json={"username": "vic", "access_code": "first-code-01", "role": "viewer"})
+    vic = server.sign_in("vic", "first-code-01")
     assert vic.get("/auth/me").status_code == 200
 
     # Once through the API, and once from the server's own command line.
@@ -97,12 +99,12 @@ def test_s54_a_person_is_onboarded_in_one_step_and_each_list_finds_the_gaps(
             "group_hids": [group["hid"]],
             "operator": {},
             "notes": "For the example team.",
-            "access_code": "ex-ops-code",
+            "access_code": "ex-ops-code-01",
         },
     ).json()
     assert made["operator"]["label"] == "ex-ops"
     assert made["user"]["operators"][0]["hid"] == made["operator"]["hid"]
-    ops = server.sign_in("ex-ops", "ex-ops-code")
+    ops = server.sign_in("ex-ops", "ex-ops-code-01")
     assert ops.get("/auth/me").json()["role"] == "inventory"
     contact = ops.get(f"/contacts/{made['user']['contact_hid']}").json()
     assert (contact["is_user"], contact["is_operator"]) == (True, True)

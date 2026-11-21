@@ -26,7 +26,7 @@ from hirdir.db.models import (
     UserGroup,
     UserGroupMember,
 )
-from hirdir.domain import audit, colours, contacts, operators, records
+from hirdir.domain import audit, colours, contacts, operators, records, settings
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import (
     Conflict,
@@ -469,7 +469,7 @@ def create_user(
     person = _checked_contact(db, contact_hid, None, is_service_account) if contact_hid else None
     code = None
     if not is_service_account:
-        code = _checked_code(access_code) if access_code is not None else codes.generate()
+        code = _checked_code(db, access_code) if access_code is not None else codes.generate()
     if contact is not None:
         try:
             person = contacts.create_contact(db, context, dict(contact))
@@ -552,11 +552,22 @@ def update_user(
     return user
 
 
-def _checked_code(code: str) -> str:
+def _checked_code(db: Session, code: str) -> str:
+    """Return an access code that is typed, by an Admin or by the person whose it is, or
+    refuse it: a blank one, one with a space at either end, and one shorter than the
+    setting `access_code_min_length` says (P-295). A code the server makes is not
+    brought here, and a code that is held already is not looked at."""
     if not code or code != code.strip():
         raise Invalid(
             "the access code is not acceptable",
             {"access_code": "must not be empty or begin or end with a space"},
+        )
+    least = settings.code_length(db)
+    if len(code) < least:
+        length = f"at least {least} character{'' if least == 1 else 's'}"
+        raise Invalid(
+            f"the access code is too short: {length}",
+            {"access_code": f"{length} (access_code_min_length)"},
         )
     return code
 
@@ -573,12 +584,60 @@ def set_access_code(
     user = get_user(db, hid)
     if user.is_service_account:
         raise Conflict("a service account has no access code; it holds tokens")
-    code = _checked_code(access_code) if access_code is not None else codes.generate()
+    code = _checked_code(db, access_code) if access_code is not None else codes.generate()
     _touch(user, context, None)
     user.access_code_hash = codes.hash_code(code)
     _end_sessions(user)
     audit.record(db, context, "set_access_code", "user", user.hid)
     return code
+
+
+def change_access_code(
+    db: Session,
+    context: AuditContext,
+    user: User,
+    *,
+    current: str,
+    new: str,
+    address: str,
+    throttle: Throttle,
+    signing_key: bytes,
+    session_hours: int,
+) -> tuple[str, datetime]:
+    """Change the access code of a person who gives the one they have (P-295). Return a
+    new session token for the session in hand, and when it ends.
+
+    A wrong current code is counted by the throttle under the keys of a failed sign-in,
+    the username and the address, so that a session left open is no way to try codes:
+    a person delayed here is delayed at sign-in, and the other way round. While they
+    are delayed no code is looked at. Both refusals are audit events, committed here so
+    that they are kept though the request is refused, as `sign_in` keeps its own. The
+    current code is looked at before the new one. Accepted, every session of the person
+    is ended, the one in hand too, which goes on with the token returned.
+    """
+    keys = (f"user:{user.username_key}", f"addr:{address}")
+    wait = throttle.retry_after(*keys)
+    if wait > 0:
+        audit.record(db, context, "access_code_delayed", "user", user.hid)
+        db.commit()
+        raise SignInDelayed(wait)
+    if not codes.verify(user.access_code_hash, current):
+        throttle.failure(*keys)
+        audit.record(db, context, "access_code_refused", "user", user.hid)
+        db.commit()
+        raise Invalid(
+            "the current access code was not accepted",
+            {"current_access_code": "this is not the access code you have"},
+        )
+    throttle.success(*keys)
+    code = _checked_code(db, new)
+    _touch(user, context, None)
+    user.access_code_hash = codes.hash_code(code)
+    _end_sessions(user)
+    issued_ms = max(clock.now_ms(), user.tokens_valid_after + 1)
+    token, expires_at = tokens.issue_session(signing_key, user.hid, issued_ms, session_hours)
+    audit.record(db, context, "set_access_code", "user", user.hid)
+    return token, expires_at
 
 
 def sign_out_everywhere(db: Session, context: AuditContext, hid: str) -> None:
