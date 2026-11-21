@@ -89,13 +89,12 @@ export function SignIn() {
         >
           <h2 id="no-role">This account holds no role</h2>
           <p>{sentence(noRole.detail || noRole.message)}</p>
-          {noRole.help ? (
+          {/* The server's words name an Admin; where it names a team, it is listed. */}
+          {noRole.help && (
             <>
               <p>Ask the team that runs {productName} to give it one:</p>
               <HelpList help={noRole.help} />
             </>
-          ) : (
-            <p>Ask an Admin of {productName} to give it one.</p>
           )}
         </section>
       )}
@@ -129,7 +128,8 @@ export function SignIn() {
           </button>
         </p>
       </form>
-      {signInHelp && (
+      {/* Whom to ask is said once: in the refusal of an account with no role, while it shows. */}
+      {signInHelp && !noRole && (
         <section aria-labelledby="sign-in-help" className="sign-in-help">
           <h2 id="sign-in-help">Whom to ask</h2>
           <p>If you cannot sign in, ask the team that runs {productName}:</p>

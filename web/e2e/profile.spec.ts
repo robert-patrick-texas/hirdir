@@ -663,7 +663,8 @@ test("P-299: an account that holds no role is refused at sign-in with the right 
   await expect(told).toContainText(
     "This account holds no role, and so cannot sign in: an Admin gives it one.",
   );
-  await expect(told).toContainText("Ask an Admin of hirdir to give it one.");
+  // The server's words name an Admin already: the page does not say it again (review).
+  await expect(told).not.toContainText("Ask an Admin");
   await expect(page.locator(".alert-error")).toHaveCount(0);
   await expect(username).toHaveValue(person.username);
   await expect(code).toHaveValue("");
