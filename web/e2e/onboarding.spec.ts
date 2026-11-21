@@ -445,14 +445,15 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
     decodeURIComponent((await nobodyLink.getAttribute("href"))?.split("/").at(-1) ?? ""),
   );
 
-  // The list says each in words: no contact, no operator; the service account is neither.
+  // 0.9.15: the list leaves blank what there is not, no contact and no operator, of a
+  // person and of the service account alike, whose Kind says what it is (P-302).
   let rows = await usersListed(page, "");
   const of = (name: string) => rows.and(page.locator(`[data-user="${name}"]`));
-  await expect(of(nobody).getByTestId("user-name")).toHaveText("no contact");
-  await expect(of(nobody).getByTestId("user-operators")).toHaveText("no operator");
-  await expect(of(made.gus.username).getByTestId("user-operators")).toHaveText("no operator");
-  await expect(of(service).getByTestId("user-name")).toHaveText("Service account");
-  await expect(of(service).getByTestId("user-operators")).toHaveText("—");
+  await expect(of(nobody).getByTestId("user-name")).toHaveText("");
+  await expect(of(nobody).getByTestId("user-operators")).toHaveText("");
+  await expect(of(made.gus.username).getByTestId("user-operators")).toHaveText("");
+  await expect(of(service).getByTestId("user-name")).toHaveText("");
+  await expect(of(service).getByTestId("user-operators")).toHaveText("");
 
   // Show, with the users with no contact: an address of its own, the search kept. Until
   // a gap is chosen, the list is of every user, and says so.
@@ -531,9 +532,9 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   found = await narrowed(`is_user:eq:false name:contains:${suffix}`);
   await expect(found).toHaveCount(1);
   await expect(names).toHaveText(`Taken Example ${suffix}`);
-  // Neither, said in plain words, as the other two lists say theirs.
-  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
-  await expect(grid.locator('[row-id] [col-id="is_operator"]')).toHaveText("no operator");
+  // Neither: both cells blank, as the other two lists leave theirs (P-302).
+  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("");
+  await expect(grid.locator('[row-id] [col-id="is_operator"]')).toHaveText("");
   await expectClean(page, seen);
 });
 
@@ -589,7 +590,7 @@ test("P-284: an operator is made in one press, from a user's page and from a con
   await expect(contacts.locator('[row-id] [col-id="is_operator"]')).toHaveText(
     `${suffix}-jo (released)`,
   );
-  await expect(contacts.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
+  await expect(contacts.locator('[row-id] [col-id="is_user"]')).toHaveText("");
 
   // From a user's page: its username as the label, pressed twice while held back, once sent.
   await openUser(page, made.gus.hid, made.gus.username);

@@ -3320,9 +3320,10 @@ What 0.9.6 changes:
 What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-288):
 
 - **Users.** Each row shows the contact the user is and the operators it works as, each
-  a link to that record's page, the operator as its label with its colour, and plain
-  words where there is none, `no contact` and `no operator`; and the notes of the
-  account; a service account says neither, being no person. Where the user's contact is
+  a link to that record's page, the operator as its label with its colour, and the
+  cell blank where there is none, of a person and of a service account alike, whose
+  Kind says what it is (since 0.9.15, P-302: until then plain words, `no contact` and
+  `no operator`); and the notes of the account. Where the user's contact is
   retired, its operators' marks say `open`, nobody being behind them, as the Operators
   list says it, and a released operator is marked released. Above the list, Show has
   a link to every user, one to the users with no contact and one to those with no
@@ -3373,8 +3374,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   and a value that is no colour is said at the picker, nothing sent.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
   stands behind, as links, in the column Operators, which filters and sorts by
-  `is_operator`, a released one written `label (released)`; and plain words where there
-  is none, `no user` and `no operator`, as the other two lists say theirs. Show has a
+  `is_operator`, a released one written `label (released)`; and each cell blank where
+  there is none, as the other two lists leave theirs (since 0.9.15, P-302: until then
+  plain words, `no user` and `no operator`). Show has a
   link to every contact and one to each gap, the contacts
   that are no user and those behind no operator, each starting the grid with its
   filter (`is_user:eq:false`, `is_operator:eq:false`). A press of a gap starts the grid
@@ -3388,7 +3390,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   contact is a user and the contact's name where it is not.
 - **Operators.** The list has a column User: the user behind each operator by its
   username, a link to the user's page for an Admin and plain words for the other roles,
-  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  and blank where there is none (since 0.9.15, P-302: until then `no user`); the server
+  neither filters nor sorts by it. Above
   the list, Show leads, as the lists of users and of contacts do, by a link one press
   away whose address holds the grid's own filter, to every operator, to those with no
   user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
@@ -3566,8 +3569,8 @@ P-292, P-296 to P-298):
   says `no operator`, `no contact` or `no user`. Somebody who is no Admin reads the
   username as text, the user's page being an Admin's. Among the facts of a contact and
   of an operator, User still names a retired account, marked Retired, with the words
-  that the person signs in no longer; the lists say `no user` of it, as the server
-  counts it.
+  that the person signs in no longer; the lists leave the cell of its user blank, as
+  the server counts it no user (P-302).
 - **The confirmation of a retirement.** Retire account, Retire contact and Release open
   one dialog, which reads `GET .../linked` afresh at each press. Closed, by Cancel or
   by Escape, it gives the focus back to the button that opened it, and so does the
@@ -3721,7 +3724,9 @@ One grid component is used on every list page.
   link, under the same filter, sort and switches, shows the same rows with that row
   marked; a new filter or sort begins at the top, and a link that brings a filter of
   its own shows it from the top. A browser that refuses the storage shows the list from
-  its top (P-203).
+  its top (P-203). Only Back and Forward put the window back where it was too: a list
+  opened from the menu bar or by a link shows its page from the top, with the menu bar
+  in view, its rows scrolled to where they were inside the grid (P-301).
 
 - Every value of a list that names another record is a link to that record's page
   (P-232): in the item list the stack, the groups, the location, the planned location,
@@ -3763,9 +3768,12 @@ record of a file so named as it does of one named `hirdir-`.
 
 A page opened from the menu bar, or from a link on another page, begins at its top with
 the menu bar in view, and focus moves to its content without scrolling it, so that a
-keyboard or a screen reader starts there (P-167). Back and Forward leave the window
-where the browser puts it, and a change that keeps the page's address, such as a
-filter, does not move it.
+keyboard or a screen reader starts there (P-167). Whatever the page holds, a list
+that keeps its place among it, it opens so: from 0.9.15, a browser scenario presses
+every entry of the menu bar in turn, again after each list was left from far down its
+page, and holds each at its top (P-301). Back and Forward leave the window where the
+browser puts it, and a change that keeps the page's address, such as a filter, does
+not move it.
 
 What a page answers to a change, that it was done or why it was refused, stays in view
 (P-182): it is shown at its place near the top of the page, and while the window is

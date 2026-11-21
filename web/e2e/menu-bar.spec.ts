@@ -5,17 +5,25 @@
 //   Addresses, Vendors, Owners, Contracts and Home, each taller than the window.
 //   A page opened from a link far down another page begins at its top in the same way.
 //
+// And of 0.9.15 (P-301): every entry of the menu bar, read from the bar itself so that a
+// new one is held too, opens its page at the top with the menu bar in view, the first
+// time and again after the person has scrolled each page down and opened a row of each
+// list from there. Until 0.9.14 a list put the window back where it had been when a row
+// was opened from it (P-203), so that its entry in the menu bar opened it scrolled down,
+// past the menu bar: the owner saw it on Contacts and Operators, which this file gives a
+// row of its own each.
+//
 // Until 0.9.1 focus moved to the content of a page by scrolling it to the top of the
 // window, past the menu bar and the renewal alert above it, on every page taller than
 // the window. The window here is shorter than each of those pages.
 //
 // How this file keeps to the rules of support.ts: it signs in as an Admin of its own,
-// makes nothing and changes nothing, and reads only where the window is and what has
-// focus, never what is in a list.
+// makes one contact and one operator, under its mark, and changes nothing else, and
+// reads only where the window is and what has focus, never what is in a list.
 
-import { expect, type Page } from "@playwright/test";
+import { type APIRequestContext, expect, type Page } from "@playwright/test";
 import { main as menuBar } from "./structure";
-import { expectClean, signIn, test, watch } from "./support";
+import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.use({ viewport: { width: 1280, height: 700 } });
 
@@ -91,6 +99,103 @@ test("a page opened from a link far down another page begins at its top", async 
     await expect(menuBar(page)).not.toBeInViewport();
     await far.click();
     await opensAtItsTop(page, link);
+  }
+  await expectClean(page, seen);
+});
+
+/** A contact and an operator behind it, so that Contacts and Operators have a row each. */
+async function people(request: APIRequestContext, account: Account): Promise<void> {
+  const signedIn = await request.post("./api/v1/auth/sign-in", {
+    data: { username: account.username, access_code: account.accessCode },
+  });
+  expect(signedIn.status(), "the account of the file signs in through the API").toBe(200);
+  const { token } = (await signedIn.json()) as { token: string };
+  const headers = { Authorization: `Bearer ${token}` };
+  const id = mark("menu-bar");
+  const contact = await request.post("./api/v1/contacts", {
+    headers,
+    data: { name: `Menu Person ${id}`, email: `${id}@example.com` },
+  });
+  expect(contact.status(), await contact.text()).toBe(201);
+  const { hid } = (await contact.json()) as { hid: string };
+  const operator = await request.post("./api/v1/operators", {
+    headers,
+    data: { label: id, contact_hid: hid },
+  });
+  expect(operator.status(), await operator.text()).toBe(201);
+}
+
+/**
+ * The page pressed has settled: its heading is shown, its list has read its first rows,
+ * nothing more is being read, and the frames after the rows came are drawn, when a list
+ * that went back to where it was left would have moved the window.
+ */
+async function settled(page: Page): Promise<void> {
+  await expect(page.locator("main h1").first()).toBeVisible();
+  if ((await page.locator("main .ag-root-wrapper").count()) > 0) {
+    await expect(page.getByTestId("grid-total").first()).not.toBeEmpty();
+  }
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+}
+
+test("every entry of the menu bar opens its page at the top, again after each list was left from far down", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(300_000);
+  await people(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await settled(page);
+
+  // Every entry of the menu bar, and the two pages beside it reached from the bar: the
+  // product name, Home, and the name of the person signed in, their Profile.
+  const entries = await menuBar(page).getByRole("link").allTextContents();
+  expect(entries.length, "the menu bar has its entries").toBeGreaterThan(10);
+  const pressed = (entry: string) =>
+    entry === "(product name)"
+      ? page.getByTestId("brand")
+      : entry === "(profile)"
+        ? page.locator(".who-name")
+        : menuBar(page).getByRole("link", { name: entry, exact: true });
+  const every = [...entries, "(product name)", "(profile)"];
+
+  for (const round of ["first", "after each list was left from far down"]) {
+    for (const entry of every) {
+      // The person presses the entry from the top of the page they are on: it is there
+      // that the menu bar is.
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await pressed(entry).click();
+      await settled(page);
+      const where = `${entry}, ${round}`;
+      expect(await scrolled(page), `${where}: the page opens at its top`).toBe(0);
+      await expect(menuBar(page), `${where}: the menu bar is in view`).toBeInViewport({
+        ratio: 1,
+      });
+
+      // The person's own: down to the foot of the page, and a row of its list opened
+      // from there, which the list keeps its place for (P-203).
+      if (round !== "first") continue;
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const link = page
+        .locator(
+          "main .ag-row[row-index='0'] a[href]" +
+            ':not([href^="mailto:"]):not([href^="tel:"]):not([href^="http"])',
+        )
+        .first();
+      if ((await link.count()) === 0 || (await scrolled(page)) === 0) continue;
+      const before = page.url();
+      await link.click();
+      await expect(page).not.toHaveURL(before);
+      await expect(page.locator("main h1").first()).toBeVisible();
+    }
   }
   await expectClean(page, seen);
 });

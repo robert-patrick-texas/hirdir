@@ -234,7 +234,8 @@ export function Users() {
                       {userState(user) === "Retired" && <span className="badge">Retired</span>}
                     </th>
                     {/* 0.9.3: the name, email and numbers of its contact (P-172). 0.9.13: the
-                        contact as a link to its page, or no contact said plainly (P-280);
+                        contact as a link to its page (P-280), blank where there is none,
+                        a service account's too, which Kind names (P-302);
                         the email beneath the name and the two numbers in one cell, one
                         above the other, so that every column is in view at 1280 pixels. */}
                     <td className="user-person">
@@ -248,11 +249,7 @@ export function Users() {
                               <span className="badge">Retired</span>
                             )}
                           </>
-                        ) : user.is_service_account ? (
-                          <span className="muted">Service account</span>
-                        ) : (
-                          <span className="people-gap">no contact</span>
-                        )}
+                        ) : null}
                       </span>
                       {user.email && (
                         <span className="user-email" data-testid="user-email">
@@ -370,8 +367,7 @@ function noUsers(q: string, gap: UsersGap): string {
 
 /**
  * 0.9.13: the operators a user works as, each its label in its colour and a link to its
- * page, or no operator said plainly; a service account is no person, and has none to
- * have (P-280).
+ * page (P-280); 0.9.15: blank where there is none, a service account's too (P-302).
  */
 function UserOperators({ user }: { user: User }) {
   if (user.operators.length > 0) {
@@ -383,8 +379,7 @@ function UserOperators({ user }: { user: User }) {
       </span>
     );
   }
-  if (user.is_service_account) return <span className="muted">—</span>;
-  return <span className="people-gap">no operator</span>;
+  return null;
 }
 
 function CreatedUser({ created, onDone }: { created: Created; onDone: () => void }) {

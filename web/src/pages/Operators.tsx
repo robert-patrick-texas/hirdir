@@ -89,7 +89,8 @@ function operatorColumns(admin: boolean): GridColumn<Operator>[] {
       field: null,
       sortField: null,
       column: null,
-      value: (operator) => operator.user?.username ?? "no user",
+      // 0.9.15: blank where nobody is behind it who signs in (P-302).
+      value: (operator) => operator.user?.username,
       links: (operator) =>
         oneLink(operator.user?.username, kindPath("user", operator.user?.hid, admin)),
       width: 150,

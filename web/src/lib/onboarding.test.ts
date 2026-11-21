@@ -259,7 +259,7 @@ describe("who is what, on the lists of people (P-280)", () => {
   });
 
   it("writes a contact's operators on the list: released ones marked, none in words", () => {
-    expect(operatorsCell([])).toEqual({ text: "no operator", links: [] });
+    expect(operatorsCell([])).toEqual({ text: "", links: [] });
     const cell = operatorsCell([brief("old", "retired"), brief("new", "active")]);
     expect(cell.text).toBe("old (released), new");
     expect(cell.links).toEqual([

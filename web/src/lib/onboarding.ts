@@ -206,7 +206,7 @@ export function briefText(operator: Schemas["OperatorBrief"]): string {
 /**
  * The cell of a contact's operators on the list of contacts (P-280): each a link to its
  * page, a released one marked so, as the lists of users and the pages mark it, and
- * `no operator` in plain words where there is none.
+ * blank where there is none (P-302).
  */
 export function operatorsCell(operators: readonly Schemas["OperatorBrief"][]): {
   text: string;
@@ -217,7 +217,7 @@ export function operatorsCell(operators: readonly Schemas["OperatorBrief"][]): {
     path: operatorPath(operator.hid),
   }));
   return {
-    text: links.length > 0 ? links.map((link) => link.text).join(", ") : "no operator",
+    text: links.map((link) => link.text).join(", "),
     links,
   };
 }
