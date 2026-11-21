@@ -735,13 +735,24 @@ test("P-300: Generate on the profile fills both new boxes with a code made by th
   // setting asks, 12 at its default; nothing is saved yet.
   await part.getByRole("button", { name: "Generate", exact: true }).click();
   await expect(wanted).not.toHaveValue("");
-  const made = await wanted.inputValue();
-  expect(made.length, "a made code is at least as long as the setting asks").toBeGreaterThanOrEqual(
+  const first = await wanted.inputValue();
+  expect(first.length, "a made code is at least as long as the setting asks").toBeGreaterThanOrEqual(
     12,
   );
-  await expect(again).toHaveValue(made);
+  await expect(again).toHaveValue(first);
   await expect(wanted).toHaveAttribute("type", "text");
   await expect(again).toHaveAttribute("type", "text");
+
+  // Typed over, the new code is a typed one: both boxes masked, and the second emptied,
+  // which held the made code and is to be typed again (review). Generate makes another.
+  await wanted.fill(`Typed-over-${suffix}`);
+  await expect(wanted).toHaveAttribute("type", "password");
+  await expect(again).toHaveAttribute("type", "password");
+  await expect(again).toHaveValue("");
+  await part.getByRole("button", { name: "Generate", exact: true }).click();
+  await expect(wanted).not.toHaveValue(`Typed-over-${suffix}`);
+  const made = await wanted.inputValue();
+  await expect(again).toHaveValue(made);
   const before = await request.post("./api/v1/auth/sign-in", {
     data: { username: person.username, access_code: person.accessCode },
   });
