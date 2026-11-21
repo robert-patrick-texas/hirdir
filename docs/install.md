@@ -2198,8 +2198,8 @@ starts the service all the same. `/etc/hirdir/config.toml` gains no setting. An 
 that holds no role is refused at sign-in from now on, and so are its sessions and its
 tokens: an account brought back under 0.9.14, and not yet given a role, cannot sign in
 until an Admin gives it one. A session that such an account held before the upgrade is
-refused, and is ended when the account is given a role, so that it does not come back:
-the person signs in again. Every other account signs in, and keeps its sessions and its
+refused, and does not come back when the account is given a role, which ends it: the
+person signs in again. Every other account signs in, and keeps its sessions and its
 tokens, as before.
 
 What an Admin sees changed:
