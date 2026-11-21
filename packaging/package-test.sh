@@ -5179,7 +5179,7 @@ own_and_retired() {
     events=$(json_field total)
 
     cli_run "$work/cli.bare" contacts retire moving.person@example.net
-    made="$made | $code $(matches 'not said$' "$work/cli.bare") $(matches 'operator PKM1, operator PKM2, user pkg-mover' "$work/cli.err")"
+    made="$made | $code $(matches 'not said$' "$work/cli.bare") $(matches 'the operator PKM1, the operator PKM2, the user pkg-mover' "$work/cli.err")"
     api POST "/contacts/$mover_contact/retire" "{\"row_version\": $row}"
     made="$made $status $(json '[sorted(e["field"] for e in d["errors"]), [[r["record_type"], r["label"]] for r in d["depends_on"]]]')"
     cli_run "$work/cli.dry" contacts retire moving.person@example.net --user retire --operator 'PKM1=hand_over:successor.person@example.net' --operator PKM2=retire --dry-run
