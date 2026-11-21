@@ -658,6 +658,8 @@ test("P-299: an account that holds no role is refused at sign-in with the right 
   // box is emptied and the username stays as typed.
   const told = page.getByTestId("no-role");
   await expect(told.getByRole("heading", { name: "This account holds no role" })).toBeVisible();
+  // Announced as it comes, as the refusal of a wrong code is (review).
+  await expect(page.getByRole("alert", { name: "This account holds no role" })).toBeVisible();
   await expect(told).toContainText(
     "This account holds no role, and so cannot sign in: an Admin gives it one.",
   );

@@ -80,7 +80,13 @@ export function SignIn() {
         </p>
       )}
       {noRole && (
-        <section className="alert alert-info" aria-labelledby="no-role" data-testid="no-role">
+        // Announced as it comes, as the refusal of a wrong code is in its live region.
+        <section
+          className="alert alert-info"
+          role="alert"
+          aria-labelledby="no-role"
+          data-testid="no-role"
+        >
           <h2 id="no-role">This account holds no role</h2>
           <p>{sentence(noRole.detail || noRole.message)}</p>
           {noRole.help ? (
