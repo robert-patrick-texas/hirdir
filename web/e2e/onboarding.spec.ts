@@ -291,14 +291,15 @@ test("P-288: an Admin saves the users as a CSV file, its header as the file is r
   await download.saveAs(path);
   const lines = (await readFile(path, "utf8")).trimEnd().split(/\r?\n/);
   expect(lines[0]).toBe(
-    "username,name,email,phone,phone2,role,groups,operators,kind,state,last_sign_in_at,notes",
+    "username,name,email,phone,phone2,role,groups,operators,kind,state,record_status,last_sign_in_at,notes",
   );
   // The engineer's row: its person, the role in force, both groups and its operator.
   const row = lines.find((line) => line.startsWith(`${engineer.username},`)) ?? "";
   for (const part of [engineer.name, engineer.email, "inventory", networkName, serversName]) {
     expect(row).toContain(part);
   }
-  expect(row).toContain(",person,enabled,");
+  // 0.9.14: and its record status, which a retired account alone has otherwise (P-296).
+  expect(row).toContain(",person,enabled,active,");
   await expect(page.getByText(`Exported to ${download.suggestedFilename()}.`)).toBeVisible();
   await expectClean(page, seen);
 });
