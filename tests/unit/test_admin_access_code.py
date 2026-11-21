@@ -101,6 +101,7 @@ def test_reset_access_code_gives_a_retired_account_none(tmp_path: Path, monkeypa
         assert made.exit_code == 0, made.output
     with make_sessions(make_engine(config.database_url))() as db:
         user = db.scalar(select(User).where(User.username == "ada"))
+        assert user is not None
         accounts.retire_user(db, audit.SYSTEM, user.hid, None)
         db.commit()
 
