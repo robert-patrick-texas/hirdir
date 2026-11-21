@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessCodeHint,
   behindOperator,
   briefMark,
   briefText,
@@ -13,6 +14,7 @@ import {
   goneWords,
   groupGrants,
   labelProblem,
+  leastCodeLength,
   NEW_USER_FIELDS,
   type NewUserForm,
   newUserBody,
@@ -355,5 +357,32 @@ describe("a refusal of a new user is said at its field (P-283)", () => {
     for (const field of ["operator.label", "group_hids", "contact.name", "notes", "operator"]) {
       expect(NEW_USER_FIELDS).toContain(field);
     }
+  });
+});
+
+describe("a typed access code has a least length, which the form says (P-295)", () => {
+  it("reads the length from the settings, a whole number of 1 or more", () => {
+    const settings = [
+      { key: "currency", value: "USD" },
+      { key: "access_code_min_length", value: 12 },
+    ];
+    expect(leastCodeLength(settings)).toBe(12);
+    expect(leastCodeLength([{ key: "access_code_min_length", value: 1 }])).toBe(1);
+    // Not read yet, not there, or no length: the form says none.
+    expect(leastCodeLength(undefined)).toBeNull();
+    expect(leastCodeLength([{ key: "currency", value: "USD" }])).toBeNull();
+    for (const value of ["12", 0, 12.5, null]) {
+      expect(leastCodeLength([{ key: "access_code_min_length", value }])).toBeNull();
+    }
+  });
+
+  it("says the length under the field, and that an empty one is generated", () => {
+    expect(accessCodeHint(12)).toBe(
+      "Leave empty to have one generated. One typed here has at least 12 characters.",
+    );
+    expect(accessCodeHint(1)).toBe(
+      "Leave empty to have one generated. One typed here has at least 1 character.",
+    );
+    expect(accessCodeHint(null)).toBe("Leave empty to have one generated");
   });
 });

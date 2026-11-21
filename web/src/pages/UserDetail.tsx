@@ -19,7 +19,8 @@ import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
-import { behindOperator, briefMark } from "../lib/onboarding";
+import { useSettings } from "../lib/lists";
+import { accessCodeHint, behindOperator, briefMark, leastCodeLength } from "../lib/onboarding";
 import type { Option } from "../lib/patch";
 import { type PersonChoice, personChoice, personLabel, readPerson } from "../lib/people";
 import type { BroughtBack } from "../lib/person";
@@ -569,6 +570,8 @@ function AccessCode({ user, reload }: { user: User; reload: () => void }) {
   const [wanted, setWanted] = useState("");
   const [code, setCode] = useState<string | null>(null);
   const action = useAction();
+  // 0.9.14: the least length of a code that is typed, said under its field (P-295).
+  const settings = useSettings();
 
   async function reset() {
     setCode(null);
@@ -610,7 +613,7 @@ function AccessCode({ user, reload }: { user: User; reload: () => void }) {
           onChange={setWanted}
           maxLength={200}
           autoComplete="off"
-          hint="Leave empty to have one generated"
+          hint={accessCodeHint(leastCodeLength(settings.data))}
           error={action.error?.fields.access_code}
         />
         <p className="actions">

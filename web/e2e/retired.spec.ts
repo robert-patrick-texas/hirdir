@@ -698,3 +698,72 @@ test("P-297: a refusal by the server stays in the confirmation, and the list is 
   );
   await expectClean(page, seen, ["409 POST"]);
 });
+
+// To be run once both server lanes are in: the rule arrives with the server of the
+// profile lane (P-295). Until the server has the setting, the scenario is skipped.
+test("P-295: an access code typed for somebody else is held to the least length, said at its field", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const settings = await read<Array<{ key: string; value: unknown }>>(
+    request,
+    headers,
+    "/settings",
+  );
+  const least = settings.find((one) => one.key === "access_code_min_length")?.value;
+  test.skip(typeof least !== "number", "the server has no access_code_min_length yet");
+  const length = Number(least);
+  const short = "x".repeat(length - 1);
+  const long = `${suffix}-code`.padEnd(length, "x");
+  const hint = `One typed here has at least ${length} characters.`;
+  const username = `e2e-${suffix}-code`;
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // New user: the form says the length, and a shorter code is refused at its field.
+  await page.goto("./admin/users");
+  await page.getByRole("button", { name: "New user" }).click();
+  const form = region(page, "New user");
+  await expect(form).toContainText(hint);
+  await form.getByLabel("Username (required)").fill(username);
+  await form.getByRole("checkbox", { name: "Also a contact" }).uncheck();
+  const typed = form.getByLabel("Access code");
+  await typed.fill(short);
+  await form.getByRole("button", { name: "Create user" }).click();
+  await expect(typed).toHaveAttribute("aria-invalid", "true");
+  await expect(form).toContainText(`at least ${length} characters`);
+  // Nothing typed is lost.
+  await expect(typed).toHaveValue(short);
+  await expect(form.getByLabel("Username (required)")).toHaveValue(username);
+  await typed.fill(long);
+  await form.getByRole("button", { name: "Create user" }).click();
+  await expect(
+    page.getByTestId("secret-box").getByRole("heading", { name: `Access code for ${username}` }),
+  ).toBeVisible();
+  await page.getByTestId("user-made").getByRole("link", { name: username }).click();
+  await expect(page.getByRole("heading", { level: 1, name: username })).toBeVisible();
+  madeAccounts.push(new URL(page.url()).pathname.split("/").pop() ?? "");
+
+  // Its page: the same under New access code, and one left empty is still generated.
+  const section = region(page, "Access code");
+  await expect(section).toContainText(hint);
+  const wanted = section.getByLabel("New access code");
+  await wanted.fill(short);
+  await section.getByRole("button", { name: "Reset access code" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Reset access code" }).click();
+  await expect(wanted).toHaveAttribute("aria-invalid", "true");
+  await expect(wanted).toHaveValue(short);
+  await expect(page.getByTestId("secret-box")).toHaveCount(0);
+  await wanted.fill("");
+  await section.getByRole("button", { name: "Reset access code" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Reset access code" }).click();
+  await expect(
+    page
+      .getByTestId("secret-box")
+      .getByRole("heading", { name: `New access code for ${username}` }),
+  ).toBeVisible();
+  await expectClean(page, seen, ["422 POST", "422 POST"]);
+});

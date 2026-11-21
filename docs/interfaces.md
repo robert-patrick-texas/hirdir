@@ -3437,6 +3437,11 @@ P-292, P-296 to P-298):
 - **A username a retired account has.** Refused by the server on New user and on the
   Details of a user, the form says at the username that a retired account has it, with
   a link to that account, where it is renamed or brought back.
+- **An access code typed for somebody else.** The New user form and Access code on a
+  user's page say under the field the least length of a code that is typed, the setting
+  `access_code_min_length` as `GET /settings` gives it (P-295), and that one left empty
+  is generated, which is not held to it. A shorter one is refused by the server and
+  said at the field, with nothing typed lost.
 
 ### The grid
 

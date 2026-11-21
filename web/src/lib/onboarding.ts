@@ -364,3 +364,25 @@ export function newUserErrors(fields: Readonly<Record<string, string>>): Record<
   }
   return found;
 }
+
+/**
+ * 0.9.14: the least length of an access code that is typed, as the setting
+ * `access_code_min_length` says it (P-295), or null while the settings are not read or
+ * hold none: a whole number from 1 to 64.
+ */
+export function leastCodeLength(
+  settings: readonly { key: string; value: unknown }[] | undefined,
+): number | null {
+  const value = settings?.find((setting) => setting.key === "access_code_min_length")?.value;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+/**
+ * What a form says under an access code that an Admin types for somebody else: a code
+ * left empty is made by the server, and is not held to the length; one typed is.
+ */
+export function accessCodeHint(least: number | null): string {
+  const made = "Leave empty to have one generated";
+  if (least === null) return made;
+  return `${made}. One typed here has at least ${least} ${least === 1 ? "character" : "characters"}.`;
+}

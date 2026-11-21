@@ -25,7 +25,9 @@ import { Time } from "../components/Time";
 import { ValueLink } from "../components/ValueLink";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
+import { useSettings } from "../lib/lists";
 import {
+  accessCodeHint,
   briefMark,
   colourOnShow,
   type FollowedLabel,
@@ -34,6 +36,7 @@ import {
   goneGroups,
   goneWords,
   groupGrants,
+  leastCodeLength,
   NEW_USER_FIELDS,
   newUserBody,
   newUserErrors,
@@ -488,6 +491,8 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
   );
   // Read afresh for the form: another operator may have taken a colour since the page was.
   const colours = useColours(true);
+  // 0.9.14: the least length of a code that is typed, said under its field (P-295).
+  const settings = useSettings();
   // Until one is chosen the colour shows the next no operator has, as it was read for the
   // form, and what is shown is what is sent; before the colours have come, nothing is
   // shown, and the server gives the next.
@@ -704,7 +709,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
             onChange={setAccessCode}
             maxLength={200}
             autoComplete="off"
-            hint="Leave empty to have one generated"
+            hint={accessCodeHint(leastCodeLength(settings.data))}
             error={fields.access_code}
           />
         )}
