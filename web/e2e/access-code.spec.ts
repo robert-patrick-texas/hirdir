@@ -11,7 +11,7 @@
 // their own, and the users they make with the file's mark in their names, disabled when
 // the file ends.
 
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Locator } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { type Headers, session } from "./referenceSteps";
 import { region } from "./structure";
@@ -34,6 +34,25 @@ async function disable(request: APIRequestContext, headers: Headers, hid: string
   const { row_version } = (await found.json()) as { row_version: number };
   const answer = await request.patch(path, { headers, data: { row_version, disabled: true } });
   expect(answer.status(), `${hid} is disabled`).toBe(200);
+}
+
+/**
+ * Generate stands beside its box, level with it and a few pixels from its right edge;
+ * at a phone's width it goes under the box (review of 0.9.15).
+ */
+async function besideItsBox(box: Locator, button: Locator, narrow = false) {
+  const a = await box.boundingBox();
+  const b = await button.boundingBox();
+  if (!a || !b) throw new Error("the box or Generate is not drawn");
+  if (narrow) {
+    expect(b.y, "Generate is under the box").toBeGreaterThanOrEqual(a.y + a.height);
+    return;
+  }
+  const gap = b.x - (a.x + a.width);
+  expect(gap, "Generate is just right of the box").toBeGreaterThanOrEqual(0);
+  expect(gap, "Generate is just right of the box").toBeLessThanOrEqual(16);
+  expect(b.y, "Generate is level with the box").toBeLessThan(a.y + a.height);
+  expect(b.y + b.height, "Generate is level with the box").toBeGreaterThan(a.y);
 }
 
 /** Whether a username signs in with a code, through the API. */
@@ -61,6 +80,7 @@ test("New user: Generate puts a made code in the box, and the person is made wit
   await form.getByLabel("Role").selectOption({ label: "View-only" });
   const box = form.getByLabel("Access code");
   await expect(box).toHaveValue("");
+  await besideItsBox(box, form.getByRole("button", { name: "Generate", exact: true }));
   await expect(form).toContainText("Leave empty, or press Generate, to have one made.");
   await form.getByRole("button", { name: "Generate", exact: true }).click();
   await expect(box).not.toHaveValue("");
@@ -92,6 +112,11 @@ test("A user's page: Generate puts a made code in New access code, and Reset acc
 
   const section = region(page, "Access code");
   const box = section.getByLabel("New access code");
+  const generate = section.getByRole("button", { name: "Generate", exact: true });
+  await besideItsBox(box, generate);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await besideItsBox(box, generate, true);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await section.getByRole("button", { name: "Generate", exact: true }).click();
   await expect(box).not.toHaveValue("");
   const code = await box.inputValue();
