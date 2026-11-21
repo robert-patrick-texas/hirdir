@@ -152,6 +152,11 @@ class UserOut(Model):
     )
     is_service_account: bool
     disabled: bool
+    record_status: Literal["active", "retired"] = Field(
+        description="`retired`, the account of somebody who has left: it signs in with "
+        "nothing and holds no role, group, code or token until an Admin brings it back. "
+        "`disabled`, beside it, is an account that may not sign in for now (P-296)."
+    )
     role: str | None = Field(description="The highest role held directly or through a group.")
     groups: list[GroupRef]
     last_sign_in_at: datetime | None
@@ -236,6 +241,134 @@ class UserPatch(Model):
     notes: str | None = Field(
         default=None, max_length=NOTES_LENGTH, description="Null or blank clears them (P-281)."
     )
+
+
+# --- retired accounts, and a person retired together (P-291, P-296 to P-298) ---------
+
+# Which accounts a list of users holds: `no`, those that are not retired; `yes`, the
+# retired with the rest; `only`, the retired alone (P-296).
+Retired = Literal["no", "yes", "only"]
+
+
+class LinkedUser(Model):
+    """The user of a person, as the chain of the person shows it (P-297)."""
+
+    hid: str
+    username: str
+    record_status: Literal["active", "retired"]
+    disabled: bool
+    role: str | None = Field(description="The highest role held directly or through a group.")
+
+
+class LinkedContact(Model):
+    """The contact of a person, as the chain of the person shows it (P-297)."""
+
+    hid: str
+    name: str
+    email: str | None
+    record_status: Literal["draft", "active", "retired"]
+    uses: int = Field(
+        description="How many records name it, as `uses` of `GET /contacts/{hid}` counts them."
+    )
+
+
+class LinkedOperator(Model):
+    """An operator of a person, as the chain of the person shows it (P-297)."""
+
+    hid: str
+    label: str
+    colour: str | None
+    record_status: Literal["draft", "active", "retired"]
+    uses: int = Field(description="How many items, groups and places are given it as their own.")
+
+
+class Person(Model):
+    """The person a user, a contact or an operator belongs to: the user, the contact
+    that joins them and every operator of that contact, the retired among them, marked
+    so. The record asked for is among them (P-291, P-297)."""
+
+    user: LinkedUser | None = Field(
+        description="The user whose contact this is, a retired one too; null where there is none."
+    )
+    contact: LinkedContact | None = Field(
+        description="The contact; null for a user and for an operator that has none."
+    )
+    operators: list[LinkedOperator] = Field(
+        description="Every operator of the contact, in the order of their labels."
+    )
+
+
+class OperatorPlan(Model):
+    """What becomes of one operator of a person who is retired (P-297)."""
+
+    hid: str = Field(max_length=36)
+    action: Literal["retire", "keep", "open", "hand_over"] = Field(
+        description="`retire` releases what the label is on; `keep` leaves it as it is; "
+        "`open` leaves the label with no contact; `hand_over` gives it to `contact_hid`."
+    )
+    contact_hid: str | None = Field(
+        default=None,
+        max_length=36,
+        description="With `hand_over`, and with no other action: the contact, not retired "
+        "and not this person's, who is behind the label from then on.",
+    )
+
+
+class Linked(Model):
+    """What becomes of each record linked to the one a retirement is of (P-297). Every
+    linked record that is not retired is said, and the record the route is on is not."""
+
+    user: Literal["retire", "keep"] | None = None
+    contact: Literal["retire", "keep"] | None = None
+    operators: list[OperatorPlan] = Field(default=[], max_length=1000)
+
+
+class Retirement(Model):
+    """A retirement of a user, a contact or an operator: the version the record was read
+    at and, where anything is linked to it that is not retired, what becomes of each."""
+
+    row_version: int
+    linked: Linked | None = Field(
+        default=None, description="Left out for a record with nothing linked, as before."
+    )
+
+
+class OperatorBack(Model):
+    """A retired operator of the contact, brought back with the user (P-298)."""
+
+    hid: str = Field(max_length=36)
+    action: Literal["bring_back"]
+
+
+class LinkedBack(Model):
+    """What is brought back with a user (P-298)."""
+
+    contact: Literal["bring_back"] | None = Field(
+        default=None,
+        description="To be said where the contact of the user is retired: an account does "
+        "not stand on a retired contact.",
+    )
+    operators: list[OperatorBack] = Field(
+        default=[],
+        max_length=1000,
+        description="Those of the contact that are retired and are to be brought back; "
+        "none need be said.",
+    )
+
+
+class BringBack(Model):
+    """A retired user brought back, and what is brought back with it (P-298)."""
+
+    row_version: int
+    linked: LinkedBack | None = None
+
+
+class UserBroughtBack(Model):
+    """A user brought back, with its new access code, shown this once; a service account
+    has none (P-296)."""
+
+    user: UserOut
+    access_code: str | None
 
 
 class AccessCodeSet(Model):

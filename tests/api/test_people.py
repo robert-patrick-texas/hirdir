@@ -5,8 +5,9 @@ editable list (P-170). Through the API."""
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, left_retired
 from tests.api.test_files import Files, table
 from tests.conftest import INVENTORY_CODE, sign_in
 
@@ -118,7 +119,7 @@ def test_an_admin_gives_a_user_its_contact_and_takes_it_away(
     )
     assert given["display_name"] == "Lee Marchetti"
     contact = desk.get(f"/contacts/{marchetti['hid']}")
-    assert contact["user"] == {"hid": lee["hid"], "username": "lee"}
+    assert contact["user"] == {"hid": lee["hid"], "username": "lee", "record_status": "active"}
     listed = desk.get("/contacts", filter="is_user:eq:true")["items"]
     assert [one["name"] for one in listed] == ["Lee Marchetti"]
     taken = desk.patch(
@@ -157,7 +158,8 @@ def test_an_operator_is_internal_where_its_contact_is_a_user(
     desk = Maker(client, admin)
     user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
     lm = make.get(f"/operators/{lm['hid']}")
-    assert (lm["scope"], lm["user"]) == ("internal", {"hid": user["hid"], "username": "robin"})
+    shown = {"hid": user["hid"], "username": "robin", "record_status": "active"}
+    assert (lm["scope"], lm["user"]) == ("internal", shown)
     # Nothing was written to the operator: the scope is read with it.
     assert lm["row_version"] == 1
     assert [
@@ -307,15 +309,19 @@ def test_every_role_is_told_which_user_a_contact_is(
     desk.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
     looker = Maker(client, viewer)
     seen = looker.get(f"/contacts/{robin['hid']}")
-    assert (seen["is_user"], seen["user"]) == (True, {"hid": user["hid"], "username": "robin"})
+    shown = {"hid": user["hid"], "username": "robin", "record_status": "active"}
+    assert (seen["is_user"], seen["user"]) == (True, shown)
     operator = looker.get("/operators")["items"][0]
     assert (operator["scope"], operator["user"]["username"]) == ("internal", "robin")
 
 
-def test_a_label_whose_contact_is_retired_is_open_and_has_no_scope(make: Maker) -> None:
+def test_a_label_whose_contact_is_retired_is_open_and_has_no_scope(
+    make: Maker, db: Session
+) -> None:
     dana = make.contact("Dana Ruiz")
     op2 = make.post("/operators", {"label": "Op2", "contact_hid": dana["hid"]})
-    make.post(f"/contacts/{dana['hid']}/retire", {"row_version": dana["row_version"]}, 200)
+    # Left so before 0.9.14: since then a contact is not retired under a label (P-297).
+    left_retired(db, dana["hid"])
     shown = make.get(f"/operators/{op2['hid']}")
     assert (shown["is_open"], shown["scope"]) == (True, None)
     assert make.get("/operators", filter="scope:empty:true")["total"] == 1

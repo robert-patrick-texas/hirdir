@@ -8,7 +8,7 @@ import typer
 
 import hirdir
 from hirdir import clock
-from hirdir.cli import client, inventory, references
+from hirdir.cli import client, inventory, people, profile, references
 from hirdir.cli.admin import admin
 
 app = typer.Typer(
@@ -24,6 +24,8 @@ for name, group in inventory.GROUPS.items():
     app.add_typer(group, name=name)
 # References: files kept by hirdir and links to files kept elsewhere (P-162).
 app.add_typer(references.group, name="references")
+# A person's own profile: their contact, their operators and their access code (P-289).
+app.add_typer(profile.group, name="profile")
 app.command("import")(inventory.import_file)
 app.command("export")(inventory.export)
 app.command("renewals")(inventory.renewals_worklist)
@@ -55,17 +57,11 @@ def sign_in(
     target.token = session["token"]
     path = client.save_target(target)
     role = session["user"]["role"] or "no role"
-    until = clock.shown(datetime.fromisoformat(session["expires_at"]), _zone(target))
+    # The settings are closed to an account with no role, which signs in all the same.
+    zone = profile.zone(target, session["user"]["role"])
+    until = clock.shown(datetime.fromisoformat(session["expires_at"]), zone)
     typer.echo(f"signed in as {session['user']['username']} ({role}) until {until}")
     typer.echo(f"session kept in {path}", err=True)
-
-
-def _zone(target: client.Target) -> str:
-    """Return the application's time zone, as the server has it set."""
-    for setting in client.call(target, "GET", "/settings"):
-        if setting["key"] == "time_zone":
-            return setting["value"]
-    return clock.DEFAULT_ZONE
 
 
 @app.command("sign-out")
@@ -79,19 +75,35 @@ def sign_out() -> None:
 
 @app.command()
 def whoami(url: Url = None, token: Token = None, output: Format = "table") -> None:
-    """Show who is signed in and the role they hold."""
+    """Show who is signed in, the role they hold, the contact they are and the
+    operators they are behind."""
     me = client.call(client.load_target(url, token), "GET", "/auth/me")
     if output == "json":
         typer.echo(json.dumps(me, indent=2))
         return
     groups = ", ".join(group["name"] for group in me["groups"]) or "-"
     typer.echo(f"{me['username']}  role: {me['role'] or '-'}  groups: {groups}")
+    for line in profile.lines(me):
+        typer.echo(line)
 
 
 @users.command("list")
-def users_list(url: Url = None, token: Token = None, output: Format = "table") -> None:
-    """List users."""
-    page = client.call(client.load_target(url, token), "GET", "/users?limit=1000")
+def users_list(
+    retired: Annotated[
+        bool, typer.Option("--retired", help="The retired accounts as well, marked so.")
+    ] = False,
+    retired_only: Annotated[
+        bool, typer.Option("--retired-only", help="The retired accounts alone.")
+    ] = False,
+    url: Url = None,
+    token: Token = None,
+    output: Format = "table",
+) -> None:
+    """List users: those that are not retired, unless the retired are asked for."""
+    which = "only" if retired_only else "yes" if retired else "no"
+    page = client.call(
+        client.load_target(url, token), "GET", "/users", params={"limit": 1000, "retired": which}
+    )
     if output == "json":
         typer.echo(json.dumps(page["items"], indent=2))
         return
@@ -99,8 +111,63 @@ def users_list(url: Url = None, token: Token = None, output: Format = "table") -
     for user in page["items"]:
         kind = "service" if user["is_service_account"] else "person"
         state = "disabled" if user["disabled"] else "active"
+        if user["record_status"] == "retired":
+            state = "retired"
         groups = ", ".join(group["name"] for group in user["groups"])
         typer.echo(f"{user['username']:<24}{user['role'] or '-':<11}{kind:<9}{state:<10}{groups}")
+
+
+@users.command("retire")
+def users_retire(
+    username: Annotated[str, typer.Argument(help="A username or an HID.")],
+    contact: people.Fate = None,
+    operator: people.Labels = None,
+    dry_run: people.DryRun = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Retire the account of somebody who has left: it signs in no longer and loses its
+    groups, its role and its code. Prints its contact and the operators of that
+    contact, and takes what becomes of each: --contact and, for each, --operator."""
+    target = client.load_target(url, token)
+    found = people.find_user(target, username)
+    people.retire(
+        target,
+        "user",
+        "/users",
+        found,
+        found["username"],
+        user=None,
+        contact=contact,
+        operators=operator,
+        dry_run=dry_run,
+        find_contact=inventory.find_contact,
+    )
+
+
+@users.command("bring-back")
+def users_bring_back(
+    username: Annotated[str, typer.Argument(help="A username or an HID.")],
+    contact: Annotated[
+        bool, typer.Option("--contact", help="Bring its retired contact back with it.")
+    ] = False,
+    operator: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--operator",
+            metavar="LABEL",
+            help="A retired operator of its contact to bring back with it, once for each.",
+        ),
+    ] = None,
+    dry_run: people.DryRun = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Bring a retired account back: active, with a new access code, printed once, no
+    role and no group. An account whose contact is retired is brought back with it."""
+    target = client.load_target(url, token)
+    found = people.find_user(target, username)
+    people.bring_back(target, found, contact=contact, operators=operator, dry_run=dry_run)
 
 
 if __name__ == "__main__":

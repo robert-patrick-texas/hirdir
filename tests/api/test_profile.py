@@ -5,8 +5,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, left_retired
 from tests.conftest import ADMIN_CODE, INVENTORY_CODE, VIEWER_CODE, sign_in
 
 CODE = "kim-lee-code-01"
@@ -118,7 +119,7 @@ def test_me_lists_the_operators_by_label_and_leaves_the_retired_out(
     gone = next(
         one for one in desk.get("/operators", limit=100)["items"] if one["label"] == "mm-gone"
     )
-    desk.post(f"/operators/{gone['hid']}/retire", {"row_version": gone["row_version"]}, expect=200)
+    desk.release(gone)
     desk.post("/operators", {"label": "another"})
 
     me = _me(client, kim)
@@ -140,14 +141,12 @@ def test_an_account_with_no_contact_and_a_service_account_have_none(
 
 
 def test_a_retired_contact_is_shown_retired_and_stands_behind_no_operator(
-    client: TestClient, admin: dict
+    client: TestClient, admin: dict, db: Session
 ) -> None:
+    """A contact left retired under its account, as a release before 0.9.14 could leave
+    one: from 0.9.14 a contact is not retired while its account stands on it (P-297)."""
     kim, made = _person(client, admin)
-    desk = Maker(client, admin)
-    contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
-    desk.post(
-        f"/contacts/{contact['hid']}/retire", {"row_version": contact["row_version"]}, expect=200
-    )
+    left_retired(db, made["user"]["contact_hid"])
     me = _me(client, kim)
     assert me["contact"]["record_status"] == "retired"
     assert me["operators"] == []
@@ -267,7 +266,7 @@ def test_nothing_else_of_a_contact_is_changed_on_a_profile(
 
 
 def test_an_account_with_no_contact_or_a_retired_one_is_told_so(
-    client: TestClient, admin: dict, viewer: dict
+    client: TestClient, admin: dict, viewer: dict, db: Session
 ) -> None:
     none = client.patch(
         f"{API}/auth/me/contact", headers=viewer, json={"row_version": 1, "name": "Vic Example"}
@@ -277,10 +276,11 @@ def test_an_account_with_no_contact_or_a_retired_one_is_told_so(
 
     kim, made = _person(client, admin)
     desk = Maker(client, admin)
-    contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
-    retired = desk.post(
-        f"/contacts/{contact['hid']}/retire", {"row_version": contact["row_version"]}, expect=200
-    )
+    # Left retired under its account, as a release before 0.9.14 could leave one (P-297).
+    left_retired(db, made["user"]["contact_hid"])
+    retired = desk.get(f"/contacts/{made['user']['contact_hid']}")
+    contact = retired
+    assert retired["record_status"] == "retired"
     refused = client.patch(
         f"{API}/auth/me/contact",
         headers=kim,
@@ -396,9 +396,7 @@ def test_an_operator_of_another_a_retired_one_and_one_there_is_not_are_not_found
     desk = Maker(client, admin)
     open_label = desk.post("/operators", {"label": "open-label"})
     mine = desk.post("/operators", {"label": "kl-old", "contact_hid": made["user"]["contact_hid"]})
-    retired = desk.post(
-        f"/operators/{mine['hid']}/retire", {"row_version": mine["row_version"]}, expect=200
-    )
+    retired = desk.release(mine)
     events = len(_events(client, admin, record_type="operator", limit=500))
     for operator in (
         sams["operator"],

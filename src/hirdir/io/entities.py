@@ -1248,7 +1248,9 @@ class Contacts(Entity):
             given["tags"] = []
         if record is None:
             return contacts.create_contact(run.db, run.context, _new(given))
-        return contacts.update_contact(run.db, run.context, record.hid, record.row_version, given)
+        return contacts.update_contact(
+            run.db, run.context, record.hid, record.row_version, given, run.role
+        )
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         labels = tags.labels_of(db, self.record_type, [contact.hid for contact in found])
@@ -1314,7 +1316,9 @@ class Operators(Entity):
             given["contact_hid"] = run.contact(named).hid if named is not None else None
         if record is None:
             return operators.create_operator(run.db, run.context, _new(given))
-        return operators.update_operator(run.db, run.context, record.hid, record.row_version, given)
+        return operators.update_operator(
+            run.db, run.context, record.hid, record.row_version, given, run.role
+        )
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         people = _by_hid(db, Contact, {operator.contact_hid for operator in found})

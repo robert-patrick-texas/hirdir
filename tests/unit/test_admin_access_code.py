@@ -87,3 +87,27 @@ def test_the_setting_holds_for_hirdir_admin_and_a_made_code_is_not_held_to_it(
     again = runner.invoke(app, ["admin", "reset-access-code", "ada"])
     assert again.exit_code == 0, again.output
     assert _accepts(config, "ada", again.output.split("access code: ")[1].strip())
+
+
+def test_reset_access_code_gives_a_retired_account_none(tmp_path: Path, monkeypatch) -> None:
+    """A retired account is given no code by `hirdir admin` either, which comes to
+    `set_access_code` with no route (P-296)."""
+    from hirdir.domain import accounts
+
+    config = _installed(tmp_path, monkeypatch)
+    # Two Admins, so that retiring one leaves an Admin.
+    for name in ("ada", "bo"):
+        made = runner.invoke(app, ["admin", "create-user", "--role", "admin", name])
+        assert made.exit_code == 0, made.output
+    with make_sessions(make_engine(config.database_url))() as db:
+        user = db.scalar(select(User).where(User.username == "ada"))
+        assert user is not None
+        accounts.retire_user(db, audit.SYSTEM, user.hid, None)
+        db.commit()
+
+    for typed in ([], ["--access-code", "twelve-chars"]):
+        refused = runner.invoke(app, ["admin", "reset-access-code", *typed, "ada"])
+        assert refused.exit_code == 4, refused.output
+        assert "the account ada is retired and is given no access code" in refused.output
+    with make_sessions(make_engine(config.database_url))() as db:
+        assert db.scalar(select(User.access_code_hash).where(User.username == "ada")) is None

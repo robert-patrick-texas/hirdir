@@ -257,8 +257,8 @@ answers the user as before and, with it, `contact`, the contact the person is, w
 that is not retired whose contact is theirs, in the order of their labels, each with
 `hid`, `label`, `colour`, `record_status` and `row_version`. A person whose contact is
 retired has none: nobody is behind the labels of a retired contact (P-280). The answer
-of signing in carries the same as its `user`. The three routes below are
-for a session of any role, View-only too, and of an account that holds no role, as
+of signing in carries the same as its `user`. The three routes below are for a
+session of any role, View-only too, and of an account that holds no role, as
 `GET /auth/me` and `POST /auth/sign-out-everywhere` are: an account that is brought
 back has a new code and no role (P-296), and that person changes the code an Admin
 gave them, and what is their own, before a role is theirs. They carry no HID of a user
@@ -292,11 +292,10 @@ attempt is written as `access_code_delayed`. Both events are kept though the req
 is refused. A new code shorter than the setting `access_code_min_length`, or blank, or
 beginning or ending with a space, is a `422` on `access_code`; the current code is
 looked at first, so a request with both wrong is counted. Accepted, the code is
-changed, every other
-session of the person ends, and the answer is that of `POST /auth/sign-in`: a new
-`token` and `expires_at` for the session in hand, and the `user`. The token sent with
-the request is ended with the others. It is audited as `set_access_code`, by the
-person.
+changed, every other session of the person ends, and the answer is that of
+`POST /auth/sign-in`: a new `token` and `expires_at` for the session in hand, and the
+`user`. The token sent with the request is ended with the others. It is audited as
+`set_access_code`, by the person.
 
 `access_code_min_length`, a whole number from 1 to 64 and 12 from the start, is the
 least length of an access code that is typed: here, and by an Admin on `POST /users`
@@ -308,30 +307,53 @@ not held to it, and a code that is held already is not looked at.
 A user has `record_status`, `active` or `retired`, beside `disabled` (P-292, P-296).
 `GET /users` takes `retired`: `no`, which is the same as leaving it out and leaves the
 retired accounts out, `yes`, which lists them with the rest, and `only`. A retired
-account is in no gap: `contact=none` and `operator=none` leave it out.
-`POST /users/export` takes `retired` likewise, and the users' file has a
-`record_status` column after `disabled`.
+account is in no gap: `contact=none` and `operator=none` leave it out, whatever
+`retired` asks for; `some` is by the contact as before.
+`POST /users/export` takes `retired` likewise, in its address, and the users' file has
+a `record_status` column after `state`. The list is sorted by `record_status` as by
+its other columns.
+
+A retired account is no user for the rest of the inventory, and is shown still where
+the chain of a person is shown. `is_user` of a contact is false where its account is
+retired, and `GET /contacts` filters and sorts by that; `scope` of an operator is
+`external` where the account of its contact is retired, as for a contact that is no
+user's. `user`, on a contact and on an operator, still answers the retired account,
+with `record_status` beside its `hid` and `username`, so that a page shows it, marked;
+and so does `user` of the three `linked` routes below. The contact of a retired
+account is still that account's: it is given to no other user until it is taken off
+the retired one, by `PATCH /users/{hid}`.
 
 `POST /users/{hid}/retire` is for an Admin and takes `row_version` and `linked`,
 below. It ends every session of the account, erases its access code, takes it out of
 each of its groups, revokes each role granted to the account itself, and revokes the
 tokens of a service account; each is audited as it is when done by itself, and the
-account as `retire`. It is refused with a `409` where it would leave no Admin, and for
-an account that is retired already. The answer is the user.
+account as `retire`: a `remove_member` of each group, a `revoke_role` of the user for
+each role, a `revoke` of each token that was not revoked already, and then `retire` of
+the user, all under the ID of the one request. The contact of the account, where it
+has one, is told: an `update` of the contact with `user_record_status`, `active` to
+`retired`, as it is told with `user_hid` when it is given to a user (P-172), since it
+is no user's from then on and a kept answer that shows it is no longer good; and it is
+told again, `retired` to `active`, when the account is brought back. `disabled` stays
+what it was. It is refused with a `409` where it would leave no Admin who can sign in,
+and for an account that is retired already; a retired account is no Admin to keep. The
+answer is the user.
 
-A retired account is refused at sign-in as an unknown one is, and its sessions and
-tokens are refused. `PATCH /users/{hid}` changes only its `username`, its `notes` and
-its `contact_hid` to `null`; `disabled`, another contact, a new access code, a service
-token, a membership and a grant of a role are each a `409` that says the account is
-retired. A username that a retired account has is refused to another, on `POST /users`
-and `PATCH /users/{hid}`, with a `409` on `username` that says so and names the
-retired account as `existing`.
+A retired account is refused at sign-in as an unknown one is, with the same answer
+and after the same work, what is typed being checked against no code, and its sessions
+and tokens are refused. `PATCH /users/{hid}` changes only its `username`, its `notes`
+and its `contact_hid` to `null`; `disabled`, another contact, a new access code, a
+service token, a membership and a grant of a role are each a `409` that says the
+account is retired. A value that is the one the account has already is no change, and
+is not refused. A username that a retired account has is refused to another, on
+`POST /users` and `PATCH /users/{hid}`, with a `409` on `username` that says so and
+names the retired account as `existing`; and so is its contact, on `contact_hid`.
 
 `POST /users/{hid}/bring-back` is for an Admin and takes `row_version` and `linked`.
 The account is `active` again and not disabled, with a new access code, which the
 answer carries once as `POST /users` does, `access_code` beside `user`; a service
-account has none. It has no role and no group. It is audited as `bring_back`. An
-account that is not retired is a `409`.
+account has none. It has no role and no group, and its old sessions and its old code
+stay ended. It is audited as `bring_back`, with `disabled` among the changes where it
+was disabled. An account that is not retired is a `409`.
 
 `GET /users/{hid}/linked`, `GET /contacts/{hid}/linked` and
 `GET /operators/{hid}/linked`, which every role reads, answer the person a record
@@ -362,38 +384,67 @@ contact answers itself alone, and so does an operator with none.
 which releases what the label is on; `keep`; `open`, which leaves the label with no
 contact; or `hand_over`, with `contact_hid`, a contact that is not retired and is not
 this one, who is behind the label from then on. The record the route is on is not
-said: it is retired.
+said: it is retired. A request is judged whole before anything of it is written, in
+the order of this list.
 
+- What is said of a record that is not linked, or is retired already, or is the one
+  the route is on, is a `422` on `linked.user`, `linked.contact` or `linked.operators`;
+  and so is an operator said twice, `hand_over` with no `contact_hid` or to a contact
+  that is not there, is retired or is the person's own, and `contact_hid` with any
+  other action.
+- A request that retires a user is an Admin's, a `403` for anybody else. One that
+  retires a contact or an operator and keeps the user, or has none, is the Inventory
+  role's. So somebody of the Inventory role does not retire a contact that is a
+  user's: the user is kept, and the contact stays.
 - Every linked record that is not retired is said. Where one is not, nothing changes
   and the answer is a `409` whose `errors` name each, as `linked.user`,
   `linked.contact` and `linked.operators`, and whose `depends_on` lists the records
-  that were not said, each as `existing` names one (P-247), so that a page or a
-  command shows them and asks.
-- What is said of a record that is not linked, or is retired already, is a `422`.
+  that were not said, the operators first, then the user, then the contact, each as
+  `existing` names one (P-247), with `record_type` `operator`, `user` or `contact`,
+  so that a page or a command shows them and asks.
 - A contact is not retired while its account or a label stands on it: where the
   contact is retired, by its own route or as `retire`, `user` is `retire` and each
   operator is `retire`, `open` or `hand_over`, or the request is a `422` on the field
-  that keeps one.
-- A request that retires a user is an Admin's, a `403` for anybody else. One that
-  retires a contact or an operator and keeps the user, or has none, is the Inventory
-  role's.
-- Everything one request says is one transaction. Each record is audited as if it
-  were done by itself: `retire` of a user, of a contact and of an operator, and
-  `update` of an operator that is opened or handed over.
+  that keeps one. A contact that was left retired under its account or a label
+  before 0.9.14 is read as before, as no contact, and nothing obliges a later request
+  to put it right.
+- Everything one request says is one transaction, and a refusal at any step leaves
+  nothing changed and no event. The operators are changed first, then the user, then
+  the contact. Each record is audited as if it were done by itself, under the ID of
+  the one request: `retire` of a user, of a contact and of an operator, and `update`
+  of an operator that is opened or handed over. `row_version` is of the record the
+  route is on, and a stale one is a `409` before anything is written.
 
 A record with nothing linked that is not retired is retired with `row_version` alone,
-as before. A row of a file that retires a contact or an operator with something
-linked is rejected, with the linked records named.
+as before, and `linked` with nothing in it is the same. A contact or an operator that
+is retired already is left as it is by its retire route, as before; where `linked`
+says anything, the answer is a `409`: what is linked to a retired record is retired by
+its own route. A request that retires a contact, and one that gives a contact to a
+user or puts it behind a label, each take the one writer's place before they look, so
+that of two at the same moment the second sees what the first did: a contact is not
+retired under an account or a label that was given it a moment before.
+
+An import does not retire (see [Rules](#rules)): a row of a file that would change
+`record_status` to `retired` is rejected, of a contact and of an operator as of any
+record, with something linked or with nothing, so the rule of `linked` has nothing to
+hold in a file. A person is retired on a page, by the API or by the command line,
+where what becomes of each linked record is said.
 
 A retired user, contact or operator is brought back by an Admin alone (P-298).
 `PATCH /contacts/{hid}` and `PATCH /operators/{hid}` that change `record_status` from
-`retired` are a `403` for any other role, and so is a row of a file that does it; to
-retire one is the Inventory role's as before. `linked` of `POST /users/{hid}/bring-back`
+`retired`, to `active` or to `draft`, are a `403` for any other role, and a row of a
+file that does it is rejected for anybody but an Admin; to retire one is the Inventory
+role's as before, and so is any other change of a retired one. Every other kind of
+record is brought back as before. `linked` of `POST /users/{hid}/bring-back`
 has `contact`, `bring_back`, and `operators`, each with `hid` and `action`,
 `bring_back`. A user whose contact is retired is brought back with it, or the request
-is a `409` on `linked.contact` that names the contact; its contact taken off first, by
-`PATCH /users/{hid}`, it is brought back alone. The operators are those of that
-contact that are retired, and none need be said.
+is a `409` on `linked.contact` that names the contact as `existing`; its contact taken
+off first, by `PATCH /users/{hid}`, it is brought back alone. The operators are those
+of that contact that are retired, and none need be said. A contact that is not retired,
+an operator that is not retired or is not of that contact, and one said twice are each
+a `422` on the field. The contact is brought back first, then the operators, then the
+user, in one transaction, the contact and each operator audited as an `update` of its
+`record_status`, as when it is brought back by itself.
 
 ### Why a value, and what an operator is on
 
@@ -1470,7 +1521,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list. `'!clear` is the text `!clear`, which is how an export writes a value that is that text (see Export) |
 | Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155) |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
-| Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
+| Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft`. A row that brings a retired contact or operator back is rejected for anybody but an Admin, in the preview and in the apply (P-298) |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
 | Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, `outcome=rejected` keeps to one kind, and `sort` puts them in another order than that of the file |
 | Apply | `POST /imports/{hid}/apply` answers at once with `202` and the job, which is `queued`: the request stores it so and applies nothing. The process of the background work takes it up, within a second where nothing is ahead of it, and from then it is `applying`: one is applied at a time, in the order they were asked for, and a job waits as `queued` behind another, or for that process to be running. The rows are worked in the order the file needs, which is worked out once for the whole file, and applied 50 at a time, each batch a transaction of its own with its audit events. Between two batches the one writer's place is let go, so a sign-in or another change waits a fraction of a second at most. A batch never splits the rows that are checked together: the members of one group are one batch, however many they are. `GET /imports/{hid}` answers how far it has got while it works: `rows_done` of `row_count`, `applied` and `stale`, beside the counts of the preview. The job is `applied` once every row has been worked. Each row says what the apply did with it, in `applied_outcome`: `create`, `update` or `unchanged` as previewed, or `stale` or `rejected` with the reasons in `applied_reasons`; it is blank until the row is worked. `GET /imports/{hid}/rows` takes `applied_outcome` to keep to one kind. Of `rows_done`, what is neither `applied` nor `stale` is `rejected`. A job that stops partway, because of an error nobody foresaw or because the process of the background work stopped, keeps the batches it applied, undoes the one it had not finished, and is `stopped`, with the reason in `failure`; a job that that process finds `applying` as it starts was cut short by its stop, and is `stopped`, and one found `queued`, which nobody had taken up, is applied in its turn. `POST /imports/{hid}/apply` on a stopped job resumes it from the first row it had not applied, and nothing is applied twice. A job that is `queued`, `applying` or `applied` is not applied again: `409`. A job of a release before 0.7.0 may be `failed`: it was applied as one transaction and undone, and is not applied |
@@ -1578,7 +1629,9 @@ with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a 
 with no contact, `role`, the role in force, granted to the user or to a group it is in,
 blank where it has none, `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person` or `service`,
-`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC in the form the API gives
+`state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the
+retired accounts being left out unless `retired=yes` or `retired=only` is in the
+address, as on `GET /users`, `last_sign_in_at`, in UTC in the form the API gives
 it, `2026-11-20T15:04:05.123456Z`, and `notes`; several
 groups or operators stand in one cell, separated by `;` as the other files separate
 several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
@@ -1586,7 +1639,7 @@ are. So that a cell of groups is read as it was written, the name of a user grou
 no semicolon, as a tag's label and an operator's do not: `POST /user-groups` and a
 rename by `PATCH /user-groups/{hid}` refuse one with a `422` on `name`, and a group
 that holds one from before 0.9.13 keeps its name until it is renamed. It holds no access code, no token and no hash of either, and no column beyond
-these twelve. It is audited: an event `export` of the record type `user`, with no
+these thirteen. It is audited: an event `export` of the record type `user`, with no
 record of its own, whose `changes` hold `file_name` and `users`, how many rows the
 file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
 a user.
@@ -2748,6 +2801,13 @@ hirdir operators list                            # the labels, who is behind eac
 hirdir operators assign LM robin.achterberg@example.net   # hand over what LM looks after
 hirdir operators assign LM --open                # nobody behind it for now
 hirdir operators release LM                      # the label stands for nothing: the next level up decides
+hirdir operators retire LM --user keep --contact keep --operator KL=keep   # the same, with who is behind it kept
+hirdir contacts retire kim.lee@example.com --dry-run   # what is linked to the contact, and nothing sent
+hirdir contacts retire kim.lee@example.com --user retire \
+    --operator 'KL=hand_over:sam.okafor@example.com' --operator LM=retire   # the person, in one change
+hirdir users list --retired                      # the retired accounts as well; --retired-only for them alone
+hirdir users retire klee --contact keep --operator KL=keep --operator LM=open   # an Admin: the account alone
+hirdir users bring-back klee --contact           # an Admin: with its retired contact, and a new access code
 hirdir items set --filter 'group.name:eq:site2-sw-core' operator=LM --apply
 hirdir items list --filter 'effective.operator_hid:empty:true'    # what nobody is assigned to
 hirdir report summary --by operator              # who looks after how much
@@ -2850,6 +2910,7 @@ refused leaves the others as they went.
 | A stack of one switch | `hirdir items make-stack ITEM [--name NAME] [--member ITEM]...` makes a stack of an item that is in none, by `POST /items/{hid}/make-stack`, and prints the stack; each `--member` is one more member, added as a member that joins with its name and place given up, `drop_identity` (P-243) |
 | A replacement that was a mistake | `hirdir replacements remove HID --reason TEXT`, for an Admin, prints the replacement, its two items and its day, asks `Remove this replacement?`, and goes on only when it is answered yes, or `--yes` is given by a script; it then removes it by `POST /item-replacements/{hid}/remove` (P-238) |
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
+| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]...`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named, and prints the new access code once (P-298). `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, `--filter`, `--sort`, `--columns`, `--own-values`, `--include-sources`, `--place-codes`, `--include-archived` or `--include-drafts`, and refuses each with exit `2`, writing nothing: each table is whole, in the form that loads back, with its stored values and its retired and drafts (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |

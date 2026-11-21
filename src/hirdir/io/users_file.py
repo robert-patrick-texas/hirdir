@@ -32,6 +32,7 @@ COLUMNS = (
     "operators",
     "kind",
     "state",
+    "record_status",
     "last_sign_in_at",
     "notes",
 )
@@ -51,9 +52,12 @@ class UsersFile:
     rows: int
 
 
-def rows(db: Session) -> list[dict[str, Any]]:
-    """Return a row to each user, by username, in plain values."""
-    users = list(db.scalars(select(User).order_by(User.username_key)))
+def rows(db: Session, retired: str = "no") -> list[dict[str, Any]]:
+    """Return a row to each user, by username, in plain values: those that are not
+    retired, unless the retired are asked for, as the list of users takes it (P-296)."""
+    users = list(
+        db.scalars(accounts.retired_or_not(select(User), retired).order_by(User.username_key))
+    )
     contacts = accounts.contacts_of(db, users)
     groups, roles = accounts.groups_of_users(db, users), accounts.roles_of(db, users)
     operators = accounts.operators_of(db, users)
@@ -77,6 +81,7 @@ def rows(db: Session) -> list[dict[str, Any]]:
                 ],
                 "kind": "service" if user.is_service_account else "person",
                 "state": "disabled" if user.disabled else "enabled",
+                "record_status": user.record_status,
                 "last_sign_in_at": _TIME.dump_python(user.last_sign_in_at, mode="json"),
                 "notes": user.notes,
             }
@@ -90,9 +95,9 @@ def file_name(db: Session) -> str:
     return f"{stem}-users-{clock.stamp(clock.now(), settings.time_zone(db))}.csv"
 
 
-def export(db: Session, context: AuditContext) -> UsersFile:
+def export(db: Session, context: AuditContext, retired: str = "no") -> UsersFile:
     """Write the file of the users, and record in the audit trail that it was."""
-    written = rows(db)
+    written = rows(db, retired)
     name = file_name(db)
     audit.record(
         db,

@@ -70,8 +70,7 @@ def test_a_group_walks_up_the_groups_it_is_nested_in(make: Maker) -> None:
     ]
     # A retired operator is passed over as retired.
     _patch(make, f"/device-groups/{cluster['hid']}", operator_hid=marks["RA"]["hid"])
-    ra = make.get(f"/operators/{marks['RA']['hid']}")
-    make.post(f"/operators/{ra['hid']}/retire", {"row_version": ra["row_version"]}, 200)
+    make.release(marks["RA"])
     walk = _walk(make, f"/device-groups/{cluster['hid']}", "operator_hid")
     assert [step["outcome"] for step in walk["steps"]] == ["retired", "decides"]
 

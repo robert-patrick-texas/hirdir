@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from hirdir import clock
 from hirdir.api import schemas
 from hirdir.db.models import AuditEvent, Contact, Operator, RoleGrant, User, UserGroup
-from hirdir.domain import accounts, load, profile
+from hirdir.domain import accounts, contacts, load, operators, profile
+from hirdir.domain.people import Person
 from hirdir.io.measures import Host
 
 
@@ -79,27 +80,74 @@ def users_out(db: Session, users: Sequence[User]) -> list[schemas.UserOut]:
     for user in users:
         contact = people.get(user.contact_hid or "")
         role = roles[user.hid]
+        # The record status is read as the model has it, and checked against the shape's
+        # own list.
         out.append(
-            schemas.UserOut(
-                hid=user.hid,
-                username=user.username,
-                contact_hid=user.contact_hid,
-                contact=person_ref(contact),
-                display_name=contact.name if contact is not None else "",
-                email=(contact.email or "") if contact is not None else "",
-                operators=[operator_brief(one) for one in behind[user.hid]],
-                notes=user.notes,
-                is_service_account=user.is_service_account,
-                disabled=user.disabled,
-                role=role.value if role else None,
-                groups=[schemas.GroupRef(hid=g.hid, name=g.name) for g in groups[user.hid]],
-                last_sign_in_at=user.last_sign_in_at,
-                row_version=user.row_version,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
+            schemas.UserOut.model_validate(
+                {
+                    "hid": user.hid,
+                    "username": user.username,
+                    "contact_hid": user.contact_hid,
+                    "contact": person_ref(contact),
+                    "display_name": contact.name if contact is not None else "",
+                    "email": (contact.email or "") if contact is not None else "",
+                    "operators": [operator_brief(one) for one in behind[user.hid]],
+                    "notes": user.notes,
+                    "is_service_account": user.is_service_account,
+                    "disabled": user.disabled,
+                    "record_status": user.record_status,
+                    "role": role.value if role else None,
+                    "groups": [schemas.GroupRef(hid=g.hid, name=g.name) for g in groups[user.hid]],
+                    "last_sign_in_at": user.last_sign_in_at,
+                    "row_version": user.row_version,
+                    "created_at": user.created_at,
+                    "updated_at": user.updated_at,
+                }
             )
         )
     return out
+
+
+def person_out(db: Session, person: Person) -> schemas.Person:
+    """Return the person a record belongs to, as the chain of the three shows it: the
+    user, the contact and the operators, the retired among them, with how much names
+    the contact and each operator (P-297)."""
+    user, contact = person.user, person.contact
+    role = accounts.roles_of(db, [user])[user.hid] if user is not None else None
+    named = contacts.uses(db, [contact.hid])[contact.hid] if contact is not None else 0
+    given = operators.uses(db, [one.hid for one in person.operators])
+    return schemas.Person.model_validate(
+        {
+            "user": None
+            if user is None
+            else {
+                "hid": user.hid,
+                "username": user.username,
+                "record_status": user.record_status,
+                "disabled": user.disabled,
+                "role": role.value if role else None,
+            },
+            "contact": None
+            if contact is None
+            else {
+                "hid": contact.hid,
+                "name": contact.name,
+                "email": contact.email,
+                "record_status": contact.record_status,
+                "uses": named,
+            },
+            "operators": [
+                {
+                    "hid": one.hid,
+                    "label": one.label,
+                    "colour": one.colour,
+                    "record_status": one.record_status,
+                    "uses": given[one.hid],
+                }
+                for one in person.operators
+            ],
+        }
+    )
 
 
 def _group_fields(group: UserGroup, member_count: int, roles: list[str]) -> dict:

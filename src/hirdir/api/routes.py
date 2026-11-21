@@ -3,7 +3,7 @@
 import platform
 import sqlite3
 from dataclasses import asdict
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select, text
@@ -17,7 +17,7 @@ from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset
 from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
-from hirdir.domain import accounts, product, profile
+from hirdir.domain import accounts, people, product, profile
 from hirdir.io import background, measures, tables
 
 health = APIRouter(prefix="/health", tags=["Health"])
@@ -154,6 +154,25 @@ def sign_out_everywhere(principal: SignedIn, context: Audit, db: Db) -> None:
 
 
 Which = Literal["any", "some", "none"]
+# What a retirement of a user, a contact or an operator is refused with (P-297).
+RETIRING: dict[int | str, dict[str, Any]] = {
+    403: {
+        "model": schemas.Problem,
+        "description": "The request retires a user, and whoever asks is no Admin.",
+    },
+    409: {
+        "model": schemas.Problem,
+        "description": "A linked record that is not retired is not said in `linked`: "
+        "`errors` name `linked.user`, `linked.contact` and `linked.operators`, and "
+        "`depends_on` lists each record that was not said. Or the version is stale, the "
+        "account is retired already, or no Admin would be left.",
+    },
+    422: {
+        "model": schemas.Problem,
+        "description": "`linked` says something of a record that is not linked or is "
+        "retired already, or keeps the user or an operator of a contact that is retired.",
+    },
+}
 
 
 @users.get("/users")
@@ -176,12 +195,21 @@ def list_users(
             "operator that is not retired; `none`, the people behind none (P-280)."
         ),
     ] = "any",
+    retired: Annotated[
+        schemas.Retired,
+        Query(
+            description="`no`, the accounts that are not retired; `yes`, the retired with "
+            "the rest; `only`, the retired alone. A retired account is in no gap: neither "
+            "`none` holds it (P-296)."
+        ),
+    ] = "no",
     sort: Annotated[list[str] | None, Query(description=tables.USERS.help)] = None,
     limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.UserOut]:
     """List users, by username unless a sort says otherwise. `q` matches part of a
-    username or of the name of its contact; `contact` and `operator` find the gaps."""
+    username or of the name of its contact; `contact` and `operator` find the gaps; and
+    the retired accounts are left out unless `retired` asks for them."""
     page, total = accounts.list_users(
         db,
         q,
@@ -190,6 +218,7 @@ def list_users(
         tables.arrange(tables.USERS, sort),
         contact=contact,
         operator=operator,
+        retired=retired,
     )
     return schemas.Page(items=views.users_out(db, page), total=total, limit=limit, offset=offset)
 
@@ -232,18 +261,76 @@ def update_user(
 ) -> schemas.UserOut:
     """Change a user: its username, its contact, its notes, or whether it is disabled.
     Disabling a user ends every session they have; a new username keeps them. The name,
-    email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`."""
+    email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of
+    a retired account only the username, the notes and its contact taken off are
+    changed: anything else is a `409` (P-296)."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     return views.user_out(db, accounts.update_user(db, context, hid, body.row_version, fields))
+
+
+@users.get("/users/{hid}/linked")
+def user_linked(hid: str, _: Viewer, db: Db) -> schemas.Person:
+    """Return the person a user is: itself, its contact and the operators of that
+    contact, the retired among them, marked so (P-297). Every role reads it."""
+    return views.person_out(db, people.of_user(db, hid))
+
+
+@users.post("/users/{hid}/retire", responses=RETIRING)
+def retire_user(
+    hid: str, body: schemas.Retirement, principal: Admin, context: Audit, db: Db
+) -> schemas.UserOut:
+    """Retire the account of somebody who has left (P-296): every session ends, the
+    access code is erased, the account leaves each of its groups and loses each role of
+    its own, and a service account's tokens are revoked, each audited as when done by
+    itself. `linked` says what becomes of its contact and of the operators of that
+    contact (P-297). Refused where it would leave no Admin."""
+    people.retire(
+        db,
+        context,
+        principal.role,
+        people.USER,
+        hid,
+        body.row_version,
+        body.linked.model_dump() if body.linked else None,
+    )
+    return views.user_out(db, accounts.get_user(db, hid))
+
+
+@users.post(
+    "/users/{hid}/bring-back",
+    responses={
+        409: {
+            "model": schemas.Problem,
+            "description": "The account is not retired; or its contact is retired and is "
+            "not brought back with it, the contact named on `linked.contact`.",
+        }
+    },
+)
+def bring_back_user(
+    hid: str, body: schemas.BringBack, principal: Admin, context: Audit, db: Db
+) -> schemas.UserBroughtBack:
+    """Bring a retired account back (P-296, P-298): active and not disabled, with a new
+    access code, which is not shown again, no role and no group. `linked` brings back
+    its retired contact with it, and those of that contact's retired operators it names."""
+    back = people.bring_back(
+        db,
+        context,
+        principal.role,
+        hid,
+        body.row_version,
+        body.linked.model_dump() if body.linked else None,
+    )
+    return schemas.UserBroughtBack(user=views.user_out(db, back.user), access_code=back.access_code)
 
 
 @users.post("/users/{hid}/access-code")
 def set_access_code(
     hid: str, body: schemas.AccessCodeSet, _: Admin, context: Audit, db: Db
 ) -> schemas.AccessCodeOut:
-    """Give a user a new access code. Every session they have ends."""
+    """Give a user a new access code. Every session they have ends. A retired account
+    is given none: a `409` (P-296)."""
     return schemas.AccessCodeOut(
-        access_code=accounts.set_access_code(db, context, hid, body.access_code)
+        access_code=accounts.give_access_code(db, context, hid, body.access_code)
     )
 
 

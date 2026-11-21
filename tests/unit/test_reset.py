@@ -266,3 +266,23 @@ def test_a_reset_keeps_the_contact_each_user_is(installed: Config) -> None:
         assert list(history) == ["create", "update"]
         # What is left is no inventory: the examples may be loaded into it.
         assert reset.held(db) == {}
+
+
+def test_a_reset_keeps_a_retired_account_and_the_contact_it_still_names(installed: Config) -> None:
+    """A retired account keeps its contact, to be brought back as the person it was
+    (P-296): a reset keeps both."""
+    with make_sessions(make_engine(installed.database_url))() as db:
+        lee, _ = accounts.create_user(
+            db, audit.SYSTEM, username="lee", contact={"name": "Lee Example"}
+        )
+        accounts.retire_user(db, audit.SYSTEM, lee.hid, None)
+        contacts.retire_contact(db, audit.SYSTEM, lee.contact_hid or "", None)
+        kept_hid = lee.contact_hid
+        db.commit()
+    result = runner.invoke(app, ["admin", "reset"], input="reset\n")
+    assert result.exit_code == 0, result.output
+    with make_sessions(make_engine(installed.database_url))() as db:
+        assert [contact.hid for contact in db.scalars(select(Contact))] == [kept_hid]
+        kept = db.scalar(select(User).where(User.username == "lee"))
+        assert kept is not None
+        assert (kept.contact_hid, kept.record_status) == (kept_hid, "retired")
