@@ -294,9 +294,20 @@ not held to it, and a code that is held already is not looked at.
 A user has `record_status`, `active` or `retired`, beside `disabled` (P-292, P-296).
 `GET /users` takes `retired`: `no`, which is the same as leaving it out and leaves the
 retired accounts out, `yes`, which lists them with the rest, and `only`. A retired
-account is in no gap: `contact=none` and `operator=none` leave it out.
-`POST /users/export` takes `retired` likewise, and the users' file has a
-`record_status` column after `disabled`.
+account is in no gap: `contact=none` and `operator=none` leave it out, whatever
+`retired` asks for; `some` is by the contact as before.
+`POST /users/export` takes `retired` likewise, in its address, and the users' file has
+a `record_status` column after `state`.
+
+A retired account is no user for the rest of the inventory, and is shown still where
+the chain of a person is shown. `is_user` of a contact is false where its account is
+retired, and `GET /contacts` filters and sorts by that; `scope` of an operator is
+`external` where the account of its contact is retired, as for a contact that is no
+user's. `user`, on a contact and on an operator, still answers the retired account,
+with `record_status` beside its `hid` and `username`, so that a page shows it, marked;
+and so does `user` of the three `linked` routes below. The contact of a retired
+account is still that account's: it is given to no other user until it is taken off
+the retired one, by `PATCH /users/{hid}`.
 
 `POST /users/{hid}/retire` is for an Admin and takes `row_version` and `linked`,
 below. It ends every session of the account, erases its access code, takes it out of
@@ -1564,7 +1575,9 @@ with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a 
 with no contact, `role`, the role in force, granted to the user or to a group it is in,
 blank where it has none, `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person` or `service`,
-`state`, `enabled` or `disabled`, `last_sign_in_at`, in UTC in the form the API gives
+`state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the
+retired accounts being left out unless `retired=yes` or `retired=only` is in the
+address, as on `GET /users`, `last_sign_in_at`, in UTC in the form the API gives
 it, `2026-11-20T15:04:05.123456Z`, and `notes`; several
 groups or operators stand in one cell, separated by `;` as the other files separate
 several values, and a cell that begins with `=`, `+`, `-` or `@` is guarded as theirs
@@ -1572,7 +1585,7 @@ are. So that a cell of groups is read as it was written, the name of a user grou
 no semicolon, as a tag's label and an operator's do not: `POST /user-groups` and a
 rename by `PATCH /user-groups/{hid}` refuse one with a `422` on `name`, and a group
 that holds one from before 0.9.13 keeps its name until it is renamed. It holds no access code, no token and no hash of either, and no column beyond
-these twelve. It is audited: an event `export` of the record type `user`, with no
+these thirteen. It is audited: an event `export` of the record type `user`, with no
 record of its own, whose `changes` hold `file_name` and `users`, how many rows the
 file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
 a user.

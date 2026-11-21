@@ -2671,8 +2671,43 @@ export interface paths {
       };
     };
   };
+  "/api/v1/contacts/{hid}/linked": {
+    /**
+     * Return the person a contact is: itself, the user it is and the operators it
+     * stands behind, the retired among them, marked so (P-297). Every role reads it.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Person"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/contacts/{hid}/retire": {
-    /** Retire a contact. Its assignments stay, and show it as retired. */
+    /**
+     * Retire a contact. Its assignments stay, and show it as retired. `linked` says
+     * what becomes of its user and of each operator it stands behind: a contact is not
+     * retired while its account or a label stands on it (P-297). One that retires the
+     * user is an Admin's.
+     */
     post: {
       parameters: {
         query?: never;
@@ -2686,7 +2721,7 @@ export interface paths {
       };
       requestBody: {
         content: {
-          "application/json": components["schemas"]["RowVersion"];
+          "application/json": components["schemas"]["Retirement"];
         };
       };
       responses: {
@@ -2696,10 +2731,22 @@ export interface paths {
             "application/json": components["schemas"]["ContactOut"];
           };
         };
-        /** Validation Error */
+        /** The request retires a user, and whoever asks is no Admin. */
+        403: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** A linked record that is not retired is not said in `linked`: `errors` name `linked.user`, `linked.contact` and `linked.operators`, and `depends_on` lists each record that was not said. Or the version is stale, the account is retired already, or no Admin would be left. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** `linked` says something of a record that is not linked or is retired already, or keeps the user or an operator of a contact that is retired. */
         422: {
           content: {
-            "application/json": components["schemas"]["HTTPValidationError"];
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
@@ -5676,10 +5723,43 @@ export interface paths {
       };
     };
   };
+  "/api/v1/operators/{hid}/linked": {
+    /**
+     * Return the person behind an operator: its contact, the user that contact is and
+     * every operator of that contact, the retired among them, marked so (P-297). Every
+     * role reads it.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Person"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/operators/{hid}/retire": {
     /**
      * Release what an operator is on: retired, the label stands for nothing, and each
-     * thing it was on has the operator of the next level up, or none.
+     * thing it was on has the operator of the next level up, or none. `linked` says what
+     * becomes of its contact, of the user that contact is and of the other operators of
+     * that contact (P-297). One that retires the user is an Admin's.
      */
     post: {
       parameters: {
@@ -5694,7 +5774,7 @@ export interface paths {
       };
       requestBody: {
         content: {
-          "application/json": components["schemas"]["RowVersion"];
+          "application/json": components["schemas"]["Retirement"];
         };
       };
       responses: {
@@ -5704,10 +5784,22 @@ export interface paths {
             "application/json": components["schemas"]["OperatorOut"];
           };
         };
-        /** Validation Error */
+        /** The request retires a user, and whoever asks is no Admin. */
+        403: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** A linked record that is not retired is not said in `linked`: `errors` name `linked.user`, `linked.contact` and `linked.operators`, and `depends_on` lists each record that was not said. Or the version is stale, the account is retired already, or no Admin would be left. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** `linked` says something of a record that is not linked or is retired already, or keeps the user or an operator of a contact that is retired. */
         422: {
           content: {
-            "application/json": components["schemas"]["HTTPValidationError"];
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
@@ -8208,7 +8300,8 @@ export interface paths {
   "/api/v1/users": {
     /**
      * List users, by username unless a sort says otherwise. `q` matches part of a
-     * username or of the name of its contact; `contact` and `operator` find the gaps.
+     * username or of the name of its contact; `contact` and `operator` find the gaps; and
+     * the retired accounts are left out unless `retired` asks for them.
      */
     get: {
       parameters: {
@@ -8218,6 +8311,8 @@ export interface paths {
           contact?: "any" | "some" | "none";
           /** `some`, the users whose contact, not retired, stands behind an operator that is not retired; `none`, the people behind none (P-280). */
           operator?: "any" | "some" | "none";
+          /** `no`, the accounts that are not retired; `yes`, the retired with the rest; `only`, the retired alone. A retired account is in no gap: neither `none` holds it (P-296). */
+          retired?: "no" | "yes" | "only";
           /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
@@ -8278,12 +8373,16 @@ export interface paths {
   "/api/v1/users/export": {
     /**
      * Export the users as CSV, a row to each, by username (P-288): its person, the role
-     * in force, its groups and operators, its kind and state, when it last signed in, and
-     * its notes. No access code, token or hash of either is in it. Audited.
+     * in force, its groups and operators, its kind, its state and its record status, when
+     * it last signed in, and its notes. The retired accounts are left out unless `retired`
+     * asks for them (P-296). No access code, token or hash of either is in it. Audited.
      */
     post: {
       parameters: {
-        query?: never;
+        query?: {
+          /** `no`, the accounts that are not retired, as the list of users shows them; `yes`, the retired with the rest; `only`, the retired alone (P-296). */
+          retired?: "no" | "yes" | "only";
+        };
         path?: never;
         header?: never;
       };
@@ -8293,6 +8392,12 @@ export interface paths {
         200: {
           content: {
             "text/csv": unknown;
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
           };
         };
       };
@@ -8384,6 +8489,126 @@ export interface paths {
         422: {
           content: {
             "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/users/{hid}/bring-back": {
+    /**
+     * Bring a retired account back (P-296, P-298): active and not disabled, with a new
+     * access code, which is not shown again, no role and no group. `linked` brings back
+     * its retired contact with it, and those of that contact's retired operators it names.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["BringBack"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["UserBroughtBack"];
+          };
+        };
+        /** The account is not retired; or its contact is retired and is not brought back with it, the contact named on `linked.contact`. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/users/{hid}/linked": {
+    /**
+     * Return the person a user is: itself, its contact and the operators of that
+     * contact, the retired among them, marked so (P-297). Every role reads it.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Person"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/users/{hid}/retire": {
+    /**
+     * Retire the account of somebody who has left (P-296): every session ends, the
+     * access code is erased, the account leaves each of its groups and loses each role of
+     * its own, and a service account's tokens are revoked, each audited as when done by
+     * itself. `linked` says what becomes of its contact and of the operators of that
+     * contact (P-297). Refused where it would leave no Admin.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["Retirement"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["UserOut"];
+          };
+        };
+        /** The request retires a user, and whoever asks is no Admin. */
+        403: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** A linked record that is not retired is not said in `linked`: `errors` name `linked.user`, `linked.contact` and `linked.operators`, and `depends_on` lists each record that was not said. Or the version is stale, the account is retired already, or no Admin would be left. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** `linked` says something of a record that is not linked or is retired already, or keeps the user or an operator of a contact that is retired. */
+        422: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
@@ -9117,6 +9342,11 @@ export interface components {
       record_type: string;
       request_id: string;
       via: string;
+    };
+    /** A retired user brought back, and what is brought back with it (P-298). */
+    BringBack: {
+      linked?: components["schemas"]["LinkedBack"] | null;
+      row_version: number;
     };
     /** One change to many items. The rows are named by a filter, by HIDs, or as all. */
     BulkUpdate: {
@@ -11573,6 +11803,49 @@ export interface components {
       /** Begins with https:// or http://, with no space, `<` or `>`; 2,000 at most. */
       url: string;
     };
+    /**
+     * What becomes of each record linked to the one a retirement is of (P-297). Every
+     * linked record that is not retired is said, and the record the route is on is not.
+     */
+    Linked: {
+      contact?: "retire" | "keep" | null;
+      operators?: components["schemas"]["OperatorPlan"][];
+      user?: "retire" | "keep" | null;
+    };
+    /** What is brought back with a user (P-298). */
+    LinkedBack: {
+      /** To be said where the contact of the user is retired: an account does not stand on a retired contact. */
+      contact?: "bring_back" | null;
+      /** Those of the contact that are retired and are to be brought back; none need be said. */
+      operators?: components["schemas"]["OperatorBack"][];
+    };
+    /** The contact of a person, as the chain of the person shows it (P-297). */
+    LinkedContact: {
+      email: string | null;
+      hid: string;
+      name: string;
+      record_status: "draft" | "active" | "retired";
+      /** How many records name it, as `uses` of `GET /contacts/{hid}` counts them. */
+      uses: number;
+    };
+    /** An operator of a person, as the chain of the person shows it (P-297). */
+    LinkedOperator: {
+      colour: string | null;
+      hid: string;
+      label: string;
+      record_status: "draft" | "active" | "retired";
+      /** How many items, groups and places are given it as their own. */
+      uses: number;
+    };
+    /** The user of a person, as the chain of the person shows it (P-297). */
+    LinkedUser: {
+      disabled: boolean;
+      hid: string;
+      record_status: "active" | "retired";
+      /** The highest role held directly or through a group. */
+      role: string | null;
+      username: string;
+    };
     /** What a list route takes, as a body, for a filter too large for a URL. */
     ListQuery: {
       /** Only these fields of each record. `hid` and `row_version` always come. */
@@ -12285,6 +12558,11 @@ export interface components {
       /** Every item it is in force for. */
       totals: components["schemas"]["ItemCount"];
     };
+    /** A retired operator of the contact, brought back with the user (P-298). */
+    OperatorBack: {
+      action: "bring_back";
+      hid: string;
+    };
     /** An operator a person stands behind, as a user and a contact name it (P-280). */
     OperatorBrief: {
       colour: string | null;
@@ -12355,6 +12633,14 @@ export interface components {
       level: "region" | "site" | "location";
       path: string;
       places_beneath: components["schemas"]["PlacesBeneath"];
+    };
+    /** What becomes of one operator of a person who is retired (P-297). */
+    OperatorPlan: {
+      /** `retire` releases what the label is on; `keep` leaves it as it is; `open` leaves the label with no contact; `hand_over` gives it to `contact_hid`. */
+      action: "retire" | "keep" | "open" | "hand_over";
+      /** With `hand_over`, and with no other action: the contact, not retired and not this person's, who is behind the label from then on. */
+      contact_hid?: string | null;
+      hid: string;
     };
     /** An operator, as shown on what it is given to: the label, and who is behind it. */
     OperatorRef: {
@@ -12680,6 +12966,19 @@ export interface components {
     PastAndApproaching: {
       approaching: components["schemas"]["ItemsCounted"];
       past: components["schemas"]["ItemsCounted"];
+    };
+    /**
+     * The person a user, a contact or an operator belongs to: the user, the contact
+     * that joins them and every operator of that contact, the retired among them, marked
+     * so. The record asked for is among them (P-291, P-297).
+     */
+    Person: {
+      /** The contact; null for a user and for an operator that has none. */
+      contact: components["schemas"]["LinkedContact"] | null;
+      /** Every operator of the contact, in the order of their labels. */
+      operators: components["schemas"]["LinkedOperator"][];
+      /** The user whose contact this is, a retired one too; null where there is none. */
+      user: components["schemas"]["LinkedUser"] | null;
     };
     /** The contact a user is: its name, email and numbers, read when the user is read. */
     PersonRef: {
@@ -13465,6 +13764,15 @@ export interface components {
       /** What this request retired. */
       retired: components["schemas"]["RecordLabel"][];
     };
+    /**
+     * A retirement of a user, a contact or an operator: the version the record was read
+     * at and, where anything is linked to it that is not retired, what becomes of each.
+     */
+    Retirement: {
+      /** Left out for a record with nothing linked, as before. */
+      linked?: components["schemas"]["Linked"] | null;
+      row_version: number;
+    };
     /** The record a reason to look at an item is about: its host, or a system. */
     ReviewAbout: {
       hid: string;
@@ -13877,10 +14185,22 @@ export interface components {
       /** The state to move to. Null returns a minor item to the standing of the item it is in. */
       to: string | null;
     };
-    /** The user a contact is: who it signs in as. */
+    /**
+     * The user a contact is: who it signs in as. A retired account is shown still,
+     * marked so, and is no user for `is_user` and `scope` (P-296).
+     */
     UserBrief: {
       hid: string;
+      record_status: "active" | "retired";
       username: string;
+    };
+    /**
+     * A user brought back, with its new access code, shown this once; a service account
+     * has none (P-296).
+     */
+    UserBroughtBack: {
+      access_code: string | null;
+      user: components["schemas"]["UserOut"];
     };
     /** A new user. The person is a contact: one there is, a new one, or none yet. */
     UserCreate: {
@@ -13931,6 +14251,8 @@ export interface components {
       notes: string | null;
       /** The operators whose contact is the user's, retired ones among them, in the order of their labels; none for a user with no contact (P-280). */
       operators: components["schemas"]["OperatorBrief"][];
+      /** `retired`, the account of somebody who has left: it signs in with nothing and holds no role, group, code or token until an Admin brings it back. `disabled`, beside it, is an account that may not sign in for now (P-296). */
+      record_status: "active" | "retired";
       /** The highest role held directly or through a group. */
       role: string | null;
       row_version: number;

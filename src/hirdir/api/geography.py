@@ -3,15 +3,16 @@ them, what a place has in force, contacts and their assignments."""
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from hirdir.api import lists, shapes
+from hirdir.api import lists, schemas, shapes, views
 from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
+from hirdir.api.routes import RETIRING
 from hirdir.api.schemas import Page
-from hirdir.domain import contacts, geography, moves, operators
+from hirdir.domain import contacts, geography, moves, operators, people
 from hirdir.io import fields, filters, operated, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
@@ -333,13 +334,40 @@ def update_contact(
     return shapes.contacts_out(db, [changed])[0]
 
 
-@contact_routes.post("/{hid}/retire")
+@contact_routes.get("/{hid}/linked")
+def contact_linked(hid: str, _: Viewer, db: Db) -> schemas.Person:
+    """Return the person a contact is: itself, the user it is and the operators it
+    stands behind, the retired among them, marked so (P-297). Every role reads it."""
+    return views.person_out(db, people.of_contact(db, hid))
+
+
+def _retire(
+    db: Db, context: Audit, principal: Inventory, kind: str, hid: str, body: schemas.Retirement
+) -> None:
+    try:
+        people.retire(
+            db,
+            context,
+            principal.role,
+            kind,
+            hid,
+            body.row_version,
+            body.linked.model_dump() if body.linked else None,
+        )
+    except NotImplementedError:
+        raise HTTPException(501, "Not built yet") from None
+
+
+@contact_routes.post("/{hid}/retire", responses=RETIRING)
 def retire_contact(
-    hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
+    hid: str, body: schemas.Retirement, principal: Inventory, context: Audit, db: Db
 ) -> r.ContactOut:
-    """Retire a contact. Its assignments stay, and show it as retired."""
-    retired = contacts.retire_contact(db, context, hid, body.row_version)
-    return shapes.contacts_out(db, [retired])[0]
+    """Retire a contact. Its assignments stay, and show it as retired. `linked` says
+    what becomes of its user and of each operator it stands behind: a contact is not
+    retired while its account or a label stands on it (P-297). One that retires the
+    user is an Admin's."""
+    _retire(db, context, principal, people.CONTACT, hid, body)
+    return shapes.contacts_out(db, [contacts.get_contact(db, hid)])[0]
 
 
 # --- operators -----------------------------------------------------------------------
@@ -396,14 +424,24 @@ def update_operator(
     return shapes.operators_out(db, [changed])[0]
 
 
-@operator_routes.post("/{hid}/retire")
+@operator_routes.get("/{hid}/linked")
+def operator_linked(hid: str, _: Viewer, db: Db) -> schemas.Person:
+    """Return the person behind an operator: its contact, the user that contact is and
+    every operator of that contact, the retired among them, marked so (P-297). Every
+    role reads it."""
+    return views.person_out(db, people.of_operator(db, hid))
+
+
+@operator_routes.post("/{hid}/retire", responses=RETIRING)
 def retire_operator(
-    hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
+    hid: str, body: schemas.Retirement, principal: Inventory, context: Audit, db: Db
 ) -> r.OperatorOut:
     """Release what an operator is on: retired, the label stands for nothing, and each
-    thing it was on has the operator of the next level up, or none."""
-    retired = operators.retire_operator(db, context, hid, body.row_version)
-    return shapes.operators_out(db, [retired])[0]
+    thing it was on has the operator of the next level up, or none. `linked` says what
+    becomes of its contact, of the user that contact is and of the other operators of
+    that contact (P-297). One that retires the user is an Admin's."""
+    _retire(db, context, principal, people.OPERATOR, hid, body)
+    return shapes.operators_out(db, [operators.get_operator(db, hid)])[0]
 
 
 # --- contact assignments -------------------------------------------------------------

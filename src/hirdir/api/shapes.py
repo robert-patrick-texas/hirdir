@@ -371,7 +371,9 @@ def operators_out(db: Session, found: list[Operator]) -> list[shapes.OperatorOut
 
 
 def _user_brief(user: User | None) -> shapes.UserBrief | None:
-    return shapes.UserBrief(hid=user.hid, username=user.username) if user is not None else None
+    if user is None:
+        return None
+    return shapes.UserBrief.model_validate(user)
 
 
 def _contact_ref(contact: Contact) -> shapes.ContactRef:

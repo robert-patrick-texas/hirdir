@@ -46,6 +46,9 @@ LAST_USED_GRANULARITY_SECONDS = 60
 WHICH = ("any", "some", "none")
 # A user's notes are as long as a contact's may be (P-281).
 MAX_NOTES = 10_000
+# Which accounts a list of users holds: those that are not retired, the retired with
+# the rest, or the retired alone (P-296).
+RETIRED = ("no", "yes", "only")
 
 
 class NotSignedIn(Exception):
@@ -125,18 +128,32 @@ def _behind_an_operator() -> ColumnElement[bool]:
     )
 
 
+def retired_or_not(query: AnySelect, retired: str) -> AnySelect:
+    """Narrow a statement of users to those that are not retired, `no`, or to the
+    retired alone, `only`; `yes` keeps them all (P-296)."""
+    if retired not in RETIRED:
+        raise Invalid("retired is not acceptable", {"retired": "no, yes or only"})
+    if retired == "no":
+        return query.where(User.record_status != "retired")
+    if retired == "only":
+        return query.where(User.record_status == "retired")
+    return query
+
+
 def _narrowed(query: AnySelect, contact: str, operator: str) -> AnySelect:
     """Narrow a list of users, which joins their contacts, to those that are, or are not,
     a contact and an operator.
 
     `some` keeps the users that are one, `none` those that are not, and `any` all of
     them. A contact that is retired is as none. A service account is no person and is in
-    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280).
+    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280). A
+    retired account is in no gap: neither `none` holds it, whatever is asked of the
+    retired (P-296).
     """
     for name, value in (("contact", contact), ("operator", operator)):
         if value not in WHICH:
             raise Invalid(f"{name} is not acceptable", {name: "any, some or none"})
-    person = User.is_service_account.is_(False)
+    person = and_(User.is_service_account.is_(False), User.record_status != "retired")
     if contact == "some":
         query = query.where(~operators.nobody_behind(Contact))
     elif contact == "none":
@@ -157,13 +174,17 @@ def list_users(
     *,
     contact: str = "any",
     operator: str = "any",
+    retired: str = "no",
 ) -> tuple[list[User], int]:
     """Return one page of users, by username, and the total that match q.
 
     `arrange` sorts them as was asked for, and the username settles what that leaves tied.
     `contact` and `operator` keep those that are one, `some`, or the gaps, `none` (P-280).
+    The retired accounts are left out unless `retired` asks for them, `yes`, or for them
+    alone, `only` (P-296).
     """
     query = select(User).outerjoin(Contact, Contact.hid == User.contact_hid)
+    query = retired_or_not(query, retired)
     if q:
         query = query.where(
             or_(

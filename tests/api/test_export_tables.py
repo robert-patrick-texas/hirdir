@@ -105,6 +105,7 @@ USER_COLUMNS = [
     "operators",
     "kind",
     "state",
+    "record_status",
     "last_sign_in_at",
     "notes",
 ]
@@ -178,6 +179,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "operators": "EP;ex-ops",
         "kind": "person",
         "state": "disabled",
+        "record_status": "active",
         "last_sign_in_at": "",
         "notes": "",
     }
@@ -186,6 +188,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "username": "ex-service",
         "kind": "service",
         "state": "enabled",
+        "record_status": "active",
     }
     # A time is written in the one form the API gives it, in UTC: ...Z.
     ada = next(one for one in people.get("/users")["items"] if one["username"] == "ada")

@@ -69,7 +69,11 @@ def test_a_person_is_made_with_contact_operator_role_and_groups_in_one_request(
     # The operator is the user's: its label the username, its colour the next unused.
     assert (operator["label"], operator["colour"]) == ("ex-ops", colour)
     assert operator["contact_hid"] == user["contact_hid"]
-    assert operator["user"] == {"hid": user["hid"], "username": "ex-ops"}
+    assert operator["user"] == {
+        "hid": user["hid"],
+        "username": "ex-ops",
+        "record_status": "active",
+    }
     assert operator["scope"] == "internal"
     assert operator == desk.get(f"/operators/{operator['hid']}")
     assert user["operators"] == [
