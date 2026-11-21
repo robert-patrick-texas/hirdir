@@ -176,7 +176,11 @@ in (P-299), a new access code is not the one it replaces and may be made by the 
 leaves blank what a contact is not (P-302), and an address may be an interface's
 (P-303). It has no migration; its scenarios are S59 and S60. 0.9.16 gives
 `hirdir admin create-user` the option `--group NAME`, a group's role counting as the
-user's (P-304); it has no migration.
+user's (P-304); it has no migration. 0.9.17, the last before 1.0.0, settles the readings
+that stand unconfirmed, says on a user's page where its role comes from (P-307), writes
+into the install guide how roles are best given (P-308), makes a release quick to test
+(P-309), checks that the audit trail holds what a later sync will read (P-310), and
+mends small leftovers (P-311).
 
 ## From 0.6.1 to 0.9.0
 
