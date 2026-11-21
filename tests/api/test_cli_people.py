@@ -141,7 +141,13 @@ def test_a_user_is_retired_and_brought_back_from_the_command_line(
     run("users", "retire", "nobody", *as_admin, expect=4)
 
     # Brought back: alone it is refused, its contact being retired; with it, a new code.
-    planned = run("users", "bring-back", "klee", "--contact", "--dry-run", *as_admin).stdout
+    # A dry run of a person with no --role is refused as the run itself is, exit 4.
+    unsaid = run("users", "bring-back", "klee", "--contact", "--dry-run", *as_admin, expect=4)
+    assert "klee is a person, brought back with a role: say --role" in unsaid.output
+    assert "nothing was sent: this is what would be done" not in unsaid.output
+    planned = run(
+        "users", "bring-back", "klee", "--contact", "--role", "viewer", "--dry-run", *as_admin
+    ).stdout
     assert planned.splitlines()[-1] == "nothing was sent: this is what would be done"
     assert kim.statuses()["user"] == "retired"
     refused = run("users", "bring-back", "klee", "--role", "viewer", *as_admin, expect=5)
@@ -231,7 +237,9 @@ def test_each_command_takes_an_hid_where_it_takes_a_name(
     assert desk.get(f"/operators/{kl}")["contact_hid"] == kim.sam["hid"]
 
     # The retired account is found by its HID, to be brought back.
-    planned = run("users", "bring-back", user, "--contact", "--dry-run", *as_admin).stdout
+    planned = run(
+        "users", "bring-back", user, "--contact", "--role", "inventory", "--dry-run", *as_admin
+    ).stdout
     assert planned.splitlines()[0] == "user klee, and what is linked to it:"
     back = run(
         "users", "bring-back", user, "--contact", "--operator", lm, "--role", "inventory", *as_admin

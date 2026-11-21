@@ -48,6 +48,9 @@ def test_the_setting_is_twelve_from_the_start_and_every_role_reads_it(
     setting = _setting(client, viewer)
     assert (setting["value"], setting["default"], setting["is_default"]) == (12, 12, True)
     assert "1 to 64" in setting["accepts"]
+    # What it means, as the Settings page shows it: a made code is held to it too (P-300).
+    assert "not held to it" not in setting["meaning"]
+    assert "has as many groups as make it at least this long" in setting["meaning"]
 
 
 def test_an_admin_types_no_code_shorter_than_twelve(client: TestClient, admin: dict) -> None:

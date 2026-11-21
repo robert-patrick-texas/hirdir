@@ -248,11 +248,14 @@ def create_user(
     if code and access_code is None:
         typer.echo(f"access code: {code}")
     if not role:
-        # An account with no role does not sign in (P-299).
-        typer.echo(
-            f"{user.username} holds no role, and cannot sign in until an Admin gives it one",
-            err=True,
+        # An account with no role does not sign in, and the tokens of a service account
+        # with none are refused (P-299).
+        held = (
+            "its tokens are refused until an Admin gives it one"
+            if service_account
+            else "cannot sign in until an Admin gives it one"
         )
+        typer.echo(f"{user.username} holds no role, and {held}", err=True)
 
 
 @admin.command("reset-access-code")
