@@ -41,8 +41,12 @@ type Options<O> = Part<"path", PathOf<O>> &
   Part<"body", BodyOf<O>> &
   KeyOf<O> & { query?: QueryOf<O>; signal?: AbortSignal };
 type Args<O> = object extends Options<O> ? [options?: Options<O>] : [options: Options<O>];
-/** What a download is given: its body where the route takes one, and none where it does not. */
-type DownloadOptions<O> = Part<"body", BodyOf<O>> & { signal?: AbortSignal };
+/**
+ * What a download is given: its body where the route takes one, and none where it does
+ * not; and, since 0.9.14, what the route takes in its address, as `POST /users/export`
+ * takes `retired` (P-296).
+ */
+type DownloadOptions<O> = Part<"body", BodyOf<O>> & { query?: QueryOf<O>; signal?: AbortSignal };
 type DownloadArgs<O> =
   object extends DownloadOptions<O>
     ? [options?: DownloadOptions<O>]
