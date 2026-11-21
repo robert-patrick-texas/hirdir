@@ -293,75 +293,74 @@ export function Home() {
       <h1>Welcome, {name}</h1>
       {/* 0.9.15: an account that holds no role is not signed in (P-299): whoever is here
           holds one. */}
-      <>
-        <Headline />
-        <Cover />
-        <section aria-labelledby="inventory">
-          <h2 id="inventory">Inventory</h2>
-          <ul>
+
+      <Headline />
+      <Cover />
+      <section aria-labelledby="inventory">
+        <h2 id="inventory">Inventory</h2>
+        <ul>
+          <li>
+            <Link to="/items">Items</Link>: everything that is tracked, in one grid
+          </li>
+          <li>
+            <Link to="/groups">Groups</Link>: stacks, clusters and controller domains, with their
+            members
+          </li>
+          <li>
+            <Link to="/addresses">Addresses</Link> and the <Link to="/networks">networks</Link> they
+            are under
+          </li>
+          <li>
+            <Link to="/catalog">Catalog</Link>: what is true of every item of one model
+          </li>
+          <li>
+            <Link to="/vendors">Vendors</Link>, each with its portfolio, and{" "}
+            <Link to="/owners">owners</Link>
+          </li>
+          <li>
+            <Link to="/contracts">Contracts</Link> and the{" "}
+            <Link to="/agreements">support agreements</Link> that group them, with the items each
+            covers
+          </li>
+          <li>
+            <Link to="/purchases">Purchases</Link>: requests, their lines, and receiving what
+            arrived
+          </li>
+          <li>
+            <Link to="/systems">External systems</Link>, and what is registered with each
+          </li>
+          <li>
+            <Link to="/capacity">Capacity</Link>: demand beside supply, and the balance
+          </li>
+          <li>
+            <Link to="/reports">Reports</Link>: the summary, the{" "}
+            <Link to="/reports/management">management report</Link>,{" "}
+            <Link to="/reports/coverage">coverage</Link>,{" "}
+            <Link to="/reports/end-of-life">end of life</Link>,{" "}
+            <Link to="/reports/replacements">replacements</Link>, and the{" "}
+            <Link to="/reports/duplicates">addresses held more than once</Link>
+          </li>
+          <li>
+            <Link to="/admin/tags">Tags</Link>, <Link to="/admin/choices">choices</Link> and the{" "}
+            <Link to="/admin/lifecycle-rules">lifecycle rules</Link>
+          </li>
+          <li>
+            <Link to="/import">Import</Link>: load a CSV or JSON file, with a preview first
+          </li>
+          <li>
+            <Link to="/audit">The audit trail</Link>
+          </li>
+          {allows(user.role, "admin") && (
             <li>
-              <Link to="/items">Items</Link>: everything that is tracked, in one grid
+              <Link to="/admin/users">Users, groups and roles</Link>, and the{" "}
+              <Link to="/admin/settings">settings</Link>
             </li>
-            <li>
-              <Link to="/groups">Groups</Link>: stacks, clusters and controller domains, with their
-              members
-            </li>
-            <li>
-              <Link to="/addresses">Addresses</Link> and the <Link to="/networks">networks</Link>{" "}
-              they are under
-            </li>
-            <li>
-              <Link to="/catalog">Catalog</Link>: what is true of every item of one model
-            </li>
-            <li>
-              <Link to="/vendors">Vendors</Link>, each with its portfolio, and{" "}
-              <Link to="/owners">owners</Link>
-            </li>
-            <li>
-              <Link to="/contracts">Contracts</Link> and the{" "}
-              <Link to="/agreements">support agreements</Link> that group them, with the items each
-              covers
-            </li>
-            <li>
-              <Link to="/purchases">Purchases</Link>: requests, their lines, and receiving what
-              arrived
-            </li>
-            <li>
-              <Link to="/systems">External systems</Link>, and what is registered with each
-            </li>
-            <li>
-              <Link to="/capacity">Capacity</Link>: demand beside supply, and the balance
-            </li>
-            <li>
-              <Link to="/reports">Reports</Link>: the summary, the{" "}
-              <Link to="/reports/management">management report</Link>,{" "}
-              <Link to="/reports/coverage">coverage</Link>,{" "}
-              <Link to="/reports/end-of-life">end of life</Link>,{" "}
-              <Link to="/reports/replacements">replacements</Link>, and the{" "}
-              <Link to="/reports/duplicates">addresses held more than once</Link>
-            </li>
-            <li>
-              <Link to="/admin/tags">Tags</Link>, <Link to="/admin/choices">choices</Link> and the{" "}
-              <Link to="/admin/lifecycle-rules">lifecycle rules</Link>
-            </li>
-            <li>
-              <Link to="/import">Import</Link>: load a CSV or JSON file, with a preview first
-            </li>
-            <li>
-              <Link to="/audit">The audit trail</Link>
-            </li>
-            {allows(user.role, "admin") && (
-              <li>
-                <Link to="/admin/users">Users, groups and roles</Link>, and the{" "}
-                <Link to="/admin/settings">settings</Link>
-              </li>
-            )}
-            <li>
-              <Link to="/about">What is running</Link>
-            </li>
-          </ul>
-        </section>
-      </>
+          )}
+          <li>
+            <Link to="/about">What is running</Link>
+          </li>
+        </ul>
+      </section>
 
       <section aria-labelledby="account">
         <h2 id="account">Your account</h2>

@@ -116,7 +116,20 @@ async function newPlace(
 /** Open the page of an operator from the list, by its label, released ones among them. */
 async function openOperator(page: Page, label: string) {
   await page.goto(`./operators?filter=${encodeURIComponent(`label:eq:${label}`)}`);
-  await page.getByLabel("Include archived").check();
+  // Ticked, the switch has the grid read its rows again and draw them anew: the link is
+  // pressed once those rows are in, not on a row of the first reading that is being taken
+  // away, where the press went nowhere (review of 0.9.15). The switch is remembered for
+  // the person, so it may be ticked already.
+  const archived = page.getByLabel("Include archived");
+  if (!(await archived.isChecked())) {
+    const reread = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith("/api/v1/operators") &&
+        new URL(response.url()).searchParams.get("include_archived") === "true",
+    );
+    await archived.check();
+    await reread;
+  }
   await page.getByTestId("grid-operators").getByRole("link", { name: label, exact: true }).click();
   await expect(page.getByTestId("operator-heading")).toContainText(label);
 }

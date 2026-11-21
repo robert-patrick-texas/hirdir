@@ -11,7 +11,9 @@
 //   organization, the address to write to, the number to call and the address on the web,
 //   which opens in a new tab. help_on_sign_in is Yes or No; turned on, the sign-in page
 //   lists them under the form, and turned off, it lists nothing of them, and the page
-//   that is served holds nothing of them either.
+//   that is served holds nothing of them either. 0.9.15 (P-299): turned on, an account of
+//   the file's that holds no role, refused with the right code, is told whom to ask once,
+//   in its refusal, the list under the form stepping aside.
 //
 // How this file keeps to rule 5 of support.ts: it changes `product_name`, which the title
 // of every page, the heading of the sign-in page and the name of every download read, and
@@ -100,6 +102,41 @@ async function setting(request: APIRequestContext, headers: Headers, key: string
 async function put(request: APIRequestContext, headers: Headers, key: string, value: unknown) {
   const { row_version } = await setting(request, headers, key);
   await send(request, headers, "put", `/settings/${key}`, { row_version, value });
+}
+
+/**
+ * 0.9.15: an account of the file's that holds no role, made with the role of a group of
+ * its own, as a person is made with one, and taken out of it (P-299).
+ */
+async function noRole(
+  request: APIRequestContext,
+  headers: Headers,
+): Promise<{ hid: string; username: string; accessCode: string }> {
+  const group = await send(request, headers, "post", "/user-groups", { name: `${suffix}-team` });
+  await send(request, headers, "post", "/role-grants", { group_hid: group.hid, role: "viewer" });
+  const made = await send<{ user: { hid: string; username: string }; access_code: string }>(
+    request,
+    headers,
+    "post",
+    "/users",
+    { username: `e2e-${suffix}-norole`, group_hids: [group.hid] },
+  );
+  const out = await request.delete(
+    `./api/v1/user-groups/${group.hid}/members/${encodeURIComponent(made.user.hid)}`,
+    { headers },
+  );
+  expect(out.status(), "taken out of the group").toBe(204);
+  return { hid: made.user.hid, username: made.user.username, accessCode: made.access_code };
+}
+
+/** Disable an account the file made: none is left that can sign in. */
+async function disable(request: APIRequestContext, headers: Headers, hid: string) {
+  const { row_version } = await read<{ row_version: number }>(request, headers, `/users/${hid}`);
+  const answer = await request.patch(`./api/v1/users/${hid}`, {
+    headers,
+    data: { row_version, disabled: true },
+  });
+  expect(answer.status(), "the account with no role is disabled").toBe(200);
 }
 
 // The settings as this file found them: null for one at its default.
@@ -342,6 +379,18 @@ test("whom to ask is on About once it is set, and on the sign-in page only where
     },
   });
 
+  // 0.9.15: an account that holds no role, refused with the right code, is told whom to
+  // ask once, in its refusal, and the list under the form steps aside (P-299, review).
+  const roleless = await noRole(request, headers);
+  await page.getByLabel("Username").fill(roleless.username);
+  await page.getByLabel("Access code").fill(roleless.accessCode);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  const told = page.getByRole("alert", { name: "This account holds no role" });
+  await expectListed(told.getByTestId("whom-to-ask"));
+  await expect(onSignIn).toHaveCount(0);
+  await expect(page.getByTestId("whom-to-ask")).toHaveCount(1);
+  await disable(request, headers, roleless.hid);
+
   // Turned off again: nothing of them on the sign-in page, nor in the page served.
   await signIn(page, account);
   await openSettings(page);
@@ -354,7 +403,7 @@ test("whom to ask is on About once it is set, and on the sign-in page only where
   await expect(onSignIn).toHaveCount(0);
   expect(await served(page)).toEqual({ product_name: "hirdir", help: null });
   expect(await page.content()).not.toContain(HELP.help_email);
-  await expectClean(page, seen);
+  await expectClean(page, seen, ["403 POST"]);
 });
 
 /** The four of whom to ask, each as it is set, and the three that are links, as links. */

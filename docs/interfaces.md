@@ -3731,9 +3731,12 @@ server (P-299, P-300):
   the `403` of [Signing in with no role](#signing-in-with-no-role). The sign-in page
   says the server's words above the form, in plain text and not as a wrong code, and
   under them whom to ask, each of `help` that is set, as About lists them, whatever
-  `help_on_sign_in` says; where none is set, it says to ask an Admin. Nothing is kept,
-  and the page stays the sign-in page with the username as typed and the code box
-  emptied. A wrong code is said as before.
+  `help_on_sign_in` says; where none is set, the server's words, which name an Admin,
+  are all it says. It is announced as it comes, an alert, as a wrong code is, and while
+  it shows, the list of whom to ask under the form, where `help_on_sign_in` shows one,
+  steps aside, so that whom to ask is said once. Nothing is kept, and the page stays the
+  sign-in page with the username as typed and the code box emptied. A wrong code is said
+  as before.
 - **A role lost while signed in.** The next request of the page is refused as an ended
   session, and the page is signed out as for any ended session; signing in again is
   then told the above, until a role is given back.

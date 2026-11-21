@@ -316,10 +316,16 @@ function AccessCode({ username }: { username: string }) {
 
   function type(box: keyof CodeBoxes, field: string) {
     return (value: string) => {
-      setBoxes((was) => ({ ...was, [box]: value }));
+      // A new code typed over the made one is a typed code: masked, not shown again, and
+      // typed again in the second box, which held the made code and is emptied (review).
+      const over = box !== "current" && made !== null;
+      setBoxes((was) => ({
+        ...was,
+        [box]: value,
+        ...(over && box === "wanted" ? { again: "" } : {}),
+      }));
       setFound(({ [field]: _, ...rest }) => rest);
-      // A new code typed over the made one is a typed code: masked, and not shown again.
-      if (box !== "current") setMade(null);
+      if (over) setMade(null);
     };
   }
 

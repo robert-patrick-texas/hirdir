@@ -3665,9 +3665,12 @@ dialog.person-dialog {
 
 /* 0.9.15: Generate beside the box of a new access code (P-300), level with the box under
    its label; at a phone's width it goes under the box. */
+/* The box's column is as wide as a box is at most (26rem, as every text box), and no
+   wider, so that the button stands at its right edge however wide the form. */
 .with-generate {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 26rem) auto;
+  justify-content: start;
   column-gap: 0.5rem;
   align-items: start;
 }
@@ -3683,6 +3686,7 @@ dialog.person-dialog {
 @media (max-width: 480px) {
   .with-generate {
     grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
   }
 
   .with-generate > .generate-code {

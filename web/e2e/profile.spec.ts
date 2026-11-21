@@ -658,10 +658,13 @@ test("P-299: an account that holds no role is refused at sign-in with the right 
   // box is emptied and the username stays as typed.
   const told = page.getByTestId("no-role");
   await expect(told.getByRole("heading", { name: "This account holds no role" })).toBeVisible();
+  // Announced as it comes, as the refusal of a wrong code is (review).
+  await expect(page.getByRole("alert", { name: "This account holds no role" })).toBeVisible();
   await expect(told).toContainText(
     "This account holds no role, and so cannot sign in: an Admin gives it one.",
   );
-  await expect(told).toContainText("Ask an Admin of hirdir to give it one.");
+  // The server's words name an Admin already: the page does not say it again (review).
+  await expect(told).not.toContainText("Ask an Admin");
   await expect(page.locator(".alert-error")).toHaveCount(0);
   await expect(username).toHaveValue(person.username);
   await expect(code).toHaveValue("");
@@ -732,13 +735,25 @@ test("P-300: Generate on the profile fills both new boxes with a code made by th
   // setting asks, 12 at its default; nothing is saved yet.
   await part.getByRole("button", { name: "Generate", exact: true }).click();
   await expect(wanted).not.toHaveValue("");
-  const made = await wanted.inputValue();
-  expect(made.length, "a made code is at least as long as the setting asks").toBeGreaterThanOrEqual(
-    12,
-  );
-  await expect(again).toHaveValue(made);
+  const first = await wanted.inputValue();
+  expect(
+    first.length,
+    "a made code is at least as long as the setting asks",
+  ).toBeGreaterThanOrEqual(12);
+  await expect(again).toHaveValue(first);
   await expect(wanted).toHaveAttribute("type", "text");
   await expect(again).toHaveAttribute("type", "text");
+
+  // Typed over, the new code is a typed one: both boxes masked, and the second emptied,
+  // which held the made code and is to be typed again (review). Generate makes another.
+  await wanted.fill(`Typed-over-${suffix}`);
+  await expect(wanted).toHaveAttribute("type", "password");
+  await expect(again).toHaveAttribute("type", "password");
+  await expect(again).toHaveValue("");
+  await part.getByRole("button", { name: "Generate", exact: true }).click();
+  await expect(wanted).not.toHaveValue(`Typed-over-${suffix}`);
+  const made = await wanted.inputValue();
+  await expect(again).toHaveValue(made);
   const before = await request.post("./api/v1/auth/sign-in", {
     data: { username: person.username, access_code: person.accessCode },
   });
