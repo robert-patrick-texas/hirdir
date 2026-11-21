@@ -17,7 +17,7 @@ marked as replaced, not removed.
 | D-04 | The MVP signs in with a username and an access code that an Admin sets. Length and complexity rules come after the MVP. RADIUS comes next, SAML after that. |
 | D-05 | The session token is signed by the server and carries its time of issue. Each user has a start time; a token issued before it is refused. |
 | D-06 | Roles are View-only, Inventory and Admin. A user group is a label by default. A role may be granted to a user or a group, and the highest wins. |
-| D-07 | Automation tokens belong to service accounts, not to people. |
+| D-07 | Automation tokens belong to service accounts, not to people. Amended by P-316 in 0.9.17: to service accounts and agents, not to people. |
 | D-08 | Nothing is served without signing in except the sign-in page and the health check. |
 | D-09 | No compliance regime is mandated. Audit records are kept without expiry until a retention feature exists. Security controls that `hirdir` does not implement are referred to, not claimed. |
 | D-10 | Python is built with uv, ty and ruff. The `.deb` carries Python and every Python dependency. Ordinary Ubuntu packages are left to apt. |

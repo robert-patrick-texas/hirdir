@@ -347,7 +347,8 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 - **R12.5** The browser MUST NOT be sent cookies. The session token lives in local
   browser storage.
 - **R12.6** An Admin MUST be able to end every session of a user at once.
-- **R12.7** Automation uses tokens that belong to service accounts, never to people.
+- **R12.7** Automation uses tokens that belong to service accounts and agents, never to
+  people.
 - **R12.8** An Admin makes a user, the contact it is and the operator it works as in
   one step, with its role and its groups, and changes a user's groups and notes from
   the user's own page. The lists of users, of contacts and of operators each say which
@@ -371,6 +372,16 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   others, in one confirmation and one change, or is refused with them named. A contact
   is not retired while its account or a label stands on it. A retired user, contact or
   operator is brought back by an Admin alone (P-291, P-297, P-298).
+- **R12.12** An account is a person's, a service's or an agent's. A service does a fixed
+  job, application to application; an agent decides what to change, as a person does.
+  An agent is made by an Admin, is answerable to a person who holds a role, holds
+  tokens alone, is never Admin and holds no more than the role of that person as it is
+  at each request; what it changes is marked in the audit trail with the person it was
+  answerable to, and the person's retirement says what becomes of each of their agents
+  (P-316).
+- **R12.13** A user's page says each role the account holds and where it comes from, of
+  its own or through which group, and a change that would leave an account with no role
+  says so before it is made (P-307, P-314).
 
 ### R13 Integration
 

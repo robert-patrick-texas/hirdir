@@ -1756,11 +1756,11 @@ here, because it is needed before the database can be asked. See
 
 | Record | Fields |
 |---|---|
-| `users` | `username` (unique, and changed by an Admin, P-173), `contact_hid` (the contact the user is, unique; none for a service account), `is_service_account`, `access_code_hash`, `tokens_valid_after`, `disabled`, `last_sign_in_at`, `notes` (free text, blank unless given: what the account is for, who asked for it, when it is to end; the account's, beside the notes of its contact, which are the person's, P-281, migration `0016`), `record_status` (`active` or `retired`, P-296, migration `0017`: a retired account is that of somebody who has left, signs in with nothing, holds no role and is in no group, and keeps its username; `disabled`, beside it, is an account that may not sign in for now) |
+| `users` | `username` (unique, and changed by an Admin, P-173), `contact_hid` (the contact the user is, unique; none for a service account or an agent), `kind` (`person`, `service` or `agent`, set when the account is made and not changed after; migration `0018` turns `is_service_account` into it, P-316), `answerable_hid` (an agent's alone, and required of it: the user answerable for it, a person who is not retired; P-316), `access_code_hash`, `tokens_valid_after`, `disabled`, `last_sign_in_at`, `notes` (free text, blank unless given: what the account is for, who asked for it, when it is to end; the account's, beside the notes of its contact, which are the person's, P-281, migration `0016`), `record_status` (`active` or `retired`, P-296, migration `0017`: a retired account is that of somebody who has left, signs in with nothing, holds no role and is in no group, and keeps its username; `disabled`, beside it, is an account that may not sign in for now) |
 | `user_groups` | `name` (unique), `description` |
 | `user_group_members` | `user_hid`, `group_hid` |
 | `role_grants` | `role` (`viewer`, `inventory`, `admin`), and exactly one of `user_hid` or `group_hid` |
-| `service_tokens` | `user_hid` (a service account), `name`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` |
+| `service_tokens` | `user_hid` (a service account or an agent), `name`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` |
 
 A user's role is the highest of the roles granted to the user and to every group the
 user is in. A user with no role, granted to it or through a group, does not sign in,
@@ -1772,9 +1772,21 @@ numbers are those of its contact, read when the user is read: the user answers
 only, blank where it has no contact. A user with no contact is shown by its
 username. A service account, which is no person, has no contact.
 
+An agent (P-316) is an account that decides what to change, as a person does, where a
+service does a fixed job. Like a service account it has no contact, no access code and
+no session, and holds tokens. It is answerable to a person, `answerable_hid`, and is
+never Admin: a grant of Admin to it, its being put in a group that grants Admin, and a
+grant of Admin to a group that holds it are refused. Its role in force is the lower of
+its own highest and that of the person answerable for it, read at each request; where
+the person holds no role, is disabled or is retired, its tokens are refused, and
+nothing of the agent is changed. The person's retirement says what becomes of each of
+their agents, retired or handed to another person, as it says of the person's other
+linked records (P-297).
+
 ### `audit_events`
 
-Append-only. `at`, `actor_hid`, `via` (`web`, `api`, `cli`, `import`, `system`),
+Append-only. `at`, `actor_hid`, `for_hid` (where the actor is an agent, the person it
+was answerable to when the event was made, P-316, migration `0018`), `via` (`web`, `api`, `cli`, `import`, `system`),
 `request_id`, `action` (`create`, `update`, `retire`, `transition`, `sign_in`,
 `sign_in_failed`, `sign_in_no_role`, `preview`, `apply`, and so on), `record_type`, `record_hid`, and
 `changes`, a list of `{field, old, new}`. One import or bulk edit shares one

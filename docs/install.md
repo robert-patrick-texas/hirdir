@@ -140,7 +140,28 @@ either way. A user with no role does not sign in: the sign-in page says that the
 account holds no role and that an Admin gives it one, with whom to ask. A person is
 given a role, or a group that grants one, when the account is made and when it is
 brought back. A change of role takes effect on the user's next request, and a user
-whose last role is taken away is signed out at once.
+whose last role is taken away is signed out at once. The page of a user says each role
+it holds and where it comes from, of its own or through which group, and a change that
+would leave somebody with no role says so before it is made.
+
+### How roles are best given
+
+Give roles to groups, and put people in them (P-308):
+
+1. The first Admin is made with a role of its own, `--role admin`, as above.
+2. Make a group for each team, with the role the team needs: say `Network team` with
+   Inventory and `Help desk` with View-only, under **Admin › Groups**.
+3. Put each person in their group when the account is made, on New user or with
+   `hirdir admin create-user --group 'Network team' NAME`. Somebody who moves to another
+   team moves to its group, and their role follows.
+4. Grant a role to an account itself only for an exception, and for a few Admins.
+   Once there are several Admins, make an `Admins` group for them, and keep one or two
+   Admins with a role of their own as a way back in, should the group be changed by
+   mistake.
+
+The highest role wins: a grant of View-only to somebody in an Inventory group leaves
+them Inventory. A person is given less by being taken out of a group, not by a lower
+grant.
 
 Resetting a user's access code, disabling the user or choosing "Sign out everywhere"
 ends every session that user has. From the server:
@@ -173,8 +194,9 @@ an Admin alone brings back a retired contact or operator.
 ## Automation
 
 Scripts and other tools use a token that belongs to a service account, never a person's
-access code. In the web UI, create a user marked as a service account, grant it a role,
-and create a token for it. The token is shown once.
+access code. In the web UI, create a user of the kind Service, grant it a role, and
+create a token for it. The token is shown once, and is refused until the account holds
+a role.
 
 ```bash
 curl -H "Authorization: Bearer $HIRDIR_TOKEN" https://inventory.example.net/hirdir/api/v1/auth/me
@@ -191,6 +213,25 @@ curl -H "Authorization: Bearer $HIRDIR_TOKEN" \
 The routes and the filter grammar are on the [interfaces](interfaces.md) page. The
 `hirdir` command reads the same token from `HIRDIR_TOKEN`, and the server from
 `HIRDIR_URL`.
+
+### Agents
+
+A service does a fixed job, such as a monitoring tool or a sync. An agent decides what
+to change, as a person does: an assistant that somebody runs, or a job that reconciles
+the inventory against what it finds. Give it an account of the kind Agent, not a
+service account and never a person's access code (P-316):
+
+- An Admin makes it, on New user with Kind Agent, or with
+  `sudo hirdir admin create-user --kind agent --for sam agent-reconcile`, and names the
+  person answerable for it, who holds a role.
+- It holds tokens, as a service account does, and a role through a group or of its
+  own, but never Admin, and never more than the role of its person: if Sam is moved to
+  View-only, the agent reads and changes nothing more. While Sam is disabled or holds
+  no role, its tokens are refused.
+- Every change it makes is in the audit trail as the agent's, for its person, and the
+  Audit page shows the changes of agents together.
+- When Sam leaves, retiring Sam says what becomes of each of Sam's agents: retired with
+  Sam, or handed to another person.
 
 ## Try it with the examples
 
