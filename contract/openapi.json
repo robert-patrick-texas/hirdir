@@ -2412,7 +2412,7 @@
       },
       "BringBack": {
         "additionalProperties": false,
-        "description": "A retired user brought back, and what is brought back with it (P-298).",
+        "description": "A retired user brought back, the role it is given and what is brought back with\nit (P-298, P-299).",
         "properties": {
           "linked": {
             "anyOf": [
@@ -2423,6 +2423,18 @@
                 "type": "null"
               }
             ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`viewer`, `inventory` or `admin`, granted in the same change. A person is given one, since an account with no role does not sign in: left out, it is a `422` on `role`. A service account may be brought back with none (P-299).",
+            "title": "Role"
           },
           "row_version": {
             "title": "Row Version",
@@ -22175,6 +22187,22 @@
         "title": "NetworkRef",
         "type": "object"
       },
+      "NewAccessCode": {
+        "additionalProperties": false,
+        "description": "An access code made by the server for a form to send, stored nowhere (P-300).",
+        "properties": {
+          "access_code": {
+            "description": "Groups of four, three or as many more as make it at least as long as the setting `access_code_min_length` asks.",
+            "title": "Access Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_code"
+        ],
+        "title": "NewAccessCode",
+        "type": "object"
+      },
       "NewOperator": {
         "additionalProperties": false,
         "description": "A new operator, made with the user whose contact stands behind it (P-283).",
@@ -23159,7 +23187,7 @@
         "description": "The access code a person has, and the one they take in its place.",
         "properties": {
           "access_code": {
-            "description": "At least as long as the setting `access_code_min_length` says, not blank, and with no space at its beginning or end.",
+            "description": "At least as long as the setting `access_code_min_length` says, not blank, with no space at its beginning or end, and not the current one (P-300).",
             "maxLength": 200,
             "title": "Access Code",
             "type": "string"
@@ -25842,6 +25870,17 @@
               }
             ],
             "description": "On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem."
+          },
+          "help": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AboutHelp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On the 403 of `POST /auth/sign-in` of an account that gave the right access code and holds no role (P-299): whom to ask, as `help` of `GET /about` gives it, each blank one null, whatever `help_on_sign_in` says. Left out of every other problem."
           },
           "status": {
             "title": "Status",
@@ -32471,7 +32510,7 @@
                 "type": "null"
               }
             ],
-            "description": "A role to grant at once.",
+            "description": "A role to grant at once. A person is given one, or a group in `group_hids` that grants one, or it is a `422` on `role` (P-299); a service account may have none.",
             "title": "Role"
           },
           "username": {
@@ -34465,7 +34504,7 @@
     },
     "/api/v1/auth/me/access-code": {
       "post": {
-        "description": "Change the access code of the signed-in person, who gives the code they have. A\nwrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every\nother session of the person ends, and the answer carries a new token for this one\n(P-295). For a session of any role, and of none; a service token is refused.",
+        "description": "Change the access code of the signed-in person, who gives the code they have. A\nwrong one is a `422` on `current_access_code`, counted as a failed sign-in is, and a\nnew one that is the current one a `422` on `access_code` (P-300). Every other session\nof the person ends, and the answer carries a new token for this one (P-295). For a\nsession of any role; a service token is refused.",
         "operationId": "change_own_access_code_api_v1_auth_me_access_code_post",
         "requestBody": {
           "content": {
@@ -34517,7 +34556,7 @@
     },
     "/api/v1/auth/me/contact": {
       "patch": {
-        "description": "Change the name, the email, the numbers or the organization of the contact the\nsigned-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any\nrole, and of none; a service token is refused. An account with no contact, or with\none that is retired, is a `409` (P-294).",
+        "description": "Change the name, the email, the numbers or the organization of the contact the\nsigned-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any\nrole; a service token is refused. An account with no contact, or with\none that is retired, is a `409` (P-294).",
         "operationId": "update_own_contact_api_v1_auth_me_contact_patch",
         "requestBody": {
           "content": {
@@ -34559,7 +34598,7 @@
     },
     "/api/v1/auth/me/operators/{hid}": {
       "patch": {
-        "description": "Change the label or the colour of an operator the signed-in person is behind, by\nthe rules of `PATCH /operators/{hid}`. For a session of any role, and of none; a\nservice token is refused. An operator that is another's, or retired, is a `404`\n(P-294).",
+        "description": "Change the label or the colour of an operator the signed-in person is behind, by\nthe rules of `PATCH /operators/{hid}`. For a session of any role; a service token\nis refused. An operator that is another's, or retired, is a `404`\n(P-294).",
         "operationId": "update_own_operator_api_v1_auth_me_operators__hid__patch",
         "parameters": [
           {
@@ -34610,9 +34649,31 @@
         ]
       }
     },
+    "/api/v1/auth/new-access-code": {
+      "get": {
+        "description": "Make an access code for a form to send, as the server makes every code: groups of\nfour, as many as make it as long as `access_code_min_length` asks (P-300). Nothing is\nstored and nothing is written; it is saved as a typed code is, by the route of the\nform, through the same checks. For a session or a token that holds a role.",
+        "operationId": "new_access_code_api_v1_auth_new_access_code_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAccessCode"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "New Access Code",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
     "/api/v1/auth/sign-in": {
       "post": {
-        "description": "Exchange a username and access code for a session token.",
+        "description": "Exchange a username and access code for a session token. An account that holds no\nrole is refused with a `403` that says so and whom to ask (P-299).",
         "operationId": "sign_in_api_v1_auth_sign_in_post",
         "requestBody": {
           "content": {
@@ -34644,6 +34705,16 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The access code is right and the account holds no role, of its own or through a group: it does not sign in. `help` is whom to ask (P-299)."
           },
           "422": {
             "content": {
@@ -50419,7 +50490,7 @@
         ]
       },
       "post": {
-        "description": "Create a user, and in the same change the contact it is, the operator it works\nas, its role and its groups, each audited as if made by itself: where any part is\nrefused, nothing is made (P-282, P-283). The access code in the answer is not shown\nagain.",
+        "description": "Create a user, and in the same change the contact it is, the operator it works\nas, its role and its groups, each audited as if made by itself: where any part is\nrefused, nothing is made (P-282, P-283). A person is made with a role, of its own or\nthrough a group, or it is a `422` on `role` (P-299). The access code in the answer is\nnot shown again.",
         "operationId": "create_user_api_v1_users_post",
         "requestBody": {
           "content": {
@@ -50655,7 +50726,7 @@
     },
     "/api/v1/users/{hid}/bring-back": {
       "post": {
-        "description": "Bring a retired account back (P-296, P-298): active and not disabled, with a new\naccess code, which is not shown again, no role and no group. `linked` brings back\nits retired contact with it, and those of that contact's retired operators it names.",
+        "description": "Bring a retired account back (P-296, P-298): active and not disabled, with a new\naccess code, which is not shown again, the role given and no group. A person is\ngiven a role, since an account with none does not sign in (P-299). `linked` brings\nback its retired contact with it, and those of that contact's retired operators it\nnames.",
         "operationId": "bring_back_user_api_v1_users__hid__bring_back_post",
         "parameters": [
           {
@@ -50703,11 +50774,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "A person is brought back with no `role`, or a role there is not, on `role` (P-299); or `linked` says what is not so."
           }
         },
         "summary": "Bring Back User",
