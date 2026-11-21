@@ -5,14 +5,22 @@
 // are behind, and their access code. Each is changed by a route of the person's own,
 // which names no record: the server changes those of whoever is signed in. What the page
 // does not change it shows as text: the username, the role and the groups.
+//
+// 0.9.15: an account that holds no role is not signed in (P-299), so whoever is here
+// holds one and reads the settings and the colours, as every page does. Generate beside
+// New access code fills both new boxes with a code the server made, shown in clear, and
+// once the code is changed it is shown once more, with Copy, as an Admin's forms show
+// one (P-300).
 
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { TextField } from "../components/Field";
+import { GenerateCode } from "../components/GenerateCode";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { SecretBox } from "../components/SecretBox";
 import { HelpList } from "../components/WhomToAsk";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { operatorPath, safeColour } from "../lib/operators";
@@ -24,7 +32,7 @@ import {
   DETAIL_SPECS,
   minLengthOf,
   NO_CODES,
-  operatorSpecs,
+  OPERATOR_SPECS,
 } from "../lib/profile";
 import { roleLabel } from "../lib/roles";
 
@@ -38,7 +46,7 @@ export function Profile() {
 
   // The frame read who is signed in when it was loaded, which may be hours ago: the page
   // reads it again as it opens, shows what it has meanwhile, and hands the frame the
-  // answer. It asks for that alone, which a person who holds no role reads as well.
+  // answer.
   const read = useLoad("profile", (signal) => api.request("get", "/api/v1/auth/me", { signal }));
   const answered = read.data;
   useEffect(() => {
@@ -69,12 +77,12 @@ export function Profile() {
       {own ? (
         <>
           <Details key={own.hid} contact={own} reload={read.reload} />
-          <Operators operators={user.operators} role={user.role} reload={read.reload} />
+          <Operators operators={user.operators} reload={read.reload} />
         </>
       ) : (
         <NoContact retired={contact} />
       )}
-      <AccessCode username={user.username} role={user.role} />
+      <AccessCode username={user.username} />
     </>
   );
 }
@@ -118,15 +126,7 @@ function Details({ contact, reload }: { contact: Contact; reload: () => void }) 
  * The operators the person is behind, one after another, each with a form of its own.
  * Somebody behind none has no such part, and a line that says so.
  */
-function Operators({
-  operators,
-  role,
-  reload,
-}: {
-  operators: readonly Operator[];
-  role: string | null;
-  reload: () => void;
-}) {
+function Operators({ operators, reload }: { operators: readonly Operator[]; reload: () => void }) {
   if (operators.length === 0) {
     return (
       <p className="muted" data-testid="profile-no-operator">
@@ -147,7 +147,7 @@ function Operators({
           : "The labels that stand for you on items, groups and places, each with its colour."}
       </p>
       {operators.map((operator) => (
-        <OperatorPart key={operator.hid} operator={operator} role={role} reload={reload} />
+        <OperatorPart key={operator.hid} operator={operator} reload={reload} />
       ))}
     </section>
   );
@@ -155,18 +155,8 @@ function Operators({
 
 /**
  * One operator: its label as a link to its page, and the form of its label and colour.
- * A person who holds no role types the colour, the colours to press being read with a
- * role (`operatorSpecs`).
  */
-function OperatorPart({
-  operator,
-  role,
-  reload,
-}: {
-  operator: Operator;
-  role: string | null;
-  reload: () => void;
-}) {
+function OperatorPart({ operator, reload }: { operator: Operator; reload: () => void }) {
   const { took } = useAuth();
   const [done, setDone] = useState("");
   // The label as the server answered the save, for the page to say what was saved.
@@ -194,7 +184,7 @@ function OperatorPart({
       </h3>
       <Notice text={done} />
       <EditForm<Operator, Schemas["OwnOperatorPatch"]>
-        specs={operatorSpecs(role)}
+        specs={OPERATOR_SPECS}
         record={operator}
         save={async (body) => {
           const me = await api.request("patch", "/api/v1/auth/me/operators/{hid}", {
@@ -268,17 +258,22 @@ function useHeld(until: number, over: () => void): boolean {
  * The person's own access code: the code in hand, the new one, and the new one again,
  * all three masked and each named for a password manager. Two new codes that differ are
  * said at the second before anything is sent; a wrong code in hand and a new one that is
- * too short are the server's to say, each at its box. Changed, the page keeps the new
- * session in place of the old, says so, and empties the boxes.
+ * too short, or the one in hand again, are the server's to say, each at its box (P-300).
+ * Changed, the page keeps the new session in place of the old, says so, and empties the
+ * boxes. 0.9.15: Generate puts a code the server made in both new boxes, which then show
+ * what they hold, so that it can be read and kept; the code in hand is asked for all the
+ * same. A made code that was changed to is shown once more, with Copy (P-300).
  */
-function AccessCode({ username, role }: { username: string; role: string | null }) {
+function AccessCode({ username }: { username: string }) {
   const { adopt } = useAuth();
-  // The settings are read with a role. A person who holds none is not told the least
-  // length before they type: the server says it at the box.
-  const settings = useLoad(`profile settings ${role !== null}`, async (signal) =>
-    role === null ? [] : api.request("get", "/api/v1/settings", { signal }),
+  const settings = useLoad("profile settings", (signal) =>
+    api.request("get", "/api/v1/settings", { signal }),
   );
   const [boxes, setBoxes] = useState<CodeBoxes>(NO_CODES);
+  // The code Generate made, while the new boxes show what they hold; and a made code once
+  // it is the person's, shown once.
+  const [made, setMade] = useState<string | null>(null);
+  const [kept, setKept] = useState<string | null>(null);
   const [found, setFound] = useState<Record<string, string>>({});
   const [done, setDone] = useState("");
   const [waitUntil, setWaitUntil] = useState(0);
@@ -311,15 +306,20 @@ function AccessCode({ username, role }: { username: string; role: string | null 
     (box ?? said.current)?.focus();
   }, [refusals]);
 
-  // A change that was made puts it on the words that say so.
+  // A change that was made puts it on the words that say so, or on the made code, which
+  // takes it itself.
+  const showing = useRef(false);
+  showing.current = kept !== null;
   useEffect(() => {
-    if (changes > 0) said.current?.focus();
+    if (changes > 0 && !showing.current) said.current?.focus();
   }, [changes]);
 
   function type(box: keyof CodeBoxes, field: string) {
     return (value: string) => {
       setBoxes((was) => ({ ...was, [box]: value }));
       setFound(({ [field]: _, ...rest }) => rest);
+      // A new code typed over the made one is a typed code: masked, and not shown again.
+      if (box !== "current") setMade(null);
     };
   }
 
@@ -345,6 +345,8 @@ function AccessCode({ username, role }: { username: string; role: string | null 
     // The answer is a session, as signing in answers one: it is kept in place of the one
     // this page had, which the change ended with every other.
     adopt(result.value);
+    setKept(made !== null && made === boxes.wanted ? made : null);
+    setMade(null);
     setBoxes(NO_CODES);
     setDone("Your access code is changed. Your other sessions have ended.");
     setChanges((count) => count + 1);
@@ -365,6 +367,14 @@ function AccessCode({ username, role }: { username: string; role: string | null 
         <Notice text={done} />
         <Problem error={action.error} shown={["current_access_code", "access_code"]} />
       </div>
+      {kept !== null && (
+        <SecretBox
+          title="Your new access code"
+          secret={kept}
+          note="It is the code you sign in with from now on."
+          onDone={() => setKept(null)}
+        />
+      )}
       <form onSubmit={submit} className="stack" noValidate ref={form}>
         {/* Not shown: it tells a password manager whose code the three boxes are. */}
         <input
@@ -387,22 +397,32 @@ function AccessCode({ username, role }: { username: string; role: string | null 
           error={refused.current_access_code}
           disabled={action.busy}
         />
-        <TextField
-          label="New access code"
-          name="access_code"
-          type="password"
-          value={boxes.wanted}
-          onChange={type("wanted", "access_code")}
-          required
-          maxLength={200}
-          autoComplete="new-password"
-          error={refused.access_code}
+        <GenerateCode
+          onMade={(code) => {
+            setMade(code);
+            setKept(null);
+            setBoxes((was) => ({ ...was, wanted: code, again: code }));
+            setFound(({ access_code: _, access_code_again: __, ...rest }) => rest);
+          }}
           disabled={action.busy}
-        />
+        >
+          <TextField
+            label="New access code"
+            name="access_code"
+            type={made === null ? "password" : "text"}
+            value={boxes.wanted}
+            onChange={type("wanted", "access_code")}
+            required
+            maxLength={200}
+            autoComplete="new-password"
+            error={refused.access_code}
+            disabled={action.busy}
+          />
+        </GenerateCode>
         <TextField
           label="New access code again"
           name="access_code_again"
-          type="password"
+          type={made === null ? "password" : "text"}
           value={boxes.again}
           onChange={type("again", "access_code_again")}
           required

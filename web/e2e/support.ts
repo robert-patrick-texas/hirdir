@@ -172,21 +172,28 @@ export interface NewPerson {
 
 /**
  * Make an account through the API, as the Admin of the environment: `role` is admin,
- * inventory or viewer, or null for an account that holds no role. 0.9.3: an account is
- * made with no contact, and is shown by its username, unless a file gives it a person,
- * a new contact made with it (P-172).
+ * inventory or viewer, or null for none of its own. 0.9.3: an account is made with no
+ * contact, and is shown by its username, unless a file gives it a person, a new contact
+ * made with it (P-172). 0.9.15: a person is made holding a role, its own or one that a
+ * group in `groups` grants, or the server refuses it (P-299).
  */
 export async function createAccount(
   api: APIRequestContext,
   username: string,
   role: string | null,
   person?: NewPerson,
+  groups?: readonly string[],
 ): Promise<Account> {
   return asAdmin(api, async (headers) => {
     const created = (await answered(
       await api.post("./api/v1/users", {
         headers,
-        data: { username, ...(role ? { role } : {}), ...(person ? { contact: person } : {}) },
+        data: {
+          username,
+          ...(role ? { role } : {}),
+          ...(person ? { contact: person } : {}),
+          ...(groups ? { group_hids: groups } : {}),
+        },
       }),
       201,
       `the account ${username} was not made`,

@@ -317,6 +317,7 @@ export function bringBackBody(
   linked: Linked,
   ticked: readonly string[],
   rowVersion: number,
+  role = "",
 ): BringBackBody {
   const offer = bringBackOffer(linked);
   const said: Schemas["LinkedBack"] = {};
@@ -327,6 +328,9 @@ export function bringBackBody(
   }
   const body: BringBackBody = { row_version: rowVersion };
   if (Object.keys(said).length > 0) body.linked = said;
+  // 0.9.15: the role the account is brought back holding, none where none is chosen,
+  // which the server refuses for a person (P-299).
+  if (role !== "") body.role = role;
   return body;
 }
 

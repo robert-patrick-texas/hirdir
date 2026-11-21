@@ -151,6 +151,7 @@ test("P-172: a user is made with its person, and shows the contact's name, email
   await form.getByLabel("Username").fill(`${username}-2`);
   await person.getByLabel("Name (required)").fill(`Another ${ada.name}`);
   await person.getByLabel("Email").fill(ada.email);
+  await form.getByLabel("Role").selectOption({ label: "View-only" });
   await form.getByRole("button", { name: "Create user" }).click();
   await expect(person.getByLabel("Email")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("region", { name: `Access code for ${username}-2` })).toHaveCount(0);
@@ -253,7 +254,7 @@ test("P-172: an operator is internal or external, with its person's email and nu
   test.setTimeout(180_000);
   const headers: Headers = await session(request, account);
   // A user with a contact of its own, made through the API with its person.
-  const deeUser = await createAccount(request, `e2e-${suffix}-dee`, null, dee);
+  const deeUser = await createAccount(request, `e2e-${suffix}-dee`, "viewer", dee);
   const seen = await watch(page.context());
   await signIn(page, account);
 

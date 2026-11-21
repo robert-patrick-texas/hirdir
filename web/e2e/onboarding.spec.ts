@@ -111,9 +111,14 @@ test("P-282: a user's groups are ticked and unticked on its page, each at once",
   await make(request, headers, "/role-grants", { group_hid: made.network, role: "inventory" });
   const goneName = `${suffix}-gone`;
   const gone = await make(request, headers, "/user-groups", { name: goneName });
-  const gus = await createAccount(request, `e2e-${suffix}-gus`, null, {
-    name: `Gus Example ${suffix}`,
-  });
+  // 0.9.15: made holding the role of a group, as a person is made holding one (P-299).
+  const gus = await createAccount(
+    request,
+    `e2e-${suffix}-gus`,
+    null,
+    { name: `Gus Example ${suffix}` },
+    [made.network],
+  );
   made.users.push(gus.hid);
   made.gus = { hid: gus.hid, username: gus.username };
   const seen = await watch(page.context());
@@ -126,16 +131,18 @@ test("P-282: a user's groups are ticked and unticked on its page, each at once",
   // Each group there is has a box, with what it grants.
   await expect(boxes.locator(`[data-group="${networkName}"]`)).toContainText("grants Inventory");
   await expect(boxes.locator(`[data-group="${serversName}"]`)).toContainText("grants nothing");
-  await expect(box(networkName)).not.toBeChecked();
-
-  // Ticked: in the group at once, and holding the role it grants.
-  await box(networkName).check();
+  await expect(box(networkName)).toBeChecked();
   await expect(facts.getByRole("link", { name: networkName })).toBeVisible();
   await expect(facts).toContainText("Inventory");
-  // Unticked: out of it, and the role with it.
+
+  // Unticked: out of it at once, and the role with it.
   await box(networkName).uncheck();
   await expect(facts.getByRole("link", { name: networkName })).toHaveCount(0);
   await expect(facts).toContainText("No role");
+  // Ticked: in the group again, and holding the role it grants.
+  await box(networkName).check();
+  await expect(facts.getByRole("link", { name: networkName })).toBeVisible();
+  await expect(facts).toContainText("Inventory");
 
   // Pressed twice while its request is held back: one request, and the box as asked first.
   let sent = 0;
@@ -437,6 +444,18 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await operatorBox.check();
   await expect(contactBox).toBeChecked();
   await contactBox.uncheck();
+  // 0.9.15: a person with no role, and no group that grants one, is refused at the role,
+  // which the form says under it, and nothing is made (P-299).
+  const role = form.getByLabel("Role");
+  await expect(form).toContainText("an account with no role cannot sign in");
+  await form.getByRole("button", { name: "Create user" }).click();
+  await expect(role).toHaveAttribute("aria-invalid", "true");
+  await expect(form.locator(".field-error")).toContainText(
+    "give a role, or a group that grants one",
+  );
+  await expect(form.getByLabel("Username")).toHaveValue(nobody);
+  await expect(page.getByRole("region", { name: `Access code for ${nobody}` })).toHaveCount(0);
+  await role.selectOption({ label: "View-only" });
   await form.getByRole("button", { name: "Create user" }).click();
   const code = page.getByRole("region", { name: `Access code for ${nobody}` });
   await expect(code).toBeVisible();
@@ -535,7 +554,7 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   // Neither: both cells blank, as the other two lists leave theirs (P-302).
   await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("");
   await expect(grid.locator('[row-id] [col-id="is_operator"]')).toHaveText("");
-  await expectClean(page, seen);
+  await expectClean(page, seen, ["422 POST"]);
 });
 
 test("P-284: an operator is made in one press, from a user's page and from a contact's", async ({

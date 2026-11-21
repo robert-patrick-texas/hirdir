@@ -4,6 +4,7 @@ import { TextField } from "../components/Field";
 import { Problem } from "../components/Problem";
 import { HelpList } from "../components/WhomToAsk";
 import { toApiError, useTitle } from "../lib/hooks";
+import { sentence } from "../lib/problems";
 import { useSite } from "../lib/product";
 
 /** The only page shown without a session. */
@@ -20,6 +21,9 @@ export function SignIn() {
   const [error, setError] = useState<ApiError | null>(null);
   const first = useRef<HTMLInputElement>(null);
   const ended = sessions.endReason;
+  // 0.9.15: an account that holds no role gave the right code, and is told so plainly,
+  // with whom to ask, apart from the refusal of a wrong code (P-299).
+  const noRole = error?.status === 403 ? error : null;
 
   // The page has just replaced whatever was there: put the reader in the form.
   useEffect(() => {
@@ -51,6 +55,9 @@ export function SignIn() {
     } catch (thrown) {
       const problem = toApiError(thrown);
       setError(problem);
+      // 0.9.15: the right code of an account that holds no role (P-299). Nothing is kept:
+      // the code box is emptied, and the username stays as typed.
+      if (problem.status === 403) setAccessCode("");
       if (problem.status === 429 && problem.retryAfter !== null) {
         setWaitUntil(Date.now() + problem.retryAfter * 1000);
       }
@@ -72,8 +79,22 @@ export function SignIn() {
           You have signed out.
         </p>
       )}
+      {noRole && (
+        <section className="alert alert-info" aria-labelledby="no-role" data-testid="no-role">
+          <h2 id="no-role">This account holds no role</h2>
+          <p>{sentence(noRole.detail || noRole.message)}</p>
+          {noRole.help ? (
+            <>
+              <p>Ask the team that runs {productName} to give it one:</p>
+              <HelpList help={noRole.help} />
+            </>
+          ) : (
+            <p>Ask an Admin of {productName} to give it one.</p>
+          )}
+        </section>
+      )}
       <form onSubmit={submit} className="stack">
-        <Problem error={error} shown={["username", "access_code"]} />
+        <Problem error={noRole ? null : error} shown={["username", "access_code"]} />
         <TextField
           label="Username"
           name="username"

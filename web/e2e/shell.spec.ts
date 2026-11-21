@@ -72,6 +72,8 @@ test("sign in, create a user, reload a deep link, sign out", async ({ page, base
   await expect(form.getByRole("radio", { name: "A new contact" })).toBeChecked();
   await form.getByLabel("Name (required)", { exact: true }).fill(`Quill Example ${suffix}`);
   await form.getByLabel("Email").fill(`${newUser}@example.org`);
+  // 0.9.15: a person is made with a role (P-299).
+  await form.getByLabel("Role").selectOption({ label: "View-only" });
   await form.getByRole("button", { name: "Create user" }).click();
 
   const secret = page.getByRole("region", { name: `Access code for ${newUser}` });

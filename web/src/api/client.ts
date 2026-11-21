@@ -6,6 +6,7 @@
 
 import { apiUrl } from "../lib/base";
 import { plural } from "../lib/format";
+import { type Help, helpOf } from "../lib/product";
 import type { EndReason, Session } from "../lib/session";
 import type { components, paths } from "./schema";
 
@@ -177,6 +178,11 @@ export class ApiError extends Error {
    * Null on every other, the 503 of a change that waited for another among them.
    */
   readonly busy: BusyServer | null;
+  /**
+   * 0.9.15: on the 403 of a sign-in with the right code by an account that holds no role,
+   * whom to ask, each that is set (P-299). Null on every other, and where none is set.
+   */
+  readonly help: Help | null;
 
   constructor(init: {
     status: number;
@@ -188,6 +194,7 @@ export class ApiError extends Error {
     deleted?: DeletedRecord | null;
     dependsOn?: readonly ExistingRecord[];
     busy?: BusyServer | null;
+    help?: Help | null;
   }) {
     const detail = init.detail ?? "";
     let text = detail || init.title;
@@ -210,6 +217,7 @@ export class ApiError extends Error {
     this.deleted = init.deleted ?? null;
     this.dependsOn = init.dependsOn ?? [];
     this.busy = busy;
+    this.help = init.help ?? null;
   }
 
   /** The record changed since it was read: read it again before changing it. */
@@ -266,6 +274,7 @@ export async function problemOf(response: Response): Promise<ApiError> {
         })
       : [],
     busy: response.status === 503 ? busyOf(problem.busy) : null,
+    help: helpOf(problem.help),
   });
 }
 

@@ -3662,3 +3662,31 @@ dialog.person-dialog {
 .person-hand-over {
   margin-top: 0.5rem;
 }
+
+/* 0.9.15: Generate beside the box of a new access code (P-300), level with the box under
+   its label; at a phone's width it goes under the box. */
+.with-generate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.5rem;
+  align-items: start;
+}
+
+.with-generate > .generate-code {
+  margin-top: calc(1lh + 0.15rem);
+}
+
+.with-generate > .generate-code-error {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 480px) {
+  .with-generate {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .with-generate > .generate-code {
+    margin-top: 0.5rem;
+    justify-self: start;
+  }
+}

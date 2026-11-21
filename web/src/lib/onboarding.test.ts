@@ -378,11 +378,11 @@ describe("a typed access code has a least length, which the form says (P-295)", 
 
   it("says the length under the field, and that an empty one is generated", () => {
     expect(accessCodeHint(12)).toBe(
-      "Leave empty to have one generated. One typed here has at least 12 characters.",
+      "Leave empty, or press Generate, to have one made. One typed here has at least 12 characters.",
     );
     expect(accessCodeHint(1)).toBe(
-      "Leave empty to have one generated. One typed here has at least 1 character.",
+      "Leave empty, or press Generate, to have one made. One typed here has at least 1 character.",
     );
-    expect(accessCodeHint(null)).toBe("Leave empty to have one generated");
+    expect(accessCodeHint(null)).toBe("Leave empty, or press Generate, to have one made");
   });
 });

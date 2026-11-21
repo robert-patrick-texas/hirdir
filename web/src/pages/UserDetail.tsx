@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, TextAreaField, TextField } from "../components/Field";
+import { GenerateCode } from "../components/GenerateCode";
 import { GroupBoxes } from "../components/GroupBoxes";
 import { MakeOperator } from "../components/MakeOperator";
 import { OperatorMark } from "../components/Operator";
@@ -140,10 +141,12 @@ function UserPage({ hid }: { hid: string }) {
 /** The account brought back: its new access code, shown once, and what it is without. */
 function BroughtBackUser({ back, onDone }: { back: BroughtBack; onDone: () => void }) {
   const { user, access_code } = back;
+  // 0.9.15: with the role chosen in the confirmation (P-299).
+  const holding = user.role ? `the role ${roleLabel(user.role)}` : "no role";
   if (access_code === null) {
     return (
       <Notice
-        text={`The service account ${user.username} is active again. It has no role, no group and no token: give them below.`}
+        text={`The service account ${user.username} is active again, with ${holding}. It has no group and no token: give them below.`}
       />
     );
   }
@@ -151,7 +154,7 @@ function BroughtBackUser({ back, onDone }: { back: BroughtBack; onDone: () => vo
     <SecretBox
       title={`New access code for ${user.username}`}
       secret={access_code}
-      note={`${user.username} is active again, with no role and no group: give them below.`}
+      note={`${user.username} is active again, with ${holding} and no group: give groups below.`}
       onDone={onDone}
     />
   );
@@ -178,8 +181,9 @@ function RetireUser({ user, onRetired, onBroughtBack }: RetireUserProps) {
       {retired ? (
         <>
           <p>
-            Brought back, the account is active again with a new access code, shown once, no role
-            and no group. Where its contact is retired, the two are brought back together.
+            Brought back, the account is active again with a new access code, shown once, the role
+            chosen in the confirmation and no group. Where its contact is retired, the two are
+            brought back together.
           </p>
           <div className="actions">
             <BringBackUser user={user} onBroughtBack={onBroughtBack} />
@@ -624,16 +628,19 @@ function AccessCode({ user, reload }: { user: User; reload: () => void }) {
       </p>
       <div className="stack">
         <Problem error={action.error} shown={["access_code"]} />
-        <TextField
-          label="New access code"
-          name="access_code"
-          value={wanted}
-          onChange={setWanted}
-          maxLength={200}
-          autoComplete="off"
-          hint={accessCodeHint(leastCodeLength(settings.data))}
-          error={action.error?.fields.access_code}
-        />
+        {/* 0.9.15: Generate puts a code the server made in the box (P-300). */}
+        <GenerateCode onMade={setWanted} disabled={action.busy}>
+          <TextField
+            label="New access code"
+            name="access_code"
+            value={wanted}
+            onChange={setWanted}
+            maxLength={200}
+            autoComplete="off"
+            hint={accessCodeHint(leastCodeLength(settings.data))}
+            error={action.error?.fields.access_code}
+          />
+        </GenerateCode>
         <p className="actions">
           <ConfirmButton
             label="Reset access code"

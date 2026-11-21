@@ -12,6 +12,7 @@ import {
   TextField,
 } from "../components/Field";
 import { GapLinks } from "../components/GapLinks";
+import { GenerateCode } from "../components/GenerateCode";
 import { saveFile } from "../components/grid/save";
 import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
@@ -463,6 +464,10 @@ interface NewUserProps {
  * the username until it is typed over and its colour is the next that no operator has,
  * with the role, the groups and the notes on the same form. Unticking the contact
  * unticks the operator, which needs one; ticking the operator ticks the contact.
+ * 0.9.15: a person is made with a role, chosen here or granted by a group ticked, since
+ * an account with none does not sign in: the form says so, and the server refuses one
+ * with neither at the role (P-299). Generate puts a code the server made in the box of
+ * the access code (P-300).
  */
 function NewUser({ onCancel, onCreated }: NewUserProps) {
   const [username, setUsername] = useState("");
@@ -660,7 +665,18 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
             )}
           </div>
         )}
-        <SelectField label="Role" name="role" value={role} onChange={setRole} error={fields.role}>
+        <SelectField
+          label="Role"
+          name="role"
+          value={role}
+          onChange={setRole}
+          hint={
+            service
+              ? "A service account may be made with no role; its tokens are refused until it has one."
+              : "A person is given a role, here or by a group ticked below that grants one: an account with no role cannot sign in."
+          }
+          error={fields.role}
+        >
           <option value="">No role</option>
           {ROLES.map((name) => (
             <option key={name} value={name}>
@@ -694,16 +710,18 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           disabled={action.busy}
         />
         {!service && (
-          <TextField
-            label="Access code"
-            name="access_code"
-            value={accessCode}
-            onChange={setAccessCode}
-            maxLength={200}
-            autoComplete="off"
-            hint={accessCodeHint(leastCodeLength(settings.data))}
-            error={fields.access_code}
-          />
+          <GenerateCode onMade={setAccessCode} disabled={action.busy}>
+            <TextField
+              label="Access code"
+              name="access_code"
+              value={accessCode}
+              onChange={setAccessCode}
+              maxLength={200}
+              autoComplete="off"
+              hint={accessCodeHint(leastCodeLength(settings.data))}
+              error={fields.access_code}
+            />
+          </GenerateCode>
         )}
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy}>

@@ -3740,7 +3740,10 @@ server (P-299, P-300):
   `GET /auth/new-access-code` and puts the code in the box, both boxes on the Profile,
   shown as it is, not masked, so that it can be read and kept; nothing is saved until
   the form's own button is pressed, and the code is sent and checked as a typed one is.
-  On the Profile the code in hand is still asked for, of an Admin too.
+  On the Profile the code in hand is still asked for, of an Admin too, and a made code
+  that is changed to is shown once more, with Copy, as an Admin's forms show one; the
+  boxes are then emptied and masked again. A code typed over the made one is sent as
+  typed and not shown again.
 - **The same code again.** On the Profile, a new code that is the one in hand is
   refused by the server at New access code, in its words, "this is the access code you
   have now", with the three boxes as typed and no session ended. An Admin who sets the
