@@ -33213,7 +33213,7 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.9.16"
+    "version": "0.9.17"
   },
   "openapi": "3.1.0",
   "paths": {
