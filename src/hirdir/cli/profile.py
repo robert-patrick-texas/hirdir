@@ -113,7 +113,8 @@ def set_(
     token: Token = None,
 ) -> None:
     """Change your own name, email, numbers and organization, and the label and the
-    colour of your operator."""
+    colour of your operator. Your contact and an operator are two changes, your contact
+    first: where the operator's is refused, your contact's is kept, and is said."""
     given = {"name": name, "email": email, "phone": phone, "phone2": phone2}
     given["organization"] = organization
     contact = {field: value for field, value in given.items() if value is not None}
@@ -129,12 +130,24 @@ def set_(
         raise client.fail(f"this account has no contact: {ASK_AN_ADMIN}", client.EXIT_CONFLICT)
     # Which operator is meant is settled before anything is sent.
     which = _the_operator(me, operator) if marks else None
+    stored = False
     if contact:
-        body = {"row_version": me["contact"]["row_version"], **contact}
-        me = client.call(target, "PATCH", "/auth/me/contact", body)
+        version = me["contact"]["row_version"]
+        me = client.call(target, "PATCH", "/auth/me/contact", {"row_version": version, **contact})
+        stored = me["contact"]["row_version"] != version
     if which is not None:
         body = {"row_version": which["row_version"], **marks}
-        me = client.call(target, "PATCH", f"/auth/me/operators/{which['hid']}", body)
+        # The contact is changed by now, where the request changed it: a refusal of
+        # the operator's change says so first, and exits as that refusal does.
+        done = (
+            f"your contact is changed ({', '.join(contact)}); "
+            f"your operator {which['label']} is not:"
+            if stored
+            else None
+        )
+        me = client.call(
+            target, "PATCH", f"/auth/me/operators/{which['hid']}", body, done_before=done
+        )
     _show(me)
 
 
