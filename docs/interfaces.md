@@ -257,8 +257,8 @@ answers the user as before and, with it, `contact`, the contact the person is, w
 that is not retired whose contact is theirs, in the order of their labels, each with
 `hid`, `label`, `colour`, `record_status` and `row_version`. A person whose contact is
 retired has none: nobody is behind the labels of a retired contact (P-280). The answer
-of signing in carries the same as its `user`. The three routes below are
-for a session of any role, View-only too, and of an account that holds no role, as
+of signing in carries the same as its `user`. The three routes below are for a
+session of any role, View-only too, and of an account that holds no role, as
 `GET /auth/me` and `POST /auth/sign-out-everywhere` are: an account that is brought
 back has a new code and no role (P-296), and that person changes the code an Admin
 gave them, and what is their own, before a role is theirs. They carry no HID of a user
@@ -292,11 +292,10 @@ attempt is written as `access_code_delayed`. Both events are kept though the req
 is refused. A new code shorter than the setting `access_code_min_length`, or blank, or
 beginning or ending with a space, is a `422` on `access_code`; the current code is
 looked at first, so a request with both wrong is counted. Accepted, the code is
-changed, every other
-session of the person ends, and the answer is that of `POST /auth/sign-in`: a new
-`token` and `expires_at` for the session in hand, and the `user`. The token sent with
-the request is ended with the others. It is audited as `set_access_code`, by the
-person.
+changed, every other session of the person ends, and the answer is that of
+`POST /auth/sign-in`: a new `token` and `expires_at` for the session in hand, and the
+`user`. The token sent with the request is ended with the others. It is audited as
+`set_access_code`, by the person.
 
 `access_code_min_length`, a whole number from 1 to 64 and 12 from the start, is the
 least length of an access code that is typed: here, and by an Admin on `POST /users`
