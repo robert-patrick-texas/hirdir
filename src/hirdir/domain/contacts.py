@@ -6,6 +6,7 @@ outward: nothing is copied down. A user and an operator are each a part that a c
 plays, and read its name, email and numbers when they are read (P-172).
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import ids
+from hirdir.auth.roles import Role
 from hirdir.db import dialect
 from hirdir.db.models import (
     Agreement,
@@ -202,20 +204,34 @@ def create_contact(db: Session, context: AuditContext, fields: dict[str, Any]) -
 
 
 def update_contact(
-    db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
+    db: Session,
+    context: AuditContext,
+    hid: str,
+    row_version: int | None,
+    fields: dict[str, Any],
+    role: Role | None = None,
 ) -> Contact:
-    """Change a contact. Every place and owner it is assigned to shows the change at once."""
+    """Change a contact. Every place and owner it is assigned to shows the change at once.
+
+    `role` is the role of whoever asks: a retired contact is brought back, its
+    `record_status` changed from `retired`, by an Admin alone (P-298).
+    """
     contact = get_contact(db, hid)
     has_tags = "tags" in fields
     labels = fields.pop("tags", None) or []
     values = _checked(db, fields, contact)
+    label_rules.brought_back_by_an_admin(contact, values, role, RECORD_TYPE)
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
     records.apply(db, context, RECORD_TYPE, contact, row_version, values, tag_change)
     return contact
 
 
-def retire_contact(db: Session, context: AuditContext, hid: str, row_version: int) -> Contact:
-    """Retire a contact. Its assignments stay, and show it as retired."""
+def retire_contact(
+    db: Session, context: AuditContext, hid: str, row_version: int | None
+) -> Contact:
+    """Retire a contact. Its assignments stay, and show it as retired. This is the change
+    of the contact alone: `hirdir.domain.people.retire` sees first to its user and to
+    the operators it stands behind, and the routes go through it (P-297)."""
     contact = get_contact(db, hid)
     records.apply(
         db,
@@ -474,12 +490,25 @@ _LISTED = {
 }
 
 
-def users_of(db: Session, hids: list[str]) -> dict[str, User]:
-    """Return the user that each of the contacts is, where it is one (P-172)."""
+def accounts_of(db: Session, hids: list[str]) -> dict[str, User]:
+    """Return the account of each of the contacts, where it has one, a retired one too:
+    what the chain of a person shows, marked. `users_of` says who is a user (P-296)."""
     if not hids:
         return {}
     found = db.scalars(select(User).where(User.contact_hid.in_(hids)))
     return {user.contact_hid: user for user in found if user.contact_hid is not None}
+
+
+def standing(accounts: Mapping[str, User]) -> dict[str, User]:
+    """Return those of the accounts of contacts that are not retired: a retired account
+    is nobody's user, for `is_user` and for the scope of an operator (P-296)."""
+    return {hid: user for hid, user in accounts.items() if user.record_status != "retired"}
+
+
+def users_of(db: Session, hids: list[str]) -> dict[str, User]:
+    """Return the user that each of the contacts is, where it is one (P-172). A retired
+    account is none: its contact is no user's (P-296)."""
+    return standing(accounts_of(db, hids))
 
 
 def operators_of(db: Session, hids: list[str]) -> dict[str, list[Operator]]:

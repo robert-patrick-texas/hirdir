@@ -477,8 +477,13 @@ ITEM_OPERATOR_CONTACT: Any = aliased(Contact, name="item_operator_contact")
 
 
 def is_user(contact_hid: Any) -> ColumnElement[bool]:
-    """Say whether the contact a column names is a user's (P-172)."""
-    return contact_hid.in_(select(User.contact_hid).where(User.contact_hid.is_not(None)))
+    """Say whether the contact a column names is a user's (P-172). A retired account is
+    no user: its contact is nobody's, as `hirdir.domain.contacts.users_of` has it (P-296)."""
+    return contact_hid.in_(
+        select(User.contact_hid).where(
+            User.contact_hid.is_not(None), User.record_status != "retired"
+        )
+    )
 
 
 def is_operator(contact: Any) -> ColumnElement[bool]:

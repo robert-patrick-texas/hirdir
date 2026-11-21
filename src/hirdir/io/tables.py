@@ -130,6 +130,8 @@ USERS = Table(
         "notes": Field("text", User.notes),
         "is_service_account": Field("boolean", User.is_service_account),
         "disabled": Field("boolean", User.disabled),
+        # `active` before `retired`, where the retired are asked for (P-296).
+        "record_status": Field("choice", User.record_status),
         "last_sign_in_at": Field("timestamp", User.last_sign_in_at),
     },
 )

@@ -96,8 +96,7 @@ def test_a_walk_says_retired_of_a_retired_group_and_a_retired_operator(make: Mak
     entry = make.entry(make.vendor())
     switch = make.switches(entry, "sw", 1)[0]
     make.stack("stack-a", [switch], operator_hid=marks["RA"]["hid"])
-    ra = make.get(f"/operators/{marks['RA']['hid']}")
-    make.post(f"/operators/{ra['hid']}/retire", {"row_version": ra["row_version"]}, 200)
+    make.release(marks["RA"])
     walk = _walk(make, f"/items/{switch['hid']}", "operator_hid")
     assert [(s["name"], s["outcome"]) for s in walk["steps"][:2]] == [
         ("sw-01", "nothing"),

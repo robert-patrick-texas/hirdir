@@ -16,10 +16,12 @@ from sqlalchemy import ColumnElement, case, func, literal, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
+from hirdir.auth.roles import Role
+from hirdir.db import dialect
 from hirdir.db.models import Contact, DeviceGroup, Item, Location, Operator, Region, Site, User
 from hirdir.domain import descent, geography, records, tags
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotAllowed, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
 
 RECORD_TYPE = "operator"
@@ -124,6 +126,10 @@ def _checked(db: Session, fields: dict[str, Any], operator: Operator | None) -> 
     if "contact_hid" in fields:
         hid = fields["contact_hid"] or None
         if hid is not None and (operator is None or operator.contact_hid != hid):
+            # A label does not stand on a retired contact. The writer's place is taken
+            # before the contact is looked at, so that a retirement of it at the same
+            # moment waits, and then finds this label (P-297).
+            dialect.hold_other_writers(db)
             contact = db.get(Contact, hid)
             if contact is None:
                 raise Invalid(
@@ -137,6 +143,18 @@ def _checked(db: Session, fields: dict[str, Any], operator: Operator | None) -> 
     return values
 
 
+def brought_back_by_an_admin(
+    record: Any, values: dict[str, Any], role: Role | None, what: str
+) -> None:
+    """Refuse a change that brings a retired contact or operator back, its
+    `record_status` changed from `retired`, to anybody but an Admin (P-298). To retire
+    one is the Inventory role's, and every other kind of record is brought back as
+    before."""
+    back = record.record_status == "retired" and values.get("record_status", "retired") != "retired"
+    if back and role is not Role.ADMIN:
+        raise NotAllowed(f"an Admin brings a retired {what} back: this needs the admin role")
+
+
 def create_operator(db: Session, context: AuditContext, fields: dict[str, Any]) -> Operator:
     """Create an operator: a label, with or without somebody behind it yet."""
     operator = Operator(**_checked(db, {"label": None, **fields}, None))
@@ -145,18 +163,33 @@ def create_operator(db: Session, context: AuditContext, fields: dict[str, Any]) 
 
 
 def update_operator(
-    db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
+    db: Session,
+    context: AuditContext,
+    hid: str,
+    row_version: int | None,
+    fields: dict[str, Any],
+    role: Role | None = None,
 ) -> Operator:
     """Change an operator. Given another contact, everything the label is on is that
-    person's at once; given none, it is an open assignment. Nothing else is written to."""
+    person's at once; given none, it is an open assignment. Nothing else is written to.
+
+    `role` is the role of whoever asks: a retired operator is brought back, its
+    `record_status` changed from `retired`, by an Admin alone (P-298).
+    """
     operator = get_operator(db, hid)
-    records.apply(db, context, RECORD_TYPE, operator, row_version, _checked(db, fields, operator))
+    values = _checked(db, fields, operator)
+    brought_back_by_an_admin(operator, values, role, RECORD_TYPE)
+    records.apply(db, context, RECORD_TYPE, operator, row_version, values)
     return operator
 
 
-def retire_operator(db: Session, context: AuditContext, hid: str, row_version: int) -> Operator:
+def retire_operator(
+    db: Session, context: AuditContext, hid: str, row_version: int | None
+) -> Operator:
     """Release what a label is on: retired, it stands for nothing, and each thing it
-    was on has the operator of the next level up, or none."""
+    was on has the operator of the next level up, or none. This is the change of the
+    operator alone: `hirdir.domain.people.retire` sees first to what is linked to it,
+    and the routes go through it (P-297)."""
     operator = get_operator(db, hid)
     records.apply(
         db,

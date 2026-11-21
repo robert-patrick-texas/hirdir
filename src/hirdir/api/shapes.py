@@ -349,12 +349,15 @@ def operators_out(db: Session, found: list[Operator]) -> list[shapes.OperatorOut
     """Return operators, each with who is behind it, the user that person is where it is
     one, and how much it is given to (P-172)."""
     people = _by_hid(db, Contact, {operator.contact_hid for operator in found})
-    users = contacts.users_of(db, list(people))
+    # The account of each contact, a retired one too, is shown as `user`; the scope is
+    # by those that are not retired (P-296).
+    accounts = contacts.accounts_of(db, list(people))
+    users = contacts.standing(accounts)
     uses = operators.uses(db, [operator.hid for operator in found])
     out = []
     for operator in found:
         contact = people.get(operator.contact_hid or "")
-        user = users.get(contact.hid) if contact is not None else None
+        user = accounts.get(contact.hid) if contact is not None else None
         out.append(
             shapes.OperatorOut(
                 **_own(
@@ -615,7 +618,10 @@ def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
     hids = [contact.hid for contact in found]
     labels = tags.labels_of(db, contacts.RECORD_TYPE, hids)
     uses = contacts.uses(db, hids)
-    users = contacts.users_of(db, hids)
+    # The account of each contact, a retired one too, is shown as `user`; `is_user`
+    # is by those that are not retired (P-296).
+    accounts = contacts.accounts_of(db, hids)
+    users = contacts.standing(accounts)
     behind = contacts.operators_of(db, hids)
     return [
         shapes.ContactOut(
@@ -627,7 +633,7 @@ def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
             tags=labels[contact.hid],
             uses=uses[contact.hid],
             is_user=contact.hid in users,
-            user=_user_brief(users.get(contact.hid)),
+            user=_user_brief(accounts.get(contact.hid)),
             is_operator=contacts.is_operator(contact, behind[contact.hid]),
             operators=[shapes.OperatorBrief.model_validate(one) for one in behind[contact.hid]],
         )

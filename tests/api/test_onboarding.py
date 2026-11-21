@@ -12,7 +12,7 @@ from sqlalchemy import Engine, event, update
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import UserGroup
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, left_retired
 from tests.conftest import ADMIN_CODE, VIEWER_CODE
 
 PERSON = {"name": "Example Person", "email": "example.person@example.net", "phone": "x1"}
@@ -270,7 +270,7 @@ def test_the_users_are_narrowed_to_those_with_no_contact_and_no_operator(
     two = desk.post("/users", {"username": "ex-two", "contact": PERSON, "operator": {"label": "B"}})
     desk.post("/operators", {"label": "A", "contact_hid": two["user"]["contact_hid"]})
     gone = desk.post("/users", {"username": "ex-gone", "contact": {"name": "G"}, "operator": {}})
-    desk.post(f"/operators/{gone['operator']['hid']}/retire", {"row_version": 1}, expect=200)
+    desk.release(gone["operator"])
     desk.post("/users", {"username": "ex-none", "contact": {"name": "N"}})
     desk.post("/users", {"username": "ex-bot", "is_service_account": True})
 
@@ -305,7 +305,7 @@ def test_the_contacts_say_and_find_who_is_behind_an_operator(
         desk.post("/operators", {"label": label, "contact_hid": both["hid"]})
     retired = desk.contact("Example Retired")
     gone = desk.post("/operators", {"label": "EX-GONE", "contact_hid": retired["hid"]})
-    desk.post(f"/operators/{gone['hid']}/retire", {"row_version": 1}, expect=200)
+    desk.release(gone)
     desk.contact("Example Nobody")
 
     # Every role reads them.
@@ -329,18 +329,17 @@ def test_the_contacts_say_and_find_who_is_behind_an_operator(
 
 
 def test_a_retired_contact_is_as_no_contact_for_the_gaps_and_still_answered(
-    client: TestClient, admin: dict, viewer: dict
+    client: TestClient, admin: dict, viewer: dict, db: Session
 ) -> None:
     """A user whose contact is retired is in both gaps and in neither `some`, as nobody is
-    behind its operator; it still answers what is left over (P-280)."""
+    behind its operator; it still answers what is left over (P-280). A contact was left
+    so before 0.9.14; since then it is not retired under its account (P-297)."""
     desk = Maker(client, admin)
     made = desk.post("/users", {"username": "ex-left", "contact": PERSON, "operator": {}})
     desk.post("/users", {"username": "ex-ops", "contact": {"name": "Example Ops"}, "operator": {}})
     desk.post("/users", {"username": "ex-bot", "is_service_account": True})
     contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
-    desk.post(
-        f"/contacts/{contact['hid']}/retire", {"row_version": contact["row_version"]}, expect=200
-    )
+    left_retired(db, contact["hid"])
 
     assert "ex-left" in _usernames(desk, contact="none")
     assert "ex-left" not in _usernames(desk, contact="some")
