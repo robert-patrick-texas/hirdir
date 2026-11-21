@@ -3550,9 +3550,11 @@ P-292, P-296 to P-298):
   by it. The page of a retired account says that it
   signs in with nothing, is in no group and holds no role, and offers only what the
   server changes of it: its username, with the words that no other account takes the
-  name until it is given another, its notes, and Take its contact away. The box
+  name until it is given another, its notes, and Take its contact away, which asks
+  first and says that the account is given no contact again until it is brought back. The box
   Disabled, the groups, the form of the contact, another contact, the access code, the
-  sessions and a new token are not offered, and the page says that they are given once
+  sessions and a new token are not offered, the form of a new token not drawn at all
+  and the tokens read again at the retirement, so that each reads Revoked at once, and the page says that they are given once
   the account is brought back; nor is Make an operator. Bring back is there in the
   place of Retire.
 - **The chain.** The pages of a user, of a contact and of an operator show, under the
@@ -3567,7 +3569,9 @@ P-292, P-296 to P-298):
   that the person signs in no longer; the lists say `no user` of it, as the server
   counts it.
 - **The confirmation of a retirement.** Retire account, Retire contact and Release open
-  one dialog, which reads `GET .../linked` afresh at each press. Where nothing that is
+  one dialog, which reads `GET .../linked` afresh at each press. Closed, by Cancel or
+  by Escape, it gives the focus back to the button that opened it, and so does the
+  dialog of Bring back. Where nothing that is
   not retired is linked, it is the plain confirmation of before, and sends
   `row_version` alone. Otherwise it lists each linked record that is not retired, a
   row to each, with Retire ticked from the start: the account, with its role and its
@@ -3582,14 +3586,28 @@ P-292, P-296 to P-298):
   be ticked, with the words that an Admin retires an account, and so the contact
   stays, its box unticked too; on the page of a contact that has an account, the
   dialog says to ask an Admin and has no Retire. A label handed over to nobody, or to
-  the person it has, is said at its row and nothing is sent. One press sends the one
+  the person it has, is said at its row and nothing is sent. The button that goes
+  ahead says what it will do as the ticks stand, the record and how many more are
+  retired with it: `Release KL and retire 3 more` as the dialog opens on a label,
+  `Release KL only` with all else unticked, `Retire klee and 1 more`; a label handed
+  over, left open or kept is not retired and is not counted. One press sends the one
   request, which says every linked record, the kept among them. A refusal, `409`,
   `422` or `403`, is shown in the dialog with nothing chosen lost: what the server
   says of `linked.user` and of `linked.contact` at the row of each, and what it says
   of the labels, `linked.operators`, above the rows as a sentence. Where the server
   names in `depends_on` a record that was not listed, the list is read again, the new
   record ticked and what was chosen kept, and the dialog says that it is listed now,
-  each record a link, in place of the server's words of each field. Done, the page
+  each record a link, in place of the server's words of each field. Any refusal of
+  what was said, a `409` or a `422`, has the list read again: where a linked record
+  was parted, retired or taken off by somebody else while the dialog was open, the
+  dialog says in plain words that the linked records have changed, in place of the
+  refusal, which was of a list that is no longer so, and the next press is of the
+  list as it is. A label handed over to somebody who was retired before the press is
+  refused at the field of that hand-over. Where the record itself was changed by
+  somebody else, the refusal offers Reload as every form does, and here it reads the
+  record and the list again inside the dialog, which stays open with what was chosen,
+  and says to check it and press again; the dialog of Bring back does the same. Done,
+  the page
   says what became of each: `Kim Lee was retired, with the account klee. KL was handed
   over and Op2 was released.`
 - **Bring back.** On the page of a retired account, Bring back opens a dialog that
@@ -3598,7 +3616,11 @@ P-292, P-296 to P-298):
   contact is taken away first; and each retired label of that contact, unticked.
   Brought back, the new access code is shown once, as New user shows one, with the
   words that the account has no role and no group; a service account has no code and
-  is told the same. On the pages of a contact and of an operator, Bring back is
+  is told the same. A refusal has the list read again, and where what it offers has
+  changed, the dialog says so in place of the refusal: that the contact is back
+  already, where somebody else brought it back while the dialog was open, and to
+  press again. The code is on show on the page of that account alone: the page
+  of a user holds nothing of another, whichever way its address came to change. On the pages of a contact and of an operator, Bring back is
   offered to an Admin alone; anybody else reads `An Admin brings a person back`,
   View-only too. Every other kind of record is brought back as before. A label is not
   brought back onto a retired contact: where the person behind a released label is

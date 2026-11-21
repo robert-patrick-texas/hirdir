@@ -172,8 +172,10 @@ export function retireBody(
         errors[rowOf("operator", operator.hid)] =
           "Choose the person the label is handed over to, or another choice.";
       } else if (choice.contactHid === linked.contact?.hid) {
-        errors[rowOf("operator", operator.hid)] =
-          "This is the person behind the label now: choose another, or Keep.";
+        // Keep is said only where it is a choice: not with the contact going (review 6).
+        errors[rowOf("operator", operator.hid)] = contactGoes(on, linked, firm)
+          ? "This is the person behind the label now: choose another person."
+          : "This is the person behind the label now: choose another person, or Keep.";
       }
       return { hid: operator.hid, action: "hand_over", contact_hid: choice.contactHid };
     });
@@ -186,13 +188,14 @@ export function retireBody(
 
 /**
  * Where a refusal is said: what the server says of `linked.user` and of
- * `linked.contact` at the row of each, and of `linked.operators`, which it says of the
- * labels as a whole, above the rows with the rest.
+ * `linked.contact` at the row of each; and what it says of the labels,
+ * `linked.operators`, at the hand-over of each label in `handOvers`, or, with none,
+ * above the rows with the rest.
  */
-export function refusedRows(fields: Readonly<Record<string, string>>): {
-  rows: Record<string, string>;
-  shown: string[];
-} {
+export function refusedRows(
+  fields: Readonly<Record<string, string>>,
+  handOvers: readonly string[] = [],
+): { rows: Record<string, string>; shown: string[] } {
   const rows: Record<string, string> = {};
   const shown: string[] = [];
   for (const kind of ["user", "contact"] as const) {
@@ -200,6 +203,11 @@ export function refusedRows(fields: Readonly<Record<string, string>>): {
     if (message === undefined) continue;
     rows[rowOf(kind)] = message;
     shown.push(`linked.${kind}`);
+  }
+  const labels = fields["linked.operators"];
+  if (labels !== undefined && handOvers.length > 0) {
+    for (const hid of handOvers) rows[rowOf("operator", hid)] = labels;
+    shown.push("linked.operators");
   }
   return { rows, shown };
 }
@@ -209,25 +217,6 @@ export function refusedRows(fields: Readonly<Record<string, string>>): {
  * it: it is said as it is, with no name of a field before it.
  */
 export const LINKED_LABELS: Readonly<Record<string, string>> = { "linked.operators": "" };
-
-/**
- * Whether a refusal says that something is linked which the confirmation did not list,
- * so that `linked` is read again: the server names it under `linked` and in `depends_on`.
- */
-export function namesUnlisted(
-  error: { status: number; dependsOn: readonly { record_type: string; hid: string }[] },
-  on: On,
-  linked: Linked,
-): boolean {
-  if (error.status !== 409) return false;
-  const others = othersOf(on, linked);
-  const listed = new Set([
-    ...(others.user ? [others.user.hid] : []),
-    ...(others.contact ? [others.contact.hid] : []),
-    ...others.operators.map((operator) => operator.hid),
-  ]);
-  return error.dependsOn.some((record) => !listed.has(record.hid));
-}
 
 /** How much names a contact, said beside it so that the choice is an informed one. */
 export function contactUses(uses: number): string {
@@ -378,4 +367,83 @@ export function retiredBehind(
   if (error?.status !== 409 || error.existing?.record_type !== "contact") return null;
   if (error.fields.record_status === undefined) return null;
   return { hid: error.existing.hid, name: error.existing.label };
+}
+
+/**
+ * Whether two readings of the person hold the same records to be said, each by its kind
+ * and its HID: where they do not, somebody changed what is linked while the confirmation
+ * was open, and what the server refused was said of a list that is no longer so.
+ */
+export function sameOthers(on: On, was: Linked, now: Linked): boolean {
+  const named = (linked: Linked) => {
+    const others = othersOf(on, linked);
+    return [
+      `user ${others.user?.hid ?? ""}`,
+      `contact ${others.contact?.hid ?? ""}`,
+      ...others.operators.map((operator) => `operator ${operator.hid}`).sort(),
+    ].join("\n");
+  };
+  return named(was) === named(now);
+}
+
+/** What the confirmation says where the list changed under it, in place of the refusal. */
+export const LIST_CHANGED =
+  "The linked records have changed since this was opened. The list is read again, with what was chosen kept: check it, then press again.";
+
+/**
+ * The labels at whose hand-over a refusal of `linked.operators` is said: the server says
+ * it of the labels as a whole, in a sentence that names the label, and with the one rule
+ * held here it is a hand-over that it refuses, to somebody who is retired or gone since.
+ * Those handed over that the sentence names; or, where it names none, each handed over.
+ */
+export function refusedHandOvers(
+  message: string | undefined,
+  on: On,
+  linked: Linked,
+  choices: Choices,
+): string[] {
+  if (message === undefined) return [];
+  const handed = othersOf(on, linked).operators.filter(
+    (operator) => choices.operators[operator.hid]?.action === "hand_over",
+  );
+  const named = handed.filter((operator) => message.includes(operator.label));
+  return (named.length > 0 ? named : handed).map((operator) => operator.hid);
+}
+
+/**
+ * What Bring back says where what it offers changed while it was open, in place of the
+ * refusal (review 5), or null where it offers what it did: that the contact is back
+ * already, brought back by somebody else, which is why the press was refused; or that
+ * the linked records have changed.
+ */
+export function backChanged(was: Linked, now: Linked): string | null {
+  const before = bringBackOffer(was);
+  const after = bringBackOffer(now);
+  if (before.contact && !after.contact && now.contact?.hid === before.contact.hid) {
+    return `The contact ${before.contact.name} is back already: it was brought back since this was opened. Press Bring back again to bring the account back.`;
+  }
+  const named = (offer: BringBackOffer) =>
+    [offer.contact?.hid ?? "", ...offer.operators.map((operator) => operator.hid).sort()].join(" ");
+  return named(before) === named(after) ? null : LIST_CHANGED;
+}
+
+/**
+ * What the button that goes ahead says (review 9): the record, and how many more are
+ * retired with it as the ticks stand, so that nobody retires a person thinking that
+ * they release a label. An account ticked, a contact ticked and a label released are
+ * each one more; a label handed over, left open or kept is not retired, and is not
+ * counted. `Release KL only`, `Release KL and retire 2 more`, `Retire klee and 1 more`.
+ */
+export function goWords(on: On, linked: Linked, choices: Choices, admin: boolean): string {
+  const others = othersOf(on, linked);
+  const firm = held(on, linked, choices, admin);
+  const more =
+    (others.user && firm.user ? 1 : 0) +
+    (others.contact && firm.contact ? 1 : 0) +
+    others.operators.filter((operator) => firm.operators[operator.hid]?.action === "retire").length;
+  const name = nameOf(on, linked);
+  if (on.kind === "operator") {
+    return more === 0 ? `Release ${name} only` : `Release ${name} and retire ${more} more`;
+  }
+  return more === 0 ? `Retire ${name} only` : `Retire ${name} and ${more} more`;
 }

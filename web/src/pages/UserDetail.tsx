@@ -16,7 +16,7 @@ import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
-import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { useAction, useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
 import { useSettings } from "../lib/lists";
 import { accessCodeHint, behindOperator, briefMark, leastCodeLength } from "../lib/onboarding";
@@ -40,6 +40,12 @@ type Token = Schemas["ServiceTokenOut"];
  */
 export function UserDetail() {
   const { hid = "" } = useParams();
+  // The page is of one account: what it holds of one, as a new access code shown once,
+  // is never on show for another, whichever way the address came to change (review 1).
+  return <UserPage key={hid} hid={hid} />;
+}
+
+function UserPage({ hid }: { hid: string }) {
   const auth = useAuth();
   const user = useLoad(`user ${hid}`, (signal) =>
     api.request("get", "/api/v1/users/{hid}", { path: { hid }, signal }),
@@ -124,7 +130,6 @@ export function UserDetail() {
               setBack(answer);
               user.reload();
             }}
-            reload={user.reload}
           />
         </>
       )}
@@ -156,7 +161,6 @@ interface RetireUserProps {
   user: User;
   onRetired: (text: string) => void;
   onBroughtBack: (answer: BroughtBack) => void;
-  reload: () => void;
 }
 
 /**
@@ -164,7 +168,7 @@ interface RetireUserProps {
  * back (P-292, P-296). The contact and the labels of the person are retired with it, or
  * parted from it, in the one confirmation (P-291).
  */
-function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps) {
+function RetireUser({ user, onRetired, onBroughtBack }: RetireUserProps) {
   const auth = useAuth();
   const own = auth.user.hid === user.hid;
   const retired = userState(user) === "Retired";
@@ -178,7 +182,7 @@ function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps)
             and no group. Where its contact is retired, the two are brought back together.
           </p>
           <div className="actions">
-            <BringBackUser user={user} onBroughtBack={onBroughtBack} onReload={reload} />
+            <BringBackUser user={user} onBroughtBack={onBroughtBack} />
           </div>
         </>
       ) : (
@@ -201,7 +205,6 @@ function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps)
                   : undefined
               }
               onRetired={onRetired}
-              onReload={reload}
             >
               <p>
                 {user.username} signs in no longer, and leaves its groups and its role. An Admin can
@@ -469,11 +472,24 @@ function TakeContact({ user, reload }: { user: User; reload: () => void }) {
         brought back by itself, and the contact stays as it is.
       </p>
       <Problem error={action.error} onReload={reload} />
-      <p className="actions">
-        <button type="button" onClick={() => void take()} disabled={action.busy}>
-          Take its contact away
-        </button>
-      </p>
+      {/* It asks first (review 8): a retired account is given no contact again. */}
+      <div className="actions">
+        <ConfirmButton
+          label="Take its contact away"
+          title={`Take the contact of ${user.username} away?`}
+          confirmLabel="Take its contact away"
+          onConfirm={take}
+          disabled={action.busy}
+        >
+          <p>
+            {user.username} is given no contact again until it is brought back: a retired account is
+            given none.{" "}
+            {user.contact
+              ? `The contact ${user.contact.name} stays as it is, and is no longer this account's.`
+              : ""}
+          </p>
+        </ConfirmButton>
+      </div>
     </section>
   );
 }
@@ -691,6 +707,9 @@ function Tokens({ user }: { user: User }) {
   const tokens = useLoad(`tokens ${user.hid}`, (signal) =>
     api.request("get", "/api/v1/users/{hid}/service-tokens", { path: { hid: user.hid }, signal }),
   );
+  // A retirement revokes them and a bringing back leaves them so: they are read again
+  // when the account changes, so that the list says what the server did (review 2).
+  useReloadOn(user.row_version, tokens.reload);
   const [name, setName] = useState("");
   const [expires, setExpires] = useState("");
   const [secret, setSecret] = useState<Schemas["ServiceTokenCreated"] | null>(null);
@@ -823,35 +842,41 @@ function Tokens({ user }: { user: User }) {
           A retired account is given no token: bring it back first.
         </p>
       )}
-      {!retired && <h3>New token</h3>}
-      <form onSubmit={submit} className="stack" hidden={retired}>
-        <Problem error={create.error} shown={["name", "expires_at"]} />
-        <TextField
-          label="Name"
-          name="name"
-          value={name}
-          onChange={setName}
-          required
-          maxLength={100}
-          autoComplete="off"
-          hint="What will use the token"
-          error={fields.name}
-        />
-        <TextField
-          label="Expires"
-          name="expires_at"
-          type="datetime-local"
-          value={expires}
-          onChange={setExpires}
-          hint={`In ${appZone()} time. Leave empty for a token that does not expire.`}
-          error={fields.expires_at}
-        />
-        <p className="actions">
-          <button type="submit" className="primary" disabled={create.busy}>
-            Create token
-          </button>
-        </p>
-      </form>
+      {/* Not drawn at all for a retired account: a form that is only hidden is still
+          on show where a style says how it is laid out (review 2). */}
+      {!retired && (
+        <>
+          <h3>New token</h3>
+          <form onSubmit={submit} className="stack">
+            <Problem error={create.error} shown={["name", "expires_at"]} />
+            <TextField
+              label="Name"
+              name="name"
+              value={name}
+              onChange={setName}
+              required
+              maxLength={100}
+              autoComplete="off"
+              hint="What will use the token"
+              error={fields.name}
+            />
+            <TextField
+              label="Expires"
+              name="expires_at"
+              type="datetime-local"
+              value={expires}
+              onChange={setExpires}
+              hint={`In ${appZone()} time. Leave empty for a token that does not expire.`}
+              error={fields.expires_at}
+            />
+            <p className="actions">
+              <button type="submit" className="primary" disabled={create.busy}>
+                Create token
+              </button>
+            </p>
+          </form>
+        </>
+      )}
     </section>
   );
 }

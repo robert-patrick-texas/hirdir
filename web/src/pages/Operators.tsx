@@ -985,7 +985,6 @@ function Release({ operator, onChanged, onReload }: ChangeProps) {
               label="Release"
               title={`Release ${operator.label}?`}
               onRetired={onChanged}
-              onReload={onReload}
               disabled={action.busy}
             >
               <p>

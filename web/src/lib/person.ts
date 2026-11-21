@@ -28,3 +28,18 @@ export type BroughtBack = Schemas["UserBroughtBack"];
 export function sendBringBack(hid: string, body: BringBackBody): Promise<BroughtBack> {
   return api.request("post", "/api/v1/users/{hid}/bring-back", { path: { hid }, body });
 }
+
+/**
+ * The version a record has now, read again where a change of it was refused as stale
+ * (review 7): a confirmation goes on from it, with what was chosen kept.
+ */
+export async function readVersion(on: On): Promise<number> {
+  const path = { hid: on.hid };
+  const record =
+    on.kind === "user"
+      ? await api.request("get", "/api/v1/users/{hid}", { path })
+      : on.kind === "contact"
+        ? await api.request("get", "/api/v1/contacts/{hid}", { path })
+        : await api.request("get", "/api/v1/operators/{hid}", { path });
+  return record.row_version;
+}

@@ -627,7 +627,6 @@ function ContactStatus({ contact, onChanged, onReload }: ContactStatusProps) {
               label="Retire contact"
               title={`Retire ${contact.name}?`}
               onRetired={onChanged}
-              onReload={onReload}
               disabled={action.busy}
             >
               <p>
