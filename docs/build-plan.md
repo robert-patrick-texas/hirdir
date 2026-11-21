@@ -169,7 +169,10 @@ person retired together, with one confirmation, or parted first (P-291); and a u
 account that is retired, which is other than disabled, left out of the list of users
 until it is asked for (P-292). The owner's answers at its start are in those three
 rows, and what follows from them in P-294 to P-298. Its migration, `0017`, adds the
-record status of a user and changes no record; its scenarios are S56 to S58.
+record status of a user and changes no record; its scenarios are S56 to S58. 0.9.15 follows it
+with what the owner said when it was published: an account with no role does not sign
+in (P-299), a new access code is not the one it replaces and may be made by the server
+(P-300), and every page reached from the menu bar opens at its top (P-301).
 
 ## From 0.6.1 to 0.9.0
 
