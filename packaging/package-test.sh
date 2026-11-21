@@ -4979,7 +4979,7 @@ own_and_retired() {
     api GET "/audit-events?action=set_access_code&record_hid=$own"
     expect "S56 a wrong current code and a new code that is too short are each a 422 on its field that says why, and change nothing: both sessions stand, the code signs in, and no code was set" \
         "$made $(json_field total)" \
-        '422 [["current_access_code", "this is not the access code you have"]] 422 [["access_code", "at least 12 characters (access_code_min_length)"]] 200 200 200 0'
+        '422 [["current_access_code", "this is not the access code you have"]] 422 [["access_code", "at least 12 characters"]] 200 200 200 0'
 
     token=$here
     api POST /auth/me/access-code "{\"current_access_code\": \"$own_code\", \"access_code\": \"$own_new\"}"

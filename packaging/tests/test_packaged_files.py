@@ -533,9 +533,13 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
     # The package test sets the setting by its name, and looks for what the server says
     # of a code that is too short as the server says it.
     assert f"put_setting {name} " in hook
-    assert f"at least {least} characters ({name})" in hook
+    # The server says the length in words a person reads at the box, with no name of a
+    # setting in them.
+    refusal = f'["access_code", "at least {least} characters"]'
+    assert refusal in hook
     script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
-    assert f"at least {least} characters ({name})" in script
+    assert refusal in script
+    assert f"({name})" not in hook + script
     # Every code that the package test types to this version is long enough, but the one
     # that is to be refused and the one typed under a setting that the test lowered.
     sent = re.findall(r'access_code\\?": \\?"([^"\\$]+)\\?"', script + hook)

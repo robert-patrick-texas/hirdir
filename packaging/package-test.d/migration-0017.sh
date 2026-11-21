@@ -340,7 +340,7 @@ length_0017() {
     made="$made $status"
     token=$admin
     expect "pkg the upgraded install has the setting access_code_min_length at its default, 12, and from now a code that is typed shorter is refused, with the length said: by POST /users/{hid}/access-code and by POST /users with a 422 on access_code, and by hirdir admin reset-access-code and create-user, which exit with 4; no user was made, and the code of ${#typed_0017} characters from before, which nobody changed, still signs in" \
-        "$made" '[[12, 12, true]] 422 [["access_code", "at least 12 characters (access_code_min_length)"]] 422 ["access_code"] 4 1 4 1 0 200'
+        "$made" '[[12, 12, true]] 422 [["access_code", "at least 12 characters"]] 422 ["access_code"] 4 1 4 1 0 200'
 
     made=$(put_setting access_code_min_length ${#shorter})
     api POST "/users/${users_0017[short]}/access-code" "{\"access_code\": \"$shorter\"}"
@@ -419,7 +419,7 @@ profile_0017() {
     api GET "/audit-events?action=set_access_code&record_hid=$hid"
     expect "S56 a wrong current code and a new code that is too short are each a 422 on its field that says why, and change nothing: both sessions stand, the code from before signs in, and no code was set" \
         "$made $(json_field total)" \
-        '422 [["current_access_code", "this is not the access code you have"]] 422 [["access_code", "at least 12 characters (access_code_min_length)"]] 200 200 200 0'
+        '422 [["current_access_code", "this is not the access code you have"]] 422 [["access_code", "at least 12 characters"]] 200 200 200 0'
 
     token=$here
     api POST /auth/me/access-code "{\"current_access_code\": \"${codes_0017[person]}\", \"access_code\": \"$new\"}"
