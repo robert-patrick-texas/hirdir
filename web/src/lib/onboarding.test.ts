@@ -274,7 +274,12 @@ describe("who is what, on the lists of people (P-280)", () => {
   });
 
   it("keeps the gap of the users in the address, and asks the server for it", () => {
-    expect(USERS_GAPS.map((gap) => gap.value)).toEqual(["", "no-contact", "no-operator"]);
+    expect(USERS_GAPS.map((gap) => gap.value)).toEqual([
+      "",
+      "no-contact",
+      "no-operator",
+      "retired",
+    ]);
     expect(usersGapOf(new URLSearchParams("contact=none"))).toBe("no-contact");
     expect(usersGapOf(new URLSearchParams("operator=none&q=ex"))).toBe("no-operator");
     expect(usersGapOf(new URLSearchParams("contact=some"))).toBe("");
@@ -285,6 +290,16 @@ describe("who is what, on the lists of people (P-280)", () => {
       "?q=ex+ops&operator=none&offset=50",
     );
     expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("keeps the retired accounts, asked for by themselves, in the address (P-292)", () => {
+    expect(USERS_GAPS.find((gap) => gap.value === "retired")?.label).toBe("Retired users");
+    expect(usersGapOf(new URLSearchParams("retired=only"))).toBe("retired");
+    // Retired with the rest is no view of the page, and a retired account is in no gap.
+    expect(usersGapOf(new URLSearchParams("retired=yes"))).toBe("");
+    expect(usersGapOf(new URLSearchParams("retired=only&contact=none"))).toBe("retired");
+    expect(usersGapQuery("retired")).toEqual({ retired: "only" });
+    expect(queryOf(usersAddress("lee", "retired", 50))).toBe("?q=lee&retired=only&offset=50");
   });
 
   it("marks a gap of a grid only while the grid's filter is that gap's", () => {

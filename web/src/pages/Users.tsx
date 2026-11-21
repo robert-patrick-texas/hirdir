@@ -17,12 +17,14 @@ import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
+import { RetiredHasIt } from "../components/RetiredHasIt";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { ValueLink } from "../components/ValueLink";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { userState } from "../lib/linked";
 import {
   briefMark,
   colourOnShow,
@@ -137,7 +139,7 @@ export function Users() {
             New user
           </button>
         )}
-        <ExportUsers />
+        <ExportUsers retired={gap === "retired"} />
       </div>
 
       {adding && (
@@ -151,7 +153,8 @@ export function Users() {
         />
       )}
 
-      {/* 0.9.13: the gaps, each one press away and an address of its own (P-280). */}
+      {/* 0.9.13: the gaps, each one press away and an address of its own (P-280). 0.9.14:
+          and the retired accounts, by themselves, which the list leaves out (P-292). */}
       <GapLinks
         label="Show users"
         links={USERS_GAPS.map((one) => ({
@@ -167,7 +170,10 @@ export function Users() {
           <p className="hint">
             A user is the part of a person who signs in. Its name, its email and its numbers are
             those of its contact, and are changed on the contact, or on the page of the user. The
-            operators are the labels the person works equipment under.
+            operators are the labels the person works equipment under.{" "}
+            {gap === "retired"
+              ? "These accounts are retired: each signs in with nothing, and is brought back on its page."
+              : "Retired accounts are left out: Retired users, above, lists them."}
           </p>
           <div className="scroll">
             <table data-testid="users" data-gap={gap || undefined}>
@@ -176,6 +182,7 @@ export function Users() {
                 works as
                 {gap === "no-contact" && ": those with no contact"}
                 {gap === "no-operator" && ": those with no operator"}
+                {gap === "retired" && ": the retired accounts"}
               </caption>
               <thead>
                 <tr>
@@ -213,13 +220,16 @@ export function Users() {
                 {sort.arrange(users.data.items, holdsAll).map((user) => (
                   <tr
                     key={user.hid}
-                    className={user.disabled ? "dim" : undefined}
+                    className={userState(user) === "Active" ? undefined : "dim"}
                     data-user={user.username}
+                    data-state={userState(user)}
                   >
                     <th scope="row">
                       <Link to={`/admin/users/${encodeURIComponent(user.hid)}`}>
                         {user.username}
                       </Link>
+                      {/* 0.9.14: a retired account is marked, wherever it is listed (P-292). */}
+                      {userState(user) === "Retired" && <span className="badge">Retired</span>}
                     </th>
                     {/* 0.9.3: the name, email and numbers of its contact (P-172). 0.9.13: the
                         contact as a link to its page, or no contact said plainly (P-280);
@@ -269,7 +279,7 @@ export function Users() {
                       ))}
                     </td>
                     <td>{user.is_service_account ? "Service" : "Person"}</td>
-                    <td>{user.disabled ? "Disabled" : "Active"}</td>
+                    <td data-testid="user-state">{userState(user)}</td>
                     <td>
                       <Time at={user.last_sign_in_at} />
                     </td>
@@ -310,8 +320,10 @@ export function Users() {
  * 0.9.13: the users saved as a CSV file, every one of them, with the name the server
  * gives the file (P-288). The file holds no access code and no token; the export is
  * audited. It is fetched with the bearer token and saved from memory, as a grid's is.
+ * 0.9.14: the file is of what the list shows (P-292): without the retired accounts,
+ * or, on Retired users, of those alone.
  */
-function ExportUsers() {
+function ExportUsers({ retired }: { retired: boolean }) {
   const action = useAction();
   const [done, setDone] = useState("");
   // Held at once, before the page draws the button as busy: a second press sends nothing.
@@ -321,7 +333,9 @@ function ExportUsers() {
     if (out.current) return;
     out.current = true;
     setDone("");
-    const result = await action.run(() => api.download("/api/v1/users/export"));
+    const result = await action.run(() =>
+      api.download("/api/v1/users/export", retired ? { query: { retired: "only" } } : {}),
+    );
     out.current = false;
     if (!result.ok) return;
     const name = result.value.fileName ?? "users.csv";
@@ -332,7 +346,10 @@ function ExportUsers() {
   return (
     <div className="export-users">
       <button type="button" onClick={() => void save()} disabled={action.busy}>
-        Export CSV<span className="visually-hidden"> of the users</span>
+        Export CSV
+        <span className="visually-hidden">
+          {retired ? " of the retired users" : " of the users"}
+        </span>
       </button>
       <Problem error={action.error} />
       <Notice text={done} />
@@ -345,6 +362,7 @@ function noUsers(q: string, gap: UsersGap): string {
   if (q) return "No user matches the search.";
   if (gap === "no-contact") return "Every user who is a person has a contact.";
   if (gap === "no-operator") return "Every user who is a person works as an operator.";
+  if (gap === "retired") return "No account is retired.";
   return "There are no users.";
 }
 
@@ -560,6 +578,8 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. An Admin can change it later."
           error={fields.username}
         />
+        {/* 0.9.14: a username that a retired account has, with a link to it (P-296). */}
+        <RetiredHasIt error={action.error} />
         <CheckField
           label="Service account"
           name="is_service_account"

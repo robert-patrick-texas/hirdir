@@ -8,16 +8,21 @@ import { GroupBoxes } from "../components/GroupBoxes";
 import { MakeOperator } from "../components/MakeOperator";
 import { OperatorMark } from "../components/Operator";
 import { ContactChanges, PersonChooser } from "../components/Person";
+import { PersonChain } from "../components/PersonChain";
 import { Notice, Problem } from "../components/Problem";
+import { RetiredHasIt } from "../components/RetiredHasIt";
+import { BringBackUser, RetirePerson } from "../components/RetirePerson";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { userState } from "../lib/linked";
 import { behindOperator, briefMark } from "../lib/onboarding";
 import type { Option } from "../lib/patch";
 import { type PersonChoice, personChoice, personLabel, readPerson } from "../lib/people";
+import type { BroughtBack } from "../lib/person";
 import { roleLabel } from "../lib/roles";
 import { dateValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
@@ -29,6 +34,9 @@ type Token = Schemas["ServiceTokenOut"];
  * Admin → Users → one user: details, the person it is, access code, sessions and service
  * tokens. 0.9.3: the person is a contact, whose name, email and numbers the user shows
  * and this page changes on the contact (P-172), and the username is changed here (P-173).
+ * 0.9.14: an account is retired here, with what is said of its contact and its labels,
+ * and brought back; a retired account's page offers only what the server changes of it,
+ * its username, its notes and its contact taken away, and says why (P-291, P-292, P-296).
  */
 export function UserDetail() {
   const { hid = "" } = useParams();
@@ -37,6 +45,10 @@ export function UserDetail() {
     api.request("get", "/api/v1/users/{hid}", { path: { hid }, signal }),
   );
   useTitle(user.data ? `User ${user.data.username}` : "User");
+  // What a retirement did, and the account brought back with its new code, shown once.
+  const [done, setDone] = useState("");
+  const [back, setBack] = useState<BroughtBack | null>(null);
+  const retired = user.data ? userState(user.data) === "Retired" : false;
 
   return (
     <>
@@ -44,27 +56,44 @@ export function UserDetail() {
       <p className="crumbs">
         <Link to="/admin/users">Users</Link>
       </p>
-      <h1>{user.data ? user.data.username : "User"}</h1>
+      <h1>
+        {user.data ? user.data.username : "User"}
+        {retired && <span className="badge">Retired</span>}
+      </h1>
       <Problem error={user.error} />
+      <Notice text={done} />
+      {back && <BroughtBackUser back={back} onDone={() => setBack(null)} />}
       {user.loading && !user.data && <p role="status">Loading…</p>}
       {user.data && (
         <>
+          {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). */}
+          <PersonChain kind="user" hid={user.data.hid} turn={user.data.row_version} />
           <Facts user={user.data} />
+          {retired && (
+            <p className="alert" data-testid="user-retired">
+              This account is retired: it signs in with nothing, is in no group and holds no role.
+              Its username, its notes and its contact taken away are all that is changed of it. An
+              access code, a role, a group, a token and another contact are given once it is brought
+              back.
+            </p>
+          )}
           <Details
             key={`${user.data.hid} ${user.data.row_version}`}
             user={user.data}
             reload={user.reload}
           />
           {/* 0.9.13: its groups, a box to each, changed at once (P-282). */}
-          <GroupBoxes
-            key={`groups ${user.data.hid}`}
-            user={user.data}
-            onChanged={() => {
-              user.refresh();
-              // A group can carry a role, the reader's own included.
-              if (auth.user.hid === hid) auth.refresh();
-            }}
-          />
+          {!retired && (
+            <GroupBoxes
+              key={`groups ${user.data.hid}`}
+              user={user.data}
+              onChanged={() => {
+                user.refresh();
+                // A group can carry a role, the reader's own included.
+                if (auth.user.hid === hid) auth.refresh();
+              }}
+            />
+          )}
           {!user.data.is_service_account && (
             <Person
               key={`person ${user.data.hid} ${user.data.row_version}`}
@@ -72,12 +101,117 @@ export function UserDetail() {
               reload={user.reload}
             />
           )}
-          {!user.data.is_service_account && <AccessCode user={user.data} reload={user.reload} />}
-          <Sessions user={user.data} reload={user.reload} />
+          {!retired && !user.data.is_service_account && (
+            <AccessCode user={user.data} reload={user.reload} />
+          )}
+          {!retired && <Sessions user={user.data} reload={user.reload} />}
           {user.data.is_service_account && <Tokens user={user.data} />}
+          <RetireUser
+            key={`retire ${user.data.hid} ${user.data.row_version}`}
+            user={user.data}
+            onRetired={(text) => {
+              // An Admin who retires their own account is signed out by it.
+              if (auth.user.hid === hid) {
+                auth.signOut();
+                return;
+              }
+              setBack(null);
+              setDone(text);
+              user.reload();
+            }}
+            onBroughtBack={(answer) => {
+              setDone("");
+              setBack(answer);
+              user.reload();
+            }}
+            reload={user.reload}
+          />
         </>
       )}
     </>
+  );
+}
+
+/** The account brought back: its new access code, shown once, and what it is without. */
+function BroughtBackUser({ back, onDone }: { back: BroughtBack; onDone: () => void }) {
+  const { user, access_code } = back;
+  if (access_code === null) {
+    return (
+      <Notice
+        text={`The service account ${user.username} is active again. It has no role, no group and no token: give them below.`}
+      />
+    );
+  }
+  return (
+    <SecretBox
+      title={`New access code for ${user.username}`}
+      secret={access_code}
+      note={`${user.username} is active again, with no role and no group: give them below.`}
+      onDone={onDone}
+    />
+  );
+}
+
+interface RetireUserProps {
+  user: User;
+  onRetired: (text: string) => void;
+  onBroughtBack: (answer: BroughtBack) => void;
+  reload: () => void;
+}
+
+/**
+ * 0.9.14: retire an account, which is other than disabling it, or bring a retired one
+ * back (P-292, P-296). The contact and the labels of the person are retired with it, or
+ * parted from it, in the one confirmation (P-291).
+ */
+function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps) {
+  const auth = useAuth();
+  const own = auth.user.hid === user.hid;
+  const retired = userState(user) === "Retired";
+  return (
+    <section aria-labelledby="retire">
+      <h2 id="retire">{retired ? "Retired" : "Retire"}</h2>
+      {retired ? (
+        <>
+          <p>
+            Brought back, the account is active again with a new access code, shown once, no role
+            and no group. Where its contact is retired, the two are brought back together.
+          </p>
+          <div className="actions">
+            <BringBackUser user={user} onBroughtBack={onBroughtBack} onReload={reload} />
+          </div>
+        </>
+      ) : (
+        <>
+          <p>
+            For somebody who has left. A retired account signs in with nothing, leaves its groups
+            and its role, and keeps its username. The list of users, every picker and the
+            users&apos; file leave it out until the retired are asked for. To keep somebody out for
+            now, disable the account instead.
+          </p>
+          <div className="actions">
+            <RetirePerson
+              on={{ kind: "user", hid: user.hid }}
+              rowVersion={user.row_version}
+              label="Retire account"
+              title={`Retire ${user.username}?`}
+              note={
+                own
+                  ? "This is your own account: you are signed out at once, and cannot sign in again."
+                  : undefined
+              }
+              onRetired={onRetired}
+              onReload={reload}
+            >
+              <p>
+                {user.username} signs in no longer, and leaves its groups and its role. An Admin can
+                bring the account back, with a new access code.
+              </p>
+            </RetirePerson>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -89,7 +223,7 @@ function Facts({ user }: { user: User }) {
       <dt>Kind</dt>
       <dd>{user.is_service_account ? "Service account" : "Person"}</dd>
       <dt>State</dt>
-      <dd>{user.disabled ? "Disabled" : "Active"}</dd>
+      <dd data-testid="user-state">{userState(user)}</dd>
       <dt>Role</dt>
       <dd>
         {roleLabel(user.role)} <Link to="/admin/roles">(role grants)</Link>
@@ -170,6 +304,8 @@ function Facts({ user }: { user: User }) {
  */
 function Details({ user, reload }: { user: User; reload: () => void }) {
   const auth = useAuth();
+  // 0.9.14: of a retired account only the username and the notes are changed (P-296).
+  const retired = userState(user) === "Retired";
   const [username, setUsername] = useState(user.username);
   const [disabled, setDisabled] = useState(user.disabled);
   const [notes, setNotes] = useState(user.notes ?? "");
@@ -209,17 +345,24 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
           required
           maxLength={64}
           autoComplete="off"
-          hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. Another one keeps the sessions; the old one signs nobody in."
+          hint={
+            retired
+              ? "A retired account keeps its username, which no other account takes. Give it another one here to free the name for somebody new."
+              : "What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. Another one keeps the sessions; the old one signs nobody in."
+          }
           error={fields.username}
         />
-        <CheckField
-          label="Disabled"
-          name="disabled"
-          checked={disabled}
-          onChange={setDisabled}
-          hint="A disabled user cannot sign in, and every session they have ends."
-          error={fields.disabled}
-        />
+        <RetiredHasIt error={action.error} />
+        {!retired && (
+          <CheckField
+            label="Disabled"
+            name="disabled"
+            checked={disabled}
+            onChange={setDisabled}
+            hint="A disabled user cannot sign in, and every session they have ends. For somebody who has left, retire the account, below."
+            error={fields.disabled}
+          />
+        )}
         <TextAreaField
           label="Notes"
           name="notes"
@@ -245,6 +388,7 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
  */
 function Person({ user, reload }: { user: User; reload: () => void }) {
   const contact = user.contact;
+  const retired = userState(user) === "Retired";
   const [done, setDone] = useState("");
   return (
     <section aria-labelledby="person">
@@ -274,7 +418,7 @@ function Person({ user, reload }: { user: User; reload: () => void }) {
           {user.username} has no contact: it is shown by its username until it is given one.
         </p>
       )}
-      {contact && (
+      {contact && !retired && (
         <section aria-labelledby="person-details">
           <h3 id="person-details">Change the name, email and numbers</h3>
           <ContactChanges
@@ -288,7 +432,45 @@ function Person({ user, reload }: { user: User; reload: () => void }) {
           />
         </section>
       )}
-      <GiveContact user={user} reload={reload} />
+      {retired ? (
+        contact && <TakeContact user={user} reload={reload} />
+      ) : (
+        <GiveContact user={user} reload={reload} />
+      )}
+    </section>
+  );
+}
+
+/**
+ * 0.9.14: all that is changed of the contact of a retired account: it is taken away
+ * (P-296), after which the account is brought back by itself, whatever its contact is.
+ */
+function TakeContact({ user, reload }: { user: User; reload: () => void }) {
+  const action = useAction();
+
+  async function take() {
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/users/{hid}", {
+        path: { hid: user.hid },
+        body: { row_version: user.row_version, contact_hid: null },
+      }),
+    );
+    if (result.ok) reload();
+  }
+
+  return (
+    <section aria-labelledby="take-contact">
+      <h3 id="take-contact">Take its contact away</h3>
+      <p className="hint">
+        A retired account is given no other contact. With its contact taken away, the account is
+        brought back by itself, and the contact stays as it is.
+      </p>
+      <Problem error={action.error} onReload={reload} />
+      <p className="actions">
+        <button type="button" onClick={() => void take()} disabled={action.busy}>
+          Take its contact away
+        </button>
+      </p>
     </section>
   );
 }
@@ -499,6 +681,8 @@ function tokenState(token: Token, now: number): string {
 }
 
 function Tokens({ user }: { user: User }) {
+  // 0.9.14: a retired account is given no token, and those it had are revoked (P-296).
+  const retired = userState(user) === "Retired";
   const tokens = useLoad(`tokens ${user.hid}`, (signal) =>
     api.request("get", "/api/v1/users/{hid}/service-tokens", { path: { hid: user.hid }, signal }),
   );
@@ -629,8 +813,13 @@ function Tokens({ user }: { user: User }) {
         </div>
       )}
 
-      <h3>New token</h3>
-      <form onSubmit={submit} className="stack">
+      {retired && (
+        <p className="muted" data-testid="tokens-retired">
+          A retired account is given no token: bring it back first.
+        </p>
+      )}
+      {!retired && <h3>New token</h3>}
+      <form onSubmit={submit} className="stack" hidden={retired}>
         <Problem error={create.error} shown={["name", "expires_at"]} />
         <TextField
           label="Name"

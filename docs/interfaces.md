@@ -3370,6 +3370,74 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   the Import page whatever the view counts; the words beneath say that a table that
   holds nothing gives its CSV template, its header row alone (P-287).
 
+What 0.9.14 adds for a retired account, and for a person retired together (P-291,
+P-292, P-296 to P-298):
+
+- **Users.** The list shows the active and the disabled accounts, each said to be
+  which in the column State, and leaves the retired out, as the words above it say.
+  Show has a fourth link, Retired users, which lists the retired accounts by
+  themselves, `retired=only` in the address beside the search, each marked Retired at
+  its username and in State. Export CSV saves what the view shows: the file without
+  the retired accounts, or, on Retired users, the file of those alone,
+  `POST /users/export?retired=only`. The pickers of users, of a role granted and of a
+  member of a group, read `GET /users` as before and so leave the retired out.
+- **A user's page.** State says Active, Disabled or Retired, and a retired account is
+  marked at its name. Retire, at the foot of the page of an account that is not
+  retired, opens the confirmation below; an Admin who retires their own account is
+  told so there, and is signed out by it. The page of a retired account says that it
+  signs in with nothing, is in no group and holds no role, and offers only what the
+  server changes of it: its username, with the words that no other account takes the
+  name until it is given another, its notes, and Take its contact away. The box
+  Disabled, the groups, the form of the contact, another contact, the access code, the
+  sessions and a new token are not offered, and the page says that they are given once
+  the account is brought back. Bring back is there in the place of Retire.
+- **The chain.** The pages of a user, of a contact and of an operator show, under the
+  heading, One person: the operators, the contact and the user of the person the
+  record belongs to, in that order, each a link to its page, read from
+  `GET .../linked` and read again when the record changes. The record the page is of
+  is in bold. A released operator is marked released, a retired contact and a retired
+  account Retired, and a disabled account Disabled; where there is none, the chain
+  says `no operator`, `no contact` or `no user`. Somebody who is no Admin reads the
+  username as text, the user's page being an Admin's. Among the facts of a contact and
+  of an operator, User still names a retired account, marked Retired, with the words
+  that the person signs in no longer; the lists say `no user` of it, as the server
+  counts it.
+- **The confirmation of a retirement.** Retire account, Retire contact and Release open
+  one dialog, which reads `GET .../linked` afresh at each press. Where nothing that is
+  not retired is linked, it is the plain confirmation of before, and sends
+  `row_version` alone. Otherwise it lists each linked record that is not retired, a
+  row to each, with Retire ticked from the start: the account, with its role and its
+  state; the contact, with how many records name it; and each label, with how much it
+  is given to and a choice of four, Release, Hand over to, with a contact searched for
+  and chosen, Leave open and Keep. It holds the one rule before anything is sent, and
+  says it under the rows: a contact is not retired while its account or a label stands
+  on it. With the contact ticked, or on the contact's own page, the account's box is
+  ticked and cannot be unticked, Keep is not offered for a label, and a label that was
+  kept is released; with the contact unticked, the account and each label are kept or
+  not as chosen. To somebody who is no Admin the account is shown unticked and cannot
+  be ticked, with the words that an Admin retires an account, and so the contact
+  stays, its box unticked too; on the page of a contact that has an account, the
+  dialog says to ask an Admin and has no Retire. A label handed over to nobody, or to
+  the person it has, is said at its row and nothing is sent. One press sends the one
+  request, which says every linked record, the kept among them. A refusal, `409`,
+  `422` or `403`, is shown in the dialog, the fields of `linked` at their rows and the
+  records of `depends_on` as links, with nothing chosen lost; where the server names a
+  record that was not listed, the list is read again, the new record ticked and what
+  was chosen kept. Done, the page says what became of each: `Kim Lee was retired, with
+  the account klee. KL was handed over and Op2 was released.`
+- **Bring back.** On the page of a retired account, Bring back opens a dialog that
+  reads `GET /users/{hid}/linked`: the contact, where it is retired, ticked and not to
+  be unticked, with the words that the two are brought back together unless the
+  contact is taken away first; and each retired label of that contact, unticked.
+  Brought back, the new access code is shown once, as New user shows one, with the
+  words that the account has no role and no group; a service account has no code and
+  is told the same. On the pages of a contact and of an operator, Bring back is
+  offered to an Admin alone; anybody else reads `An Admin brings a person back`,
+  View-only too. Every other kind of record is brought back as before.
+- **A username a retired account has.** Refused by the server on New user and on the
+  Details of a user, the form says at the username that a retired account has it, with
+  a link to that account, where it is renamed or brought back.
+
 ### The grid
 
 One grid component is used on every list page.
