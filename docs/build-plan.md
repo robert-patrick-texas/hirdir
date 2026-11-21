@@ -176,12 +176,19 @@ in (P-299), a new access code is not the one it replaces and may be made by the 
 leaves blank what a contact is not (P-302), and an address may be an interface's
 (P-303). It has no migration; its scenarios are S59 and S60. 0.9.16 gives
 `hirdir admin create-user` the option `--group NAME`, a group's role counting as the
-user's (P-304); it has no migration. 0.9.17, the last before 1.0.0, settles the readings
+user's (P-304); it has no migration. 0.9.17 settles the readings
 that stand unconfirmed, says on a user's page where its role comes from (P-307), writes
 into the install guide how roles are best given (P-308), makes a release quick to test
 (P-309), checks that the audit trail holds what a later sync will read (P-310), and
 mends small leftovers (P-311), and has `hirdir admin create-user` refuse a person with
-no role unless `--no-role` is given (P-313). 0.9.18 puts what is typed or pasted into one form, a
+no role unless `--no-role` is given (P-313); and, from how the owner answered the readings,
+names on the button of a retirement each record it changes, calls the list of users
+that are not retired Active users, says beforehand who a change leaves with no role
+(P-314), and warns of a contact's name that another has (P-315); and it brings a third
+kind of account, an agent's, answerable to a person, held to that person's role and never
+Admin, and marked in the audit trail (P-316). Its migration, `0018`, turns the yes or no
+of a service account into the kind of an account and adds the person an agent is
+answerable to and the person an event of an agent's was made for; its scenarios are S61 and S62. 0.9.18 puts what is typed or pasted into one form, a
 telephone number, an email address, a name, by formats an Admin turns on and defines
 (P-293).
 
@@ -456,6 +463,8 @@ written as a failing test at the start of its release.
 | S58 | A user is a contact behind two operators. Retire the contact saying nothing of the rest; then retire it with the user, one operator handed over to another person and one released; then bring the user back | The first is refused, nothing changed, with the user and both operators named; the second retires the user and the contact, hands one label over and releases the other in one change, each audited; an Inventory user cannot bring the contact back; and an Admin brings back the user with its contact |
 | S59 | An account with no role: one with the right code signs in; a signed-in Inventory user has the grant of its group revoked; an Admin makes a person with no role, and brings back a retired account first without a role and then with one | The first is a `403` that says the account holds no role and names whom to ask, with `sign_in_no_role` in the audit trail; the Inventory user is refused at its next request and signs in again once given a role, its old session still ended; the person with no role is a `422` on `role` and nothing is made; the bring back without a role is a `422` on `role` and nothing changes, and with one the account signs in holding it (P-299) |
 | S60 | Access codes: a person gives the code in hand as the new one; the least length is raised to 20 and a code is made by `GET /auth/new-access-code` and taken; an Admin changes their own code on the profile; an Admin sets somebody's code to the one they had | The same code is a `422` on `access_code` and nothing changes; the made code is at least 20 characters, is set and signs in; the Admin gives the current code as everybody does, and a wrong one is refused; and the Admin's code for another, the same as before, is taken (P-300) |
+| S61 | An Admin makes an agent answerable to an Inventory user, grants it Inventory and makes it a token; the agent changes an item; the person is moved to View-only; the agent tries another change; Admin is granted to the agent; the person is retired with the agent handed to another Inventory user (P-316) | The first change is in the audit trail by the agent for that person, and the events of agents find it; the second is refused as View-only, nothing changed; the grant of Admin is refused with the agent named; the retirement that says nothing of the agent is a `409` that names it, and the one that hands it over leaves the agent answerable to the other person, whose role it then holds |
+| S62 | `hirdir admin create-user` makes a person with no `--role` and no `--group`, then with `--no-role`, then with `--role` and `--no-role` together (P-313); an Admin's page of a user shows where each role comes from (P-307) | The first is refused, exit `4`, nothing made, naming the three ways on; the second is made with its warning; the third is a mistake of usage, exit `2`; the user's record answers each role it holds, of its own or through each group, named |
 
 ## Definition of done
 
