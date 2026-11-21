@@ -214,7 +214,7 @@ def test_the_right_current_code_clears_the_count_though_the_new_one_is_refused(
     db.rollback()
     with pytest.raises(Invalid) as short:
         _change(db, kim, throttle, CODE, new="eleven-char")
-    assert short.value.fields == {"access_code": "at least 12 characters (access_code_min_length)"}
+    assert short.value.fields == {"access_code": "at least 12 characters"}
     db.rollback()
     # One more wrong one is the first again, and not the second.
     with pytest.raises(Invalid):
@@ -237,7 +237,7 @@ def test_a_typed_code_is_held_to_the_setting_and_a_made_one_is_not(db: Session) 
     settings.set_setting(db, audit.SYSTEM, settings.CODE_LENGTH_SETTING, row.row_version, 64)
     with pytest.raises(Invalid) as short:
         accounts.set_access_code(db, audit.SYSTEM, kim.hid, "x" * 63)
-    assert short.value.fields == {"access_code": "at least 64 characters (access_code_min_length)"}
+    assert short.value.fields == {"access_code": "at least 64 characters"}
     assert str(short.value) == "the access code is too short: at least 64 characters"
     made = accounts.set_access_code(db, audit.SYSTEM, kim.hid)
     assert len(made) == 14

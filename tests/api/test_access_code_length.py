@@ -36,7 +36,8 @@ def _refused(response: Any, least: int) -> None:
     assert response.status_code == 422, response.text
     problem = response.json()
     unit = "character" if least == 1 else "characters"
-    assert errors(problem) == {"access_code": f"at least {least} {unit} ({KEY})"}
+    # The length, in words a person reads at the box: the setting is not named.
+    assert errors(problem) == {"access_code": f"at least {least} {unit}"}
     assert f"at least {least} {unit}" in problem["detail"]
 
 

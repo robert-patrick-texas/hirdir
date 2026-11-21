@@ -726,11 +726,9 @@ def _checked_code(db: Session, code: str) -> str:
         )
     least = settings.code_length(db)
     if len(code) < least:
+        # What a person reads at the box: the length, and not the name of the setting.
         length = f"at least {least} character{'' if least == 1 else 's'}"
-        raise Invalid(
-            f"the access code is too short: {length}",
-            {"access_code": f"{length} (access_code_min_length)"},
-        )
+        raise Invalid(f"the access code is too short: {length}", {"access_code": length})
     return code
 
 

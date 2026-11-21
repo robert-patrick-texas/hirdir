@@ -100,7 +100,7 @@ def test_s56_a_view_only_user_changes_what_is_their_own_and_nothing_of_another(
         "/auth/me/access-code", json={"current_access_code": CODE, "access_code": "eleven-char"}
     )
     assert short.status_code == 422
-    assert _errors(short) == {"access_code": "at least 12 characters (access_code_min_length)"}
+    assert _errors(short) == {"access_code": "at least 12 characters"}
     # Both refusals changed nothing: both sessions stand, and the code is what it was.
     assert kim.get("/auth/me").status_code == 200
     assert elsewhere.get("/auth/me").status_code == 200
