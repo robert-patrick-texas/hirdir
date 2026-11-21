@@ -554,37 +554,11 @@ test("P-284: an operator is made in one press, from a user's page and from a con
     name: long,
     record_status: "active",
   });
-  // A user whose contact is retired, which no operator can stand for.
-  const ivo = `Ivo Example ${suffix}`;
-  const retiredUser = await createAccount(request, `e2e-${suffix}-ivo`, null, { name: ivo });
-  made.users.push(retiredUser.hid);
-  const read = await request.get(`./api/v1/users/${retiredUser.hid}`, { headers });
-  const contactHid = ((await read.json()) as { contact: { hid: string } }).contact.hid;
-  const contact = await request.get(`./api/v1/contacts/${contactHid}`, { headers });
-  const retired = await request.post(`./api/v1/contacts/${contactHid}/retire`, {
-    headers,
-    data: { row_version: ((await contact.json()) as { row_version: number }).row_version },
-  });
-  expect(retired.status()).toBe(200);
-  // A user whose contact stands behind an operator, and is then retired: the label is open.
-  const kai = await createAccount(request, `e2e-${suffix}-kai`, null, {
-    name: `Kai Example ${suffix}`,
-  });
-  made.users.push(kai.hid);
-  const kaiRead = await request.get(`./api/v1/users/${kai.hid}`, { headers });
-  const kaiContact = ((await kaiRead.json()) as { contact: { hid: string } }).contact.hid;
-  await make(request, headers, "/operators", {
-    label: `${suffix}-kai`,
-    contact_hid: kaiContact,
-    record_status: "active",
-  });
-  const kaiVersion = await request.get(`./api/v1/contacts/${kaiContact}`, { headers });
-  const kaiRetired = await request.post(`./api/v1/contacts/${kaiContact}/retire`, {
-    headers,
-    data: { row_version: ((await kaiVersion.json()) as { row_version: number }).row_version },
-  });
-  expect(kaiRetired.status()).toBe(200);
-  // A contact behind one operator, which is then released.
+  // 0.9.14: a contact is no longer retired under its account or a label (P-291), so a
+  // user whose contact is retired, and its open label, are not made here: what the
+  // pages say of one left so before 0.9.14 is held by the tests of `briefMark`, and a
+  // person retired together by retired.spec.ts.
+  // A contact behind one operator, which is then released, the contact kept.
   const joEmail = `jo.${suffix}@example.net`;
   const jo = await make(request, headers, "/contacts", {
     name: `Jo Example ${suffix}`,
@@ -599,21 +573,16 @@ test("P-284: an operator is made in one press, from a user's page and from a con
   const joRead = await request.get(`./api/v1/operators/${joOperator.hid}`, { headers });
   const released = await request.post(`./api/v1/operators/${joOperator.hid}/retire`, {
     headers,
-    data: { row_version: ((await joRead.json()) as { row_version: number }).row_version },
+    data: {
+      row_version: ((await joRead.json()) as { row_version: number }).row_version,
+      linked: { contact: "keep" },
+    },
   });
   expect(released.status()).toBe(200);
   const seen = await watch(page.context());
   await signIn(page, account);
 
-  // The Users list says the label of a user whose contact is retired is open, nobody
-  // behind it; the Contacts list marks a released label so.
-  const rows = await usersListed(page, "");
-  const kaiMark = rows
-    .and(page.locator(`[data-user="${kai.username}"]`))
-    .getByTestId("user-operators")
-    .locator(".operator-mark");
-  await expect(kaiMark).toHaveAttribute("data-open", "true");
-  await expect(kaiMark).toContainText("open");
+  // The Contacts list marks a released label so.
   await page.goto(`./contacts?filter=${encodeURIComponent(`email:eq:${joEmail}`)}`);
   const contacts = page.getByTestId("grid-contacts");
   await expect(contacts.locator("[row-id]")).toHaveCount(1);
@@ -622,15 +591,9 @@ test("P-284: an operator is made in one press, from a user's page and from a con
   );
   await expect(contacts.locator('[row-id] [col-id="is_user"]')).toHaveText("no user");
 
-  // Its page offers no Make an operator, which would be refused, and says why.
-  await openUser(page, retiredUser.hid, retiredUser.username);
-  const operators = page.getByTestId("user-operators");
-  await expect(operators.getByTestId("contact-retired")).toContainText("is retired");
-  await expect(operators.getByRole("link", { name: ivo })).toBeVisible();
-  await expect(operators.getByRole("button", { name: "Make an operator" })).toHaveCount(0);
-
   // From a user's page: its username as the label, pressed twice while held back, once sent.
   await openUser(page, made.gus.hid, made.gus.username);
+  const operators = page.getByTestId("user-operators");
   await expect(operators).toContainText("no operator");
   let posted = 0;
   await page.route("**/api/v1/operators", async (route) => {
