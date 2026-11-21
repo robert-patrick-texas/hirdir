@@ -172,7 +172,20 @@ test("every entry of the menu bar opens its page at the top, again after each li
       // The person presses the entry from the top of the page they are on: it is there
       // that the menu bar is.
       await page.evaluate(() => window.scrollTo(0, 0));
+      // The page pressed for, and not the one left, is the one read: its address first.
+      const href = await pressed(entry).getAttribute("href");
+      expect(href, `${entry} is a link`).not.toBeNull();
+      const target = new URL(href ?? "", page.url()).pathname;
       await pressed(entry).click();
+      // Admin goes on to the first of its own pages, beneath its address.
+      const reached = (path: string) =>
+        path === target || (!target.endsWith("/") && path.startsWith(`${target}/`));
+      await expect
+        .poll(() => reached(new URL(page.url()).pathname), {
+          message: `${entry} opens its page`,
+          timeout: 20_000,
+        })
+        .toBe(true);
       await settled(page);
       const where = `${entry}, ${round}`;
       expect(await scrolled(page), `${where}: the page opens at its top`).toBe(0);
