@@ -21208,7 +21208,7 @@
       },
       "MeOut": {
         "additionalProperties": false,
-        "description": "The signed-in user, with what is their own: the answer of `GET /auth/me` and of\nthe routes under it, and `user` in the answer of signing in. It is a user as the\nroutes of users answer one, but for three things: `contact` and `operators` carry\nwhat the profile changes, and the version of each, and `notes` is null.",
+        "description": "The signed-in user, with what is their own: the answer of `GET /auth/me` and of\nthe routes under it, and `user` in the answer of signing in. It is a user as the\nroutes of users answer one, but for four things: `contact` and `operators` carry\nwhat the profile changes, and the version of each; `notes` is null; and there is no\n`record_status`, which would say `active` always, since whoever reads this is\nsigned in and a retired account signs in nowhere (P-296).",
         "properties": {
           "contact": {
             "anyOf": [

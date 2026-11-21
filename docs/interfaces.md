@@ -256,9 +256,12 @@ answers the user as before and, with it, `contact`, the contact the person is, w
 `row_version`, or null where the account has none; and `operators`, every operator
 that is not retired whose contact is theirs, in the order of their labels, each with
 `hid`, `label`, `colour`, `record_status` and `row_version`. A person whose contact is
-retired has none: nobody is behind the labels of a retired contact (P-280). The answer
-of signing in carries the same as its `user`. The three routes below are for a
-session of any role, View-only too, and of an account that holds no role, as
+retired has none: nobody is behind the labels of a retired contact (P-280). It does
+not answer the `record_status` of the user, which the routes of users answer (P-296):
+whoever reads `/auth/me` is signed in, and a retired account signs in nowhere, so it
+would say `active` always. The answer of signing in carries the same as its `user`.
+The three routes below are for a session of any role, View-only too, and of an
+account that holds no role, as
 `GET /auth/me` and `POST /auth/sign-out-everywhere` are: an account that is brought
 back has a new code and no role (P-296), and that person changes the code an Admin
 gave them, and what is their own, before a role is theirs. They carry no HID of a user

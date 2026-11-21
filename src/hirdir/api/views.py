@@ -43,7 +43,8 @@ def me_out(db: Session, user: User) -> schemas.MeOut:
     under it and in the answer of signing in: with the contact it is and the operators
     it is behind, each with the version it is changed at (P-294), and with no notes,
     for anybody, an Admin too. The notes on an account are an Admin's, read by the
-    routes of users alone (P-281)."""
+    routes of users alone (P-281). The record status of the user is left out: it is
+    signed in, and so is not retired (P-296)."""
     base = user_out(db, user)
     contact = profile.contact_of(db, user)
     return schemas.MeOut(
