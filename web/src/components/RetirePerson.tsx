@@ -13,6 +13,7 @@ import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
 import { useAction, useLoad } from "../lib/hooks";
 import {
+  backChanged,
   blockedWords,
   bringBackBody,
   bringBackOffer,
@@ -546,15 +547,42 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
   const action = useAction();
   const linked = read.data;
   const offer = linked ? bringBackOffer(linked) : null;
-  const refused = refusedRows(action.error?.fields ?? {});
+  // A refusal has the list read again. Where it then offers something else than it did,
+  // as when somebody else brought the contact back meanwhile, that is said in place of
+  // the refusal: its reason was at a row that is no longer there (review 5).
+  const [sentWith, setSentWith] = useState<Linked | null>(null);
+  const [changed, setChanged] = useState<string | null>(null);
+  if (sentWith && linked && linked !== sentWith) {
+    setChanged(backChanged(sentWith, linked));
+    setSentWith(null);
+  }
+  const refused =
+    sentWith || changed
+      ? { rows: {}, shown: ["linked.contact", "linked.operators"] }
+      : refusedRows(action.error?.fields ?? {});
 
   async function bringBack() {
     if (!linked) return;
+    setChanged(null);
     const body = bringBackBody(linked, ticked, user.row_version);
-    const result = await action.run(() => sendBringBack(user.hid, body));
+    let again = false;
+    const result = await action.run(async () => {
+      try {
+        return await sendBringBack(user.hid, body);
+      } catch (thrown) {
+        again =
+          thrown instanceof ApiError &&
+          !thrown.stale &&
+          (thrown.status === 409 || thrown.status === 422);
+        throw thrown;
+      }
+    });
     if (result.ok) onBroughtBack(result.value);
-    // A contact retired since the page was read is offered once the list is read again.
-    else read.reload();
+    // A contact retired, or brought back, since this was opened: the list is read again.
+    else if (again) {
+      setSentWith(linked);
+      read.reload();
+    }
   }
 
   return (
@@ -562,11 +590,16 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
       <div className="dialog-body">
         <Problem error={read.error} />
         <Problem
-          error={action.error}
+          error={changed ? null : action.error}
           shown={refused.shown}
           onReload={onReload}
           labels={LINKED_LABELS}
         />
+        {changed && (
+          <p className="alert alert-info" data-testid="bring-back-changed">
+            {changed}
+          </p>
+        )}
         {read.loading && !linked && (
           <p role="status" className="muted">
             Reading what is linked…

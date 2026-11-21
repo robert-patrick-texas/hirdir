@@ -3599,7 +3599,10 @@ P-292, P-296 to P-298):
   contact is taken away first; and each retired label of that contact, unticked.
   Brought back, the new access code is shown once, as New user shows one, with the
   words that the account has no role and no group; a service account has no code and
-  is told the same. The code is on show on the page of that account alone: the page
+  is told the same. A refusal has the list read again, and where what it offers has
+  changed, the dialog says so in place of the refusal: that the contact is back
+  already, where somebody else brought it back while the dialog was open, and to
+  press again. The code is on show on the page of that account alone: the page
   of a user holds nothing of another, whichever way its address came to change. On the pages of a contact and of an operator, Bring back is
   offered to an Admin alone; anybody else reads `An Admin brings a person back`,
   View-only too. Every other kind of record is brought back as before. A label is not

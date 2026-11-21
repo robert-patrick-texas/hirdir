@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  backChanged,
   blockedWords,
   bringBackBody,
   bringBackOffer,
@@ -504,5 +505,30 @@ describe("a hand-over the server refuses is said at its field (review 3)", () =>
   it("marks none where nothing is handed over, or nothing is refused of the labels", () => {
     expect(refusedHandOvers("the operator KL is kept", ON_CONTACT, PERSON, handed([]))).toEqual([]);
     expect(refusedHandOvers(undefined, ON_CONTACT, PERSON, handed(["O1"]))).toEqual([]);
+  });
+});
+
+describe("Bring back says what changed while it was open (review 5)", () => {
+  const user: LinkedUser = { ...USER, record_status: "retired" };
+  const gone: LinkedContact = { ...CONTACT, record_status: "retired" };
+  const label: LinkedOperator = { ...KL, record_status: "retired" };
+  const was: Linked = { user, contact: gone, operators: [label] };
+
+  it("says that the contact is back already, where somebody else brought it back", () => {
+    expect(backChanged(was, { user, contact: CONTACT, operators: [label] })).toBe(
+      "The contact Kim Lee is back already: it was brought back since this was opened. Press Bring back again to bring the account back.",
+    );
+  });
+
+  it("says that the linked records have changed, where it is something else", () => {
+    // A label is back, or the contact was taken off the account.
+    expect(backChanged(was, { user, contact: gone, operators: [KL] })).toBe(LIST_CHANGED);
+    expect(backChanged(was, { user, contact: null, operators: [] })).toBe(LIST_CHANGED);
+  });
+
+  it("says nothing where what is offered is what it was", () => {
+    expect(
+      backChanged(was, { user, contact: { ...gone, uses: 7 }, operators: [label] }),
+    ).toBeNull();
   });
 });

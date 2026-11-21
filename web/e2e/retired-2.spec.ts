@@ -281,3 +281,49 @@ test("review 4: the focus is back on its button when a confirmation is closed", 
   );
   await expectClean(page, seen);
 });
+
+test("review 5: Bring back says that the contact is back already, where somebody else brought it back", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const kat = await person(request, headers, "kat");
+  const [first] = kat.labels as [Label];
+  // Retired together: the account, the contact, the label released.
+  await change(request, headers, "post", `/contacts/${kat.contact.hid}/retire`, {
+    linked: { user: "retire", operators: [{ hid: first.hid, action: "retire" }] },
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await openUser(page, kat.user);
+  await region(page, "Retired").getByRole("button", { name: "Bring back" }).click();
+  const back = page.getByTestId("bring-back-user");
+  const contactBox = back.getByRole("checkbox", {
+    name: `Bring back the contact ${kat.contact.name}`,
+  });
+  await expect(contactBox).toBeChecked();
+  // Somebody else brings the contact back while the confirmation is open.
+  await change(request, headers, "patch", `/contacts/${kat.contact.hid}`, {
+    record_status: "active",
+  });
+
+  // Refused, and said why in plain words: the contact is back already.
+  await back.getByRole("button", { name: "Bring back" }).click();
+  await expect(back.getByTestId("bring-back-changed")).toContainText(
+    `The contact ${kat.contact.name} is back already`,
+  );
+  await expect(contactBox).toHaveCount(0);
+  await expect(back).not.toContainText("linked.");
+  await expect(page.getByTestId("secret-box")).toHaveCount(0);
+  // Pressed again, the account is brought back.
+  await back.getByRole("button", { name: "Bring back" }).click();
+  await expect(
+    page.getByTestId("secret-box").getByRole("heading", {
+      name: `New access code for ${kat.user.username}`,
+    }),
+  ).toBeVisible();
+  await expectClean(page, seen, ["422 POST"]);
+});

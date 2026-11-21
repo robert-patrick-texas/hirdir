@@ -407,3 +407,20 @@ export function refusedHandOvers(
   const named = handed.filter((operator) => message.includes(operator.label));
   return (named.length > 0 ? named : handed).map((operator) => operator.hid);
 }
+
+/**
+ * What Bring back says where what it offers changed while it was open, in place of the
+ * refusal (review 5), or null where it offers what it did: that the contact is back
+ * already, brought back by somebody else, which is why the press was refused; or that
+ * the linked records have changed.
+ */
+export function backChanged(was: Linked, now: Linked): string | null {
+  const before = bringBackOffer(was);
+  const after = bringBackOffer(now);
+  if (before.contact && !after.contact && now.contact?.hid === before.contact.hid) {
+    return `The contact ${before.contact.name} is back already: it was brought back since this was opened. Press Bring back again to bring the account back.`;
+  }
+  const named = (offer: BringBackOffer) =>
+    [offer.contact?.hid ?? "", ...offer.operators.map((operator) => operator.hid).sort()].join(" ");
+  return named(before) === named(after) ? null : LIST_CHANGED;
+}
