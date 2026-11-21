@@ -391,6 +391,40 @@ describe("problem documents", () => {
     expect(second.message).toBe("this would leave no Admin who can sign in");
   });
 
+  it("carry whom to ask on the 403 of an account with no role, and nothing on others", async () => {
+    const help = {
+      organization: "Example Network Tools",
+      email: "tools@example.net",
+      phone: null,
+      url: null,
+    };
+    const noRole = setup(
+      () =>
+        new Response(
+          JSON.stringify({
+            type: "about:blank",
+            title: "No role",
+            status: 403,
+            detail: "this account holds no role, and so cannot sign in: an Admin gives it one",
+            errors: [],
+            help,
+          }),
+          { status: 403, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      false,
+    );
+    const refused = await thrownBy(() =>
+      noRole.client.request("post", "/api/v1/auth/sign-in", {
+        body: { username: "klee", access_code: "right-code-0001" },
+      }),
+    );
+    expect(refused.status).toBe(403);
+    expect(refused.help).toEqual(help);
+
+    const other = setup(() => problem(403, "Not allowed", "this needs the admin role"));
+    expect((await thrownBy(() => other.client.request("get", "/api/v1/users"))).help).toBeNull();
+  });
+
   it("fall back to the title when there is no detail", async () => {
     const { client } = setup(() => problem(404, "Not Found"));
     const error = await thrownBy(() => client.request("get", "/api/v1/about"));

@@ -50,9 +50,9 @@ import {
   sendBringBack,
   sendRetire,
 } from "../lib/person";
-import { allows, roleLabel } from "../lib/roles";
+import { allows, ROLES, roleLabel } from "../lib/roles";
 import { ContactField } from "./ContactField";
-import { CheckField, RadioGroupField } from "./Field";
+import { CheckField, RadioGroupField, SelectField } from "./Field";
 import { OperatorMark } from "./Operator";
 import { Problem } from "./Problem";
 
@@ -515,7 +515,7 @@ function RetireRows(props: RetireRowsProps) {
 }
 
 interface BringBackUserProps {
-  user: { hid: string; username: string; row_version: number };
+  user: { hid: string; username: string; row_version: number; is_service_account: boolean };
   disabled?: boolean;
   /** The account is back: the user, and its new access code, shown once. */
   onBroughtBack: (answer: BroughtBack) => void;
@@ -524,8 +524,10 @@ interface BringBackUserProps {
 /**
  * Bring a retired account back (P-296, P-298): with its contact where that is retired,
  * ticked and needed unless the contact is taken off first, and the retired labels of
- * that contact, each unticked. The account is active again with a new access code, no
- * role and no group.
+ * that contact, each unticked. The account is active again with a new access code, the
+ * role chosen and no group. 0.9.15: the role is asked for, and a person is not brought
+ * back without one, since an account with none does not sign in; a service account may
+ * be brought back with none (P-299).
  */
 export function BringBackUser({ user, disabled, onBroughtBack }: BringBackUserProps) {
   const [turn, setTurn] = useState(0);
@@ -577,6 +579,8 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
     readLinked({ kind: "user", hid: user.hid }, signal),
   );
   const [ticked, setTicked] = useState<readonly string[]>([]);
+  const [role, setRole] = useState("");
+  const person = !user.is_service_account;
   const action = useAction();
   const linked = read.data;
   const offer = linked ? bringBackOffer(linked) : null;
@@ -597,12 +601,13 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
     sentWith || changed
       ? { rows: {}, shown: ["linked.contact", "linked.operators"] }
       : refusedRows(action.error?.fields ?? {});
+  const roleRefused = sentWith || changed ? undefined : action.error?.fields.role;
 
   async function bringBack() {
     if (!linked) return;
     setChanged(null);
     setReread(false);
-    const body = bringBackBody(linked, ticked, version);
+    const body = bringBackBody(linked, ticked, version, role);
     let again = false;
     const result = await action.run(async () => {
       try {
@@ -645,7 +650,7 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
         <Problem error={rereadError} />
         <Problem
           error={changed ? null : action.error}
-          shown={refused.shown}
+          shown={[...refused.shown, "role"]}
           onReload={() => void readAgain()}
           labels={LINKED_LABELS}
         />
@@ -667,9 +672,33 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
         {offer && (
           <div className="person-rows" data-testid="bring-back-rows">
             <p className="person-lead">
-              The account is active again, with a new access code, which is shown once. It has no
-              role and no group until an Admin gives them.
+              {person
+                ? "The account is active again, with a new access code, which is shown once, and the role chosen. It has no group until an Admin gives it one."
+                : "The account is active again, with the role chosen, or none. It has no group and no token until an Admin gives them."}
             </p>
+            <div className="person-row" data-row="role">
+              <SelectField
+                label="Role"
+                name="role"
+                value={role}
+                onChange={setRole}
+                required={person}
+                hint={
+                  person
+                    ? "An account with no role cannot sign in: choose the one it is to hold."
+                    : "A service account may come back with none; its tokens are refused until it has one."
+                }
+                error={roleRefused}
+                disabled={action.busy}
+              >
+                <option value="">{person ? "Choose a role" : "No role"}</option>
+                {ROLES.map((name) => (
+                  <option key={name} value={name}>
+                    {roleLabel(name)}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
             {offer.contact && (
               <div className="person-row" data-row="contact">
                 <CheckField
@@ -718,7 +747,7 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
           type="button"
           className="primary"
           onClick={() => void bringBack()}
-          disabled={action.busy || !linked}
+          disabled={action.busy || !linked || (person && role === "")}
         >
           Bring back
         </button>

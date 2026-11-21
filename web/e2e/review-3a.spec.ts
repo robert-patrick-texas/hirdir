@@ -321,19 +321,22 @@ test("a list keeps its place: Back and a link back show the rows it was on, with
     "Back where the list was left. The row opened last is marked.",
   );
 
-  // A link back to the list, while the server answers late: the same once the rows come.
+  // A link back to the list, while the server answers late: the same rows once they
+  // come, scrolled inside the grid as they were, with the row opened marked. 0.9.15: the
+  // page itself is at its top, with the menu bar in view, as every page opened from the
+  // menu bar is; only Back and Forward put the window back (P-301).
   await opened.locator('[col-id="name"] a').click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   await page.route("**/api/v1/items/query", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await route.continue().catch(() => {});
   });
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Items", exact: true })
-    .click();
+  const menuBar = page.getByRole("navigation", { name: "Main" });
+  await menuBar.getByRole("link", { name: "Items", exact: true }).click();
   await expect(opened).toHaveClass(/row-opened/, { timeout: 15_000 });
-  await expect(opened).toBeInViewport();
+  expect(await scrolled(grid)).toBeGreaterThan(900);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(menuBar).toBeInViewport({ ratio: 1 });
   await page.unroute("**/api/v1/items/query");
 
   // A new sort begins at the top, with no row marked.

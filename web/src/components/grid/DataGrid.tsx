@@ -9,7 +9,7 @@
 // that was opened from it, are kept for the tab in session storage, by the grid's `id`.
 // Coming back to the list, by Back or by a link, under the same filter, sort and
 // switches, shows the same rows with the row opened marked; a new filter or sort
-// begins at the top. A link that brings a filter of its own shows it from the top,
+// begins at the top. Only Back and Forward put the window itself back too (P-301). A link that brings a filter of its own shows it from the top,
 // unless it is the browser's Back that comes to it.
 //
 // Rows are selected whole: one, a range, several, or all that the filter keeps. "All"
@@ -298,6 +298,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   if (kept.current === undefined) {
     kept.current = fromLink && how !== NavigationType.Pop ? null : places.load(id);
   }
+  // 0.9.15: only the browser's Back and Forward put the window back where it was when
+  // the list was left. A list opened by the menu bar or by a link begins with the page
+  // at its top and the menu bar in view, as every page does (D-234, P-301); its rows are
+  // still scrolled to where they were, with the row opened marked (P-203).
+  const [byBackOrForward] = useState(() => how === NavigationType.Pop);
   // The place being gone back to until the rows it is at have been read, the row that
   // was opened and is marked, and what the grid showed when the place was taken.
   const restoring = useRef<GridPlace | null>(null);
@@ -757,7 +762,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       }
       if (restoring.current !== place) return;
       if (rows) rows.scrollTop = place.top;
-      window.scrollTo(0, place.windowY);
+      if (byBackOrForward) window.scrollTo(0, place.windowY);
       restoring.current = null;
       if (place.opened) {
         setNote("Back where the list was left.");

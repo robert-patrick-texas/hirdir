@@ -289,7 +289,16 @@ the next request. And a change that takes the last role from an account ends eve
 session of that account, so that a role given again later brings no old session
 back: `DELETE /role-grants/{hid}` of a grant of the account or of a group it is in,
 `DELETE /user-groups/{hid}/members/{user_hid}`, and `DELETE /user-groups/{hid}`. Each
-is audited by its own event, as before, with nothing added to it. A token of a service
+is audited by its own event, as before, with nothing added to it. Each takes the one
+writer's place before it reads the roles, so that of two at the same moment, a grant of
+the account's own and one of its group revoked together, the second sees the first and
+ends the sessions. The other way round, a change that gives an account its first role,
+`POST /role-grants` to the account or to a group it is in, and
+`PUT /user-groups/{hid}/members/{user_hid}` of a group that grants one, ends every
+session the account had, in the writer's place in the same way: no session is given
+to an account with no role, but one that 0.9.14 gave, as to an account it brought
+back, is refused and would otherwise answer again once a role is given. Bring back
+ends the sessions of the account as before. A token of a service
 account that holds no role is refused, a `401` that says the account holds no role;
 an Admin may make a token for it all the same, which works once the account is given
 a role.
@@ -2998,7 +3007,7 @@ refused leaves the others as they went.
 | A stack of one switch | `hirdir items make-stack ITEM [--name NAME] [--member ITEM]...` makes a stack of an item that is in none, by `POST /items/{hid}/make-stack`, and prints the stack; each `--member` is one more member, added as a member that joins with its name and place given up, `drop_identity` (P-243) |
 | A replacement that was a mistake | `hirdir replacements remove HID --reason TEXT`, for an Admin, prints the replacement, its two items and its day, asks `Remove this replacement?`, and goes on only when it is answered yes, or `--yes` is given by a script; it then removes it by `POST /item-replacements/{hid}/remove` (P-238) |
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
-| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. A user is named by its username or its HID, a retired one too, the whole username being looked for first, since a username may have the form of an HID, a contact by its email address, its name or its HID, and an operator by its label or its HID: the record of the command and those its options name. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]... [--role ROLE]`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named and the role given, which the server asks of a person (P-299), and prints the role and the new access code once (P-298). `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296) |
+| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. A user is named by its username or its HID, a retired one too, the whole username being looked for first, since a username may have the form of an HID, a contact by its email address, its name or its HID, and an operator by its label or its HID: the record of the command and those its options name. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]... [--role ROLE]`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named and the role given, which the server asks of a person (P-299), and prints the role and the new access code once (P-298); `--dry-run` of a person with no `--role` is refused as the run is, exit `4`, and prints no plan as if it would be done. `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, `--filter`, `--sort`, `--columns`, `--own-values`, `--include-sources`, `--place-codes`, `--include-archived` or `--include-drafts`, and refuses each with exit `2`, writing nothing: each table is whole, in the form that loads back, with its stored values and its retired and drafts (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
@@ -3392,9 +3401,10 @@ What 0.9.6 changes:
 What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-288):
 
 - **Users.** Each row shows the contact the user is and the operators it works as, each
-  a link to that record's page, the operator as its label with its colour, and plain
-  words where there is none, `no contact` and `no operator`; and the notes of the
-  account; a service account says neither, being no person. Where the user's contact is
+  a link to that record's page, the operator as its label with its colour, and the
+  cell blank where there is none, of a person and of a service account alike, whose
+  Kind says what it is (since 0.9.15, P-302: until then plain words, `no contact` and
+  `no operator`); and the notes of the account. Where the user's contact is
   retired, its operators' marks say `open`, nobody being behind them, as the Operators
   list says it, and a released operator is marked released. Above the list, Show has
   a link to every user, one to the users with no contact and one to those with no
@@ -3445,8 +3455,9 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   and a value that is no colour is said at the picker, nothing sent.
 - **Contacts.** Each row shows the user the contact is, as before, and the operators it
   stands behind, as links, in the column Operators, which filters and sorts by
-  `is_operator`, a released one written `label (released)`; and plain words where there
-  is none, `no user` and `no operator`, as the other two lists say theirs. Show has a
+  `is_operator`, a released one written `label (released)`; and each cell blank where
+  there is none, as the other two lists leave theirs (since 0.9.15, P-302: until then
+  plain words, `no user` and `no operator`). Show has a
   link to every contact and one to each gap, the contacts
   that are no user and those behind no operator, each starting the grid with its
   filter (`is_user:eq:false`, `is_operator:eq:false`). A press of a gap starts the grid
@@ -3460,7 +3471,8 @@ What 0.9.13 adds, for the daily work of an Admin and of an operator (P-280 to P-
   contact is a user and the contact's name where it is not.
 - **Operators.** The list has a column User: the user behind each operator by its
   username, a link to the user's page for an Admin and plain words for the other roles,
-  and `no user` where there is none; the server neither filters nor sorts by it. Above
+  and blank where there is none (since 0.9.15, P-302: until then `no user`); the server
+  neither filters nor sorts by it. Above
   the list, Show leads, as the lists of users and of contacts do, by a link one press
   away whose address holds the grid's own filter, to every operator, to those with no
   user behind them, `scope:ne:internal` (another contact, or nobody), and to those with
@@ -3631,8 +3643,8 @@ P-292, P-296 to P-298):
   says `no operator`, `no contact` or `no user`. Somebody who is no Admin reads the
   username as text, the user's page being an Admin's. Among the facts of a contact and
   of an operator, User still names a retired account, marked Retired, with the words
-  that the person signs in no longer; the lists say `no user` of it, as the server
-  counts it.
+  that the person signs in no longer; the lists leave the cell of its user blank, as
+  the server counts it no user (P-302).
 - **The confirmation of a retirement.** Retire account, Retire contact and Release open
   one dialog, which reads `GET .../linked` afresh at each press. Closed, by Cancel or
   by Escape, it gives the focus back to the button that opened it, and so does the
@@ -3737,7 +3749,10 @@ server (P-299, P-300):
   `GET /auth/new-access-code` and puts the code in the box, both boxes on the Profile,
   shown as it is, not masked, so that it can be read and kept; nothing is saved until
   the form's own button is pressed, and the code is sent and checked as a typed one is.
-  On the Profile the code in hand is still asked for, of an Admin too.
+  On the Profile the code in hand is still asked for, of an Admin too, and a made code
+  that is changed to is shown once more, with Copy, as an Admin's forms show one; the
+  boxes are then emptied and masked again. A code typed over the made one is sent as
+  typed and not shown again.
 - **The same code again.** On the Profile, a new code that is the one in hand is
   refused by the server at New access code, in its words, "this is the access code you
   have now", with the three boxes as typed and no session ended. An Admin who sets the
@@ -3817,7 +3832,9 @@ One grid component is used on every list page.
   link, under the same filter, sort and switches, shows the same rows with that row
   marked; a new filter or sort begins at the top, and a link that brings a filter of
   its own shows it from the top. A browser that refuses the storage shows the list from
-  its top (P-203).
+  its top (P-203). Only Back and Forward put the window back where it was too: a list
+  opened from the menu bar or by a link shows its page from the top, with the menu bar
+  in view, its rows scrolled to where they were inside the grid (P-301).
 
 - Every value of a list that names another record is a link to that record's page
   (P-232): in the item list the stack, the groups, the location, the planned location,
@@ -3859,9 +3876,12 @@ record of a file so named as it does of one named `hirdir-`.
 
 A page opened from the menu bar, or from a link on another page, begins at its top with
 the menu bar in view, and focus moves to its content without scrolling it, so that a
-keyboard or a screen reader starts there (P-167). Back and Forward leave the window
-where the browser puts it, and a change that keeps the page's address, such as a
-filter, does not move it.
+keyboard or a screen reader starts there (P-167). Whatever the page holds, a list
+that keeps its place among it, it opens so: from 0.9.15, a browser scenario presses
+every entry of the menu bar in turn, again after each list was left from far down its
+page, and holds each at its top (P-301). Back and Forward leave the window where the
+browser puts it, and a change that keeps the page's address, such as a filter, does
+not move it.
 
 What a page answers to a change, that it was done or why it was refused, stays in view
 (P-182): it is shown at its place near the top of the page, and while the window is

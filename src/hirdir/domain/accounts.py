@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -112,12 +112,19 @@ def _keeping_an_admin(db: Session) -> Generator[None]:
 
 
 @contextmanager
-def _ending_with_the_last_role(db: Session, users: Sequence[User]) -> Generator[None]:
+def _ending_with_the_last_role(db: Session, who: Callable[[], Sequence[User]]) -> Generator[None]:
     """End every session of each of the users that the change takes the last role from
     (P-299): an account with no role has no session, and a role given again later brings
     no old one back. The change is audited by its own event, and this adds nothing to it.
     The roles are read for all the users at once, before and after, however many a group
-    holds."""
+    holds. The writer's place is taken before anything is read, the users `who` gives
+    among it: of two such changes at the same moment, an own grant and a group's revoked
+    together, the second waits and then sees the first, so that one of them finds the
+    last role gone and ends the sessions. It is entered before `_keeping_an_admin`, so
+    that the count of Admins is read in the writer's place too.
+    """
+    dialect.hold_other_writers(db)
+    users = who()
     before = roles_of(db, users)
     held = [user for user in users if before[user.hid] is not None]
     yield
@@ -125,6 +132,28 @@ def _ending_with_the_last_role(db: Session, users: Sequence[User]) -> Generator[
     after = roles_of(db, held)
     for user in held:
         if after[user.hid] is None:
+            _end_sessions(user)
+
+
+@contextmanager
+def _ending_with_the_first_role(db: Session, who: Callable[[], Sequence[User]]) -> Generator[None]:
+    """End every session of each of the users that the change gives a role to where it
+    held none (P-299). No session is given to an account with no role, but one that an
+    earlier release gave, as 0.9.14 did to an account brought back, is refused and not
+    ended: it would answer again once a role is given. So whatever gives the first role,
+    a grant to the user or to a group of its, or its being put in a group that grants
+    one, ends what sessions it had first, as `_ending_with_the_last_role` does for the
+    last role, in the writer's place in the same way.
+    """
+    dialect.hold_other_writers(db)
+    users = who()
+    before = roles_of(db, users)
+    roleless = [user for user in users if before[user.hid] is None]
+    yield
+    db.flush()
+    after = roles_of(db, roleless)
+    for user in roleless:
+        if after[user.hid] is not None:
             _end_sessions(user)
 
 
@@ -970,7 +999,7 @@ def delete_group(db: Session, context: AuditContext, hid: str) -> None:
     """Remove a user group, its memberships and the roles granted to it. A member that
     it gave the last role to has every session ended (P-299)."""
     group = get_group(db, hid)
-    with _keeping_an_admin(db), _ending_with_the_last_role(db, _members(db, hid)):
+    with _ending_with_the_last_role(db, lambda: _members(db, hid)), _keeping_an_admin(db):
         for grant in db.scalars(select(RoleGrant).where(RoleGrant.group_hid == hid)):
             db.delete(grant)
         db.delete(group)
@@ -978,13 +1007,15 @@ def delete_group(db: Session, context: AuditContext, hid: str) -> None:
 
 
 def add_member(db: Session, context: AuditContext, group_hid: str, user_hid: str) -> None:
-    """Put a user in a group. Doing it twice changes nothing."""
+    """Put a user in a group. Doing it twice changes nothing. Where the group gives it
+    its first role, every session it had ends (P-299)."""
     group, user = get_group(db, group_hid), get_user(db, user_hid)
     if is_retired(user):
         raise _retired(user, None, "is put in no group")
     if db.get(UserGroupMember, (user.hid, group.hid)) is not None:
         return
-    db.add(UserGroupMember(user_hid=user.hid, group_hid=group.hid))
+    with _ending_with_the_first_role(db, lambda: [user]):
+        db.add(UserGroupMember(user_hid=user.hid, group_hid=group.hid))
     audit.record(
         db, context, "add_member", "user_group", group.hid, [change("user_hid", None, user.hid)]
     )
@@ -996,7 +1027,7 @@ def remove_member(db: Session, context: AuditContext, group_hid: str, user_hid: 
     member = db.get(UserGroupMember, (user_hid, get_group(db, group_hid).hid))
     if member is None:
         raise NotFound("that user is not in that group")
-    with _keeping_an_admin(db), _ending_with_the_last_role(db, [get_user(db, user_hid)]):
+    with _ending_with_the_last_role(db, lambda: [get_user(db, user_hid)]), _keeping_an_admin(db):
         db.delete(member)
     audit.record(
         db, context, "remove_member", "user_group", group_hid, [change("user_hid", user_hid, None)]
@@ -1019,7 +1050,9 @@ def grant_role(
     user_hid: str | None = None,
     group_hid: str | None = None,
 ) -> RoleGrant:
-    """Grant a role to one user or one group. Granting it twice returns the first grant."""
+    """Grant a role to one user or one group. Granting it twice returns the first grant.
+    Each user it gives the first role to, the user or a member of the group, has every
+    session it had ended (P-299)."""
     if (user_hid is None) == (group_hid is None):
         raise Invalid(
             "a role is granted to a user or to a group",
@@ -1046,7 +1079,12 @@ def grant_role(
     grant = RoleGrant(
         role=role, user_hid=user_hid, group_hid=group_hid, created_by=context.actor_hid
     )
-    db.add(grant)
+
+    def holders() -> list[User]:
+        return [get_user(db, user_hid)] if user_hid else _members(db, group_hid or "")
+
+    with _ending_with_the_first_role(db, holders):
+        db.add(grant)
     db.flush()
     audit.record(
         db,
@@ -1065,10 +1103,13 @@ def revoke_grant(db: Session, context: AuditContext, hid: str) -> None:
     grant = db.get(RoleGrant, hid)
     if grant is None:
         raise NotFound(f"there is no role grant {hid}")
-    holders = (
-        [get_user(db, grant.user_hid)] if grant.user_hid else _members(db, grant.group_hid or "")
-    )
-    with _keeping_an_admin(db), _ending_with_the_last_role(db, holders):
+
+    def holders() -> list[User]:
+        if grant.user_hid:
+            return [get_user(db, grant.user_hid)]
+        return _members(db, grant.group_hid or "")
+
+    with _ending_with_the_last_role(db, holders), _keeping_an_admin(db):
         db.delete(grant)
     audit.record(
         db,
@@ -1207,15 +1248,20 @@ def authenticate(db: Session, signing_key: bytes, token: str) -> Principal:
     except tokens.InvalidToken as error:
         raise NotSignedIn("the session is not valid or has expired") from error
     user = db.get(User, claims.user_hid)
-    if user is None or user.disabled or is_retired(user):
+    if (
+        user is None
+        or user.disabled
+        or is_retired(user)
+        or claims.issued_ms <= user.tokens_valid_after
+    ):
         raise NotSignedIn("the session has been ended")
     role = effective_role(db, user)
     if role is None:
         # An account with no role has no session, so a role lost while signed in takes
-        # effect at the next request, and is said whatever ended the session (P-299).
+        # effect at the next request (P-299). It is said to a session that is live in
+        # every other way alone: a token ended already tells nobody whether the account
+        # holds a role.
         raise NotSignedIn("the session has been ended: this account holds no role")
-    if claims.issued_ms <= user.tokens_valid_after:
-        raise NotSignedIn("the session has been ended")
     return Principal(user=user, role=role, kind="session")
 
 

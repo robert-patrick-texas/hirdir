@@ -219,6 +219,14 @@ def bring_back(
         f"  user      {user['username']:<24}bring back"
         + (f", with the {role} role" if role else "")
     )
+    if dry_run and not role and not user["is_service_account"]:
+        # What the server would refuse is not shown as what would be done: a person is
+        # brought back with a role (P-299), and the run itself is refused at `role`.
+        raise client.fail(
+            f"{user['username']} is a person, brought back with a role: "
+            "say --role viewer, inventory or admin",
+            client.EXIT_INVALID,
+        )
     if dry_run:
         typer.echo("nothing was sent: this is what would be done")
         return

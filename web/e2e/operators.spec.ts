@@ -830,7 +830,7 @@ test("0.9.13: an operator made for a user takes its username and the next colour
   await expect(page.getByTestId("operator-colour")).toHaveText("#7e4ac2");
 
   // The list says the user behind each operator, a link to its page for an Admin, and
-  // that there is none; Show leads to the gaps, each one press away, as the grid's own
+  // nothing where there is none; Show leads to the gaps, each one press away, as the grid's own
   // filter, to which this file's mark is added before anything is counted.
   await page.goto(`./operators?filter=${encodeURIComponent(`label:contains:${id}`)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("4 operators");
@@ -838,7 +838,8 @@ test("0.9.13: an operator made for a user takes its username and the next colour
   const userOf = (name: string) =>
     list.locator("[row-id]", { hasText: name }).locator('[col-id="user"]');
   await expect(userOf(member.username).getByRole("link")).toHaveText(member.username);
-  await expect(userOf(edge)).toHaveText("no user");
+  // 0.9.15: blank where nobody is behind it who signs in (P-302).
+  await expect(userOf(edge)).toHaveText("");
   const show = page.getByRole("navigation", { name: "Show operators" });
   const filterBox = page.getByLabel("Filter", { exact: true });
   const narrowed = async (gap: string, filter: string, total: string) => {

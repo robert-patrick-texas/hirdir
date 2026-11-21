@@ -77,7 +77,8 @@ def test_s59_an_account_with_no_role_does_not_sign_in(server: Server) -> None:
     assert admin.delete(f"/role-grants/{grant.json()['hid']}").status_code == 204
     ended = kim.get("/auth/me")
     assert ended.status_code == 401
-    assert "holds no role" in ended.json()["detail"]
+    # Ended by the revocation, it says no more than that (P-299).
+    assert ended.json()["detail"] == "the session has been ended"
     assert _sign_in(server, "klee", CODE).status_code == 403
     # Given a role again, the person signs in; the old session stays ended.
     again = admin.post("/role-grants", json={"role": "inventory", "group_hid": group["hid"]})

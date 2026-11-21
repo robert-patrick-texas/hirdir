@@ -77,8 +77,9 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "User",
     kind: "boolean",
     column: "user",
-    // 0.9.13: no user, said in plain words, as the lists of users and operators say theirs.
-    value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : "no user"),
+    // 0.9.15: blank where the contact is no user, as the lists of users and operators
+    // leave theirs blank; Show narrows the list to them (P-302).
+    value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : ""),
     choices: [
       { value: "true", label: "A user: signs in to hirdir" },
       { value: "false", label: "No user" },
@@ -92,7 +93,7 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "Operators",
     kind: "boolean",
     column: null,
-    // A released one is marked so; none is said in plain words.
+    // A released one is marked so; the cell is blank where there is none (P-302).
     value: (contact) => operatorsCell(contact.operators).text,
     links: (contact) => operatorsCell(contact.operators).links,
     choices: [

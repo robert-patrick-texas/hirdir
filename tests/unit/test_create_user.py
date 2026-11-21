@@ -63,3 +63,23 @@ def test_an_email_without_a_name_is_refused(tmp_path: Path, monkeypatch) -> None
     refused = runner.invoke(app, ["admin", "create-user", "--email", "x@example.org", "kai"])
     assert refused.exit_code == 2
     assert "--name" in refused.output
+
+
+def test_an_account_made_with_no_role_is_told_what_that_means_for_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A person with no role cannot sign in; a service account never signs in, and its
+    tokens are refused until it is given a role (P-299)."""
+    _installed(tmp_path, monkeypatch)
+    person = runner.invoke(app, ["admin", "create-user", "lee"])
+    assert person.exit_code == 0, person.output
+    assert "lee holds no role, and cannot sign in until an Admin gives it one" in person.output
+    service = runner.invoke(app, ["admin", "create-user", "--service-account", "svc2"])
+    assert service.exit_code == 0, service.output
+    assert (
+        "svc2 holds no role, and its tokens are refused until an Admin gives it one"
+        in service.output
+    )
+    assert "sign in" not in service.output
+    held = runner.invoke(app, ["admin", "create-user", "--role", "viewer", "vic"])
+    assert "holds no role" not in held.output

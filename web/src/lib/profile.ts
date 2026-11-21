@@ -48,35 +48,13 @@ export const OPERATOR_SPECS: readonly FieldSpec[] = [
   },
 ];
 
-/**
- * The same two fields for a person who holds no role, as an account that was brought back
- * is until an Admin gives it one (P-296). The colours a form offers are read with a role
- * (`GET /colours`), so the picker would have only a refusal to show: the colour is typed,
- * and the server says what is wrong with one that is none.
- */
-export const OPERATOR_SPECS_TYPED: readonly FieldSpec[] = [
-  LABEL_SPEC,
-  {
-    name: "colour",
-    label: "Colour",
-    kind: "text",
-    maxLength: 7,
-    hint: "In the form #1f6feb: a # and six of the digits 0 to 9 and the letters a to f. A dot in this colour stands beside the label. Blank is no colour.",
-  },
-];
-
-/** The fields of an operator's form, for a person who holds the role given, or none. */
-export function operatorSpecs(role: string | null | undefined): readonly FieldSpec[] {
-  return role ? OPERATOR_SPECS : OPERATOR_SPECS_TYPED;
-}
-
 /** The setting that says the least length of an access code that is typed (P-295). */
 export const MIN_LENGTH_KEY = "access_code_min_length";
 
 /**
  * The least length of a typed access code, from the settings as `GET /settings` lists
- * them, or null where they do not say: not read yet, not read at all, as by a person who
- * holds no role and may not read them, or no whole number of one or more. The page then names no length, and the server still holds the code to it.
+ * them, or null where they do not say: not read yet, not read at all, or no whole number
+ * of one or more. The page then names no length, and the server still holds the code to it.
  */
 export function minLengthOf(
   settings: ReadonlyArray<{ key: string; value?: unknown }> | null | undefined,
