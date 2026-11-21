@@ -68,7 +68,7 @@ def test_reset_access_code_refuses_a_typed_code_that_is_too_short_and_changes_no
     assert not _accepts(config, "ada", "twelve-chars")
 
 
-def test_the_setting_holds_for_hirdir_admin_and_a_made_code_is_not_held_to_it(
+def test_the_setting_holds_for_hirdir_admin_and_a_made_code_is_as_long_as_it_asks(
     tmp_path: Path, monkeypatch
 ) -> None:
     config = _installed(tmp_path, monkeypatch)
@@ -81,12 +81,14 @@ def test_the_setting_holds_for_hirdir_admin_and_a_made_code_is_not_held_to_it(
 
     made = runner.invoke(app, ["admin", "create-user", "ada"])
     assert made.exit_code == 0, made.output
-    code = made.output.split("access code: ")[1].strip()
-    assert len(code) == 14
+    code = made.output.split("access code: ")[1].splitlines()[0]
+    # Made as long as the setting asks: five groups of four against 20 (P-300).
+    assert len(code) == 24
+    assert "ada holds no role, and cannot sign in until an Admin gives it one" in made.output
     assert _accepts(config, "ada", code)
     again = runner.invoke(app, ["admin", "reset-access-code", "ada"])
     assert again.exit_code == 0, again.output
-    assert _accepts(config, "ada", again.output.split("access code: ")[1].strip())
+    assert _accepts(config, "ada", again.output.split("access code: ")[1].splitlines()[0])
 
 
 def test_reset_access_code_gives_a_retired_account_none(tmp_path: Path, monkeypatch) -> None:

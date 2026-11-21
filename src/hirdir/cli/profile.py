@@ -63,12 +63,9 @@ def show(url: Url = None, token: Token = None, output: Format = "table") -> None
     _show(me)
 
 
-def zone(target: client.Target, role: str | None) -> str:
+def zone(target: client.Target) -> str:
     """Return the time zone a time is shown in: the application's, as the server has it
-    set, or the one it starts with for an account with no role, which the settings are
-    closed to."""
-    if role is None:
-        return clock.DEFAULT_ZONE
+    set. Whoever is signed in holds a role, and reads the settings (P-299)."""
     for setting in client.call(target, "GET", "/settings"):
         if setting["key"] == "time_zone":
             return setting["value"]
@@ -152,16 +149,31 @@ def set_(
 
 
 @group.command("access-code")
-def access_code(url: Url = None, token: Token = None) -> None:
+def access_code(
+    generate: Annotated[
+        bool,
+        typer.Option(
+            "--generate",
+            help="Have the server make the new code, and print it once: only the code you "
+            "have is asked for.",
+        ),
+    ] = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
     """Change your access code. Asks for the code you have and for the new one, neither
-    shown as it is typed, ends every other session of yours and keeps this one."""
+    shown as it is typed, or with --generate has the server make the new one (P-300).
+    Ends every other session of yours and keeps this one."""
     target = client.load_target(url, token)
     current = typer.prompt("Current access code", hide_input=True)
-    new = typer.prompt(
-        "New access code",
-        hide_input=True,
-        confirmation_prompt="New access code again",
-    )
+    if generate:
+        new = client.call(target, "GET", "/auth/new-access-code")["access_code"]
+    else:
+        new = typer.prompt(
+            "New access code",
+            hide_input=True,
+            confirmation_prompt="New access code again",
+        )
     session = client.call(
         target,
         "POST",
@@ -170,13 +182,13 @@ def access_code(url: Url = None, token: Token = None) -> None:
     )
     target.token = session["token"]
     path = client.save_target(target)
-    until = clock.shown(
-        datetime.fromisoformat(session["expires_at"]), zone(target, session["user"]["role"])
-    )
+    until = clock.shown(datetime.fromisoformat(session["expires_at"]), zone(target))
     typer.echo(
         f"the access code of {session['user']['username']} is changed; every other "
         f"session has ended, and this one goes on until {until}"
     )
+    if generate:
+        typer.echo(f"new access code, shown this once: {new}")
     typer.echo(f"session kept in {path}", err=True)
     if token or os.environ.get("HIRDIR_TOKEN"):
         typer.echo(

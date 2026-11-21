@@ -25,6 +25,7 @@ def person(desk: Maker, username: str = "klee", name: str = "Kim Lee", **more: A
         "username": username,
         "contact": {"name": name, "email": email},
         "access_code": CODE,
+        "role": "viewer",
         **more,
     }
     return desk.post("/users", body)["user"]
@@ -39,8 +40,10 @@ def retire(desk: Maker, user: dict, expect: int = 200, **linked: Any) -> dict:
 
 
 def bring_back(desk: Maker, user: dict, expect: int = 200, **linked: Any) -> dict:
+    """Bring a user back with what is linked, as View-only: a person is brought back with
+    a role (P-299)."""
     now = desk.get(f"/users/{user['hid']}")
-    body: dict[str, Any] = {"row_version": now["row_version"]}
+    body: dict[str, Any] = {"row_version": now["row_version"], "role": "viewer"}
     if linked:
         body["linked"] = linked
     return desk.post(f"/users/{user['hid']}/bring-back", body, expect)
@@ -167,7 +170,7 @@ def test_who_retires_an_account_and_what_refuses_it(
     client: TestClient, admin: dict, inventory: dict, viewer: dict
 ) -> None:
     desk = Maker(client, admin)
-    kim = desk.post("/users", {"username": "klee", "access_code": CODE})["user"]
+    kim = desk.post("/users", {"role": "viewer", "username": "klee", "access_code": CODE})["user"]
     body = {"row_version": kim["row_version"]}
     for headers in (inventory, viewer):
         response = client.post(f"{API}/users/{kim['hid']}/retire", json=body, headers=headers)
@@ -294,26 +297,26 @@ def test_a_username_stays_the_retired_accounts_until_it_is_renamed(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
-    kim = desk.post("/users", {"username": "klee", "access_code": CODE})["user"]
+    kim = desk.post("/users", {"role": "viewer", "username": "klee", "access_code": CODE})["user"]
     gone = retire(desk, kim)
-    refused = desk.post("/users", {"username": "KLee"}, 409)
+    refused = desk.post("/users", {"role": "viewer", "username": "KLee"}, 409)
     assert "retired" in refused["detail"]
     assert "retired" in errors(refused)["username"]
     assert refused["existing"] == {"hid": kim["hid"], "record_type": "user", "label": "klee"}
-    sam = desk.post("/users", {"username": "sokafor"})["user"]
+    sam = desk.post("/users", {"role": "viewer", "username": "sokafor"})["user"]
     refused = desk.patch(
         f"/users/{sam['hid']}", {"row_version": sam["row_version"], "username": "klee"}, 409
     )
     assert refused["existing"]["hid"] == kim["hid"]
     assert "retired" in errors(refused)["username"]
     # An account that is not retired refuses the name in other words, as before.
-    plain = desk.post("/users", {"username": "sokafor"}, 409)
+    plain = desk.post("/users", {"role": "viewer", "username": "sokafor"}, 409)
     assert "retired" not in plain["detail"]
     # The Admin renames the retired one, and the name is free.
     desk.patch(
         f"/users/{kim['hid']}", {"row_version": gone["row_version"], "username": "klee-2026"}
     )
-    assert desk.post("/users", {"username": "klee"})["user"]["username"] == "klee"
+    assert desk.post("/users", {"role": "viewer", "username": "klee"})["user"]["username"] == "klee"
 
 
 # --- where a retired account is left out ----------------------------------------------
@@ -328,7 +331,7 @@ def test_the_list_of_users_leaves_the_retired_out_until_they_are_asked_for(
 ) -> None:
     desk = Maker(client, admin)
     kim = person(desk)
-    desk.post("/users", {"username": "sokafor"})
+    desk.post("/users", {"role": "viewer", "username": "sokafor"})
     retire(desk, kim, contact="keep")
     assert _names(desk.get("/users")) == ["ada", "ivy", "sokafor", "vic"]
     assert _names(desk.get("/users", retired="no")) == ["ada", "ivy", "sokafor", "vic"]
@@ -413,20 +416,24 @@ def test_a_retired_account_is_no_user_of_its_contact_and_is_shown_still(
         one["label"] for one in desk.get("/operators", filter="scope:eq:external")["items"]
     ] == ["KL"]
     # The contact is still the retired account's: no other user is given it.
-    refused = desk.post("/users", {"username": "klee2", "contact_hid": kim["contact_hid"]}, 409)
+    refused = desk.post(
+        "/users", {"role": "viewer", "username": "klee2", "contact_hid": kim["contact_hid"]}, 409
+    )
     assert "retired account klee" in refused["detail"]
     assert refused["existing"] == {"hid": kim["hid"], "record_type": "user", "label": "klee"}
     # Taken off the retired account, it is another's to have.
     now = desk.get(f"/users/{kim['hid']}")
     desk.patch(f"/users/{kim['hid']}", {"row_version": now["row_version"], "contact_hid": None})
-    made = desk.post("/users", {"username": "klee2", "contact_hid": kim["contact_hid"]})["user"]
+    made = desk.post(
+        "/users", {"role": "viewer", "username": "klee2", "contact_hid": kim["contact_hid"]}
+    )["user"]
     assert made["contact_hid"] == kim["contact_hid"]
 
 
 # --- bringing an account back ----------------------------------------------------------
 
 
-def test_an_account_brought_back_has_a_new_code_no_role_and_no_group(
+def test_an_account_brought_back_has_a_new_code_the_role_given_and_no_group(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
@@ -436,27 +443,28 @@ def test_an_account_brought_back_has_a_new_code_no_role_and_no_group(
     retire(desk, kim, contact="keep")
     response = client.post(
         f"{API}/users/{kim['hid']}/bring-back",
-        json={"row_version": desk.get(f"/users/{kim['hid']}")["row_version"]},
+        json={"row_version": desk.get(f"/users/{kim['hid']}")["row_version"], "role": "viewer"},
         headers=admin,
     )
     assert response.status_code == 200, response.text
     back = response.json()
     assert back["user"]["record_status"] == "active"
-    assert (back["user"]["role"], back["user"]["groups"]) == (None, [])
+    # What it held was taken away; the role given comes with it, and no group (P-299).
+    assert (back["user"]["role"], back["user"]["groups"]) == ("viewer", [])
     assert back["access_code"]
     assert back["access_code"] != CODE
-    # The old code and the old session are gone; the new code signs in, with no role.
+    # The old code and the old session are gone; the new code signs in, with its role.
     refused = client.post(f"{API}/auth/sign-in", json={"username": "klee", "access_code": CODE})
     assert refused.status_code == 401
     assert client.get(f"{API}/auth/me", headers=old).status_code == 401
     new = sign_in(client, "klee", back["access_code"])
-    assert client.get(f"{API}/auth/me", headers=new).json()["role"] is None
+    assert client.get(f"{API}/auth/me", headers=new).json()["role"] == "viewer"
     assert events(desk, request_id=response.headers["x-request-id"]) == [
         ("bring_back", "user", kim["hid"]),
         ("update", "contact", kim["contact_hid"]),
+        ("grant_role", "user", kim["hid"]),
     ]
-    # It is given a role and a group again, as any account is.
-    desk.post("/role-grants", {"role": "viewer", "user_hid": kim["hid"]})
+    # It is given a group again, as any account is.
     put = client.put(f"{API}/user-groups/{group['hid']}/members/{kim['hid']}", headers=admin)
     assert put.status_code == 204
     assert client.get(f"{API}/auth/me", headers=new).json()["role"] == "viewer"

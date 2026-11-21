@@ -66,9 +66,21 @@ def ready(request: Request, db: Db, response: Response) -> schemas.Health:
 # --- access ------------------------------------------------------------------------
 
 
-@auth.post("/sign-in", responses={401: {"model": schemas.Problem}, 429: {"model": schemas.Problem}})
+@auth.post(
+    "/sign-in",
+    responses={
+        401: {"model": schemas.Problem},
+        403: {
+            "model": schemas.Problem,
+            "description": "The access code is right and the account holds no role, of its "
+            "own or through a group: it does not sign in. `help` is whom to ask (P-299).",
+        },
+        429: {"model": schemas.Problem},
+    },
+)
 def sign_in(body: schemas.SignIn, request: Request, db: Db) -> schemas.SessionOut:
-    """Exchange a username and access code for a session token."""
+    """Exchange a username and access code for a session token. An account that holds no
+    role is refused with a `403` that says so and whom to ask (P-299)."""
     state = request.app.state
     user, token, expires_at = accounts.sign_in(
         db,
@@ -99,7 +111,7 @@ def update_own_contact(
 ) -> schemas.MeOut:
     """Change the name, the email, the numbers or the organization of the contact the
     signed-in person is, by the rules of `PATCH /contacts/{hid}`. For a session of any
-    role, and of none; a service token is refused. An account with no contact, or with
+    role; a service token is refused. An account with no contact, or with
     one that is retired, is a `409` (P-294)."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     profile.update_contact(db, principal, context, body.row_version, fields)
@@ -111,8 +123,8 @@ def update_own_operator(
     hid: str, body: schemas.OwnOperatorPatch, principal: SignedIn, context: Audit, db: Db
 ) -> schemas.MeOut:
     """Change the label or the colour of an operator the signed-in person is behind, by
-    the rules of `PATCH /operators/{hid}`. For a session of any role, and of none; a
-    service token is refused. An operator that is another's, or retired, is a `404`
+    the rules of `PATCH /operators/{hid}`. For a session of any role; a service token
+    is refused. An operator that is another's, or retired, is a `404`
     (P-294)."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     profile.update_operator(db, principal, context, hid, body.row_version, fields)
@@ -124,9 +136,10 @@ def change_own_access_code(
     body: schemas.OwnAccessCode, request: Request, principal: SignedIn, context: Audit, db: Db
 ) -> schemas.SessionOut:
     """Change the access code of the signed-in person, who gives the code they have. A
-    wrong one is a `422` on `current_access_code`, counted as a failed sign-in is. Every
-    other session of the person ends, and the answer carries a new token for this one
-    (P-295). For a session of any role, and of none; a service token is refused."""
+    wrong one is a `422` on `current_access_code`, counted as a failed sign-in is, and a
+    new one that is the current one a `422` on `access_code` (P-300). Every other session
+    of the person ends, and the answer carries a new token for this one (P-295). For a
+    session of any role; a service token is refused."""
     state = request.app.state
     token, expires_at = profile.change_access_code(
         db,
@@ -142,6 +155,15 @@ def change_own_access_code(
     return schemas.SessionOut(
         token=token, expires_at=expires_at, user=views.me_out(db, principal.user)
     )
+
+
+@auth.get("/new-access-code")
+def new_access_code(_: Viewer, db: Db) -> schemas.NewAccessCode:
+    """Make an access code for a form to send, as the server makes every code: groups of
+    four, as many as make it as long as `access_code_min_length` asks (P-300). Nothing is
+    stored and nothing is written; it is saved as a typed code is, by the route of the
+    form, through the same checks. For a session or a token that holds a role."""
+    return schemas.NewAccessCode(access_code=accounts.made_code(db))
 
 
 @auth.post("/sign-out-everywhere", status_code=204)
@@ -227,8 +249,9 @@ def list_users(
 def create_user(body: schemas.UserCreate, _: Admin, context: Audit, db: Db) -> r.UserCreated:
     """Create a user, and in the same change the contact it is, the operator it works
     as, its role and its groups, each audited as if made by itself: where any part is
-    refused, nothing is made (P-282, P-283). The access code in the answer is not shown
-    again."""
+    refused, nothing is made (P-282, P-283). A person is made with a role, of its own or
+    through a group, or it is a `422` on `role` (P-299). The access code in the answer is
+    not shown again."""
     made = accounts.onboard(
         db,
         context,
@@ -303,15 +326,22 @@ def retire_user(
             "model": schemas.Problem,
             "description": "The account is not retired; or its contact is retired and is "
             "not brought back with it, the contact named on `linked.contact`.",
-        }
+        },
+        422: {
+            "model": schemas.Problem,
+            "description": "A person is brought back with no `role`, or a role there is "
+            "not, on `role` (P-299); or `linked` says what is not so.",
+        },
     },
 )
 def bring_back_user(
     hid: str, body: schemas.BringBack, principal: Admin, context: Audit, db: Db
 ) -> schemas.UserBroughtBack:
     """Bring a retired account back (P-296, P-298): active and not disabled, with a new
-    access code, which is not shown again, no role and no group. `linked` brings back
-    its retired contact with it, and those of that contact's retired operators it names."""
+    access code, which is not shown again, the role given and no group. A person is
+    given a role, since an account with none does not sign in (P-299). `linked` brings
+    back its retired contact with it, and those of that contact's retired operators it
+    names."""
     back = people.bring_back(
         db,
         context,
@@ -319,6 +349,7 @@ def bring_back_user(
         hid,
         body.row_version,
         body.linked.model_dump() if body.linked else None,
+        role=body.role,
     )
     return schemas.UserBroughtBack(user=views.user_out(db, back.user), access_code=back.access_code)
 

@@ -31,6 +31,7 @@ def _person(db: Session, username: str = "klee", name: str | None = "Kim Lee") -
         access_code=CODE,
         contact={"name": name} if name else None,
         operator={} if name else None,
+        role="viewer",
     )
     db.commit()
     return made.user
@@ -224,7 +225,7 @@ def test_the_right_current_code_clears_the_count_though_the_new_one_is_refused(
     assert codes.verify(kim.access_code_hash, CODE)
 
 
-def test_a_typed_code_is_held_to_the_setting_and_a_made_one_is_not(db: Session) -> None:
+def test_a_typed_code_is_held_to_the_setting_and_a_made_one_is_as_long(db: Session) -> None:
     with pytest.raises(Invalid, match="too short: at least 12 characters"):
         accounts.create_user(db, audit.SYSTEM, username="klee", access_code="eleven-char")
     settings.set_setting(db, audit.SYSTEM, settings.CODE_LENGTH_SETTING, 0, 1)
@@ -240,7 +241,7 @@ def test_a_typed_code_is_held_to_the_setting_and_a_made_one_is_not(db: Session) 
     assert short.value.fields == {"access_code": "at least 64 characters"}
     assert str(short.value) == "the access code is too short: at least 64 characters"
     made = accounts.set_access_code(db, audit.SYSTEM, kim.hid)
-    assert len(made) == 14
+    assert len(made) == 64
     _, made = accounts.create_user(db, audit.SYSTEM, username="sokafor")
     assert made is not None
-    assert len(made) == 14
+    assert len(made) == 64

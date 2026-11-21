@@ -1,5 +1,6 @@
 """What can go wrong in a rule, in terms the interfaces turn into answers."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -83,6 +84,16 @@ class NotAllowed(DomainError):
 
 class SignInRefused(DomainError):
     """The username and access code were not accepted."""
+
+
+class NoRole(DomainError):
+    """The access code was right, and the account holds no role, and so does not sign in
+    (P-299). `help` is whom to ask, as `hirdir.domain.product.help_of` reads it: each of
+    its four fields, None where it is not set."""
+
+    def __init__(self, message: str, whom: Mapping[str, str | None]) -> None:
+        super().__init__(message)
+        self.help = dict(whom)
 
 
 class SignInDelayed(DomainError):

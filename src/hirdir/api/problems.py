@@ -30,11 +30,13 @@ def problem(
     deleted: errors.Deleted | None = None,
     depends_on: list[errors.Existing] | None = None,
     busy: load.Reading | None = None,
+    whom_to_ask: Mapping[str, str | None] | None = None,
 ) -> JSONResponse:
     """Build a problem response. `existing` is the record that has the value already,
     `deleted` the deletion of a record that is asked for and is not there,
     `depends_on` the records that stand on the one a change was refused for, and `busy`
-    what the measures of a server past its ceiling say."""
+    what the measures of a server past its ceiling say, and `whom_to_ask` the `help` of
+    an account that holds no role (P-299)."""
     body: dict[str, object] = {
         "type": "about:blank",
         "title": title,
@@ -67,6 +69,8 @@ def problem(
             "refusing": busy.refusing,
             "retry_after": load.RETRY_SECONDS,
         }
+    if whom_to_ask is not None:
+        body["help"] = dict(whom_to_ask)
     return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE, headers=headers)
 
 
@@ -93,6 +97,10 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(errors.SignInRefused)
     async def _refused(_: Request, error: errors.SignInRefused) -> JSONResponse:
         return problem(401, "Sign-in refused", str(error))
+
+    @app.exception_handler(errors.NoRole)
+    async def _no_role(_: Request, error: errors.NoRole) -> JSONResponse:
+        return problem(403, "No role", str(error), whom_to_ask=error.help)
 
     @app.exception_handler(errors.SignInDelayed)
     async def _delayed(_: Request, error: errors.SignInDelayed) -> JSONResponse:

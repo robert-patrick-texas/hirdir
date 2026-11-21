@@ -268,14 +268,30 @@ def test_profile_access_code_asks_for_both_codes_and_keeps_the_new_session(
     assert "has ended: use the one kept" in done.output
 
 
-def test_profile_access_code_is_for_an_account_with_no_role_too(
+def test_profile_access_code_generate_asks_for_the_code_in_hand_alone(
     client: TestClient, admin: dict, hirdir
 ) -> None:
-    nobody, _ = _person(client, admin, role=None)
-    done = hirdir(nobody, "profile", "access-code", typed=f"{CODE}\n{NEW_CODE}\n{NEW_CODE}\n")
+    """`--generate` has the server make the new code, sets it and prints it once (P-300)."""
+    kim, _ = _person(client, admin)
+    wrong = hirdir(kim, "profile", "access-code", "--generate", expect=4, typed="not-the-code\n")
+    assert "current_access_code: this is not the access code you have" in wrong.output
+    done = hirdir(kim, "profile", "access-code", "--generate", typed=f"{CODE}\n")
     assert "the access code of klee is changed" in done.output
-    assert "needs the viewer role" not in done.output
-    sign_in(client, "klee", NEW_CODE)
+    shown = [line for line in done.output.splitlines() if "shown this once" in line]
+    assert len(shown) == 1
+    made = shown[0].removeprefix("new access code, shown this once: ")
+    assert len(made) == 14
+    assert CODE not in done.output
+    sign_in(client, "klee", made)
+
+
+def test_the_same_code_again_is_refused_from_the_command_line(
+    client: TestClient, admin: dict, hirdir
+) -> None:
+    kim, _ = _person(client, admin)
+    same = hirdir(kim, "profile", "access-code", expect=4, typed=f"{CODE}\n{CODE}\n{CODE}\n")
+    assert "access_code: this is the access code you have now" in same.output
+    sign_in(client, "klee", CODE)
 
 
 def test_a_new_code_typed_two_ways_is_asked_for_again(
@@ -287,14 +303,27 @@ def test_a_new_code_typed_two_ways_is_asked_for_again(
     sign_in(client, "klee", NEW_CODE)
 
 
-def test_an_account_with_no_role_signs_in_from_the_command_line(
+def test_an_account_with_no_role_is_refused_at_sign_in_from_the_command_line(
     client: TestClient, admin: dict, hirdir
 ) -> None:
-    """The settings, which say the time zone, are closed to an account with no role: it
-    is told when its session ends all the same, and the session is kept."""
-    _person(client, admin, role=None)
+    """An account that holds no role is told so and whom to ask, keeps no session and
+    exits 3 (P-299); in 0.9.14 it was signed in."""
+    _, made = _person(client, admin)
+    desk = Maker(client, admin)
+    grant = next(one for one in desk.get("/role-grants") if one["user_hid"] == made["user"]["hid"])
+    assert client.delete(f"{API}/role-grants/{grant['hid']}", headers=admin).status_code == 204
+    listed = desk.get("/settings")
+    version = next(one["row_version"] for one in listed if one["key"] == "help_email")
+    desk.client.put(
+        f"{API}/settings/help_email",
+        json={"row_version": version, "value": "tools@example.net"},
+        headers=admin,
+    )
     result = runner.invoke(app, ["sign-in", "--username", "klee"], input=f"{CODE}\n")
-    assert result.exit_code == 0, result.output
-    assert "signed in as klee (no role) until " in result.output
-    kept = cli_client.load_target()
-    assert _me(client, {"Authorization": f"Bearer {kept.token}"})["username"] == "klee"
+    assert result.exit_code == 3, result.output
+    assert (
+        "this account holds no role, and so cannot sign in: an Admin gives it one" in result.output
+    )
+    assert "whom to ask: tools@example.net" in result.output
+    assert "signed in" not in result.output
+    assert cli_client.load_target().token == ""

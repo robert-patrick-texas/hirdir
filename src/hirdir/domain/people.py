@@ -373,13 +373,20 @@ class BroughtBack:
 def bring_back(
     db: Session,
     context: AuditContext,
-    role: Role | None,
+    asker: Role | None,
     hid: str,
     row_version: int | None,
     linked: Mapping[str, Any] | None = None,
+    *,
+    role: str | None = None,
 ) -> BroughtBack:
-    """Bring a retired user back, with what `linked` says is brought back with it (P-298).
-    `role` is the role of whoever asks: it is an Admin's.
+    """Bring a retired user back, with what `linked` says is brought back with it (P-298),
+    and the role it is given, `role`, granted in the same change (P-299). `asker` is the
+    role of whoever asks: it is an Admin's.
+
+    A person is given a role, since an account with none does not sign in: none is a
+    refusal at `role`, before anything else is judged. A service account may be
+    brought back with none.
 
     An account does not stand on a retired contact: the contact of the user, where it is
     retired, is brought back with it, or the request is refused with the contact named.
@@ -387,13 +394,16 @@ def bring_back(
     said, and none need be. The contact first, then the operators, then the user: each
     is changed by its own module and audited as if it were done by itself.
     """
-    if role is not Role.ADMIN:
+    if asker is not Role.ADMIN:
         raise NotAllowed("an Admin brings a retired user back: this needs the admin role")
     dialect.hold_other_writers(db)
     person = of_user(db, hid)
     user, contact = accounts.get_user(db, hid), person.contact
     if user.record_status != RETIRED:
         raise Conflict(f"the account {user.username} is not retired")
+    granted = accounts.checked_role(role)
+    if granted is None and not user.is_service_account:
+        raise Invalid(accounts.NO_ROLE_BACK, {"role": "give the role the account is to hold"})
     linked = linked or {}
     wrong: dict[str, str] = {}
     with_contact = linked.get("contact") == BRING_BACK
@@ -429,8 +439,10 @@ def bring_back(
             Existing(CONTACT, contact.hid, contact.name),
         )
     if with_contact and contact is not None:
-        contacts.update_contact(db, context, contact.hid, None, {"record_status": "active"}, role)
+        contacts.update_contact(db, context, contact.hid, None, {"record_status": "active"}, asker)
     for one in back:
-        operators.update_operator(db, context, one.hid, None, {"record_status": "active"}, role)
+        operators.update_operator(db, context, one.hid, None, {"record_status": "active"}, asker)
     returned, code = accounts.bring_back_user(db, context, hid, row_version)
+    if granted is not None:
+        accounts.grant_role(db, context, role=granted, user_hid=returned.hid)
     return BroughtBack(returned, code)
