@@ -46,20 +46,22 @@ WORDS = {
 
 
 def find_user(target: Target, text: str) -> dict[str, Any]:
-    """Return the user with an HID or a username, a retired one too.
+    """Return the user with a username or an HID, a retired one too.
 
-    An HID is read by itself: the list of users finds part of a username or of the name
-    of a contact, and never an HID. A username is found without regard to case, among
-    the retired as among the rest.
+    The whole username is looked for first, without regard to case, among the retired as
+    among the rest: a username may have the form of an HID, another account's HID too,
+    and it is the username that a person types. What is no username and has the form of
+    an HID is read by that HID, which the list of users never finds: it looks at parts
+    of usernames and of the names of contacts.
     """
-    if ids.is_hid(text):
-        return client.call(target, "GET", f"/users/{text}")
     found = client.call(
         target, "GET", "/users", params={"q": text, "retired": "yes", "limit": 1000}
     )["items"]
     for user in found:
         if user["username"].lower() == text.lower():
             return user
+    if ids.is_hid(text):
+        return client.call(target, "GET", f"/users/{text}")
     raise client.fail(f"there is no user {text}", client.EXIT_INVALID)
 
 
