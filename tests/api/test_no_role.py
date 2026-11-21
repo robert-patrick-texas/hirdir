@@ -5,7 +5,11 @@ taken away ends the sessions, and a person is made and brought back with a role.
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
+from hirdir.config import Config
+from hirdir.db.engine import make_engine, make_sessions
+from hirdir.db.models import RoleGrant
 from tests.api.inventory import API, Maker, errors
 from tests.conftest import sign_in
 
@@ -123,13 +127,39 @@ def test_a_session_with_no_role_is_ended_and_a_role_given_again_does_not_bring_i
     _revoke(client, admin, grant)
     ended = client.get(f"{API}/auth/me", headers=kim)
     assert ended.status_code == 401
-    assert ended.json()["detail"] == "the session has been ended: this account holds no role"
+    # Ended by the revocation, it is an ended session, and says no more.
+    assert ended.json()["detail"] == "the session has been ended"
     # The grant's own event is all that is written of it.
     newest = _events(client, admin, record_hid=user["user"]["hid"])[0]
     assert newest["action"] == "revoke_role"
     _grant(client, admin, user_hid=user["user"]["hid"])
     assert client.get(f"{API}/auth/me", headers=kim).status_code == 401
     assert client.get(f"{API}/auth/me", headers=sign_in(client, "klee", CODE)).status_code == 200
+
+
+def test_a_live_session_with_no_role_is_told_so_and_an_ended_one_is_not(
+    client: TestClient, admin: dict, config: Config
+) -> None:
+    """A session that is live in every other way, as one of an account that had no role
+    before 0.9.15, is told that the account holds no role; one that was ended already,
+    by Sign out everywhere, is told it was ended and nothing of the role (P-299)."""
+    desk = Maker(client, admin)
+    user = desk.post("/users", {"username": "klee", "access_code": CODE, "role": "viewer"})
+    gone = sign_in(client, "klee", CODE)
+    assert client.post(f"{API}/auth/sign-out-everywhere", headers=gone).status_code == 204
+    live = sign_in(client, "klee", CODE)
+    # The grant taken away where it is kept, as a release before 0.9.15 left it: no session
+    # is ended by it.
+    with make_sessions(make_engine(config.database_url))() as session:
+        session.execute(delete(RoleGrant).where(RoleGrant.user_hid == user["user"]["hid"]))
+        session.commit()
+    told = client.get(f"{API}/auth/me", headers=live)
+    assert (told.status_code, told.json()["detail"]) == (
+        401,
+        "the session has been ended: this account holds no role",
+    )
+    ended = client.get(f"{API}/auth/me", headers=gone)
+    assert (ended.status_code, ended.json()["detail"]) == (401, "the session has been ended")
 
 
 def _in_a_group(client: TestClient, admin: dict) -> tuple[dict, dict, dict, dict]:

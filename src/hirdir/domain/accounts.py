@@ -1207,15 +1207,20 @@ def authenticate(db: Session, signing_key: bytes, token: str) -> Principal:
     except tokens.InvalidToken as error:
         raise NotSignedIn("the session is not valid or has expired") from error
     user = db.get(User, claims.user_hid)
-    if user is None or user.disabled or is_retired(user):
+    if (
+        user is None
+        or user.disabled
+        or is_retired(user)
+        or claims.issued_ms <= user.tokens_valid_after
+    ):
         raise NotSignedIn("the session has been ended")
     role = effective_role(db, user)
     if role is None:
         # An account with no role has no session, so a role lost while signed in takes
-        # effect at the next request, and is said whatever ended the session (P-299).
+        # effect at the next request (P-299). It is said to a session that is live in
+        # every other way alone: a token ended already tells nobody whether the account
+        # holds a role.
         raise NotSignedIn("the session has been ended: this account holds no role")
-    if claims.issued_ms <= user.tokens_valid_after:
-        raise NotSignedIn("the session has been ended")
     return Principal(user=user, role=role, kind="session")
 
 
