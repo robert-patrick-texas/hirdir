@@ -38,6 +38,10 @@ RETIRE, KEEP = "retire", "keep"
 OPEN, HAND_OVER = "open", "hand_over"
 OPERATOR_ACTIONS = (RETIRE, KEEP, OPEN, HAND_OVER)
 BRING_BACK = "bring_back"
+# What a refusal asks to be said of a linked record, in the words of the documentation
+# and not in the values the API takes.
+EACH = "retire it or keep it"
+EACH_OPERATOR = "retire it, keep it, leave it open or hand it over"
 
 
 @dataclass(frozen=True)
@@ -156,7 +160,7 @@ def _judged(
     if kind == USER:
         plan.user = user
         if of_user_ is not None:
-            wrong["linked.user"] = "the route is on this user: it is retired, and is not said"
+            wrong["linked.user"] = "this is the user being retired: nothing is said of it here"
     elif of_user_ is not None:
         if user is None:
             wrong["linked.user"] = "no user is linked to this record"
@@ -169,7 +173,9 @@ def _judged(
     if kind == CONTACT:
         plan.contact = contact
         if of_contact_ is not None:
-            wrong["linked.contact"] = "the route is on this contact: it is retired, and is not said"
+            wrong["linked.contact"] = (
+                "this is the contact being retired: nothing is said of it here"
+            )
     elif of_contact_ is not None:
         if contact is None:
             wrong["linked.contact"] = "no contact is linked to this record"
@@ -187,19 +193,19 @@ def _judged(
         one = behind.get(entry.get("hid") or "")
         action, to = entry.get("action"), entry.get("contact_hid") or None
         if one is None:
-            problem = f"the operator {entry.get('hid')} is not linked to this record"
+            problem = _no_such(db, entry.get("hid"), "is not linked to this record")
         elif (OPERATOR, one.hid) == target:
-            problem = f"the route is on the operator {one.label}: it is retired, and is not said"
+            problem = f"{one.label} is the operator being retired: nothing is said of it here"
         elif one.hid in spoken:
             problem = f"the operator {one.label} is said twice"
         elif not _standing(one):
             problem = f"the operator {one.label} is retired already"
         elif action not in OPERATOR_ACTIONS:
-            problem = f"the operator {one.label}: retire, keep, open or hand_over"
+            problem = f"say what becomes of the operator {one.label}: {EACH_OPERATOR}"
         elif action == HAND_OVER and to is None:
-            problem = f"the operator {one.label}: hand_over names the contact it goes to"
+            problem = f"the operator {one.label} is handed over to a contact: say which"
         elif action != HAND_OVER and to is not None:
-            problem = f"the operator {one.label}: contact_hid goes with hand_over alone"
+            problem = f"the operator {one.label}: a contact is named only where it is handed over"
         elif action == HAND_OVER and contact is not None and to == contact.hid:
             problem = f"the operator {one.label} is handed over to another contact, not to its own"
         else:
@@ -227,20 +233,19 @@ def _judged(
     ]
     if quiet:
         labels = ", ".join(one.label for one in quiet)
-        unsaid["linked.operators"] = (
-            f"say what becomes of {labels}: retire, keep, open or hand_over"
-        )
+        which = f"the operator {labels}" if len(quiet) == 1 else f"each of the operators {labels}"
+        unsaid["linked.operators"] = f"say what becomes of {which}: {EACH_OPERATOR}"
         left += [Existing(OPERATOR, one.hid, one.label) for one in quiet]
     if kind != USER and user is not None and _standing(user) and of_user_ is None:
-        unsaid["linked.user"] = f"say what becomes of the user {user.username}: retire or keep"
+        unsaid["linked.user"] = f"say what becomes of the user {user.username}: {EACH}"
         left.append(Existing(USER, user.hid, user.username))
     if kind != CONTACT and contact is not None and _standing(contact) and of_contact_ is None:
-        unsaid["linked.contact"] = f"say what becomes of the contact {contact.name}: retire or keep"
+        unsaid["linked.contact"] = f"say what becomes of the contact {contact.name}: {EACH}"
         left.append(Existing(CONTACT, contact.hid, contact.name))
     if left:
         raise Conflict(
-            "records are linked to this one, and the request does not say what becomes of "
-            "each: " + ", ".join(f"{one.record_type} {one.label}" for one in left),
+            "records are linked to this one, and it is not said what becomes of each: "
+            + ", ".join(f"the {one.record_type} {one.label}" for one in left),
             unsaid,
             depends_on=left,
         )
@@ -266,6 +271,16 @@ def _judged(
                 "a contact is not retired while its account or a label stands on it", kept
             )
     return plan
+
+
+def _no_such(db: Session, hid: Any, why: str) -> str:
+    """Say of an operator that a plan names and the person has not, why it is refused: by
+    its label where it is an operator, another's or nobody's, so that a person reads who
+    is meant, and as it was sent where it is no operator at all."""
+    known = db.get(Operator, hid) if isinstance(hid, str) and hid else None
+    if known is None:
+        return f"there is no operator {hid}"
+    return f"the operator {known.label} {why}"
 
 
 def _fresh(record: Any, row_version: int | None) -> None:
@@ -317,8 +332,8 @@ def retire(
         if own is not None and own.record_status == RETIRED:
             if any(_said(linked)):
                 raise Conflict(
-                    f"this {kind} is retired already: what is linked to it is retired "
-                    "by its own route"
+                    f"this {kind} is retired already: each record that is linked to it "
+                    "is retired by itself"
                 )
             retire_one = contacts.retire_contact if kind == CONTACT else operators.retire_operator
             retire_one(db, context, hid, row_version)
@@ -391,7 +406,7 @@ def bring_back(
     for entry in linked.get("operators") or []:
         one = behind.get(entry.get("hid") or "")
         if one is None:
-            problem = f"the operator {entry.get('hid')} is not of this user's contact"
+            problem = _no_such(db, entry.get("hid"), "is not of this user's contact")
         elif _standing(one):
             problem = f"the operator {one.label} is not retired"
         elif one in back:
@@ -408,8 +423,8 @@ def bring_back(
             f"the contact of this account, {contact.name}, is retired: bring it back "
             "with the account, or take it off the account first",
             {
-                "linked.contact": "an account does not stand on a retired contact: "
-                "bring_back, or take the contact off the user first"
+                "linked.contact": "an account does not stand on a retired contact: bring "
+                f"{contact.name} back with it, or take the contact off the user first"
             },
             Existing(CONTACT, contact.hid, contact.name),
         )
