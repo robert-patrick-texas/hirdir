@@ -450,6 +450,76 @@ def test_the_install_page_and_the_package_test_say_of_the_notes_of_a_user_what_t
     assert f'[\\"{users_file.ACTION}\\", \\"{users_file.RECORD}\\", null' in script
 
 
+def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_code_says() -> None:
+    """The notes of the upgrade to 0.9.14, the newest, and what the package test asks for
+    it: migration 0017 adds `users.record_status`, `active` for every user, creates no
+    table and writes no event, and the file of the package test declares the column as
+    the model does (P-296); and the access codes that the file types to the previous
+    release are shorter than a code may be typed from this one, so that the upgrade is
+    held to keep them (P-295)."""
+    from sqlalchemy import ColumnDefault, String, inspect
+    from sqlalchemy.dialects import sqlite
+
+    from hirdir.db.models import User
+
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
+    assert revision == "0017"
+    (migration,) = versions.glob(f"{revision}_*.py")
+    source = migration.read_text(encoding="utf-8")
+    assert 'down_revision = "0016"' in source
+    # A column and no table: the pass whose migration fails puts the trigger in its way.
+    assert "op.create_table" not in source
+    column = inspect(User).columns["record_status"]
+    kind, default = column.type, column.default
+    assert isinstance(kind, String)
+    assert isinstance(default, ColumnDefault)
+    held = default.arg
+    assert held == "active"
+    assert (
+        f'sa.Column("{column.name}", sa.String({kind.length}), nullable=False, '
+        f'server_default="{held}")' in source
+    )
+    # Every user is given that one value by the column itself: the migration runs no
+    # statement of its own over the rows.
+    assert "op.execute" not in source
+
+    assert "### From 0.9.13 to 0.9.14" in INSTALL
+    notes = INSTALL.split("### From 0.9.13 to 0.9.14\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    assert (
+        f"from revision `0016` to `{revision}`. One column is added, `{column.name}` of the "
+        f"{User.__tablename__}, `{held}` for every user; no table is added, nothing that is "
+        "held is changed, and the upgrade writes no audit event" in page
+    )
+    assert "A user that is disabled stays disabled and is not retired" in page
+    assert "Going back to 0.9.13 is by the backup the upgrade took" in page
+
+    # The file of the package test says so, and declares the column as SQLite has it.
+    hook = (PACKAGING / "package-test.d" / f"migration-{revision}.sh").read_text(encoding="utf-8")
+    assert "\nwrites_no_event=yes\n" in hook
+    declared = column.type.compile(dialect=sqlite.dialect())
+    nullable = "NULL" if column.nullable else "NOT NULL"
+    said = f"{column.name} {declared} {nullable} -"
+    assert f"\nalso new_columns {User.__tablename__} '{said}'\n" in hook
+    assert f'*) more_tables="${{more_tables:+$more_tables }}{User.__tablename__}" ;;' in hook
+    # And it looks for the value that the model gives a new user, in every row: the
+    # rows are counted by what the column holds, and one value holds them all.
+    counted = f"{column.name}, count(*) FROM {User.__tablename__} GROUP BY {column.name}"
+    assert counted in hook
+    assert f'"{held} $(sqlite_value' in hook
+
+    # The least length of a typed code, as the page gives it to an operator, and the two
+    # codes that the file types to the previous release, which takes them: each is
+    # shorter, so that a code from before which could not be typed now is carried over.
+    least = 12
+    assert f"**A typed access code has at least {least} characters.**" in page
+    assert f"`access_code_min_length`, {least} unless set, a whole number from 1 to 64" in page
+    typed = re.findall(r"^typed(?:_cli)?_0017=(\S+)$", hook, re.M)
+    assert len(typed) == 2
+    assert all(0 < len(code) < least for code in typed)
+
+
 def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
     """The way back in docs/install.md is the one the package prints, word for word."""
     postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
