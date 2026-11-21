@@ -6,7 +6,7 @@
 
 import { expect } from "@playwright/test";
 import { session } from "./referenceSteps";
-import { change, openUser, putAway } from "./retiredSteps";
+import { change, goAhead, openUser, putAway } from "./retiredSteps";
 import { region } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
@@ -65,4 +65,55 @@ test("review 1: a new access code is never on show on the page of another accoun
   await expect(page.getByTestId("user-state")).toHaveText("Active");
   await expect(secret).toHaveCount(0);
   await expectClean(page, seen, ["409 PATCH"]);
+});
+
+test("review 2: a retired service account is offered no new token, and its token reads Revoked at once", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const username = `e2e-${suffix}-svc`;
+  const made = await request.post("./api/v1/users", {
+    headers,
+    data: { username, is_service_account: true },
+  });
+  expect(made.status(), await made.text()).toBe(201);
+  const service = ((await made.json()) as { user: { hid: string; username: string } }).user;
+  madeAccounts.push(service.hid);
+  const tokenName = `${suffix}-token`;
+  const token = await request.post(`./api/v1/users/${service.hid}/service-tokens`, {
+    headers,
+    data: { name: tokenName },
+  });
+  expect(token.status(), "the token is made").toBe(201);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await openUser(page, service);
+  const tokens = region(page, "Service tokens");
+  const row = tokens.locator("tbody tr", { hasText: tokenName });
+  await expect(row).toContainText("Active");
+  await expect(tokens.locator("form")).toHaveCount(1);
+
+  // Retired: the token is read again and says what the server did, and no form is drawn.
+  await region(page, "Retire").getByRole("button", { name: "Retire account" }).click();
+  await goAhead(page.getByTestId("retire-person")).click();
+  await expect(page.getByText(`${username} was retired.`)).toBeVisible();
+  await expect(row).toContainText("Revoked");
+  await expect(row.getByRole("button", { name: "Revoke" })).toHaveCount(0);
+  await expect(tokens.getByTestId("tokens-retired")).toBeVisible();
+  await expect(tokens.locator("form")).toHaveCount(0);
+  await expect(tokens.getByRole("heading", { name: "New token" })).toHaveCount(0);
+  await expect(tokens.getByLabel("Name", { exact: true })).toHaveCount(0);
+
+  // Brought back: a token can be made again, and the old one stays revoked.
+  await region(page, "Retired").getByRole("button", { name: "Bring back" }).click();
+  await page.getByTestId("bring-back-user").getByRole("button", { name: "Bring back" }).click();
+  await expect(page.getByText(`The service account ${username} is active again`)).toBeVisible();
+  await expect(tokens.locator("form")).toHaveCount(1);
+  await expect(tokens.getByLabel("Name", { exact: true })).toBeVisible();
+  await expect(row).toContainText("Revoked");
+  await expectClean(page, seen);
 });

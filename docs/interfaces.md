@@ -3544,7 +3544,8 @@ P-292, P-296 to P-298):
   server changes of it: its username, with the words that no other account takes the
   name until it is given another, its notes, and Take its contact away. The box
   Disabled, the groups, the form of the contact, another contact, the access code, the
-  sessions and a new token are not offered, and the page says that they are given once
+  sessions and a new token are not offered, the form of a new token not drawn at all
+  and the tokens read again at the retirement, so that each reads Revoked at once, and the page says that they are given once
   the account is brought back; nor is Make an operator. Bring back is there in the
   place of Retire.
 - **The chain.** The pages of a user, of a contact and of an operator show, under the

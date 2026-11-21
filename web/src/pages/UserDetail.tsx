@@ -16,7 +16,7 @@ import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
-import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { useAction, useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
 import { useSettings } from "../lib/lists";
 import { accessCodeHint, behindOperator, briefMark, leastCodeLength } from "../lib/onboarding";
@@ -697,6 +697,9 @@ function Tokens({ user }: { user: User }) {
   const tokens = useLoad(`tokens ${user.hid}`, (signal) =>
     api.request("get", "/api/v1/users/{hid}/service-tokens", { path: { hid: user.hid }, signal }),
   );
+  // A retirement revokes them and a bringing back leaves them so: they are read again
+  // when the account changes, so that the list says what the server did (review 2).
+  useReloadOn(user.row_version, tokens.reload);
   const [name, setName] = useState("");
   const [expires, setExpires] = useState("");
   const [secret, setSecret] = useState<Schemas["ServiceTokenCreated"] | null>(null);
@@ -829,35 +832,41 @@ function Tokens({ user }: { user: User }) {
           A retired account is given no token: bring it back first.
         </p>
       )}
-      {!retired && <h3>New token</h3>}
-      <form onSubmit={submit} className="stack" hidden={retired}>
-        <Problem error={create.error} shown={["name", "expires_at"]} />
-        <TextField
-          label="Name"
-          name="name"
-          value={name}
-          onChange={setName}
-          required
-          maxLength={100}
-          autoComplete="off"
-          hint="What will use the token"
-          error={fields.name}
-        />
-        <TextField
-          label="Expires"
-          name="expires_at"
-          type="datetime-local"
-          value={expires}
-          onChange={setExpires}
-          hint={`In ${appZone()} time. Leave empty for a token that does not expire.`}
-          error={fields.expires_at}
-        />
-        <p className="actions">
-          <button type="submit" className="primary" disabled={create.busy}>
-            Create token
-          </button>
-        </p>
-      </form>
+      {/* Not drawn at all for a retired account: a form that is only hidden is still
+          on show where a style says how it is laid out (review 2). */}
+      {!retired && (
+        <>
+          <h3>New token</h3>
+          <form onSubmit={submit} className="stack">
+            <Problem error={create.error} shown={["name", "expires_at"]} />
+            <TextField
+              label="Name"
+              name="name"
+              value={name}
+              onChange={setName}
+              required
+              maxLength={100}
+              autoComplete="off"
+              hint="What will use the token"
+              error={fields.name}
+            />
+            <TextField
+              label="Expires"
+              name="expires_at"
+              type="datetime-local"
+              value={expires}
+              onChange={setExpires}
+              hint={`In ${appZone()} time. Leave empty for a token that does not expire.`}
+              error={fields.expires_at}
+            />
+            <p className="actions">
+              <button type="submit" className="primary" disabled={create.busy}>
+                Create token
+              </button>
+            </p>
+          </form>
+        </>
+      )}
     </section>
   );
 }
