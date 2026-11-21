@@ -52,13 +52,21 @@ def test_viewer_cannot_manage_accounts(client: TestClient, viewer: dict) -> None
     assert client.get(f"{API}/audit-events", headers=viewer).status_code == 200
 
 
-def test_user_with_no_grant_signs_in_and_sees_nothing(client: TestClient, admin: dict) -> None:
-    client.post(
-        f"{API}/users", headers=admin, json={"username": "nia", "access_code": "nia-code-0001"}
+def test_user_with_no_grant_does_not_sign_in(client: TestClient, admin: dict) -> None:
+    """From 0.9.15 an account with no role is refused at sign-in (P-299), where it signed
+    in and saw nothing; `tests/api/test_no_role.py` holds the rest."""
+    made = client.post(
+        f"{API}/users",
+        headers=admin,
+        json={"username": "nia", "access_code": "nia-code-0001", "role": "viewer"},
+    ).json()["user"]
+    grants = client.get(f"{API}/role-grants", headers=admin).json()
+    grant = next(one for one in grants if one["user_hid"] == made["hid"])
+    client.delete(f"{API}/role-grants/{grant['hid']}", headers=admin)
+    refused = client.post(
+        f"{API}/auth/sign-in", json={"username": "nia", "access_code": "nia-code-0001"}
     )
-    nia = sign_in(client, "nia", "nia-code-0001")
-    assert client.get(f"{API}/auth/me", headers=nia).json()["role"] is None
-    assert client.get(f"{API}/audit-events", headers=nia).status_code == 403
+    assert (refused.status_code, refused.json()["title"]) == (403, "No role")
 
 
 def test_s03_highest_role_wins_and_a_removed_grant_bites_at_once(
@@ -66,7 +74,9 @@ def test_s03_highest_role_wins_and_a_removed_grant_bites_at_once(
 ) -> None:
     """S03: a user in a View-only group who is also granted Admin directly."""
     user = client.post(
-        f"{API}/users", headers=admin, json={"username": "uma", "access_code": "uma-code-0001"}
+        f"{API}/users",
+        headers=admin,
+        json={"username": "uma", "access_code": "uma-code-0001", "role": "viewer"},
     ).json()["user"]
     group = client.post(f"{API}/user-groups", headers=admin, json={"name": "Readers"}).json()
     client.post(
@@ -85,7 +95,9 @@ def test_s03_highest_role_wins_and_a_removed_grant_bites_at_once(
     uma = sign_in(client, "uma", "uma-code-0001")
     assert client.get(f"{API}/auth/me", headers=uma).json()["role"] == "admin"
     assert (
-        client.post(f"{API}/users", headers=uma, json={"username": "made-by-uma"}).status_code
+        client.post(
+            f"{API}/users", headers=uma, json={"username": "made-by-uma", "role": "viewer"}
+        ).status_code
         == 201
     )
 
@@ -245,15 +257,20 @@ def test_the_users_are_sorted_by_the_columns_of_their_table(
     client: TestClient, admin: dict
 ) -> None:
     make = Maker(client, admin)
-    zed = make.post("/users", {"username": "Zed", "contact": {"name": "alpha Person"}})["user"]
-    nia = make.post("/users", {"username": "nia", "contact": {"name": "Beta Person"}})["user"]
-    make.post("/users", {"username": "bot", "is_service_account": True})
     readers, auditors = (
         make.post("/user-groups", {"name": name}) for name in ("Readers", "auditors")
     )
-    # Zed is a viewer through a group, and Nia has Inventory of her own besides.
+    # Zed is a viewer through a group, and Nia has Inventory of her own besides: a person
+    # is made with a role (P-299).
     make.post("/role-grants", {"role": "viewer", "group_hid": readers["hid"]})
-    make.post("/role-grants", {"role": "inventory", "user_hid": nia["hid"]})
+    zed = make.post(
+        "/users",
+        {"username": "Zed", "contact": {"name": "alpha Person"}, "group_hids": [readers["hid"]]},
+    )["user"]
+    nia = make.post(
+        "/users", {"username": "nia", "contact": {"name": "Beta Person"}, "role": "inventory"}
+    )["user"]
+    make.post("/users", {"username": "bot", "is_service_account": True})
     for group, user in ((readers, zed), (auditors, zed), (readers, nia)):
         added = client.put(f"{API}/user-groups/{group['hid']}/members/{user['hid']}", headers=admin)
         assert added.status_code == 204

@@ -340,6 +340,8 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   and **Admin** (Inventory plus accounts, groups and role assignment).
 - **R12.3** Users belong to user groups. A group is a label by default. A role MAY be
   granted to a user or to a group, and a user holds the highest role granted by either.
+  A user who holds no role does not sign in, and is told so with whom to ask; a person
+  is given a role when the account is made and when it is brought back (P-299).
 - **R12.4** The MVP signs in with a username and an access code set by an Admin. Code
   length and complexity rules are LATER. RADIUS, then SAML, are LATER.
 - **R12.5** The browser MUST NOT be sent cookies. The session token lives in local
@@ -356,7 +358,9 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   contact they are, the label and colour of each operator they are behind, and their
   access code, for which the code they have is asked. Every role does this for itself
   and nobody for another. A typed access code has a least length, which a setting says
-  (P-289, P-294, P-295).
+  (P-289, P-294, P-295). A new code is not the one it replaces, and the server makes one
+  where asked, on the profile and on an Admin's forms, as long as the setting asks
+  (P-300).
 - **R12.10** A user account is active, disabled or retired. A retired account is that
   of somebody who has left: it signs in with nothing, holds no role and is in no group,
   keeps its username, and is left out of the list of users, of every picker and of the

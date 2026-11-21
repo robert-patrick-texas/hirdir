@@ -46,7 +46,8 @@ def sign_in(
     url: Url = None,
     username: Annotated[str | None, typer.Option(help="Asked for when left out.")] = None,
 ) -> None:
-    """Sign in with a username and access code, and remember the session."""
+    """Sign in with a username and access code, and remember the session. An account that
+    holds no role is refused, with whom to ask, and no session is kept (P-299)."""
     target = client.load_target(url)
     target.token = ""
     if not target.url:
@@ -56,11 +57,10 @@ def sign_in(
     session = client.call(target, "POST", "/auth/sign-in", {"username": name, "access_code": code})
     target.token = session["token"]
     path = client.save_target(target)
-    role = session["user"]["role"] or "no role"
-    # The settings are closed to an account with no role, which signs in all the same.
-    zone = profile.zone(target, session["user"]["role"])
-    until = clock.shown(datetime.fromisoformat(session["expires_at"]), zone)
-    typer.echo(f"signed in as {session['user']['username']} ({role}) until {until}")
+    until = clock.shown(datetime.fromisoformat(session["expires_at"]), profile.zone(target))
+    typer.echo(
+        f"signed in as {session['user']['username']} ({session['user']['role']}) until {until}"
+    )
     typer.echo(f"session kept in {path}", err=True)
 
 
@@ -159,15 +159,24 @@ def users_bring_back(
             help="A retired operator of its contact to bring back with it, once for each.",
         ),
     ] = None,
+    role: Annotated[
+        str | None,
+        typer.Option(
+            help="viewer, inventory or admin: the role it holds again, which a person is given."
+        ),
+    ] = None,
     dry_run: people.DryRun = False,
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Bring a retired account back: active, with a new access code, printed once, no
-    role and no group. An account whose contact is retired is brought back with it."""
+    """Bring a retired account back: active, with a new access code, printed once, the
+    role given by --role and no group. A person is given a role, since an account with
+    none does not sign in. An account whose contact is retired is brought back with it."""
     target = client.load_target(url, token)
     found = people.find_user(target, username)
-    people.bring_back(target, found, contact=contact, operators=operator, dry_run=dry_run)
+    people.bring_back(
+        target, found, contact=contact, operators=operator, dry_run=dry_run, role=role
+    )
 
 
 if __name__ == "__main__":

@@ -192,8 +192,10 @@ def bring_back(
     contact: bool,
     operators: list[str] | None,
     dry_run: bool,
+    role: str | None = None,
 ) -> None:
-    """Print what is linked to a retired user, and bring it back with what is said."""
+    """Print what is linked to a retired user, and bring it back with what is said and
+    the role given, which the server asks of a person (P-299)."""
     person = client.call(target, "GET", f"/users/{user['hid']}/linked")
     linked: dict[str, Any] = {"contact": "bring_back" if contact else None, "operators": []}
     for label in operators or []:
@@ -213,14 +215,24 @@ def bring_back(
     if person["contact"] is not None:
         what = "bring back" if contact else person["contact"]["record_status"]
         typer.echo(f"  contact   {person['contact']['name']:<24}{what}")
-    typer.echo(f"  user      {user['username']:<24}bring back")
+    typer.echo(
+        f"  user      {user['username']:<24}bring back"
+        + (f", with the {role} role" if role else "")
+    )
     if dry_run:
         typer.echo("nothing was sent: this is what would be done")
         return
     body: dict[str, Any] = {"row_version": user["row_version"]}
     if _sent(linked):
         body["linked"] = _sent(linked)
+    if role:
+        body["role"] = role
     back = client.call(target, "POST", f"/users/{user['hid']}/bring-back", body)
-    typer.echo(f"{back['user']['username']} is active again, with no role and no group")
+    held = back["user"]["role"]
+    typer.echo(
+        f"{back['user']['username']} is active again, with "
+        + (f"the {held} role" if held else "no role")
+        + " and no group"
+    )
     if back["access_code"]:
         typer.echo(f"access code, shown this once: {back['access_code']}")

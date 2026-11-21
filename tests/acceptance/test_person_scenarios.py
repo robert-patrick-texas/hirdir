@@ -30,8 +30,9 @@ def _file(admin: httpx2.Client, **params: str) -> list[dict[str, str]]:
 def test_s57_an_account_is_retired_left_out_and_brought_back_with_nothing(server: Server) -> None:
     """S57 (R12.10): the account signs in no longer, is in no group and holds no role,
     each audited; the list and the users' file leave it out until the retired are asked
-    for; a new account of its username is refused with it named; and brought back, it
-    has a new access code, no role and no group (P-292, P-296)."""
+    for; a new account of its username is refused with it named; and brought back with a
+    role, which a person is given, it has a new access code, that role and no group
+    (P-292, P-296, P-299)."""
     admin = server.sign_in(*ADMIN)
     groups = [
         admin.post("/user-groups", json={"name": name}).json()
@@ -83,23 +84,27 @@ def test_s57_an_account_is_retired_left_out_and_brought_back_with_nothing(server
     assert "retired" in problem["detail"]
     assert problem["existing"] == {"hid": kim["hid"], "record_type": "user", "label": "klee"}
 
-    # Brought back: a new code, no role and no group.
+    # Brought back: a new code, the role given and no group.
     back = admin.post(
-        f"/users/{kim['hid']}/bring-back", json={"row_version": retired.json()["row_version"]}
+        f"/users/{kim['hid']}/bring-back",
+        json={"row_version": retired.json()["row_version"], "role": "viewer"},
     )
     assert back.status_code == 200, back.text
     code = back.json()["access_code"]
     assert code
     assert code != CODE
-    assert (back.json()["user"]["role"], back.json()["user"]["groups"]) == (None, [])
-    assert _events(admin, back.headers["x-request-id"]) == [("bring_back", "user")]
+    assert (back.json()["user"]["role"], back.json()["user"]["groups"]) == ("viewer", [])
+    assert _events(admin, back.headers["x-request-id"]) == [
+        ("bring_back", "user"),
+        ("grant_role", "user"),
+    ]
     assert (
         httpx2.post(
             f"{server.url}/auth/sign-in", json={"username": "klee", "access_code": CODE}
         ).status_code
         == 401
     )
-    assert server.sign_in("klee", code).get("/auth/me").json()["role"] is None
+    assert server.sign_in("klee", code).get("/auth/me").json()["role"] == "viewer"
     assert _usernames(admin) == ["ada", "klee"]
 
 
@@ -199,12 +204,19 @@ def test_s58_a_person_is_retired_together_or_not_at_all(server: Server) -> None:
 
     # An Admin brings back the user with its contact: alone it is refused, the contact named.
     user = admin.get(f"/users/{kim['hid']}").json()
-    alone = admin.post(f"/users/{kim['hid']}/bring-back", json={"row_version": user["row_version"]})
+    alone = admin.post(
+        f"/users/{kim['hid']}/bring-back",
+        json={"row_version": user["row_version"], "role": "viewer"},
+    )
     assert alone.status_code == 409
     assert alone.json()["existing"]["hid"] == contact_hid
     back = admin.post(
         f"/users/{kim['hid']}/bring-back",
-        json={"row_version": user["row_version"], "linked": {"contact": "bring_back"}},
+        json={
+            "row_version": user["row_version"],
+            "linked": {"contact": "bring_back"},
+            "role": "viewer",
+        },
     )
     assert back.status_code == 200, back.text
     linked = admin.get(f"/users/{kim['hid']}/linked").json()
@@ -212,4 +224,5 @@ def test_s58_a_person_is_retired_together_or_not_at_all(server: Server) -> None:
         "active",
         "active",
     )
-    assert server.sign_in("klee", back.json()["access_code"]).get("/auth/me").json()["role"] is None
+    signed = server.sign_in("klee", back.json()["access_code"])
+    assert signed.get("/auth/me").json()["role"] == "viewer"

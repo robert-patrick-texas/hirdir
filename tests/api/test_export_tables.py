@@ -139,6 +139,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
     made = people.post(
         "/users",
         {
+            "role": "viewer",
             "username": "ex-ops",
             "contact": {
                 "name": "Example Person",
@@ -200,7 +201,9 @@ def test_the_users_file_holds_no_access_code_token_or_hash_and_is_audited(
     client: TestClient, admin: dict[str, str], db: Session
 ) -> None:
     people = Maker(client, admin)
-    made = people.post("/users", {"username": "ex-person", "access_code": "a-secret-code-1"})
+    made = people.post(
+        "/users", {"role": "viewer", "username": "ex-person", "access_code": "a-secret-code-1"}
+    )
     service = people.post("/users", {"username": "ex-service", "is_service_account": True})
     token = people.post(f"/users/{service['user']['hid']}/service-tokens", {"name": "a tool"})
     text = export_users(client, admin)

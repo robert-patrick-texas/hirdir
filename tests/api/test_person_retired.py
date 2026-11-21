@@ -122,7 +122,7 @@ def test_each_of_the_three_answers_the_person_it_belongs_to(
         # Every role reads it.
         assert client.get(API + path, headers=viewer).json() == expected
     # A user with no contact is itself alone, and so is an operator with none.
-    bare = desk.post("/users", {"username": "sokafor"})["user"]
+    bare = desk.post("/users", {"role": "viewer", "username": "sokafor"})["user"]
     alone = desk.get(f"/users/{bare['hid']}/linked")
     assert (alone["user"]["username"], alone["contact"], alone["operators"]) == (
         "sokafor",
@@ -368,7 +368,7 @@ def test_what_is_said_of_a_record_that_is_not_linked_or_is_retired_already_is_re
     )
     # A contact with no user, and a user with no contact, have none to say anything of.
     assert "no user" in refused("contacts", kim.sam, "linked.user", user="retire")
-    bare = desk.post("/users", {"username": "sokafor"})["user"]
+    bare = desk.post("/users", {"role": "viewer", "username": "sokafor"})["user"]
     assert "no contact" in refused("users", bare, "linked.contact", contact="keep")
     assert kim.statuses() == ALL_ACTIVE
     # What is retired already is not said again.
@@ -510,7 +510,7 @@ def test_a_record_with_nothing_linked_is_retired_with_its_version_alone_as_befor
     assert kim.retire("contacts", kim.sam, by=ivy)["record_status"] == "retired"
     label = desk.post("/operators", {"label": "OPEN"})
     assert kim.retire("operators", label, by=ivy)["record_status"] == "retired"
-    bare = desk.post("/users", {"username": "sokafor"})["user"]
+    bare = desk.post("/users", {"role": "viewer", "username": "sokafor"})["user"]
     assert kim.retire("users", bare)["record_status"] == "retired"
     # An empty `linked` is nothing said.
     late = desk.contact("Example Late")
@@ -577,7 +577,7 @@ def test_a_contact_is_not_retired_while_it_is_being_given_to_a_user(
     desk: Maker, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sam = desk.contact("Sam Okafor")
-    user = desk.post("/users", {"username": "sokafor"})["user"]
+    user = desk.post("/users", {"role": "viewer", "username": "sokafor"})["user"]
     looked = threading.Event()
     real = accounts._checked_contact
 
@@ -655,7 +655,7 @@ def test_a_user_is_not_given_a_contact_that_is_being_retired(
     from hirdir.domain import people
 
     sam = desk.contact("Sam Okafor")
-    user = desk.post("/users", {"username": "sokafor"})["user"]
+    user = desk.post("/users", {"role": "viewer", "username": "sokafor"})["user"]
     looked = threading.Event()
     real = people._judged
 
@@ -881,6 +881,7 @@ def test_a_user_whose_contact_is_retired_is_brought_back_with_it(
         f"{API}/users/{kim.user['hid']}/bring-back",
         json={
             "row_version": desk.get(f"/users/{kim.user['hid']}")["row_version"],
+            "role": "viewer",
             "linked": {
                 "contact": "bring_back",
                 "operators": [{"hid": kim.kl["hid"], "action": "bring_back"}],
@@ -898,6 +899,7 @@ def test_a_user_whose_contact_is_retired_is_brought_back_with_it(
         ("update", "operator", kim.kl["hid"]),
         ("bring_back", "user", kim.user["hid"]),
         ("update", "contact", kim.contact_hid),
+        ("grant_role", "user", kim.user["hid"]),
     ]
     # What is not retired is not brought back.
     kim.retire(

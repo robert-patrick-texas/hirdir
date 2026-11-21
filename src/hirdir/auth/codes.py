@@ -12,9 +12,18 @@ _HASHER = PasswordHasher()
 _DUMMY_HASH = _HASHER.hash("no such user")
 
 
-def generate() -> str:
-    """Return a new access code that is easy to read and to type: three groups of four."""
-    groups = ("".join(secrets.choice(_ALPHABET) for _ in range(4)) for _ in range(3))
+# A code that is made is of groups of four, parted by hyphens, three at the least.
+GROUP = 4
+LEAST_GROUPS = 3
+
+
+def generate(least: int = 0) -> str:
+    """Return a new access code that is easy to read and to type: groups of four, three
+    of them or as many more as make it at least `least` characters long (P-300)."""
+    count = LEAST_GROUPS
+    while count * GROUP + count - 1 < least:
+        count += 1
+    groups = ("".join(secrets.choice(_ALPHABET) for _ in range(GROUP)) for _ in range(count))
     return "-".join(groups)
 
 
