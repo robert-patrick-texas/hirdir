@@ -40,6 +40,12 @@ type Token = Schemas["ServiceTokenOut"];
  */
 export function UserDetail() {
   const { hid = "" } = useParams();
+  // The page is of one account: what it holds of one, as a new access code shown once,
+  // is never on show for another, whichever way the address came to change (review 1).
+  return <UserPage key={hid} hid={hid} />;
+}
+
+function UserPage({ hid }: { hid: string }) {
   const auth = useAuth();
   const user = useLoad(`user ${hid}`, (signal) =>
     api.request("get", "/api/v1/users/{hid}", { path: { hid }, signal }),
