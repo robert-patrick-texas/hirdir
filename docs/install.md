@@ -2233,14 +2233,28 @@ one is a `422` on `access_code`. `GET /auth/new-access-code` is new, and so are
 `--role` of `hirdir users bring-back` and `--generate` of `hirdir profile access-code`;
 `hirdir sign-in` of an account with no role exits `3`. `hirdir admin create-user`
 without `--role` still makes the person, and says that it cannot sign in until it is
-given a role; from 0.9.16 it takes `--group NAME` as well, and a group that grants a
-role gives it (P-304). The audit trail has a new action, `sign_in_no_role`.
+given a role. The audit trail has a new action, `sign_in_no_role`.
 
 Going back to 0.9.14 needs no backup, because the schema is the same. An account with
 no role then signs in again, as it did:
 
 ```bash
 sudo apt install --allow-downgrades ./hirdir_0.9.14_amd64.deb
+```
+
+### From 0.9.15 to 0.9.16
+
+The schema stays at revision `0017`: 0.9.16 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, and no
+route, page or answer changes. `hirdir admin create-user` takes `--group NAME`, once for
+each group: a group that grants a role gives the new user that role, and a name that no
+group has is refused before anything is made (P-304).
+
+Going back to 0.9.15 needs no backup, because the schema is the same:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.15_amd64.deb
 ```
 
 ### If the upgrade stops

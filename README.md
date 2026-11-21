@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.15, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.16, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -75,7 +75,8 @@ and the operators of one person are retired together, in one confirmation. 0.9.1
 follows it: an account that holds no role does not sign in and is given a role when it
 is made or brought back, a new access code is not the one it replaces and a Generate
 button makes one, every list reached from the menu bar opens at its top, and an
-address may be an interface's.
+address may be an interface's. 0.9.16 puts a user made by `hirdir admin create-user`
+in groups, with a group's role.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are
