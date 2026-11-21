@@ -2392,7 +2392,7 @@ class NetworkPatch(Model):
     kind: Literal["network", "vrf", "other"] | None = None
 
 
-AddressRole = Literal["management", "loopback", "secondary", "virtual"]
+AddressRole = Literal["management", "interface", "loopback", "secondary", "virtual"]
 AddressText = Annotated[str, Field(min_length=1, max_length=45)]
 
 

@@ -9190,7 +9190,7 @@ export interface components {
       item_hid?: string | null;
       /** Blank is the unlabelled space. */
       network_hid?: string | null;
-      role?: "management" | "loopback" | "secondary" | "virtual";
+      role?: "management" | "interface" | "loopback" | "secondary" | "virtual";
     };
     /** An item or a group that holds an address. */
     AddressHolder: {
@@ -9215,7 +9215,7 @@ export interface components {
       item_hid: string | null;
       network: components["schemas"]["NetworkRef"] | null;
       network_hid: string | null;
-      role: "management" | "loopback" | "secondary" | "virtual";
+      role: "management" | "interface" | "loopback" | "secondary" | "virtual";
       row_version: number;
       updated_at: string;
     };
@@ -9224,7 +9224,7 @@ export interface components {
       address?: string | null;
       is_primary?: boolean | null;
       network_hid?: string | null;
-      role?: "management" | "loopback" | "secondary" | "virtual" | null;
+      role?: "management" | "interface" | "loopback" | "secondary" | "virtual" | null;
       row_version: number;
     };
     /** An address, as listed on the item or the group that has it. */

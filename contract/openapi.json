@@ -205,6 +205,7 @@
             "default": "management",
             "enum": [
               "management",
+              "interface",
               "loopback",
               "secondary",
               "virtual"
@@ -376,6 +377,7 @@
           "role": {
             "enum": [
               "management",
+              "interface",
               "loopback",
               "secondary",
               "virtual"
@@ -457,6 +459,7 @@
               {
                 "enum": [
                   "management",
+                  "interface",
                   "loopback",
                   "secondary",
                   "virtual"

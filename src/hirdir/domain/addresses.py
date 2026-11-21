@@ -21,7 +21,7 @@ from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 NETWORK_TYPE = "network"
 RECORD_TYPE = "address"
 KINDS = ("network", "vrf", "other")
-ROLES = ("management", "loopback", "secondary", "virtual")
+ROLES = ("management", "interface", "loopback", "secondary", "virtual")
 MANAGEMENT = "management"
 NETWORK_FIELDS = ("label", "kind")
 FIELDS = ("item_hid", "group_hid", "address", "network_hid", "role", "is_primary")

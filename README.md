@@ -74,7 +74,8 @@ a user account is retired, which is other than disabled; and the account, the co
 and the operators of one person are retired together, in one confirmation. 0.9.15
 follows it: an account that holds no role does not sign in and is given a role when it
 is made or brought back, a new access code is not the one it replaces and a Generate
-button makes one, and every list reached from the menu bar opens at its top.
+button makes one, every list reached from the menu bar opens at its top, and an
+address may be an interface's.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are

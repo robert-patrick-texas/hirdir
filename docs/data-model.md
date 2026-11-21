@@ -672,7 +672,7 @@ management address, and its members usually carry neither.
 | `addresses.item_hid` or `addresses.group_hid` | reference | exactly one of the two, and not changed afterwards, but where a switch that stands alone is made a stack, which takes its addresses as they are, in one change of each that names both holders (P-243) |
 | `addresses.address` | IPv4 or IPv6 | stored in canonical form, no prefix length |
 | `addresses.network_hid` | reference | blank is the unlabelled address space |
-| `addresses.role` | choice | `management`, `loopback`, `secondary`, `virtual`. Left out, `management` |
+| `addresses.role` | choice | `management`, `interface`, `loopback`, `secondary`, `virtual` (P-303). Left out, `management`. An item or a group holds any number of each |
 | `addresses.is_primary` | boolean | at most one primary management address of each family, IPv4 and IPv6, per item or group |
 
 The same `address` twice under one network is allowed and is listed in the duplicates

@@ -185,6 +185,32 @@ def test_items_are_found_by_any_of_their_addresses(make: Maker) -> None:
     assert third["addresses"] == []
 
 
+def test_an_item_holds_several_interface_addresses_and_none_of_them_is_primary(
+    make: Maker,
+) -> None:
+    """P-303: the role `interface`, of which an item holds as many as it has; only a
+    management address is primary."""
+    switch = _switch(make)
+    red = make.network("Red")
+    make.address(switch, "192.0.2.10", red, is_primary=True)
+    first = make.address(switch, "192.0.2.21", red, role="interface")
+    make.address(switch, "2001:db8::21", red, role="interface")
+    make.address(switch, "192.0.2.22", role="interface")
+    assert first["role"] == "interface"
+    held = make.get(f"/items/{switch['hid']}")["addresses"]
+    assert sorted(row["address"] for row in held if row["role"] == "interface") == [
+        "192.0.2.21",
+        "192.0.2.22",
+        "2001:db8::21",
+    ]
+    listed = make.get("/addresses", filter="role:eq:interface")["items"]
+    assert len(listed) == 3
+    refused = make.address(switch, "192.0.2.23", role="interface", is_primary=True, expect=422)
+    assert "is_primary" in errors(refused)
+    unknown = make.address(switch, "192.0.2.24", role="uplink", expect=422)
+    assert "interface" in errors(unknown)["role"]
+
+
 def test_the_address_list_filters_and_sorts(make: Maker) -> None:
     switch = _switch(make)
     stack = make.group("site2-sw-stack1", "stack")

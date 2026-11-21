@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADDRESS_ROLES,
   type AddressRef,
   addressList,
   addressRoleLabel,
@@ -108,6 +109,18 @@ describe("addresses as words", () => {
   it("names a role, and shows one it does not know as sent", () => {
     expect(addressRoleLabel("management")).toBe("Management");
     expect(addressRoleLabel("anycast")).toBe("anycast");
+  });
+
+  it("offers Interface second, after Management, and lets it be no primary (P-303)", () => {
+    expect(ADDRESS_ROLES.map((role) => role.label)).toEqual([
+      "Management",
+      "Interface",
+      "Loopback",
+      "Secondary",
+      "Virtual",
+    ]);
+    expect(addressRoleLabel("interface")).toBe("Interface");
+    expect(mayBePrimary("interface")).toBe(false);
   });
 
   it("lets only a management address be primary", () => {

@@ -13,6 +13,7 @@ export type NetworkKind = Schemas["NetworkOut"]["kind"];
 
 export const ADDRESS_ROLES: ReadonlyArray<Option & { value: AddressRole }> = [
   { value: "management", label: "Management" },
+  { value: "interface", label: "Interface" },
   { value: "loopback", label: "Loopback" },
   { value: "secondary", label: "Secondary" },
   { value: "virtual", label: "Virtual" },
