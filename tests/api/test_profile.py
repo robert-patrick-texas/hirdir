@@ -499,41 +499,19 @@ def test_nobody_signed_in_is_refused(client: TestClient) -> None:
         assert client.request(method, API + path, json=body).status_code == 401, path
 
 
-def test_an_account_with_no_role_changes_what_is_its_own(client: TestClient, admin: dict) -> None:
-    """An account that is brought back has a new code and no role (P-296): the person
-    changes the code they were given, and their own details, before a role is theirs."""
-    nobody, made = _person(client, admin, role=None)
-    assert _me(client, nobody)["role"] is None
-    # The inventory is closed to them, the list of contacts too.
-    assert client.get(f"{API}/contacts", headers=nobody).status_code == 403
-
-    contact = client.patch(
-        f"{API}/auth/me/contact",
-        headers=nobody,
-        json={"row_version": _me(client, nobody)["contact"]["row_version"], "phone": "+1 555 0142"},
-    )
-    assert contact.status_code == 200, contact.text
-    assert contact.json()["contact"]["phone"] == "+1 555 0142"
-    operator = client.patch(
-        f"{API}/auth/me/operators/{made['operator']['hid']}",
-        headers=nobody,
-        json={"row_version": made["operator"]["row_version"], "label": "KL"},
-    )
-    assert operator.status_code == 200, operator.text
-    assert operator.json()["operators"][0]["label"] == "KL"
-
-    changed = _change(client, nobody, CODE, NEW_CODE)
-    assert changed.status_code == 200, changed.text
-    assert changed.json()["user"]["role"] is None
-    assert _signs_in(client, "klee", CODE) == 401
-    assert _signs_in(client, "klee", NEW_CODE) == 200
-    actors = {
-        event["actor_hid"]
-        for event in _events(client, admin, actor_hid=made["user"]["hid"], limit=100)
-        if event["action"] in ("update", "set_access_code")
-    }
-    assert actors == {made["user"]["hid"]}
-    assert len(_events(client, admin, actor_hid=made["user"]["hid"], action="update")) == 2
+def test_an_account_that_loses_its_role_changes_nothing_of_its_own(
+    client: TestClient, admin: dict
+) -> None:
+    """In 0.9.14 an account with no role changed its own details and its code (P-294); from
+    0.9.15 it has no session (P-299), so none of the routes of a person's own is for it."""
+    kim, made = _person(client, admin)
+    grants = client.get(f"{API}/role-grants", headers=admin).json()
+    grant = next(one for one in grants if one["user_hid"] == made["user"]["hid"])
+    assert client.delete(f"{API}/role-grants/{grant['hid']}", headers=admin).status_code == 204
+    for method, path, body in _writes():
+        assert client.request(method, API + path, json=body, headers=kim).status_code == 401, path
+    assert client.get(f"{API}/auth/me", headers=kim).status_code == 401
+    assert _signs_in(client, "klee", CODE) == 403
 
 
 # --- the access code ------------------------------------------------------------------

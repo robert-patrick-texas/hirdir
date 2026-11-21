@@ -169,6 +169,9 @@ def test_a_kept_answer_is_not_given_to_a_caller_who_may_no_longer_change_anythin
     me = client.get(f"{API}/auth/me", headers=inventory).json()
     grants = client.get(f"{API}/role-grants", headers=admin).json()
     mine = next(grant for grant in grants if grant["user_hid"] == me["hid"])
+    # Left with View-only, so that the session holds (P-299) and the change is refused.
+    granted = {"role": "viewer", "user_hid": me["hid"]}
+    assert client.post(f"{API}/role-grants", json=granted, headers=admin).status_code == 201
     assert client.delete(f"{API}/role-grants/{mine['hid']}", headers=admin).status_code == 204
     again = client.post(f"{API}/items", json={"name": "one"}, headers=headers)
     assert again.status_code == 403

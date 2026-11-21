@@ -144,13 +144,25 @@ def test_a_user_is_retired_and_brought_back_from_the_command_line(
     planned = run("users", "bring-back", "klee", "--contact", "--dry-run", *as_admin).stdout
     assert planned.splitlines()[-1] == "nothing was sent: this is what would be done"
     assert kim.statuses()["user"] == "retired"
-    refused = run("users", "bring-back", "klee", *as_admin, expect=5)
+    refused = run("users", "bring-back", "klee", "--role", "viewer", *as_admin, expect=5)
     assert "linked.contact" in refused.output
-    run("users", "bring-back", "klee", "--contact", expect=3)
+    run("users", "bring-back", "klee", "--contact", "--role", "viewer", expect=3)
+    # A person is given a role: the server asks for it (P-299).
+    no_role = run("users", "bring-back", "klee", "--contact", *as_admin, expect=4)
+    assert "role: give the role the account is to hold" in no_role.output
+    assert kim.statuses()["user"] == "retired"
     back = run(
-        "users", "bring-back", "klee", "--contact", "--operator", "LM", *as_admin
+        "users",
+        "bring-back",
+        "klee",
+        "--contact",
+        "--operator",
+        "LM",
+        "--role",
+        "viewer",
+        *as_admin,
     ).stdout.splitlines()
-    assert back[-2] == "klee is active again, with no role and no group"
+    assert back[-2] == "klee is active again, with the viewer role and no group"
     code = back[-1].removeprefix("access code, shown this once: ")
     assert kim.statuses() == {"LM": "active", "contact": "active", "user": "active"}
     signed = desk.client.post(
@@ -221,8 +233,10 @@ def test_each_command_takes_an_hid_where_it_takes_a_name(
     # The retired account is found by its HID, to be brought back.
     planned = run("users", "bring-back", user, "--contact", "--dry-run", *as_admin).stdout
     assert planned.splitlines()[0] == "user klee, and what is linked to it:"
-    back = run("users", "bring-back", user, "--contact", "--operator", lm, *as_admin).stdout
-    assert back.splitlines()[-2] == "klee is active again, with no role and no group"
+    back = run(
+        "users", "bring-back", user, "--contact", "--operator", lm, "--role", "inventory", *as_admin
+    ).stdout
+    assert back.splitlines()[-2] == "klee is active again, with the inventory role and no group"
     assert kim.statuses() == {"LM": "active", "contact": "active", "user": "active"}
 
     # An HID of nobody is no user, and a username is not looked for under it.
@@ -239,11 +253,11 @@ def test_a_username_in_the_form_of_an_hid_is_a_username_first(
 ) -> None:
     """A username may have the form of an HID, another account's too: what a command is
     given is looked for as a whole username first, and as an HID after."""
-    first = desk.post("/users", {"username": "klee"})["user"]
+    first = desk.post("/users", {"username": "klee", "role": "viewer"})["user"]
     # An account named as the HID of another, and one named as an HID that is nobody's.
-    desk.post("/users", {"username": first["hid"]})
+    desk.post("/users", {"username": first["hid"], "role": "viewer"})
     nobody = "00000000-0000-7000-8000-000000000000"
-    desk.post("/users", {"username": nobody})
+    desk.post("/users", {"username": nobody, "role": "viewer"})
 
     said = run("users", "retire", first["hid"], "--dry-run", *as_admin).stdout
     assert said.splitlines()[0] == f"user {first['hid']}, and what is linked to it:"
@@ -256,5 +270,8 @@ def test_a_username_in_the_form_of_an_hid_is_a_username_first(
     # Retired by its HID-shaped username, and brought back by it: the other is left.
     run("users", "retire", first["hid"], *as_admin)
     assert desk.get(f"/users/{first['hid']}")["record_status"] == "active"
-    back = run("users", "bring-back", first["hid"], *as_admin).stdout
-    assert back.splitlines()[-2] == f"{first['hid']} is active again, with no role and no group"
+    back = run("users", "bring-back", first["hid"], "--role", "viewer", *as_admin).stdout
+    assert (
+        back.splitlines()[-2]
+        == f"{first['hid']} is active again, with the viewer role and no group"
+    )

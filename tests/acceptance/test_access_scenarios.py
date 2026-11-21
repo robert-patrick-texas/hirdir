@@ -13,17 +13,20 @@ from tests.acceptance.conftest import ADMIN, Server
 
 def test_s03_highest_role_wins_and_removal_takes_effect_at_once(server: Server) -> None:
     admin = server.sign_in(*ADMIN)
-    user = admin.post("/users", json={"username": "uma", "access_code": "uma-code-0001"}).json()[
-        "user"
-    ]
+    # A person is made with a role (P-299): here, the group's.
     group = admin.post("/user-groups", json={"name": "Readers"}).json()
     admin.post("/role-grants", json={"role": "viewer", "group_hid": group["hid"]})
+    user = admin.post(
+        "/users",
+        json={"username": "uma", "access_code": "uma-code-0001", "group_hids": [group["hid"]]},
+    ).json()["user"]
     admin.put(f"/user-groups/{group['hid']}/members/{user['hid']}")
     direct = admin.post("/role-grants", json={"role": "admin", "user_hid": user["hid"]}).json()
 
     uma = server.sign_in("uma", "uma-code-0001")
     assert uma.get("/auth/me").json()["role"] == "admin"
-    assert uma.post("/users", json={"username": "made-by-uma"}).status_code == 201
+    made = uma.post("/users", json={"username": "made-by-uma", "role": "viewer"})
+    assert made.status_code == 201
 
     assert admin.delete(f"/role-grants/{direct['hid']}").status_code == 204
     assert uma.post("/users", json={"username": "not-made"}).status_code == 403

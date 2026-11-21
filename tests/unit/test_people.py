@@ -84,7 +84,7 @@ def test_the_role_of_whoever_asks_is_checked_from_the_plan(db: Session, made: Ma
     for role in (Role.INVENTORY, Role.VIEWER, None):
         with pytest.raises(NotAllowed):
             people.bring_back(db, CONTEXT, role, made.user.hid, None)
-    back = people.bring_back(db, CONTEXT, Role.ADMIN, made.user.hid, None)
+    back = people.bring_back(db, CONTEXT, Role.ADMIN, made.user.hid, None, role="viewer")
     assert back.access_code
     assert back.user.record_status == "active"
 

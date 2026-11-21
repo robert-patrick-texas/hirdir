@@ -48,7 +48,7 @@ def operators_of(db: Session, user: User) -> list[Operator]:
 
 
 def _person(principal: Principal) -> User:
-    """Return the person a request comes from, whatever role they hold, or none; or
+    """Return the person a request comes from, whatever role they hold; or
     refuse a service account, which is no person and has no profile."""
     if principal.kind != "session" or principal.user.is_service_account:
         raise NotAllowed("a service account has no profile")

@@ -81,6 +81,10 @@ def _refusal(response: httpx2.Response) -> typer.Exit:
             detail += f": {reason}"
         for entry in problem.get("errors", []):
             detail += f"\n  {entry['field']}: {entry['message']}"
+        # Whom to ask, as the server gives it to an account that holds no role (P-299).
+        named = [value for value in (problem.get("help") or {}).values() if value]
+        if named:
+            detail += "\nwhom to ask: " + ", ".join(named)
     except ValueError:
         detail = response.reason_phrase
     code = {401: EXIT_ACCESS, 403: EXIT_ACCESS, 404: EXIT_INVALID, 409: EXIT_CONFLICT}.get(

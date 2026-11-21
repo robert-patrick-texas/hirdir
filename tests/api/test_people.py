@@ -24,7 +24,9 @@ def test_a_user_is_made_with_its_contact_and_shows_that_contacts_details(
 ) -> None:
     desk = Maker(client, admin)
     robin = desk.contact("Robin Achterberg", phone="+1 202 555 0142", phone2="+1 202 555 0177")
-    made = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
+    made = desk.post(
+        "/users", {"role": "viewer", "username": "robin", "contact_hid": robin["hid"]}
+    )["user"]
     assert made["contact_hid"] == robin["hid"]
     assert made["contact"] == {
         "hid": robin["hid"],
@@ -43,6 +45,7 @@ def test_a_user_is_made_with_its_contact_and_shows_that_contacts_details(
     dana = desk.post(
         "/users",
         {
+            "role": "viewer",
             "username": "dana",
             "contact": {"name": "Dana Ruiz", "email": "dana.ruiz@example.org", "phone2": "x9"},
         },
@@ -51,14 +54,15 @@ def test_a_user_is_made_with_its_contact_and_shows_that_contacts_details(
     made_contact = desk.audit(record_type="contact", record_hid=dana["contact_hid"])
     # Newest first: made, then given to the user.
     assert [event["action"] for event in made_contact] == ["update", "create"]
-    assert desk.audit(record_type="user", record_hid=dana["hid"])[0]["changes"][-1] == {
+    # The oldest, before the grant of its role: made.
+    assert desk.audit(record_type="user", record_hid=dana["hid"])[-1]["changes"][-1] == {
         "field": "contact_hid",
         "old": None,
         "new": dana["contact_hid"],
     }
 
     # Neither: the user is shown by its username until it is given one.
-    lee = desk.post("/users", {"username": "lee"})["user"]
+    lee = desk.post("/users", {"role": "viewer", "username": "lee"})["user"]
     assert (lee["contact"], lee["display_name"], lee["email"]) == (None, "", "")
 
     # A new number on the contact is what the user shows, with nothing written to it.
@@ -73,9 +77,11 @@ def test_a_user_is_made_with_its_contact_and_shows_that_contacts_details(
 def test_what_a_user_cannot_be_given_as_its_contact(client: TestClient, admin: dict) -> None:
     desk = Maker(client, admin)
     robin = desk.contact("Robin Achterberg")
-    desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})
+    desk.post("/users", {"role": "viewer", "username": "robin", "contact_hid": robin["hid"]})
     # A contact is one user's at most.
-    refused = desk.post("/users", {"username": "robin2", "contact_hid": robin["hid"]}, 409)
+    refused = desk.post(
+        "/users", {"role": "viewer", "username": "robin2", "contact_hid": robin["hid"]}, 409
+    )
     assert "another user's" in errors(refused)["contact_hid"]
     # A service account is no person.
     bot = desk.post(
@@ -93,11 +99,20 @@ def test_what_a_user_cannot_be_given_as_its_contact(client: TestClient, admin: d
     # A retired contact, and one there is not.
     gone = desk.contact("Gone Person")
     desk.post(f"/contacts/{gone['hid']}/retire", {"row_version": gone["row_version"]}, 200)
-    refused = desk.post("/users", {"username": "gone", "contact_hid": gone["hid"]}, 422)
+    refused = desk.post(
+        "/users", {"role": "viewer", "username": "gone", "contact_hid": gone["hid"]}, 422
+    )
     assert "retired" in errors(refused)["contact_hid"]
     # Both at once.
     refused = desk.post(
-        "/users", {"username": "two", "contact_hid": other["hid"], "contact": {"name": "X"}}, 422
+        "/users",
+        {
+            "role": "viewer",
+            "username": "two",
+            "contact_hid": other["hid"],
+            "contact": {"name": "X"},
+        },
+        422,
     )
     assert "contact" in errors(refused)
     # The name and email are the contact's: a change of the user does not take them.
@@ -112,7 +127,7 @@ def test_an_admin_gives_a_user_its_contact_and_takes_it_away(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
-    lee = desk.post("/users", {"username": "lee"})["user"]
+    lee = desk.post("/users", {"role": "viewer", "username": "lee"})["user"]
     marchetti = desk.contact("Lee Marchetti")
     given = desk.patch(
         f"/users/{lee['hid']}", {"row_version": lee["row_version"], "contact_hid": marchetti["hid"]}
@@ -156,7 +171,9 @@ def test_an_operator_is_internal_where_its_contact_is_a_user(
     )
 
     desk = Maker(client, admin)
-    user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
+    user = desk.post(
+        "/users", {"role": "viewer", "username": "robin", "contact_hid": robin["hid"]}
+    )["user"]
     lm = make.get(f"/operators/{lm['hid']}")
     shown = {"hid": user["hid"], "username": "robin", "record_status": "active"}
     assert (lm["scope"], lm["user"]) == ("internal", shown)
@@ -190,7 +207,9 @@ def test_files_carry_the_second_number_and_say_who_is_a_user(
     )
     robin = make.get("/contacts", filter="name:eq:Robin Achterberg")["items"][0]
     assert robin["phone2"] == "202 555 0177"
-    Maker(client, admin).post("/users", {"username": "robin", "contact_hid": robin["hid"]})
+    Maker(client, admin).post(
+        "/users", {"role": "viewer", "username": "robin", "contact_hid": robin["hid"]}
+    )
     make.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
 
     contacts = table(files.export("contacts", columns=["name", "phone2", "user"]))
@@ -305,7 +324,9 @@ def test_every_role_is_told_which_user_a_contact_is(
     already tells them (P-172)."""
     desk = Maker(client, admin)
     robin = desk.contact("Robin Achterberg")
-    user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
+    user = desk.post(
+        "/users", {"role": "viewer", "username": "robin", "contact_hid": robin["hid"]}
+    )["user"]
     desk.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
     looker = Maker(client, viewer)
     seen = looker.get(f"/contacts/{robin['hid']}")
@@ -336,11 +357,19 @@ def test_what_is_wrong_with_a_new_contact_is_named_as_its_field(
     desk.contact("Robin Achterberg")
     taken = desk.post(
         "/users",
-        {"username": "robin", "contact": {"name": "R", "email": "robin.achterberg@example.net"}},
+        {
+            "role": "viewer",
+            "username": "robin",
+            "contact": {"name": "R", "email": "robin.achterberg@example.net"},
+        },
         409,
     )
     assert "contact.email" in errors(taken)
-    bad = desk.post("/users", {"username": "robin", "contact": {"name": "R", "email": "x"}}, 422)
+    bad = desk.post(
+        "/users",
+        {"role": "viewer", "username": "robin", "contact": {"name": "R", "email": "x"}},
+        422,
+    )
     assert "contact.email" in errors(bad)
     # Nothing was made: the user and its contact are one change.
     assert [one["username"] for one in desk.get("/users", q="robin")["items"]] == []
@@ -357,7 +386,9 @@ def test_a_kept_answer_is_worked_out_again_when_a_user_is_given_a_contact(
     make.item(name="site2-sw-01", operator_hid=lm["hid"], lifecycle_state="Prod")
     first = make.get("/reports/coverage", section="uncovered")
     assert first["items"][0]["operator"]["scope"] == "external"
-    Maker(client, admin).post("/users", {"username": "robin", "contact_hid": robin["hid"]})
+    Maker(client, admin).post(
+        "/users", {"role": "viewer", "username": "robin", "contact_hid": robin["hid"]}
+    )
     again = make.get("/reports/coverage", section="uncovered")
     assert again["items"][0]["operator"]["scope"] == "internal"
     checked = Maker(client, admin).post("/kept-answers/check", {}, 200)

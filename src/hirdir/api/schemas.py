@@ -67,6 +67,15 @@ class ProblemBusy(Model):
     retry_after: int = Field(description="The seconds to wait, as `Retry-After` says.")
 
 
+class AboutHelp(Model):
+    """Whom to ask: the team that runs this installation, each blank one null (P-169)."""
+
+    organization: str | None
+    email: str | None
+    phone: str | None
+    url: str | None
+
+
 class Problem(Model):
     """An error, as an RFC 9457 problem document."""
 
@@ -96,6 +105,13 @@ class Problem(Model):
         description="On the 503 of a server whose health had it take nothing of the "
         "request (P-265). Left out of every other problem, the 503 of a change that "
         "waited for another to be stored among them.",
+    )
+    help: AboutHelp | None = Field(
+        default=None,
+        description="On the 403 of `POST /auth/sign-in` of an account that gave the right "
+        "access code and holds no role (P-299): whom to ask, as `help` of `GET /about` "
+        "gives it, each blank one null, whatever `help_on_sign_in` says. Left out of "
+        "every other problem.",
     )
 
 
@@ -211,7 +227,12 @@ class UserCreate(Model):
     access_code: str | None = Field(
         default=None, max_length=200, description="Left out, a code is generated."
     )
-    role: str | None = Field(default=None, description="A role to grant at once.")
+    role: str | None = Field(
+        default=None,
+        description="A role to grant at once. A person is given one, or a group in "
+        "`group_hids` that grants one, or it is a `422` on `role` (P-299); a service account "
+        "may have none.",
+    )
     group_hids: list[str] = Field(
         default=[],
         max_length=1000,
@@ -357,10 +378,17 @@ class LinkedBack(Model):
 
 
 class BringBack(Model):
-    """A retired user brought back, and what is brought back with it (P-298)."""
+    """A retired user brought back, the role it is given and what is brought back with
+    it (P-298, P-299)."""
 
     row_version: int
     linked: LinkedBack | None = None
+    role: str | None = Field(
+        default=None,
+        description="`viewer`, `inventory` or `admin`, granted in the same change. A person "
+        "is given one, since an account with no role does not sign in: left out, it is a "
+        "`422` on `role`. A service account may be brought back with none (P-299).",
+    )
 
 
 class UserBroughtBack(Model):
@@ -381,6 +409,15 @@ class AccessCodeOut(Model):
     """The access code just set, shown this once."""
 
     access_code: str
+
+
+class NewAccessCode(Model):
+    """An access code made by the server for a form to send, stored nowhere (P-300)."""
+
+    access_code: str = Field(
+        description="Groups of four, three or as many more as make it at least as long as "
+        "the setting `access_code_min_length` asks."
+    )
 
 
 class SignIn(Model):
@@ -485,7 +522,7 @@ class OwnAccessCode(Model):
     access_code: str = Field(
         max_length=200,
         description="At least as long as the setting `access_code_min_length` says, not "
-        "blank, and with no space at its beginning or end.",
+        "blank, with no space at its beginning or end, and not the current one (P-300).",
     )
 
 
@@ -589,15 +626,6 @@ class AuditEventOut(Model):
     record_type: str
     record_hid: str | None
     changes: list[dict[str, Any]]
-
-
-class AboutHelp(Model):
-    """Whom to ask: the team that runs this installation, each blank one null (P-169)."""
-
-    organization: str | None
-    email: str | None
-    phone: str | None
-    url: str | None
 
 
 class About(Model):

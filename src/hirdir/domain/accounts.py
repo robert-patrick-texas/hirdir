@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
@@ -26,12 +26,13 @@ from hirdir.db.models import (
     UserGroup,
     UserGroupMember,
 )
-from hirdir.domain import audit, colours, contacts, operators, records, settings
+from hirdir.domain import audit, colours, contacts, operators, product, records, settings
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import (
     Conflict,
     Existing,
     Invalid,
+    NoRole,
     NotFound,
     SignInDelayed,
     SignInRefused,
@@ -49,6 +50,12 @@ MAX_NOTES = 10_000
 # Which accounts a list of users holds: those that are not retired, the retired with
 # the rest, or the retired alone (P-296).
 RETIRED = ("no", "yes", "only")
+# What an account that holds no role is told, and what a person made or brought back
+# with none is refused with (P-299).
+NO_ROLE = "this account holds no role, and so cannot sign in: an Admin gives it one"
+NO_ROLE_MADE = "a person is made with a role: an account with no role does not sign in"
+NO_ROLE_BACK = "a person is brought back with a role: an account with no role does not sign in"
+GIVE_A_ROLE = "give a role, or a group that grants one"
 
 
 class NotSignedIn(Exception):
@@ -102,6 +109,34 @@ def _keeping_an_admin(db: Session) -> Generator[None]:
     db.flush()
     if before > 0 and _admin_count(db) == 0:
         raise Conflict("this would leave no Admin who can sign in")
+
+
+@contextmanager
+def _ending_with_the_last_role(db: Session, users: Sequence[User]) -> Generator[None]:
+    """End every session of each of the users that the change takes the last role from
+    (P-299): an account with no role has no session, and a role given again later brings
+    no old one back. The change is audited by its own event, and this adds nothing to it.
+    The roles are read for all the users at once, before and after, however many a group
+    holds."""
+    before = roles_of(db, users)
+    held = [user for user in users if before[user.hid] is not None]
+    yield
+    db.flush()
+    after = roles_of(db, held)
+    for user in held:
+        if after[user.hid] is None:
+            _end_sessions(user)
+
+
+def _members(db: Session, group_hid: str) -> list[User]:
+    """Return the users in a group, by its HID."""
+    return list(
+        db.scalars(
+            select(User)
+            .join(UserGroupMember, UserGroupMember.user_hid == User.hid)
+            .where(UserGroupMember.group_hid == group_hid)
+        )
+    )
 
 
 # --- users -------------------------------------------------------------------------
@@ -402,7 +437,7 @@ def _checked_groups(db: Session, hids: Sequence[str]) -> list[UserGroup]:
     return list(found.values())
 
 
-def _checked_role(role: str | None) -> str | None:
+def checked_role(role: str | None) -> str | None:
     if not role:
         return None
     try:
@@ -433,7 +468,9 @@ def onboard(
     write. Where any part is refused, the error is raised before the caller's
     transaction is committed, and so nothing is made and no event is kept. A refusal
     names the field of the request it is for: `operator.label` for the label of the
-    operator, `group_hids` for a group there is not.
+    operator, `group_hids` for a group there is not. A person who would hold no role,
+    neither `role` nor a group that grants one, is refused at `role`, since an account
+    with none does not sign in; a service account may be made with none (P-299).
 
     `operator` holds `label`, `colour` and `description`, each optional. The label left
     out, or blank, is the username, and a username that is no acceptable label is
@@ -449,8 +486,9 @@ def onboard(
                 else "give the contact, new or there, that stands behind the operator"
             },
         )
-    granted = _checked_role(role)
+    granted = checked_role(role)
     groups = _checked_groups(db, group_hids)
+    roleless = granted is None and not any(roles_of_groups(db, groups).values())
     user, code = create_user(
         db,
         context,
@@ -480,6 +518,11 @@ def onboard(
             made = operators.create_operator(db, context, fields)
         except (Invalid, Conflict) as error:
             raise _named_in("operator", error) from None
+    if roleless and not is_service_account:
+        # An account with no role does not sign in, so a person is made with one
+        # (P-299). What is wrong with any other part is said first; nothing is kept,
+        # since the caller's transaction is not committed.
+        raise Invalid(NO_ROLE_MADE, {"role": GIVE_A_ROLE})
     return NewUser(user, code, made)
 
 
@@ -517,7 +560,7 @@ def create_user(
     person = _checked_contact(db, contact_hid, None, is_service_account) if contact_hid else None
     code = None
     if not is_service_account:
-        code = _checked_code(db, access_code) if access_code is not None else codes.generate()
+        code = _checked_code(db, access_code) if access_code is not None else made_code(db)
     if contact is not None:
         try:
             person = contacts.create_contact(db, context, dict(contact))
@@ -686,14 +729,15 @@ def bring_back_user(
     shown this once; a service account has none.
 
     It is active again and not disabled, with no role and no group: what it held was
-    taken away when it was retired, and an Admin gives it anew. That its contact is
-    not retired is `hirdir.domain.people`'s to see to.
+    taken away when it was retired, and an Admin gives it anew, the role in the same
+    change, which `hirdir.domain.people` sees to with that its contact is not retired
+    (P-299).
     """
     user = get_user(db, hid)
     if not is_retired(user):
         raise Conflict(f"the account {user.username} is not retired")
     _touch(user, context, row_version)
-    code = None if user.is_service_account else codes.generate()
+    code = None if user.is_service_account else made_code(db)
     changes = [change("record_status", "retired", "active")]
     if user.disabled:
         changes.append(change("disabled", True, False))
@@ -714,11 +758,20 @@ def give_access_code(
     return set_access_code(db, context, hid, access_code)
 
 
+def made_code(db: Session) -> str:
+    """Return an access code made by the server: groups of four, as many as make it at
+    least as long as the setting `access_code_min_length` asks (P-300). Wherever the
+    server makes a code it is made here: for an empty box, at bring back, by
+    `hirdir admin`, and for a form that asks for one, which stores nothing."""
+    return codes.generate(settings.code_length(db))
+
+
 def _checked_code(db: Session, code: str) -> str:
     """Return an access code that is typed, by an Admin or by the person whose it is, or
     refuse it: a blank one, one with a space at either end, and one shorter than the
     setting `access_code_min_length` says (P-295). A code the server makes is not
-    brought here, and a code that is held already is not looked at."""
+    brought here: `made_code` makes it long enough. A code that is held already is not
+    looked at."""
     if not code or code != code.strip():
         raise Invalid(
             "the access code is not acceptable",
@@ -750,7 +803,7 @@ def set_access_code(
         raise _retired(user, None, "is given no access code")
     if user.is_service_account:
         raise Conflict("a service account has no access code; it holds tokens")
-    code = _checked_code(db, access_code) if access_code is not None else codes.generate()
+    code = _checked_code(db, access_code) if access_code is not None else made_code(db)
     _touch(user, context, None)
     user.access_code_hash = codes.hash_code(code)
     _end_sessions(user)
@@ -778,8 +831,10 @@ def change_access_code(
     a person delayed here is delayed at sign-in, and the other way round. While they
     are delayed no code is looked at. Both refusals are audit events, committed here so
     that they are kept though the request is refused, as `sign_in` keeps its own. The
-    current code is looked at before the new one. Accepted, every session of the person
-    is ended, the one in hand too, which goes on with the token returned.
+    current code is looked at before the new one, which is refused where it is the
+    current one (P-300) and then by `_checked_code`; neither refusal is an event, and
+    neither ends a session. Accepted, every session of the person is ended, the one in
+    hand too, which goes on with the token returned.
     """
     keys = (f"user:{user.username_key}", f"addr:{address}")
     wait = throttle.retry_after(*keys)
@@ -796,6 +851,11 @@ def change_access_code(
             {"current_access_code": "this is not the access code you have"},
         )
     throttle.success(*keys)
+    if codes.verify(user.access_code_hash, new):
+        raise Invalid(
+            "the new access code is the one you have now: choose another",
+            {"access_code": "this is the access code you have now"},
+        )
     code = _checked_code(db, new)
     _touch(user, context, None)
     user.access_code_hash = codes.hash_code(code)
@@ -907,9 +967,10 @@ def update_group(
 
 
 def delete_group(db: Session, context: AuditContext, hid: str) -> None:
-    """Remove a user group, its memberships and the roles granted to it."""
+    """Remove a user group, its memberships and the roles granted to it. A member that
+    it gave the last role to has every session ended (P-299)."""
     group = get_group(db, hid)
-    with _keeping_an_admin(db):
+    with _keeping_an_admin(db), _ending_with_the_last_role(db, _members(db, hid)):
         for grant in db.scalars(select(RoleGrant).where(RoleGrant.group_hid == hid)):
             db.delete(grant)
         db.delete(group)
@@ -930,11 +991,12 @@ def add_member(db: Session, context: AuditContext, group_hid: str, user_hid: str
 
 
 def remove_member(db: Session, context: AuditContext, group_hid: str, user_hid: str) -> None:
-    """Take a user out of a group."""
+    """Take a user out of a group. Where the group gave it its last role, every session
+    of the user ends (P-299)."""
     member = db.get(UserGroupMember, (user_hid, get_group(db, group_hid).hid))
     if member is None:
         raise NotFound("that user is not in that group")
-    with _keeping_an_admin(db):
+    with _keeping_an_admin(db), _ending_with_the_last_role(db, [get_user(db, user_hid)]):
         db.delete(member)
     audit.record(
         db, context, "remove_member", "user_group", group_hid, [change("user_hid", user_hid, None)]
@@ -998,11 +1060,15 @@ def grant_role(
 
 
 def revoke_grant(db: Session, context: AuditContext, hid: str) -> None:
-    """Take back a role grant."""
+    """Take back a role grant. Each user it took the last role from, the user it was
+    granted to or a member of the group, has every session ended (P-299)."""
     grant = db.get(RoleGrant, hid)
     if grant is None:
         raise NotFound(f"there is no role grant {hid}")
-    with _keeping_an_admin(db):
+    holders = (
+        [get_user(db, grant.user_hid)] if grant.user_hid else _members(db, grant.group_hid or "")
+    )
+    with _keeping_an_admin(db), _ending_with_the_last_role(db, holders):
         db.delete(grant)
     audit.record(
         db,
@@ -1093,6 +1159,8 @@ def sign_in(
     """Check a username and access code. Return the user, a session token and its expiry.
 
     Every outcome is an audit event, committed here so that a refusal is recorded too.
+    An account whose code is right and which holds no role is refused with `NoRole`,
+    which says whom to ask, once every other refusal is looked at (P-299).
     """
     name_key = _key(username)
     keys = (f"user:{name_key}", f"addr:{address}")
@@ -1116,6 +1184,12 @@ def sign_in(
         raise SignInRefused("the username or access code was not accepted")
 
     throttle.success(*keys)
+    if effective_role(db, user) is None:
+        # The code is right, and the person is told so plainly, with whom to ask; the
+        # throttle counts it a success, as it is no guess (P-299).
+        audit.record(db, context, "sign_in_no_role", "user", user.hid, attempted)
+        db.commit()
+        raise NoRole(NO_ROLE, asdict(product.help_of(db)))
     issued_ms = max(clock.now_ms(), user.tokens_valid_after + 1)
     token, expires_at = tokens.issue_session(signing_key, user.hid, issued_ms, session_hours)
     user.last_sign_in_at = clock.now()
@@ -1133,14 +1207,16 @@ def authenticate(db: Session, signing_key: bytes, token: str) -> Principal:
     except tokens.InvalidToken as error:
         raise NotSignedIn("the session is not valid or has expired") from error
     user = db.get(User, claims.user_hid)
-    if (
-        user is None
-        or user.disabled
-        or is_retired(user)
-        or claims.issued_ms <= user.tokens_valid_after
-    ):
+    if user is None or user.disabled or is_retired(user):
         raise NotSignedIn("the session has been ended")
-    return Principal(user=user, role=effective_role(db, user), kind="session")
+    role = effective_role(db, user)
+    if role is None:
+        # An account with no role has no session, so a role lost while signed in takes
+        # effect at the next request, and is said whatever ended the session (P-299).
+        raise NotSignedIn("the session has been ended: this account holds no role")
+    if claims.issued_ms <= user.tokens_valid_after:
+        raise NotSignedIn("the session has been ended")
+    return Principal(user=user, role=role, kind="session")
 
 
 def _authenticate_service(db: Session, token: str) -> Principal:
@@ -1157,10 +1233,13 @@ def _authenticate_service(db: Session, token: str) -> Principal:
     user = db.get(User, record.user_hid)
     if user is None or user.disabled or is_retired(user) or not user.is_service_account:
         raise NotSignedIn("the token is not valid")
+    role = effective_role(db, user)
+    if role is None:
+        raise NotSignedIn("the token is not accepted: its service account holds no role")
     last = record.last_used_at
     if last is None or (now - last).total_seconds() > LAST_USED_GRANULARITY_SECONDS:
         _used(db, record, now)
-    return Principal(user=user, role=effective_role(db, user), kind="service")
+    return Principal(user=user, role=role, kind="service")
 
 
 def _used(db: Session, record: ServiceToken, now: datetime) -> None:
