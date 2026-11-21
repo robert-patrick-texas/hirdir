@@ -3590,7 +3590,11 @@ P-292, P-296 to P-298):
   dialog says in plain words that the linked records have changed, in place of the
   refusal, which was of a list that is no longer so, and the next press is of the
   list as it is. A label handed over to somebody who was retired before the press is
-  refused at the field of that hand-over. Done, the page
+  refused at the field of that hand-over. Where the record itself was changed by
+  somebody else, the refusal offers Reload as every form does, and here it reads the
+  record and the list again inside the dialog, which stays open with what was chosen,
+  and says to check it and press again; the dialog of Bring back does the same. Done,
+  the page
   says what became of each: `Kim Lee was retired, with the account klee. KL was handed
   over and Op2 was released.`
 - **Bring back.** On the page of a retired account, Bring back opens a dialog that

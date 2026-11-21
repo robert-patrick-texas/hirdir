@@ -130,7 +130,6 @@ function UserPage({ hid }: { hid: string }) {
               setBack(answer);
               user.reload();
             }}
-            reload={user.reload}
           />
         </>
       )}
@@ -162,7 +161,6 @@ interface RetireUserProps {
   user: User;
   onRetired: (text: string) => void;
   onBroughtBack: (answer: BroughtBack) => void;
-  reload: () => void;
 }
 
 /**
@@ -170,7 +168,7 @@ interface RetireUserProps {
  * back (P-292, P-296). The contact and the labels of the person are retired with it, or
  * parted from it, in the one confirmation (P-291).
  */
-function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps) {
+function RetireUser({ user, onRetired, onBroughtBack }: RetireUserProps) {
   const auth = useAuth();
   const own = auth.user.hid === user.hid;
   const retired = userState(user) === "Retired";
@@ -184,7 +182,7 @@ function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps)
             and no group. Where its contact is retired, the two are brought back together.
           </p>
           <div className="actions">
-            <BringBackUser user={user} onBroughtBack={onBroughtBack} onReload={reload} />
+            <BringBackUser user={user} onBroughtBack={onBroughtBack} />
           </div>
         </>
       ) : (
@@ -207,7 +205,6 @@ function RetireUser({ user, onRetired, onBroughtBack, reload }: RetireUserProps)
                   : undefined
               }
               onRetired={onRetired}
-              onReload={reload}
             >
               <p>
                 {user.username} signs in no longer, and leaves its groups and its role. An Admin can

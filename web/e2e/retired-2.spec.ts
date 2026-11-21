@@ -327,3 +327,53 @@ test("review 5: Bring back says that the contact is back already, where somebody
   ).toBeVisible();
   await expectClean(page, seen, ["422 POST"]);
 });
+
+test("review 7: Reload in a confirmation that is stale keeps it open, with what was chosen", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const lia = await person(request, headers, "lia", { labels: 2 });
+  const [first, second] = lia.labels as [Label, Label];
+  const samName = `Sal Example ${suffix}`;
+  await make(request, headers, "/contacts", { name: samName, record_status: "active" });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  await openContact(page, lia.contact);
+  await region(page, "Retire").getByRole("button", { name: "Retire contact" }).click();
+  const ask = page.getByTestId("retire-person");
+  const handed = labelRow(ask, first);
+  await handed.getByRole("radio", { name: "Hand over to", exact: true }).check();
+  await handed.getByLabel(`Person to hand ${first.label} over to`).fill(samName);
+  await handed
+    .getByRole("list", { name: "Contacts that match" })
+    .getByRole("button", { name: new RegExp(`^${samName}`) })
+    .click();
+  await labelRow(ask, second).getByRole("radio", { name: "Leave open", exact: true }).check();
+  // Somebody else changes the contact while the confirmation is open.
+  await change(request, headers, "patch", `/contacts/${lia.contact.hid}`, {
+    notes: `Changed under the confirmation ${suffix}.`,
+  });
+
+  await goAhead(ask).click();
+  await expect(ask).toContainText("This record has changed");
+  await ask.getByRole("button", { name: "Reload" }).click();
+  // Read again where it stands: still open, nothing chosen lost.
+  await expect(ask).not.toContainText("This record has changed");
+  await expect(ask).toBeVisible();
+  await expect(handed.getByRole("radio", { name: "Hand over to", exact: true })).toBeChecked();
+  await expect(handed.getByTestId(`chosen-hand_over_${first.hid}`)).toContainText(samName);
+  await expect(
+    labelRow(ask, second).getByRole("radio", { name: "Leave open", exact: true }),
+  ).toBeChecked();
+  await goAhead(ask).click();
+  await expect(
+    page.getByText(
+      `${lia.contact.name} was retired, with the account ${lia.user.username}. ${first.label} was handed over and ${second.label} was left open.`,
+    ),
+  ).toBeVisible();
+  await expectClean(page, seen, ["409 POST"]);
+});

@@ -11,7 +11,7 @@ import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useStat
 import { Link } from "react-router";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
-import { useAction, useLoad } from "../lib/hooks";
+import { toApiError, useAction, useLoad } from "../lib/hooks";
 import {
   backChanged,
   blockedWords,
@@ -42,7 +42,13 @@ import {
   userState,
 } from "../lib/linked";
 import { briefMark } from "../lib/onboarding";
-import { type BroughtBack, readLinked, sendBringBack, sendRetire } from "../lib/person";
+import {
+  type BroughtBack,
+  readLinked,
+  readVersion,
+  sendBringBack,
+  sendRetire,
+} from "../lib/person";
 import { allows, roleLabel } from "../lib/roles";
 import { ContactField } from "./ContactField";
 import { CheckField, RadioGroupField } from "./Field";
@@ -106,8 +112,6 @@ interface RetirePersonProps {
   disabled?: boolean;
   /** The retirement was done: what the page says of it. */
   onRetired: (text: string) => void;
-  /** Read the record again, as when someone else has changed it. */
-  onReload: () => void;
 }
 
 /** Retire one of the three records of a person, saying what becomes of the others. */
@@ -160,7 +164,7 @@ interface RetireAskProps extends RetirePersonProps {
 }
 
 function RetireAsk(props: RetireAskProps) {
-  const { on, rowVersion, label, children, note, turn, onCancel, onRetired, onReload } = props;
+  const { on, rowVersion, label, children, note, turn, onCancel, onRetired } = props;
   const auth = useAuth();
   const admin = allows(auth.user.role, "admin");
   const read = useLoad(`retire linked ${on.kind} ${on.hid} ${turn}`, (signal) =>
@@ -173,6 +177,12 @@ function RetireAsk(props: RetireAskProps) {
   // place of the refusal, which was of a list that is no longer so.
   const [rereading, setRereading] = useState(false);
   const [changed, setChanged] = useState(false);
+  // The version the retirement is sent with: the page's, until somebody else changes
+  // the record and it is read again here. The page is not asked to read it: that
+  // would take this confirmation away, with what was chosen (review 7).
+  const [version, setVersion] = useState(rowVersion);
+  const [reread, setReread] = useState(false);
+  const [rereadError, setRereadError] = useState<ApiError | null>(null);
   if (read.data && asked?.linked !== read.data) {
     if (asked && rereading) {
       setChanged(!sameOthers(on, asked.linked, read.data));
@@ -214,7 +224,7 @@ function RetireAsk(props: RetireAskProps) {
 
   async function retire() {
     if (!linked || !choices) return;
-    const built = retireBody(on, linked, choices, rowVersion, admin);
+    const built = retireBody(on, linked, choices, version, admin);
     if (!built.ok) {
       action.clear();
       setFound(built.errors);
@@ -222,6 +232,7 @@ function RetireAsk(props: RetireAskProps) {
     }
     setFound({});
     setChanged(false);
+    setReread(false);
     let again = false;
     const result = await action.run(async () => {
       try {
@@ -249,17 +260,38 @@ function RetireAsk(props: RetireAskProps) {
     }
   }
 
+  /** Read the record and its list again, here, and go on with what was chosen. */
+  async function readAgain() {
+    setRereadError(null);
+    try {
+      setVersion(await readVersion(on));
+    } catch (thrown) {
+      setRereadError(toApiError(thrown));
+      return;
+    }
+    action.clear();
+    setReread(true);
+    setRereading(true);
+    read.reload();
+  }
+
   return (
     <>
       <div className="dialog-body">
         <Problem error={read.error} />
+        <Problem error={rereadError} />
         <Problem
           error={changed && !unlisted ? null : action.error}
           shown={refused.shown}
-          onReload={onReload}
+          onReload={() => void readAgain()}
           labels={LINKED_LABELS}
           dependsLead={notSaidLead}
         />
+        {reread && !changed && !action.error && (
+          <p className="alert alert-info" data-testid="confirm-reread">
+            Read again, with what was chosen kept. Check it, then press again.
+          </p>
+        )}
         {changed && !unlisted && (
           <p className="alert alert-info" data-testid="retire-list-changed">
             {LIST_CHANGED}
@@ -484,7 +516,6 @@ interface BringBackUserProps {
   disabled?: boolean;
   /** The account is back: the user, and its new access code, shown once. */
   onBroughtBack: (answer: BroughtBack) => void;
-  onReload: () => void;
 }
 
 /**
@@ -493,7 +524,7 @@ interface BringBackUserProps {
  * that contact, each unticked. The account is active again with a new access code, no
  * role and no group.
  */
-export function BringBackUser({ user, disabled, onBroughtBack, onReload }: BringBackUserProps) {
+export function BringBackUser({ user, disabled, onBroughtBack }: BringBackUserProps) {
   const [turn, setTurn] = useState(0);
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
@@ -526,7 +557,6 @@ export function BringBackUser({ user, disabled, onBroughtBack, onReload }: Bring
               setOpen(false);
               onBroughtBack(answer);
             }}
-            onReload={onReload}
           />
         </PersonDialog>
       )}
@@ -539,7 +569,7 @@ interface BringBackAskProps extends BringBackUserProps {
   onCancel: () => void;
 }
 
-function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBackAskProps) {
+function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps) {
   const read = useLoad(`bring back linked ${user.hid} ${turn}`, (signal) =>
     readLinked({ kind: "user", hid: user.hid }, signal),
   );
@@ -552,6 +582,10 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
   // the refusal: its reason was at a row that is no longer there (review 5).
   const [sentWith, setSentWith] = useState<Linked | null>(null);
   const [changed, setChanged] = useState<string | null>(null);
+  // The version it is sent with: the page's, until it is read again here (review 7).
+  const [version, setVersion] = useState(user.row_version);
+  const [reread, setReread] = useState(false);
+  const [rereadError, setRereadError] = useState<ApiError | null>(null);
   if (sentWith && linked && linked !== sentWith) {
     setChanged(backChanged(sentWith, linked));
     setSentWith(null);
@@ -564,7 +598,8 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
   async function bringBack() {
     if (!linked) return;
     setChanged(null);
-    const body = bringBackBody(linked, ticked, user.row_version);
+    setReread(false);
+    const body = bringBackBody(linked, ticked, version);
     let again = false;
     const result = await action.run(async () => {
       try {
@@ -585,16 +620,37 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack, onReload }: BringBa
     }
   }
 
+  /** Read the account and what is linked again, here, and go on with what was ticked. */
+  async function readAgain() {
+    setRereadError(null);
+    try {
+      setVersion(await readVersion({ kind: "user", hid: user.hid }));
+    } catch (thrown) {
+      setRereadError(toApiError(thrown));
+      return;
+    }
+    action.clear();
+    setReread(true);
+    if (linked) setSentWith(linked);
+    read.reload();
+  }
+
   return (
     <>
       <div className="dialog-body">
         <Problem error={read.error} />
+        <Problem error={rereadError} />
         <Problem
           error={changed ? null : action.error}
           shown={refused.shown}
-          onReload={onReload}
+          onReload={() => void readAgain()}
           labels={LINKED_LABELS}
         />
+        {reread && !changed && !action.error && (
+          <p className="alert alert-info" data-testid="confirm-reread">
+            Read again, with what was chosen kept. Check it, then press again.
+          </p>
+        )}
         {changed && (
           <p className="alert alert-info" data-testid="bring-back-changed">
             {changed}
