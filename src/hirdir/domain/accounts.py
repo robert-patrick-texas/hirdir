@@ -46,6 +46,9 @@ LAST_USED_GRANULARITY_SECONDS = 60
 WHICH = ("any", "some", "none")
 # A user's notes are as long as a contact's may be (P-281).
 MAX_NOTES = 10_000
+# Which accounts a list of users holds: those that are not retired, the retired with
+# the rest, or the retired alone (P-296).
+RETIRED = ("no", "yes", "only")
 
 
 class NotSignedIn(Exception):
@@ -82,7 +85,11 @@ def effective_role(db: Session, user: User) -> Role | None:
 def _admin_count(db: Session) -> int:
     """Count the people (not service accounts) who can sign in and hold Admin."""
     people = db.scalars(
-        select(User).where(User.disabled.is_(False), User.is_service_account.is_(False))
+        select(User).where(
+            User.disabled.is_(False),
+            User.is_service_account.is_(False),
+            User.record_status != "retired",
+        )
     )
     return sum(1 for user in people if effective_role(db, user) is Role.ADMIN)
 
@@ -125,18 +132,32 @@ def _behind_an_operator() -> ColumnElement[bool]:
     )
 
 
+def retired_or_not(query: AnySelect, retired: str) -> AnySelect:
+    """Narrow a statement of users to those that are not retired, `no`, or to the
+    retired alone, `only`; `yes` keeps them all (P-296)."""
+    if retired not in RETIRED:
+        raise Invalid("retired is not acceptable", {"retired": "no, yes or only"})
+    if retired == "no":
+        return query.where(User.record_status != "retired")
+    if retired == "only":
+        return query.where(User.record_status == "retired")
+    return query
+
+
 def _narrowed(query: AnySelect, contact: str, operator: str) -> AnySelect:
     """Narrow a list of users, which joins their contacts, to those that are, or are not,
     a contact and an operator.
 
     `some` keeps the users that are one, `none` those that are not, and `any` all of
     them. A contact that is retired is as none. A service account is no person and is in
-    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280).
+    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280). A
+    retired account is in no gap: neither `none` holds it, whatever is asked of the
+    retired (P-296).
     """
     for name, value in (("contact", contact), ("operator", operator)):
         if value not in WHICH:
             raise Invalid(f"{name} is not acceptable", {name: "any, some or none"})
-    person = User.is_service_account.is_(False)
+    person = and_(User.is_service_account.is_(False), User.record_status != "retired")
     if contact == "some":
         query = query.where(~operators.nobody_behind(Contact))
     elif contact == "none":
@@ -157,13 +178,17 @@ def list_users(
     *,
     contact: str = "any",
     operator: str = "any",
+    retired: str = "no",
 ) -> tuple[list[User], int]:
     """Return one page of users, by username, and the total that match q.
 
     `arrange` sorts them as was asked for, and the username settles what that leaves tied.
     `contact` and `operator` keep those that are one, `some`, or the gaps, `none` (P-280).
+    The retired accounts are left out unless `retired` asks for them, `yes`, or for them
+    alone, `only` (P-296).
     """
     query = select(User).outerjoin(Contact, Contact.hid == User.contact_hid)
+    query = retired_or_not(query, retired)
     if q:
         query = query.where(
             or_(
@@ -274,6 +299,15 @@ def _checked_username(db: Session, username: str, user: User | None) -> str:
         )
     taken = find_user(db, username)
     if taken is not None and (user is None or taken.hid != user.hid):
+        if is_retired(taken):
+            # The name stays the retired account's, since the audit trail is read by
+            # username: an Admin renames that account to free it (P-296).
+            raise Conflict(
+                f"the retired account {taken.username} has this username: rename that "
+                "account to free the name, or bring it back",
+                {"username": "a retired account has this username"},
+                Existing("user", taken.hid, taken.username),
+            )
         raise Conflict(
             f"there is already a user named {taken.username}",
             {"username": "another user has this username"},
@@ -289,6 +323,11 @@ def _checked_contact(db: Session, hid: str, user: User | None, service: bool) ->
             "a service account is no person and has no contact",
             {"contact_hid": "a service account has no contact"},
         )
+    # An account does not stand on a retired contact. That is checked by reading the
+    # contact and kept by writing the user, so the writer's place is taken before the
+    # look: a retirement of the contact at the same moment waits, and then finds the
+    # user, or this finds the contact retired (P-297).
+    dialect.hold_other_writers(db)
     contact = db.get(Contact, hid)
     if contact is None:
         raise Invalid("there is no such contact", {"contact_hid": f"there is no contact {hid}"})
@@ -296,6 +335,15 @@ def _checked_contact(db: Session, hid: str, user: User | None, service: bool) ->
         raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
     other = db.scalar(select(User).where(User.contact_hid == hid))
     if other is not None and (user is None or other.hid != user.hid):
+        if is_retired(other):
+            # The contact of a retired account is still that account's, so that it is
+            # brought back as the person it was: it is taken off that account first.
+            raise Conflict(
+                f"{contact.name} is still the contact of the retired account "
+                f"{other.username}: take it off that account first, or bring the account back",
+                {"contact_hid": "this contact is a retired account's"},
+                Existing("user", other.hid, other.username),
+            )
         raise Conflict(
             f"{contact.name} is already the contact of the user {other.username}",
             {"contact_hid": "this contact is another user's"},
@@ -516,6 +564,13 @@ def update_user(
     record, by its HID.
     """
     user = get_user(db, hid)
+    if is_retired(user):
+        # Of a retired account the username, the notes and its contact taken off are
+        # all that is changed (P-296).
+        if fields.get("disabled") is not None and fields["disabled"] != user.disabled:
+            raise _retired(user, "disabled", "is neither disabled nor enabled")
+        if (fields.get("contact_hid") or None) not in (None, user.contact_hid):
+            raise _retired(user, "contact_hid", "is given no other contact")
     changes = []
     if fields.get("username") is not None:
         username = _checked_username(db, fields["username"], user)
@@ -550,6 +605,116 @@ def update_user(
         if entry["field"] == "contact_hid":
             _told(db, context, user, entry["old"], entry["new"])
     return user
+
+
+def is_retired(user: User) -> bool:
+    """Say whether an account is retired: that of somebody who has left (P-296)."""
+    return user.record_status == "retired"
+
+
+def _retired(user: User, field: str | None, what: str) -> Conflict:
+    """Return the refusal of what a retired account is not given (P-296)."""
+    text = f"the account {user.username} is retired and {what}: bring it back first"
+    return Conflict(text, {field: "this account is retired"} if field else None)
+
+
+def _told_of_its_account(
+    db: Session, context: AuditContext, user: User, old: str, new: str
+) -> None:
+    """Record on the contact of a user that its account is retired, or is back.
+
+    A retired account is no user, so the contact is no user's from then on, and an
+    operator it stands behind is external and no longer internal: its history says so,
+    as it says when the contact is given to a user (P-172), and a kept answer that shows
+    it is no longer good (P-296).
+    """
+    if user.contact_hid is not None:
+        entry = change("user_record_status", old, new)
+        audit.record(db, context, "update", "contact", user.contact_hid, [entry])
+
+
+def retire_user(db: Session, context: AuditContext, hid: str, row_version: int | None) -> User:
+    """Retire the account of somebody who has left (P-296).
+
+    Every session of the account ends and its access code is erased. It is taken out of
+    each of its groups, each role granted to the account itself is revoked, and the
+    tokens of a service account are revoked, each audited as it is when done by itself,
+    and the account as `retire`. `disabled` stays what it was. Refused where it would
+    leave no Admin who can sign in, and for an account that is retired already.
+    """
+    user = get_user(db, hid)
+    if is_retired(user):
+        raise Conflict(f"the account {user.username} is retired already")
+    with _keeping_an_admin(db):
+        _touch(user, context, row_version)
+        groups = db.scalars(
+            select(UserGroupMember.group_hid)
+            .join(UserGroup, UserGroup.hid == UserGroupMember.group_hid)
+            .where(UserGroupMember.user_hid == user.hid)
+            .order_by(UserGroup.name_key)
+        ).all()
+        for group_hid in groups:
+            remove_member(db, context, group_hid, user.hid)
+        grants = db.scalars(
+            select(RoleGrant.hid)
+            .where(RoleGrant.user_hid == user.hid)
+            .order_by(RoleGrant.created_at, RoleGrant.hid)
+        ).all()
+        for grant_hid in grants:
+            revoke_grant(db, context, grant_hid)
+        tokens_ = db.scalars(
+            select(ServiceToken.hid)
+            .where(ServiceToken.user_hid == user.hid, ServiceToken.revoked_at.is_(None))
+            .order_by(ServiceToken.created_at, ServiceToken.hid)
+        ).all()
+        for token_hid in tokens_:
+            revoke_service_token(db, context, token_hid)
+        user.access_code_hash = None
+        _end_sessions(user)
+        user.record_status = "retired"
+    audit.record(
+        db, context, "retire", "user", user.hid, [change("record_status", "active", "retired")]
+    )
+    _told_of_its_account(db, context, user, "active", "retired")
+    return user
+
+
+def bring_back_user(
+    db: Session, context: AuditContext, hid: str, row_version: int | None
+) -> tuple[User, str | None]:
+    """Bring a retired account back (P-296). Return it with its new access code, which is
+    shown this once; a service account has none.
+
+    It is active again and not disabled, with no role and no group: what it held was
+    taken away when it was retired, and an Admin gives it anew. That its contact is
+    not retired is `hirdir.domain.people`'s to see to.
+    """
+    user = get_user(db, hid)
+    if not is_retired(user):
+        raise Conflict(f"the account {user.username} is not retired")
+    _touch(user, context, row_version)
+    code = None if user.is_service_account else codes.generate()
+    changes = [change("record_status", "retired", "active")]
+    if user.disabled:
+        changes.append(change("disabled", True, False))
+    user.record_status = "active"
+    user.disabled = False
+    user.access_code_hash = codes.hash_code(code) if code else None
+    _end_sessions(user)
+    audit.record(db, context, "bring_back", "user", user.hid, changes)
+    _told_of_its_account(db, context, user, "retired", "active")
+    return user, code
+
+
+def give_access_code(
+    db: Session, context: AuditContext, hid: str, access_code: str | None = None
+) -> str:
+    """Give a user a new access code, as an Admin does for another: a retired account
+    is given none (P-296). Return the code."""
+    user = get_user(db, hid)
+    if is_retired(user):
+        raise _retired(user, None, "is given no access code")
+    return set_access_code(db, context, hid, access_code)
 
 
 def _checked_code(code: str) -> str:
@@ -694,6 +859,8 @@ def delete_group(db: Session, context: AuditContext, hid: str) -> None:
 def add_member(db: Session, context: AuditContext, group_hid: str, user_hid: str) -> None:
     """Put a user in a group. Doing it twice changes nothing."""
     group, user = get_group(db, group_hid), get_user(db, user_hid)
+    if is_retired(user):
+        raise _retired(user, None, "is put in no group")
     if db.get(UserGroupMember, (user.hid, group.hid)) is not None:
         return
     db.add(UserGroupMember(user_hid=user.hid, group_hid=group.hid))
@@ -741,7 +908,9 @@ def grant_role(
     except ValueError:
         raise Invalid("there is no such role", {"role": "viewer, inventory or admin"}) from None
     if user_hid is not None:
-        get_user(db, user_hid)
+        user = get_user(db, user_hid)
+        if is_retired(user):
+            raise _retired(user, "user_hid", "is granted no role")
     else:
         get_group(db, group_hid or "")
     existing = db.scalar(
@@ -812,6 +981,8 @@ def create_service_token(
     user = get_user(db, user_hid)
     if not user.is_service_account:
         raise Conflict("tokens belong to service accounts, not to people")
+    if is_retired(user):
+        raise _retired(user, None, "is given no token")
     name = name.strip()
     if not name or len(name) > 100:
         raise Invalid("the token name is not acceptable", {"name": "1 to 100 characters"})
@@ -876,7 +1047,9 @@ def sign_in(
         raise SignInDelayed(wait)
 
     accepted = codes.verify(user.access_code_hash if user else None, access_code)
-    if user is None or not accepted or user.disabled or user.is_service_account:
+    # A retired account is refused as an unknown one is, and in the same time: its
+    # code is erased, so what is typed is checked against the hash that no code has.
+    if user is None or not accepted or user.disabled or user.is_service_account or is_retired(user):
         throttle.failure(*keys)
         audit.record(db, context, "sign_in_failed", "user", user.hid if user else None, attempted)
         db.commit()
@@ -900,7 +1073,12 @@ def authenticate(db: Session, signing_key: bytes, token: str) -> Principal:
     except tokens.InvalidToken as error:
         raise NotSignedIn("the session is not valid or has expired") from error
     user = db.get(User, claims.user_hid)
-    if user is None or user.disabled or claims.issued_ms <= user.tokens_valid_after:
+    if (
+        user is None
+        or user.disabled
+        or is_retired(user)
+        or claims.issued_ms <= user.tokens_valid_after
+    ):
         raise NotSignedIn("the session has been ended")
     return Principal(user=user, role=effective_role(db, user), kind="session")
 
@@ -917,7 +1095,7 @@ def _authenticate_service(db: Session, token: str) -> Principal:
     ):
         raise NotSignedIn("the token is not valid")
     user = db.get(User, record.user_hid)
-    if user is None or user.disabled or not user.is_service_account:
+    if user is None or user.disabled or is_retired(user) or not user.is_service_account:
         raise NotSignedIn("the token is not valid")
     last = record.last_used_at
     if last is None or (now - last).total_seconds() > LAST_USED_GRANULARITY_SECONDS:

@@ -745,10 +745,12 @@ class ContactRef(Model):
 
 
 class UserBrief(Model):
-    """The user a contact is: who it signs in as."""
+    """The user a contact is: who it signs in as. A retired account is shown still,
+    marked so, and is no user for `is_user` and `scope` (P-296)."""
 
     hid: str
     username: str
+    record_status: Literal["active", "retired"]
 
 
 class ContactOut(Model):

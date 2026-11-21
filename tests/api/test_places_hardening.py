@@ -272,13 +272,14 @@ def test_locations_load_wherever_their_rows_stand_and_however_the_parent_is_name
 
 
 def test_a_contact_is_found_by_name_retired_or_not_and_of_two_the_one_with_no_address(
-    make: Maker, files: Files
+    make: Maker, files: Files, client: TestClient, admin: dict[str, str]
 ) -> None:
     sam = make.post("/contacts", {"name": "Sam Okafor"})
     make.post(f"/contacts/{sam['hid']}/retire", {"row_version": sam["row_version"]}, 200)
 
-    # A row may bring a retired record back: it finds it, and makes no second Sam.
-    back = files.load("contacts", "name,record_status\nSam Okafor,active\n")
+    # A row may bring a retired record back: it finds it, and makes no second Sam. A
+    # contact is brought back by an Admin (P-298).
+    back = Files(client, admin).load("contacts", "name,record_status\nSam Okafor,active\n")
     assert (back["updated"], back["created"]) == (1, 0)
     # Two of one name, one of them with an email address: the file loads twice.
     both = "name,email,phone\nSam Okafor,,+1 555 0110\nSam Okafor,sam.okafor@example.net,\n"

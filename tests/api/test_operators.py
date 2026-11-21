@@ -4,8 +4,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, left_retired
 from tests.api.test_files import Files
 
 
@@ -271,7 +272,9 @@ def test_what_is_at_a_place_has_the_operator_of_the_place(make: Maker) -> None:
     )
 
 
-def test_a_label_is_handed_over_left_open_and_released_in_one_change(make: Maker) -> None:
+def test_a_label_is_handed_over_left_open_and_released_in_one_change(
+    make: Maker, db: Session, admin: dict[str, str]
+) -> None:
     marks = _team(make)
     places = make.layout()
     switches = make.switches(make.entry(make.vendor()), "sw", 3, lifecycle_state="Prod")
@@ -300,7 +303,8 @@ def test_a_label_is_handed_over_left_open_and_released_in_one_change(make: Maker
     # A label whose person is retired is open too.
     back = _patch(make, lm, contact_hid=hire["hid"])
     assert back["is_open"] is False
-    make.post(f"/contacts/{hire['hid']}/retire", {"row_version": hire["row_version"]}, 200)
+    # Left so before 0.9.14: since then a contact is not retired under a label (P-297).
+    left_retired(db, hire["hid"])
     assert make.get(lm)["is_open"] is True
     assert make.found(filter="operator.is_open:eq:true") == ["sw-01", "sw-02"]
 
@@ -321,12 +325,13 @@ def test_a_label_is_handed_over_left_open_and_released_in_one_change(make: Maker
         make.post("/items", {"hostname": "x", "operator_hid": marks["LM"]["hid"]}, 422)
     )
     # With the site's label released as well, nobody is assigned.
-    make.post(f"/operators/{marks['RA']['hid']}/retire", {"row_version": 1}, 200)
+    make.release(marks["RA"])
     assert make.get("/items", filter="effective.operator_hid:empty:true")["total"] == 3
     summary = make.get("/reports/summary", by="operator")
     assert [(row["label"], row["component_count"]) for row in summary["rows"]] == [(None, 3)]
     # Brought back, it is on everything it was on, and none of it was ever written to.
-    _patch(make, lm, record_status="active")
+    # By an Admin: a retired operator is brought back by nobody else (P-298).
+    _patch(Maker(make.client, admin), lm, record_status="active")
     assert _in_force(make, switches[1]) == ("LM", "device_group", stack["hid"])
     assert [make.get(f"/items/{switch['hid']}")["row_version"] for switch in switches] == versions
 

@@ -317,11 +317,23 @@ def export_all(
     response_class=Response,
     responses={200: {"description": "The file, as an attachment.", "content": {"text/csv": {}}}},
 )
-def export_users(_: Admin, context: Audit, db: Db) -> Response:
+def export_users(
+    _: Admin,
+    context: Audit,
+    db: Db,
+    retired: Annotated[
+        Literal["no", "yes", "only"],
+        Query(
+            description="`no`, the accounts that are not retired, as the list of users "
+            "shows them; `yes`, the retired with the rest; `only`, the retired alone (P-296)."
+        ),
+    ] = "no",
+) -> Response:
     """Export the users as CSV, a row to each, by username (P-288): its person, the role
-    in force, its groups and operators, its kind and state, when it last signed in, and
-    its notes. No access code, token or hash of either is in it. Audited."""
-    written = users_file.export(db, context)
+    in force, its groups and operators, its kind, its state and its record status, when
+    it last signed in, and its notes. The retired accounts are left out unless `retired`
+    asks for them (P-296). No access code, token or hash of either is in it. Audited."""
+    written = users_file.export(db, context, retired)
     return Response(
         written.text,
         media_type=exports.MEDIA_TYPES["csv"],
