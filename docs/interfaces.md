@@ -3560,7 +3560,9 @@ P-292, P-296 to P-298):
   that the person signs in no longer; the lists say `no user` of it, as the server
   counts it.
 - **The confirmation of a retirement.** Retire account, Retire contact and Release open
-  one dialog, which reads `GET .../linked` afresh at each press. Where nothing that is
+  one dialog, which reads `GET .../linked` afresh at each press. Closed, by Cancel or
+  by Escape, it gives the focus back to the button that opened it, and so does the
+  dialog of Bring back. Where nothing that is
   not retired is linked, it is the plain confirmation of before, and sends
   `row_version` alone. Otherwise it lists each linked record that is not retired, a
   row to each, with Retire ticked from the start: the account, with its role and its

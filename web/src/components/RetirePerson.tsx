@@ -7,7 +7,7 @@
 // names, and nothing chosen is lost. And Bring back of an account, with its retired
 // contact and that contact's labels (P-298).
 
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
@@ -51,19 +51,29 @@ import { Problem } from "./Problem";
 interface DialogProps {
   title: string;
   testId: string;
+  /** The button that opened it: the focus goes back there when it closes. */
+  opener: RefObject<HTMLButtonElement | null>;
   onCancel: () => void;
   children: ReactNode;
 }
 
 /** A modal dialog open from the start, which stays open until the page takes it away. */
-function PersonDialog({ title, testId, onCancel, children }: DialogProps) {
+function PersonDialog({ title, testId, opener, onCancel, children }: DialogProps) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
+  // Closed before it is taken out of the page, and not after: a dialog that is taken
+  // away while open leaves the focus on nothing, and the keyboard at the top of the
+  // page (review 4). The focus goes back to the button that opened it, where that is
+  // still there, as a confirmation of ConfirmButton gives it back.
+  useLayoutEffect(() => {
     const shown = dialog.current;
+    const button = opener.current;
     if (shown && !shown.open) shown.showModal();
-    return () => shown?.close();
-  }, []);
+    return () => {
+      shown?.close();
+      button?.focus();
+    };
+  }, [opener]);
   return (
     // Escape closes the dialog as Cancel does.
     <dialog
@@ -105,9 +115,11 @@ export function RetirePerson(props: RetirePersonProps) {
   // Each press opens the confirmation anew: who is linked is read afresh.
   const [turn, setTurn] = useState(0);
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
   return (
     <>
       <button
+        ref={opener}
         type="button"
         className="danger"
         disabled={disabled}
@@ -119,7 +131,12 @@ export function RetirePerson(props: RetirePersonProps) {
         {label}
       </button>
       {open && (
-        <PersonDialog title={title} testId="retire-person" onCancel={() => setOpen(false)}>
+        <PersonDialog
+          title={title}
+          testId="retire-person"
+          opener={opener}
+          onCancel={() => setOpen(false)}
+        >
           <RetireAsk
             key={turn}
             {...props}
@@ -478,9 +495,11 @@ interface BringBackUserProps {
 export function BringBackUser({ user, disabled, onBroughtBack, onReload }: BringBackUserProps) {
   const [turn, setTurn] = useState(0);
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
   return (
     <>
       <button
+        ref={opener}
         type="button"
         disabled={disabled}
         onClick={() => {
@@ -494,6 +513,7 @@ export function BringBackUser({ user, disabled, onBroughtBack, onReload }: Bring
         <PersonDialog
           title={`Bring ${user.username} back?`}
           testId="bring-back-user"
+          opener={opener}
           onCancel={() => setOpen(false)}
         >
           <BringBackAsk

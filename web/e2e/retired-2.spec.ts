@@ -4,7 +4,7 @@
 // file's own, people of its own with the file's mark in their names, each scenario
 // making those it retires, and the accounts put away when the file ends.
 
-import { type APIRequestContext, expect } from "@playwright/test";
+import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test";
 import { type Headers, make, session } from "./referenceSteps";
 import {
   change,
@@ -13,6 +13,7 @@ import {
   labelRow,
   makePerson,
   openContact,
+  openOperator,
   openUser,
   type Person,
   putAway,
@@ -217,4 +218,66 @@ test("review 3: a label handed over to somebody retired since is refused at its 
   await goAhead(ask).click();
   await expect(page.getByText(`${ines.contact.name} was retired`, { exact: false })).toBeVisible();
   await expectClean(page, seen, ["422 POST"]);
+});
+
+/** Opened and closed by Escape, and by its first button, the focus is back on what opened it. */
+async function focusComesBack(page: Page, opener: Locator, dialog: Locator, cancel: string) {
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await opener.click();
+  await dialog.getByRole("button", { name: cancel, exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+}
+
+test("review 4: the focus is back on its button when a confirmation is closed", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await session(request, account);
+  const jon = await person(request, headers, "jon");
+  const [first] = jon.labels as [Label];
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  const ask = page.getByTestId("retire-person");
+
+  await openUser(page, jon.user);
+  await focusComesBack(
+    page,
+    region(page, "Retire").getByRole("button", { name: "Retire account" }),
+    ask,
+    "Cancel",
+  );
+  await openContact(page, jon.contact);
+  await focusComesBack(
+    page,
+    region(page, "Retire").getByRole("button", { name: "Retire contact" }),
+    ask,
+    "Cancel",
+  );
+  await openOperator(page, first);
+  await focusComesBack(
+    page,
+    region(page, "Release").getByRole("button", { name: "Release", exact: true }),
+    ask,
+    "Cancel",
+  );
+
+  // Bring back, of an account retired with the rest kept.
+  await change(request, headers, "post", `/users/${jon.user.hid}/retire`, {
+    linked: { contact: "keep", operators: [{ hid: first.hid, action: "keep" }] },
+  });
+  await openUser(page, jon.user);
+  await focusComesBack(
+    page,
+    region(page, "Retired").getByRole("button", { name: "Bring back" }),
+    page.getByTestId("bring-back-user"),
+    "Cancel",
+  );
+  await expectClean(page, seen);
 });
