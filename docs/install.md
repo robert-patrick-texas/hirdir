@@ -136,8 +136,11 @@ An Admin manages accounts under **Admin** in the web UI.
 | Admin | All of that, and manage users, groups, roles and tokens |
 
 A role is granted to a user or to a user group. A user holds the highest role granted
-either way. A user with no role can sign in and see nothing. A change of role takes
-effect on the user's next request.
+either way. A user with no role does not sign in: the sign-in page says that the
+account holds no role and that an Admin gives it one, with whom to ask. A person is
+given a role, or a group that grants one, when the account is made and when it is
+brought back. A change of role takes effect on the user's next request, and a user
+whose last role is taken away is signed out at once.
 
 Resetting a user's access code, disabling the user or choosing "Sign out everywhere"
 ends every session that user has. From the server:
@@ -149,14 +152,17 @@ sudo hirdir admin reset-access-code ada
 An access code that is typed, by an Admin for a user or by a person for themselves, has
 at least 12 characters. The length is a setting of the inventory,
 `access_code_min_length`, from 1 to 64, that an Admin changes on the Settings page. A
-code that `hirdir` makes is not held to it, and a code that is held already is not
-looked at: nobody is signed out when the setting changes.
+code that `hirdir` makes, groups of four such as `k7mp-2qxa-9rtw`, has as many groups
+as make it as long, and a code that is held already is not looked at: nobody is
+signed out when the setting changes. Generate, beside each box of a new code, has
+`hirdir` make one.
 
 A person who signs in changes what is their own on their profile, which the name in
 the menu bar opens, or with `hirdir profile`: the name, email, numbers and organization
 of the contact they are, the label and colour of each operator they stand behind, and
-their access code, for which the code they have is asked. Changing it ends every other
-session they have. Every role does that for itself, and nobody for another.
+their access code, for which the code they have is asked, and which is not taken back
+as the new one. Changing it ends every other session they have. Every role does that
+for itself, an Admin too, and nobody for another.
 
 An account is active, disabled or retired. A disabled account may not sign in for now
 and is to come back. A retired account is that of somebody who has left: it signs in
@@ -2183,6 +2189,51 @@ Going back to 0.9.13 is by the backup the upgrade took, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the
 schema changed: what was entered since is lost, and an account retired since is as it
 was before.
+
+### From 0.9.14 to 0.9.15
+
+The schema stays at revision `0017`: 0.9.15 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting. An account
+that holds no role is refused at sign-in from now on, and its sessions are refused: an
+account brought back under 0.9.14, and not yet given a role, cannot sign in until an
+Admin gives it one.
+
+What an Admin sees changed:
+
+- **An account with no role does not sign in.** With the right code it is told that it
+  holds no role and that an Admin gives it one, with whom to ask as About lists them,
+  whether or not the sign-in page lists them. A role taken away while somebody is
+  signed in, the last they had, of their own or through a group, signs them out at
+  once. A service account with no role has its tokens refused until it is given one.
+- **New user and Bring back ask for the role.** A person is made with a role, or a
+  group that grants one, and is brought back with one; a service account may have none.
+- **Generate**, beside the box of a new access code on the Profile, on New user and
+  under Access code on a user's page, has the server make a code and puts it in the
+  box, to be saved with the form.
+- **A code the server makes is as long as the setting asks**: groups of four, three of
+  them against the default of 12 characters, more against a longer one.
+- **A new code on the Profile is not the one in hand**: the same code again is refused.
+  An Admin who sets somebody else's code may give the one they had.
+
+Before the upgrade, look at the accounts of people that hold no role, under Admin,
+Users, where Role is blank: give each the role it is to have, or retire it.
+
+For a script that reads the API: `POST /auth/sign-in` of an account that holds no role
+with the right code is a `403`, `No role`, with `help`, where it was a session; a
+session or a service token of an account with no role is a `401`. `POST /users` of a
+person with no role, and `POST /users/{hid}/bring-back` of a person with no `role`, are
+each a `422` on `role`. `POST /auth/me/access-code` with the code in hand as the new
+one is a `422` on `access_code`. `GET /auth/new-access-code` is new, and so are
+`--role` of `hirdir users bring-back` and `--generate` of `hirdir profile access-code`;
+`hirdir sign-in` of an account with no role exits `3`. The audit trail has a new
+action, `sign_in_no_role`.
+
+Going back to 0.9.14 needs no backup, because the schema is the same:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.14_amd64.deb
+```
 
 ### If the upgrade stops
 

@@ -247,6 +247,12 @@ def create_user(
     typer.echo(f"created {user.username}" + (f" with the {role} role" if role else ""))
     if code and access_code is None:
         typer.echo(f"access code: {code}")
+    if not role:
+        # An account with no role does not sign in (P-299).
+        typer.echo(
+            f"{user.username} holds no role, and cannot sign in until an Admin gives it one",
+            err=True,
+        )
 
 
 @admin.command("reset-access-code")

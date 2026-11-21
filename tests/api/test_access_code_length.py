@@ -1,7 +1,8 @@
 """The least length of an access code that is typed, which a setting says (P-295):
 12 from the start, for the person on their profile and for an Admin on `POST /users`,
 on `POST /users/{hid}/access-code` and in a new person made in one step. A code the
-server makes is not held to it, and a code that is held already is not looked at."""
+server makes is as long as it asks (P-300), and a code that is held already is not
+looked at."""
 
 from typing import Any
 
@@ -54,7 +55,9 @@ def test_an_admin_types_no_code_shorter_than_twelve(client: TestClient, admin: d
     users = desk.get("/users", limit=1)["total"]
     _refused(
         client.post(
-            f"{API}/users", headers=admin, json={"username": "klee", "access_code": ELEVEN}
+            f"{API}/users",
+            headers=admin,
+            json={"username": "klee", "access_code": ELEVEN, "role": "viewer"},
         ),
         12,
     )
@@ -77,7 +80,7 @@ def test_an_admin_types_no_code_shorter_than_twelve(client: TestClient, admin: d
     assert desk.get("/users", limit=1)["total"] == users
     assert desk.get("/contacts", limit=1)["total"] == contacts
 
-    made = desk.post("/users", {"username": "klee", "access_code": TWELVE})
+    made = desk.post("/users", {"username": "klee", "access_code": TWELVE, "role": "viewer"})
     assert made["access_code"] == TWELVE
     kim = sign_in(client, "klee", TWELVE)
     url = f"{API}/users/{made['user']['hid']}/access-code"
@@ -88,25 +91,29 @@ def test_an_admin_types_no_code_shorter_than_twelve(client: TestClient, admin: d
     sign_in(client, "klee", "thirteen-char")
 
 
-def test_a_code_the_server_makes_is_not_held_to_the_setting(
+def test_a_code_the_server_makes_is_as_long_as_the_setting_asks(
     client: TestClient, admin: dict
 ) -> None:
+    """Until 0.9.15 a made code was three groups of four whatever the setting said; it now
+    has as many groups as make it long enough (P-300)."""
     _put(client, admin, 64)
     desk = Maker(client, admin)
-    made = desk.post("/users", {"username": "klee"})
-    assert len(made["access_code"]) == 14
+    made = desk.post("/users", {"username": "klee", "role": "viewer"})
+    assert len(made["access_code"]) == 64
     sign_in(client, "klee", made["access_code"])
     again = desk.post(f"/users/{made['user']['hid']}/access-code", {}, expect=200)
-    assert len(again["access_code"]) == 14
+    assert len(again["access_code"]) == 64
     sign_in(client, "klee", again["access_code"])
     # A typed one is: 63 characters are one too few, and 64 are enough.
     _refused(
         client.post(
-            f"{API}/users", headers=admin, json={"username": "sokafor", "access_code": "x" * 63}
+            f"{API}/users",
+            headers=admin,
+            json={"username": "sokafor", "access_code": "x" * 63, "role": "viewer"},
         ),
         64,
     )
-    desk.post("/users", {"username": "sokafor", "access_code": "x" * 64})
+    desk.post("/users", {"username": "sokafor", "access_code": "x" * 64, "role": "viewer"})
 
 
 def test_the_setting_is_changed_and_returned_to_its_default(
@@ -115,7 +122,7 @@ def test_the_setting_is_changed_and_returned_to_its_default(
     changed = _put(client, admin, 4)
     assert (changed["value"], changed["is_default"]) == (4, False)
     desk = Maker(client, admin)
-    made = desk.post("/users", {"username": "klee", "access_code": "four"})
+    made = desk.post("/users", {"username": "klee", "access_code": "four", "role": "viewer"})
     _refused(
         client.post(
             f"{API}/users/{made['user']['hid']}/access-code",
@@ -139,7 +146,9 @@ def test_the_setting_is_changed_and_returned_to_its_default(
     assert (back["value"], back["is_default"]) == (12, True)
     _refused(
         client.post(
-            f"{API}/users", headers=admin, json={"username": "sokafor", "access_code": ELEVEN}
+            f"{API}/users",
+            headers=admin,
+            json={"username": "sokafor", "access_code": ELEVEN, "role": "viewer"},
         ),
         12,
     )
@@ -156,10 +165,12 @@ def test_at_one_a_code_of_one_character_is_taken_and_a_blank_one_never(
     client: TestClient, admin: dict
 ) -> None:
     _put(client, admin, 1)
-    Maker(client, admin).post("/users", {"username": "klee", "access_code": "x"})
+    Maker(client, admin).post("/users", {"username": "klee", "access_code": "x", "role": "viewer"})
     for code in ("", " x", "x "):
         blank = client.post(
-            f"{API}/users", headers=admin, json={"username": "sokafor", "access_code": code}
+            f"{API}/users",
+            headers=admin,
+            json={"username": "sokafor", "access_code": code, "role": "viewer"},
         )
         assert blank.status_code == 422, code
         assert "must not be empty" in errors(blank.json())["access_code"]

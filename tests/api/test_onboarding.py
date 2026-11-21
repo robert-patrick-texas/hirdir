@@ -128,6 +128,7 @@ def test_a_person_is_made_with_contact_operator_role_and_groups_in_one_request(
     second = desk.post(
         "/users",
         {
+            "role": "viewer",
             "username": "ex-contractor",
             "contact_hid": known["hid"],
             "operator": {"label": "EX-C", "colour": "#1D84F5", "description": "Night calls."},
@@ -137,7 +138,9 @@ def test_a_person_is_made_with_contact_operator_role_and_groups_in_one_request(
     assert second["operator"]["description"] == "Night calls."
     assert second["operator"]["contact_hid"] == known["hid"]
     # No operator asked for: none made, and the answer says so.
-    plain = desk.post("/users", {"username": "ex-plain", "contact": {"name": "Example Plain"}})
+    plain = desk.post(
+        "/users", {"role": "viewer", "username": "ex-plain", "contact": {"name": "Example Plain"}}
+    )
     assert (plain["operator"], plain["user"]["operators"]) == (None, [])
 
 
@@ -145,16 +148,31 @@ def test_the_colour_left_out_is_the_next_unused_and_a_blank_one_is_none(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
-    first = desk.post("/users", {"username": "ex-a", "contact": {"name": "A"}, "operator": {}})
+    first = desk.post(
+        "/users", {"role": "viewer", "username": "ex-a", "contact": {"name": "A"}, "operator": {}}
+    )
     after = desk.get("/colours")["next_for_operators"]
-    second = desk.post("/users", {"username": "ex-b", "contact": {"name": "B"}, "operator": {}})
+    second = desk.post(
+        "/users", {"role": "viewer", "username": "ex-b", "contact": {"name": "B"}, "operator": {}}
+    )
     assert first["operator"]["colour"] != second["operator"]["colour"] == after
     none = desk.post(
-        "/users", {"username": "ex-c", "contact": {"name": "C"}, "operator": {"colour": None}}
+        "/users",
+        {
+            "role": "viewer",
+            "username": "ex-c",
+            "contact": {"name": "C"},
+            "operator": {"colour": None},
+        },
     )
     blank = desk.post(
         "/users",
-        {"username": "ex-d", "contact": {"name": "D"}, "operator": {"colour": "", "label": " "}},
+        {
+            "role": "viewer",
+            "username": "ex-d",
+            "contact": {"name": "D"},
+            "operator": {"colour": "", "label": " "},
+        },
     )
     assert none["operator"]["colour"] is blank["operator"]["colour"] is None
     # A blank label is the username, as one left out is.
@@ -267,11 +285,17 @@ def test_the_users_are_narrowed_to_those_with_no_contact_and_no_operator(
 ) -> None:
     desk = Maker(client, admin)
     # ada, ivy and vic, made by the fixture, are no contact and so behind no operator.
-    two = desk.post("/users", {"username": "ex-two", "contact": PERSON, "operator": {"label": "B"}})
+    two = desk.post(
+        "/users",
+        {"role": "viewer", "username": "ex-two", "contact": PERSON, "operator": {"label": "B"}},
+    )
     desk.post("/operators", {"label": "A", "contact_hid": two["user"]["contact_hid"]})
-    gone = desk.post("/users", {"username": "ex-gone", "contact": {"name": "G"}, "operator": {}})
+    gone = desk.post(
+        "/users",
+        {"role": "viewer", "username": "ex-gone", "contact": {"name": "G"}, "operator": {}},
+    )
     desk.release(gone["operator"])
-    desk.post("/users", {"username": "ex-none", "contact": {"name": "N"}})
+    desk.post("/users", {"role": "viewer", "username": "ex-none", "contact": {"name": "N"}})
     desk.post("/users", {"username": "ex-bot", "is_service_account": True})
 
     everyone = ["ada", "ex-bot", "ex-gone", "ex-none", "ex-two", "ivy", "vic"]
@@ -335,8 +359,18 @@ def test_a_retired_contact_is_as_no_contact_for_the_gaps_and_still_answered(
     behind its operator; it still answers what is left over (P-280). A contact was left
     so before 0.9.14; since then it is not retired under its account (P-297)."""
     desk = Maker(client, admin)
-    made = desk.post("/users", {"username": "ex-left", "contact": PERSON, "operator": {}})
-    desk.post("/users", {"username": "ex-ops", "contact": {"name": "Example Ops"}, "operator": {}})
+    made = desk.post(
+        "/users", {"role": "viewer", "username": "ex-left", "contact": PERSON, "operator": {}}
+    )
+    desk.post(
+        "/users",
+        {
+            "role": "viewer",
+            "username": "ex-ops",
+            "contact": {"name": "Example Ops"},
+            "operator": {},
+        },
+    )
     desk.post("/users", {"username": "ex-bot", "is_service_account": True})
     contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
     left_retired(db, contact["hid"])
@@ -380,7 +414,12 @@ def test_the_operators_of_a_page_are_read_in_one_statement(client: TestClient, a
     for number in range(6):
         desk.post(
             "/users",
-            {"username": f"ex-{number}", "contact": {"name": f"N{number}"}, "operator": {}},
+            {
+                "role": "viewer",
+                "username": f"ex-{number}",
+                "contact": {"name": f"N{number}"},
+                "operator": {},
+            },
         )
     statements: list[str] = []
 
@@ -411,7 +450,12 @@ def test_a_page_of_users_or_of_groups_costs_the_same_statements_whatever_its_siz
     for number, group in enumerate(groups):
         made = desk.post(
             "/users",
-            {"username": f"ex-{number}", "contact": {"name": f"N{number}"}, "operator": {}},
+            {
+                "role": "viewer",
+                "username": f"ex-{number}",
+                "contact": {"name": f"N{number}"},
+                "operator": {},
+            },
         )["user"]
         desk.post("/role-grants", {"role": "viewer", "group_hid": group["hid"]})
         assert (
@@ -453,7 +497,7 @@ def test_the_gaps_are_found_by_the_index_of_the_operators_contact(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
-    desk.post("/users", {"username": "ex-ops", "contact": PERSON, "operator": {}})
+    desk.post("/users", {"role": "viewer", "username": "ex-ops", "contact": PERSON, "operator": {}})
     engine = _engine(client)
     seen: list[tuple[str, Any]] = []
 
@@ -484,7 +528,9 @@ def test_a_users_notes_are_set_changed_and_cleared_and_each_change_is_audited(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
-    made = desk.post("/users", {"username": "ex-ops", "notes": "For the example team."})["user"]
+    made = desk.post(
+        "/users", {"role": "viewer", "username": "ex-ops", "notes": "For the example team."}
+    )["user"]
     assert made["notes"] == "For the example team."
     changed = desk.patch(
         f"/users/{made['hid']}", {"row_version": made["row_version"], "notes": "Ends in June."}
@@ -524,8 +570,8 @@ def test_a_users_notes_are_set_changed_and_cleared_and_each_change_is_audited(
     )
     assert too_long.status_code == 422
     assert "notes" in errors(too_long.json())
-    desk.post("/users", {"username": "ex-b", "notes": "B"})
-    desk.post("/users", {"username": "ex-a", "notes": "A"})
+    desk.post("/users", {"role": "viewer", "username": "ex-b", "notes": "B"})
+    desk.post("/users", {"role": "viewer", "username": "ex-a", "notes": "A"})
     by_notes = [one for one in _usernames(desk, sort="notes") if one in {"ex-a", "ex-b"}]
     assert by_notes == ["ex-a", "ex-b"]
     by_notes = [one for one in _usernames(desk, sort="-notes") if one in {"ex-a", "ex-b"}]
@@ -561,7 +607,7 @@ def test_the_notes_of_an_account_are_answered_to_an_admin_alone(
 def test_only_an_admin_makes_a_user_and_every_role_reads_the_operators_of_contacts(
     client: TestClient, admin: dict, inventory: dict, viewer: dict
 ) -> None:
-    body = {"username": "ex-ops", "contact": PERSON, "operator": {}}
+    body = {"username": "ex-ops", "contact": PERSON, "operator": {}, "role": "viewer"}
     for headers in (inventory, viewer):
         assert client.post(f"{API}/users", json=body, headers=headers).status_code == 403
         assert client.get(f"{API}/users", headers=headers).status_code == 403

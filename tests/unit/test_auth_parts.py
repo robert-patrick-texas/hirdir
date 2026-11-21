@@ -34,6 +34,16 @@ def test_generated_code_is_three_groups_of_four() -> None:
     assert code != codes.generate()
 
 
+def test_a_generated_code_has_groups_enough_for_the_least_length() -> None:
+    """Three groups, or as many more as make it at least as long as asked (P-300)."""
+    for least, groups in ((1, 3), (12, 3), (14, 3), (15, 4), (19, 4), (20, 5), (64, 13)):
+        code = codes.generate(least)
+        assert [len(part) for part in code.split("-")] == [4] * groups, least
+        assert len(code) >= least
+    assert len(codes.generate(20)) == 24
+    assert len(codes.generate(64)) == 64
+
+
 def test_code_verifies_only_against_its_own_hash() -> None:
     stored = codes.hash_code("river-stone")
     assert "river-stone" not in stored
