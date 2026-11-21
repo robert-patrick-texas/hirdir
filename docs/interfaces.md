@@ -108,6 +108,7 @@ out, these decide it:
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 | `busy_response_ms`, `busy_cpu_percent`, `busy_over_seconds` | the health of the server and what it answers `503` Busy for it, and `ceiling` of `GET /about/load`: the thirds of `busy_response_ms` are the bounds of `health`, of `X-Hirdir-Health` and of `totals.bands`. Each holds from the moment it is saved, and no request reads the database to learn it. `busy_response_ms` or `busy_cpu_percent` at 0 refuses nothing, and both at 0 is no ceiling (P-265). See [The server's own measures](#the-servers-own-measures) |
 | `reports_ahead_after_seconds` | how long after the newest change of the inventory or its settings the second process works out again the long reports that the change left stale, each for the view its page opens with; until then, and where it is 0, the first to ask for one is answered by the server, which works it out itself. It changes no answer, only which process works it out and when (P-276). See [Kept answers](#kept-answers) |
+| `access_code_min_length` | the least length of an access code that is typed: `access_code` of `POST /auth/me/access-code`, of `POST /users` and of `POST /users/{hid}/access-code`, and the code that `hirdir admin` is given. A shorter one is a `422` on `access_code` that says the length and names the setting. A code the server makes is not held to it, and a code that is held already is not looked at (P-295) |
 
 The fixed values are these. What was decided:
 
@@ -254,18 +255,24 @@ answers the user as before and, with it, `contact`, the contact the person is, w
 `hid`, `name`, `email`, `phone`, `phone2`, `organization`, `record_status` and
 `row_version`, or null where the account has none; and `operators`, every operator
 that is not retired whose contact is theirs, in the order of their labels, each with
-`hid`, `label`, `colour`, `record_status` and `row_version`. The three routes below are
-for a session of any role, View-only too. They carry no HID of a user or of a contact:
-they change the records of whoever is signed in and no other. A service token is
-refused by each with a `403`.
+`hid`, `label`, `colour`, `record_status` and `row_version`. A person whose contact is
+retired has none: nobody is behind the labels of a retired contact (P-280). The answer
+of signing in carries the same as its `user`. The three routes below are for a
+session of any role, View-only too, and of an account that holds no role, as
+`GET /auth/me` and `POST /auth/sign-out-everywhere` are: an account that is brought
+back has a new code and no role (P-296), and that person changes the code an Admin
+gave them, and what is their own, before a role is theirs. They carry no HID of a user
+or of a contact: they change the records of whoever is signed in and no other. A
+service token is refused by each with a `403`.
 
 `PATCH /auth/me/contact` takes `row_version` and any of `name`, `email`, `phone`,
 `phone2` and `organization`; a field it does not know is a `422`, so that the notes,
 the tags and the state of the contact are not changed here. It is held to the rules of
 `PATCH /contacts/{hid}`, an email that another contact has being a `409` that names
-that contact, and is audited as an `update` of the contact, by the person. An account
-with no contact, or one whose contact is retired, answers a `409`: an Admin gives an
-account its contact. The answer is that of `GET /auth/me`.
+that contact, and is audited as an `update` of the contact, by the person. A field
+given as null or blank is cleared, and a name is never blank; a field left out stays.
+An account with no contact, or one whose contact is retired, answers a `409`: an Admin
+gives an account its contact. The answer is that of `GET /auth/me`.
 
 `PATCH /auth/me/operators/{hid}` takes `row_version` and either of `label` and
 `colour`, of an operator that is not retired and whose contact is the person's; any
@@ -277,11 +284,17 @@ that names it, and is audited as an `update` of the operator. The answer is that
 `POST /auth/me/access-code` takes `current_access_code` and `access_code`. A current
 code that is wrong is a `422` on `current_access_code`; it is counted against the
 person as a failed sign-in is, a `429` with `Retry-After` following where there have
-been too many, and is written to the audit trail as `access_code_refused`. A new code
-shorter than the setting `access_code_min_length`, or blank, or beginning or ending
-with a space, is a `422` on `access_code`. Accepted, the code is changed, every other
-session of the person ends, and the answer is that of `POST /auth/sign-in`: a new
-`token` and `expires_at` for the session in hand, and the `user`. It is audited as
+been too many, and is written to the audit trail as `access_code_refused`. The count
+is the one of signing in, by the username and by the address the request came from: a
+person delayed here is delayed at sign-in too, and the other way round, and the right
+code clears it. While the person is delayed the codes are not looked at, and the
+attempt is written as `access_code_delayed`. Both events are kept though the request
+is refused. A new code shorter than the setting `access_code_min_length`, or blank, or
+beginning or ending with a space, is a `422` on `access_code`; the current code is
+looked at first, so a request with both wrong is counted. Accepted, the code is
+changed, every other session of the person ends, and the answer is that of
+`POST /auth/sign-in`: a new `token` and `expires_at` for the session in hand, and the
+`user`. The token sent with the request is ended with the others. It is audited as
 `set_access_code`, by the person.
 
 `access_code_min_length`, a whole number from 1 to 64 and 12 from the start, is the
@@ -2761,6 +2774,11 @@ body whole before it passes it on, always says it.
 
 ```bash
 hirdir sign-in                                   # asks for username and access code
+hirdir whoami                                    # who is signed in, their role, contact and operators
+hirdir profile show                              # your own profile
+hirdir profile set --phone '+1 555 0100' --organization 'Example Networks'
+hirdir profile set --label KL --colour '#1f6feb' # of your operator; --operator LABEL where you have several
+hirdir profile access-code                       # asks for the code you have and the new one
 hirdir items list --filter 'lifecycle_state:eq:Prod location:within:Americas > Central'
 hirdir items show FCW0000X001                    # by HID, serial number, asset tag or name
 hirdir items set <hid> disposition=Spare expected_online=false
@@ -2910,6 +2928,7 @@ refused leaves the others as they went.
 | Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
+| Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself, and an account with no role too; the server refuses a service token (P-294, P-295) |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the
@@ -2917,6 +2936,7 @@ database directly, because it must work before any account exists:
 
 ```bash
 hirdir admin create-user --role admin NAME       # prints a new access code once
+hirdir admin create-user --access-code CODE NAME # a code of your choosing, of access_code_min_length at the least
 hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org NAME   # and its contact
 hirdir admin reset-access-code NAME
 hirdir admin migrate

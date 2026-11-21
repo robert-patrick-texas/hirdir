@@ -147,16 +147,22 @@ user's `tokens_valid_after`. Roles are read from the database on each request an
 never in the token, so a change of role or group takes effect at once.
 
 `tokens_valid_after` is set to now when an Admin resets the access code, disables the
-account, or chooses "sign out everywhere". Replacing the signing key ends every session
-of every user.
+account, or chooses "sign out everywhere", and when a person changes their own access
+code on their profile: that answer carries a new token, issued after it, so that the
+session in hand goes on and every other has ended (P-295). Replacing the signing key
+ends every session of every user.
 
 ### Throttling
 
-Access codes may be short in the MVP, so guessing is slowed on the server: after five
+A typed access code has a least length, 12 unless the setting `access_code_min_length`
+says otherwise (P-295), and guessing is slowed on the server: after five
 failures in a row for one username or from one address, each further failure doubles
 the wait before another attempt is looked at, from one second up to five minutes. An
 attempt made during the wait is refused with `429` and a `Retry-After` header, whether
-or not its code is right. A successful sign-in clears the count. Failures and refusals
+or not its code is right. A successful sign-in clears the count. A wrong current code
+on `POST /auth/me/access-code` is counted with the failures of signing in, under the
+same username and address, so that a session left open is no way to try codes, and the
+right one clears the count. Failures and refusals
 are audit events. The counts are held in memory, so a restart of the service clears
 them.
 

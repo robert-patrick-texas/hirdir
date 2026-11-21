@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from hirdir import clock
 from hirdir.api import schemas
 from hirdir.db.models import AuditEvent, Contact, Operator, RoleGrant, User, UserGroup
-from hirdir.domain import accounts, contacts, load, operators
+from hirdir.domain import accounts, contacts, load, operators, profile
 from hirdir.domain.people import Person
 from hirdir.io.measures import Host
 
@@ -38,11 +38,34 @@ def user_out(db: Session, user: User) -> schemas.UserOut:
     return users_out(db, [user])[0]
 
 
-def me_out(db: Session, user: User) -> schemas.UserOut:
-    """Return the signed-in user as it reads itself, by `GET /auth/me` and in the answer
-    of signing in: with no notes, for anybody, an Admin too. The notes on an account are
-    an Admin's, read by the routes of users alone (P-281)."""
-    return user_out(db, user).model_copy(update={"notes": None})
+def me_out(db: Session, user: User) -> schemas.MeOut:
+    """Return the signed-in user as it reads itself, by `GET /auth/me`, by the routes
+    under it and in the answer of signing in: with the contact it is and the operators
+    it is behind, each with the version it is changed at (P-294), and with no notes,
+    for anybody, an Admin too. The notes on an account are an Admin's, read by the
+    routes of users alone (P-281)."""
+    base = user_out(db, user)
+    contact = profile.contact_of(db, user)
+    return schemas.MeOut(
+        hid=base.hid,
+        username=base.username,
+        contact_hid=base.contact_hid,
+        contact=schemas.OwnContact.model_validate(contact) if contact is not None else None,
+        display_name=base.display_name,
+        email=base.email,
+        operators=[
+            schemas.OwnOperator.model_validate(one) for one in profile.operators_of(db, user)
+        ],
+        notes=None,
+        is_service_account=base.is_service_account,
+        disabled=base.disabled,
+        role=base.role,
+        groups=base.groups,
+        last_sign_in_at=base.last_sign_in_at,
+        row_version=base.row_version,
+        created_at=base.created_at,
+        updated_at=base.updated_at,
+    )
 
 
 def users_out(db: Session, users: Sequence[User]) -> list[schemas.UserOut]:

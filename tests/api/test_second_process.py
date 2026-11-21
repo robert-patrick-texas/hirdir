@@ -95,7 +95,7 @@ def installed(config: Config, monkeypatch) -> Config:
 def asker(db: Any, request_id: str) -> AuditContext:
     """Return who asks for an apply where no route does: somebody with the Inventory
     role, whose role the worker looks at again as it takes the job up."""
-    user, _ = accounts.create_user(db, audit.SYSTEM, username="imp", access_code="imp-code-01")
+    user, _ = accounts.create_user(db, audit.SYSTEM, username="imp", access_code="imp-code-0001")
     accounts.grant_role(db, audit.SYSTEM, role="inventory", user_hid=user.hid)
     return AuditContext(actor_hid=user.hid, via="api", request_id=request_id)
 

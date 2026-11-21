@@ -480,7 +480,8 @@ def test_a_plan_refused_at_its_last_step_changes_nothing_and_keeps_no_event(
     now = desk.get(f"/operators/{label['hid']}")
     assert (now["contact_hid"], now["row_version"]) == (contact["hid"], label["row_version"])
     assert desk.get(f"/contacts/{contact['hid']}")["record_status"] == "active"
-    assert desk.get("/auth/me")["record_status"] == "active"
+    mine = desk.get("/auth/me")["hid"]
+    assert desk.get(f"/users/{mine}")["record_status"] == "active"
     assert desk.get("/audit-events", limit=1)["total"] == before
     # A stale copy of the record the route is on, likewise.
     stale = desk.post(

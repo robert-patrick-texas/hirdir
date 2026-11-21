@@ -53,8 +53,10 @@ def test_viewer_cannot_manage_accounts(client: TestClient, viewer: dict) -> None
 
 
 def test_user_with_no_grant_signs_in_and_sees_nothing(client: TestClient, admin: dict) -> None:
-    client.post(f"{API}/users", headers=admin, json={"username": "nia", "access_code": "nia-code"})
-    nia = sign_in(client, "nia", "nia-code")
+    client.post(
+        f"{API}/users", headers=admin, json={"username": "nia", "access_code": "nia-code-0001"}
+    )
+    nia = sign_in(client, "nia", "nia-code-0001")
     assert client.get(f"{API}/auth/me", headers=nia).json()["role"] is None
     assert client.get(f"{API}/audit-events", headers=nia).status_code == 403
 
@@ -64,7 +66,7 @@ def test_s03_highest_role_wins_and_a_removed_grant_bites_at_once(
 ) -> None:
     """S03: a user in a View-only group who is also granted Admin directly."""
     user = client.post(
-        f"{API}/users", headers=admin, json={"username": "uma", "access_code": "uma-code"}
+        f"{API}/users", headers=admin, json={"username": "uma", "access_code": "uma-code-0001"}
     ).json()["user"]
     group = client.post(f"{API}/user-groups", headers=admin, json={"name": "Readers"}).json()
     client.post(
@@ -80,7 +82,7 @@ def test_s03_highest_role_wins_and_a_removed_grant_bites_at_once(
         f"{API}/role-grants", headers=admin, json={"role": "admin", "user_hid": user["hid"]}
     ).json()
 
-    uma = sign_in(client, "uma", "uma-code")
+    uma = sign_in(client, "uma", "uma-code-0001")
     assert client.get(f"{API}/auth/me", headers=uma).json()["role"] == "admin"
     assert (
         client.post(f"{API}/users", headers=uma, json={"username": "made-by-uma"}).status_code
