@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentRoleWords,
   agentsOfGroupLead,
   bringBackRoleHint,
   cappedWords,
@@ -130,6 +131,14 @@ describe("what Bring back says under Role, for each kind (review 7)", () => {
     expect(bringBackRoleHint("agent")).toBe(
       "An agent may come back with none; its tokens are refused until it has one. It is never Admin, and holds no more than the role of its person.",
     );
+  });
+});
+
+describe("an agent's role, as the confirmation of a retirement lists it (review 14)", () => {
+  it("says that one holding Admin all the same is held to Inventory", () => {
+    expect(agentRoleWords("admin")).toBe("Admin, held to Inventory: an agent is never Admin");
+    expect(agentRoleWords("inventory")).toBe("Inventory");
+    expect(agentRoleWords(null)).toBe("No role");
   });
 });
 

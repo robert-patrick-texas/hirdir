@@ -12,7 +12,7 @@ import { Link } from "react-router";
 import { api } from "../api";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
-import { bringBackRoleHint, rolesFor } from "../lib/accounts";
+import { agentRoleWords, bringBackRoleHint, rolesFor } from "../lib/accounts";
 import { toApiError, useAction, useLoad } from "../lib/hooks";
 import {
   type AgentAction,
@@ -552,7 +552,7 @@ function RetireRows(props: RetireRowsProps) {
           <div className="person-row" data-row="agent" data-agent={agent.hid} key={agent.hid}>
             <p className="person-about">
               <Link to={`/admin/users/${encodeURIComponent(agent.hid)}`}>{agent.username}</Link> ·
-              agent · {roleLabel(agent.role)} · {userState(agent)}
+              agent · {agentRoleWords(agent.role)} · {userState(agent)}
             </p>
             <div className="person-choice">
               <RadioGroupField

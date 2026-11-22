@@ -33,6 +33,14 @@ export function kindHint(kind: string): string {
   return "Somebody who signs in with an access code.";
 }
 
+/**
+ * An agent's role as a list that has no role in force for it says it (review 14): one
+ * that holds Admin all the same, as from a database edited by hand, is held to Inventory.
+ */
+export function agentRoleWords(role: string | null | undefined): string {
+  return role === "admin" ? "Admin, held to Inventory: an agent is never Admin" : roleLabel(role);
+}
+
 /** What Bring back says under Role, of the kind brought back (review 7). */
 export function bringBackRoleHint(kind: string): string {
   if (kind === "agent") {
