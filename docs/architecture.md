@@ -431,7 +431,8 @@ upload, by its extension and by its first bytes.
   what the server keeps of it, which an empty inventory may hold.
 - **The examples.** `hirdir admin load-examples` (`io/examples.py`) imports each CSV file
   of the examples in the load order into an empty inventory, with the service stopped,
-  so that a reset takes them again (P-166). It previews and applies each as any import
+  so that a reset takes them again (P-166), but the lists of countries and states, which
+  a reset keeps (P-321). It previews and applies each as any import
   is, applying in its own process the jobs it made, with the Inventory role that it
   gives `io/imports.py`, since no account asked for them. The wheel carries `examples/`
   inside the package, as `hirdir/examples/`, and a development checkout has them at

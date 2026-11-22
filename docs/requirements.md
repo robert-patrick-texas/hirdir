@@ -220,6 +220,11 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 - **R7.4a** The coordinates of a site or a location open a map, at an address that a
   setting names and an installation may change or blank; with it blank they are plain
   numbers, as where there is no access to the internet (P-229).
+- **R7.4b** The country of every address, and its state where its country has states
+  listed, MUST be chosen from lists that an Admin keeps, stored as their ISO 3166 codes
+  and shown by their names, the United States first and read as the country of an
+  address that names none, so that what one person types matches what another typed
+  (P-318, P-321).
 - **R7.5** Owner is a reference to a managed owner record with a primary and alternate
   people. An owner outside the operations team is allowed as a marked exception with a
   reason.

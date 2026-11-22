@@ -18,6 +18,8 @@ INSTALL = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
 MB = 1024 * 1024
 # The files of examples/ in the order they load in: a record names the ones it refers to.
 LOAD_ORDER = [
+    "countries",
+    "states",
     "tags",
     "vendors",
     "catalog-entries",

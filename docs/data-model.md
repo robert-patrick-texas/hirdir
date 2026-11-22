@@ -705,6 +705,24 @@ region has the shipping set and no street address. A site and a location have on
 field more, `ship_same_as_address`: deliveries go to the street address, and nobody
 types it a second time.
 
+**The country and the state** of each set, `country` and `state`, `ship_country` and
+`ship_state`, are taken from the lists of [`countries` and `states`](#countries-and-states)
+since 0.9.18 (P-318, P-321). `country` holds the code of a listed country, or is blank,
+which is read as the United States wherever any other field of the same set is filled,
+and is not written so: a place with no address has no country. A country is given by
+its code or its name, without regard to case or to the spaces around it, or as `USA`,
+`U.S.`, `U.S.A.` or `United States of America` for the United States, and its code is
+kept. `state` holds, where the country in force has states listed, the code of one of
+them, given by its code or its name within that country and kept as its code, or is
+blank; where the country has none listed, it is text as typed. A value that no list
+holds is refused at its field, naming where the list is. A country or a state held from
+before that no list holds, which the upgrade to `0019` kept as it was typed, is kept
+until the country or the state of that set is changed, when both are checked; a change
+of anything else of the place goes through. A country is a field of the shipping set as
+the other five are: a shipping set given a country alone has a shipping address of its
+own. An address answers, beside its fields, the names of its country and its state,
+read from the lists when it is read and stored nowhere.
+
 `name` is required and holds no `>`. Within one region, a site and a region directly
 beneath it do not share a name, so that a path names one record. `code` is optional, a short name such as `CEN` or
 `S2`, and is unique when present: among regions, among sites, and within its site for a
@@ -1798,6 +1816,43 @@ The life of a session token, `session_hours`, is in the configuration file and n
 here, because it is needed before the database can be asked. See
 [architecture.md](architecture.md).
 
+### `countries` and `states`
+
+The lists that the country and the state of an address are taken from (P-318, P-321),
+kept by an Admin under Choices and read by every role.
+
+| Record | Fields | Rules |
+|---|---|---|
+| `countries` | `code`, `name`, and the bookkeeping of a choice: `hid`, `row_version`, `created_at`, `updated_at`, `created_by`, `updated_by` | `code` is the two capital letters of ISO 3166-1 alpha-2, given in any case and kept in capitals; `code` and `name` are each unique without regard to case. A name is 1 to 100 characters, and `USA`, `U.S.`, `U.S.A.` and `United States of America` are no name of a country but the United States |
+| `states` | `country`, `code`, `name`, and the same bookkeeping | `country` is the code of its country, and is not changed. `code` is the part of its ISO 3166-2 code after the hyphen, one to three capital letters and digits, `TX` of `US-TX`, given in any case and kept in capitals, unique within its country; `name` is unique within its country without regard to case |
+
+The countries are listed the United States, `US`, first, however it is named, and the
+rest by name; a country's states by name. The United States is renamed and is neither
+removed nor given another code. Its states are the fifty, DC, and Puerto Rico, Guam,
+the US Virgin Islands, American Samoa and the Northern Mariana Islands, which are no
+countries of their own here, so that an address there is written one way.
+
+A code that an address holds is not changed. A country whose code no address holds is
+given another, and its states are then of the new code. A country is removed only where
+no address holds its code, and its states are removed with it, in the same change, none
+of which an address may hold; a state is removed only where no address holds it. A state
+is held by an address set whose `state` is its code and whose country in force is its
+country, a blank country being the United States. Each change is audited: a removal of a
+country holds its code, its name and the states removed with it, and each state's
+removal is an event of its own.
+
+A new inventory, by install or by migration `0019`, starts with every country of the
+Americas as the UN's M49 groups them, from the ISO 3166 data of `iso-codes` 4.20.1, 55
+of them, and their 633 subdivisions, taking the lower level where ISO has two; an
+Admin adds the rest for an enterprise that works across the world. The upgrade turns
+into its code, on every region, site and location, a country held as a listed code or
+name, without regard to case and to spaces before and after, or as one of the common
+spellings of the United States, and a state held as a code or a name of the country in
+force, a blank country being the United States; anything else is kept as it was typed,
+for a person to choose, and each place it changes has an audit event of the system
+holding the values before and after. Both lists are files of the Import page and are in
+Export everything; `hirdir admin reset` keeps them, as it keeps the choices.
+
 ### Access records
 
 | Record | Fields |
@@ -1903,7 +1958,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | Field | Type | Notes |
 |---|---|---|
 | `source` | choice | `file` for an import, `bulk` for a bulk edit |
-| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `external_systems`, `agreements`, `contracts`, `purchase_requests`, `purchase_lines`, `items`, `device_groups`, `device_group_members`, `item_replacements`, `addresses`, `contract_coverage`, `registrations` and `capacity_lines` |
+| `entity` | choice | `countries`, `states`, `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `external_systems`, `agreements`, `contracts`, `purchase_requests`, `purchase_lines`, `items`, `device_groups`, `device_group_members`, `item_replacements`, `addresses`, `contract_coverage`, `registrations` and `capacity_lines` |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewed`; `queued` and `applying` while it is being applied in the background; `applied` once every row has been worked; `stopped` when it stopped partway, to be resumed; and `failed`, which only a job of a release before 0.7.0 has, applied as one transaction and undone because a record had changed |

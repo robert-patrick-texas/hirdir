@@ -34,7 +34,7 @@ from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Deleted, Existing, Invalid, NotAllowed, NotFound
 from hirdir.io import columns as cells
 from hirdir.io import files
-from hirdir.io.entities import Entity, Run, entity, says_retired
+from hirdir.io.entities import LISTS, Entity, Run, entity, says_retired
 from hirdir.io.files import Row, reason
 
 OUTCOMES = ("create", "update", "unchanged", "rejected")
@@ -218,6 +218,10 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     made_as: str | None = None
     if hid:
         record = db.get(which.model, hid)
+        if record is None and which.keyed_beside_hid:
+            record = which.find(
+                run, {name: value for name, value in values.items() if name != "hid"}
+            )
         if record is None:
             made_as = _made_as(run, which, values, hid)
     else:
@@ -638,12 +642,20 @@ def begin_apply(
     it up (`work_job`), one job at a time in the order they were asked for, and it is
     `applying` from then, so that a job is `applying` only where a process has taken
     it (P-263, P-267). A stopped job goes on as it was begun.
+
+    A file of countries or of states that makes or changes one is an Admin's to apply,
+    and is refused for any other role; one whose every row changes nothing is anybody's
+    who may change the inventory (P-321).
     """
     # Of two that ask at the same moment, the second sees what the first stored: the
     # job taken, or another job ahead of it.
     dialect.hold_other_writers(db)
     job = get_job(db, hid, source)
     db.refresh(job)
+    if job.entity in LISTS and (job.created or job.updated) and _role(db, context) != Role.ADMIN:
+        raise NotAllowed(
+            f"an Admin applies a file of {job.entity} that changes them: this needs the admin role"
+        )
     if job.status in BUSY:
         raise Conflict(
             "this preview is being applied already", {"status": "wait for it to be applied"}

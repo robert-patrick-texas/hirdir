@@ -49,7 +49,7 @@ from hirdir.domain import (
 )
 from hirdir.ids import new_hid
 from hirdir.io import examples
-from hirdir.io.entities import LOAD_ORDER, entity
+from hirdir.io.entities import LISTS, LOAD_ORDER, entity
 from tests.api.inventory import API, Maker, wait_for_job
 from tests.api.test_export_loads_back import (
     FORMATS,
@@ -293,7 +293,10 @@ def test_the_zip_of_every_table_loads_into_an_empty_inventory_as_it_was(
     first = _zip(client, inventory, format_)
     held = counts(client, inventory)
     _emptied(client)
-    assert set(counts(client, inventory).values()) == {0}
+    # A reset keeps the lists of countries and states, as it keeps the choices (P-321).
+    after = counts(client, inventory)
+    assert {name: after[name] for name in LISTS} == {name: held[name] for name in LISTS}
+    assert {count for name, count in after.items() if name not in LISTS} == {0}
 
     for name in LOAD_ORDER:
         text = first.read(examples.file_name(name, format_)).decode("utf-8")
@@ -302,7 +305,9 @@ def test_the_zip_of_every_table_loads_into_an_empty_inventory_as_it_was(
             name,
             [(row["key"], row["reasons"]) for row in _rejected(client, inventory, job)[:3]],
         )
-        assert job["created"] == job["row_count"] == held[name], name
+        # The kept lists come back as they are, and are applied with nothing to change.
+        made = "unchanged" if name in LISTS else "created"
+        assert job[made] == job["row_count"] == held[name], name
         applied = client.post(f"{API}/imports/{job['hid']}/apply", headers=inventory)
         assert applied.status_code == 202, applied.text
         done = wait_for_job(client, inventory, applied.json()["hid"])

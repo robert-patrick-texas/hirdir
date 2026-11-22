@@ -7,12 +7,12 @@ from fastapi import APIRouter, Query
 
 from hirdir.api import lists, schemas, shapes, views
 from hirdir.api import records as r
-from hirdir.api.deps import Audit, Db, Inventory, Viewer
+from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
-from hirdir.api.lists import Listed
+from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.routes import RETIRING
 from hirdir.api.schemas import Page
-from hirdir.domain import contacts, geography, moves, operators, people
+from hirdir.domain import contacts, countries, geography, moves, operators, people
 from hirdir.io import fields, filters, operated, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
@@ -22,6 +22,10 @@ tree = APIRouter(prefix="/geography", tags=["Geography"])
 contact_routes = APIRouter(prefix="/contacts", tags=["People"], route_class=IdempotentRoute)
 operator_routes = APIRouter(prefix="/operators", tags=["People"], route_class=IdempotentRoute)
 assignments = APIRouter(prefix="/contact-assignments", tags=["People"], route_class=IdempotentRoute)
+# The lists of countries and states an address takes its own from (P-321).
+country_routes = APIRouter(prefix="/countries", tags=["Geography"], route_class=IdempotentRoute)
+state_routes = APIRouter(prefix="/states", tags=["Geography"], route_class=IdempotentRoute)
+place_routes = APIRouter(prefix="/places", tags=["Geography"])
 
 
 def _changes(body: r.Model) -> dict:
@@ -496,4 +500,114 @@ def delete_assignment(hid: str, _: Inventory, context: Audit, db: Db) -> None:
     contacts.delete_assignment(db, context, hid)
 
 
-ROUTERS = (regions, sites, locations, tree, contact_routes, operator_routes, assignments)
+# --- the lists of countries and states (P-318, P-321) ---------------------------------
+
+
+@country_routes.get("")
+def list_countries(_: Viewer, db: Db) -> list[r.CountryOut]:
+    """List the countries an address may be in, as a form offers them: the United States
+    first, however it is named, then the rest by name."""
+    return [r.CountryOut.model_validate(one) for one in countries.list_countries(db)]
+
+
+@country_routes.post("", status_code=201)
+def create_country(body: r.CountryCreate, principal: Admin, context: Audit, db: Db) -> r.CountryOut:
+    """Add a country: its ISO 3166-1 code, given in any case and kept in capitals, and
+    its name, each unique without regard to case."""
+    made = countries.create_country(db, context, body.model_dump(), principal.role)
+    return r.CountryOut.model_validate(made)
+
+
+@country_routes.patch("/{hid}")
+def update_country(
+    hid: str, body: r.CountryPatch, principal: Admin, context: Audit, db: Db
+) -> r.CountryOut:
+    """Rename a country, or give it another code where no address holds the one it has:
+    its states go with it. The United States keeps `US`."""
+    changed = countries.update_country(
+        db, context, hid, body.row_version, _changes(body), principal.role
+    )
+    return r.CountryOut.model_validate(changed)
+
+
+@country_routes.delete("/{hid}", status_code=204)
+def delete_country(hid: str, principal: Admin, context: Audit, db: Db) -> None:
+    """Remove a country that no address holds, with its states, none of which any
+    address holds either, in one change; each removal is audited, and the country's
+    event names the states removed with it. The United States is not removed."""
+    countries.delete_country(db, context, hid, principal.role)
+
+
+@state_routes.get("")
+def list_states(
+    _: Viewer,
+    db: Db,
+    country: Annotated[
+        str,
+        Query(
+            max_length=100,
+            description="One country's states, the country by its code or its name. "
+            "Left out, the states of every country, each country's together in the order "
+            "of `GET /countries`.",
+        ),
+    ] = "",
+) -> list[r.StateOut]:
+    """List the states of a country by name, or of every country."""
+    return [r.StateOut.model_validate(one) for one in countries.list_states(db, country)]
+
+
+@state_routes.post("", status_code=201)
+def create_state(body: r.StateCreate, principal: Admin, context: Audit, db: Db) -> r.StateOut:
+    """Add a state to a country of the list: the part of its ISO 3166-2 code after the
+    hyphen, kept in capitals, and its name, each unique within the country."""
+    made = countries.create_state(db, context, body.model_dump(), principal.role)
+    return r.StateOut.model_validate(made)
+
+
+@state_routes.patch("/{hid}")
+def update_state(
+    hid: str, body: r.StatePatch, principal: Admin, context: Audit, db: Db
+) -> r.StateOut:
+    """Rename a state, or give it another code where no address holds the one it has.
+    Its country is not changed."""
+    changed = countries.update_state(
+        db, context, hid, body.row_version, _changes(body), principal.role
+    )
+    return r.StateOut.model_validate(changed)
+
+
+@state_routes.delete("/{hid}", status_code=204)
+def delete_state(hid: str, principal: Admin, context: Audit, db: Db) -> None:
+    """Remove a state that no address holds. Audited."""
+    countries.delete_state(db, context, hid, principal.role)
+
+
+@place_routes.get("/unlisted-addresses")
+def unlisted_addresses(
+    _: Viewer, db: Db, limit: Limit = DEFAULT_LIMIT, offset: Offset = 0
+) -> Page[r.UnlistedAddress]:
+    """List each country and state of the street address or the shipping set of a
+    region, a site or a location that no list holds, a row to each, by the path of the
+    place: what the upgrade to 0.9.18 kept as it was typed, for a person to choose. The
+    retired and the drafts are among them."""
+    found = geography.unlisted_addresses(db)
+    return Page(
+        items=[r.UnlistedAddress.model_validate(one) for one in found[offset : offset + limit]],
+        total=len(found),
+        limit=limit,
+        offset=offset,
+    )
+
+
+ROUTERS = (
+    regions,
+    sites,
+    locations,
+    tree,
+    contact_routes,
+    operator_routes,
+    assignments,
+    country_routes,
+    state_routes,
+    place_routes,
+)

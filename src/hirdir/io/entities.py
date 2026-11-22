@@ -36,6 +36,7 @@ from hirdir.db.models import (
     Contract,
     ContractContact,
     ContractCoverage,
+    Country,
     DeviceGroup,
     DeviceGroupMember,
     ExternalSystem,
@@ -51,6 +52,7 @@ from hirdir.db.models import (
     Region,
     Registration,
     Site,
+    State,
     Tag,
     Vendor,
     VendorContact,
@@ -66,6 +68,7 @@ from hirdir.domain import (
     contacts,
     contract_contacts,
     contracts,
+    countries,
     descent,
     geography,
     groups,
@@ -599,6 +602,11 @@ class Entity:
     # still told as changed where a row changes it: the status of an item's registration
     # with the system a file was read from (P-248).
     told: ClassVar[tuple[str, ...]] = ()
+    # A row whose HID no record of the table has is matched by its key where a record has
+    # it, and makes its record with the HID only where none has: a list that every
+    # inventory starts with, each with HIDs of its own, so that a file of another
+    # inventory finds what this one has (P-321).
+    keyed_beside_hid: ClassVar[bool] = False
     # The columns whose values an input format may write in another form than the file
     # gives them (P-322): what a row changes of one says the file's value beside it.
     formatted: ClassVar[frozenset[str]] = frozenset()
@@ -680,6 +688,94 @@ def _kept(record: Any) -> dict[str, Any]:
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
+
+
+class Countries(Entity):
+    """The list of countries an address takes its country from (P-321). A row is an
+    Admin's to apply: one that makes or changes a country is refused for any other role,
+    and one that changes nothing is nobody's to refuse, so that the file of every table
+    loads back into the inventory it came from."""
+
+    name = "countries"
+    record_type = "country"
+    model = Country
+    listing = fields.COUNTRIES
+    keyed_beside_hid = True
+    columns = (
+        HID,
+        Column("code", limit=10),
+        Column("name", limit=countries.NAME_LENGTH),
+        *BOOKKEEPING,
+    )
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        code = values.get("code")
+        if not code:
+            return None
+        return run.db.scalar(select(Country).where(Country.code == code.upper()))
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("code") or values.get("name") or (record.code if record else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, countries.COUNTRY_FIELDS)
+        if record is None:
+            return countries.create_country(run.db, run.context, given, run.role)
+        return countries.update_country(
+            run.db, run.context, record.hid, record.row_version, given, run.role
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        return [{**_kept(one), "code": one.code, "name": one.name} for one in found]
+
+
+class States(Entity):
+    """The list of states, each of a country of the list of countries (P-321). A row is
+    found by its HID, or else by its code within its country, which it names by its code
+    or its name, and is an Admin's to apply as a row of countries is."""
+
+    name = "states"
+    record_type = "state"
+    model = State
+    listing = fields.STATES
+    keyed_beside_hid = True
+    columns = (
+        HID,
+        Column("country", limit=countries.NAME_LENGTH),
+        Column("code", limit=10),
+        Column("name", limit=countries.NAME_LENGTH),
+        *BOOKKEEPING,
+    )
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        named, code = values.get("country"), values.get("code")
+        if not named or not code:
+            return None
+        country = countries.find_country(run.db, named)
+        if country is None:
+            return None
+        return run.db.scalar(
+            select(State).where(State.country == country.code, State.code == code.upper())
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        if record is not None and not values.get("code"):
+            return f"{record.country}-{record.code}"
+        return "-".join(str(values[name]) for name in ("country", "code") if values.get(name))
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, countries.STATE_FIELDS)
+        if record is None:
+            return countries.create_state(run.db, run.context, given, run.role)
+        return countries.update_state(
+            run.db, run.context, record.hid, record.row_version, given, run.role
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        return [
+            {**_kept(one), "country": one.country, "code": one.code, "name": one.name}
+            for one in found
+        ]
 
 
 class Tags(Entity):
@@ -5329,6 +5425,8 @@ class CircuitDevices(Entity):
 ENTITIES: Mapping[str, Entity] = {
     entity.name: entity
     for entity in (
+        Countries(),
+        States(),
         Tags(),
         Vendors(),
         CatalogEntries(),
@@ -5368,6 +5466,9 @@ ENTITIES: Mapping[str, Entity] = {
 # The order in which files are loaded into an empty database: a record after the ones it
 # names. Addresses come last, because a group has addresses too.
 LOAD_ORDER = (
+    # The lists that an address takes its country and its state from come first (P-321).
+    "countries",
+    "states",
     "tags",
     "vendors",
     "catalog_entries",
@@ -5408,6 +5509,8 @@ LOAD_ORDER = (
 )
 # What each table is called for people, as the Import page lists them (P-286).
 LABELS = {
+    "countries": "Countries",
+    "states": "States",
     "tags": "Tags",
     "vendors": "Vendors",
     "catalog_entries": "Catalog entries",
@@ -5442,6 +5545,11 @@ LABELS = {
     "circuit_contacts": "Contacts of circuits",
     "circuit_devices": "Devices of circuits",
 }
+
+
+# The lists of countries and states: a row of them is an Admin's to apply, and a reset keeps
+# them, as it keeps the choices, so that the examples, which a reset takes, leave them out (P-321).
+LISTS = ("countries", "states")
 
 
 def entity(name: Any) -> Entity:
