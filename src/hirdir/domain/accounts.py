@@ -68,6 +68,9 @@ NEVER_ADMIN = "an agent is never Admin"
 # Why the role in force of an agent is lower than the role it holds (P-316).
 PERSON_ROLE, PERSON_NO_ROLE = "person_role", "person_no_role"
 PERSON_DISABLED, PERSON_RETIRED = "person_disabled", "person_retired"
+# And an agent that holds Admin all the same, which no route gives it: a database edited
+# by hand or restored from one. It acts as Inventory at the most (the lead's reading).
+NEVER_ADMIN_HELD = "never_admin"
 
 
 class NotSignedIn(Exception):
@@ -125,7 +128,9 @@ class InForce:
 
 def _capped(own: Role | None, person: User | None, held: Role | None) -> InForce:
     """Return the role in force of an agent that holds `own`, whose person holds `held`:
-    the lower of the two, or none where the person is retired, disabled or holds none."""
+    the lower of the two, or none where the person is retired, disabled or holds none.
+    An agent is never Admin, and is held at Inventory here too, where the role is read,
+    whatever it holds: so that a database edited by hand gives an agent no more."""
     if own is None:
         return InForce(None)
     if person is None or is_retired(person):
@@ -134,8 +139,10 @@ def _capped(own: Role | None, person: User | None, held: Role | None) -> InForce
         return InForce(None, PERSON_DISABLED)
     if held is None:
         return InForce(None, PERSON_NO_ROLE)
-    if held.rank < own.rank:
+    if held.rank < min(own.rank, Role.INVENTORY.rank):
         return InForce(held, PERSON_ROLE)
+    if own is Role.ADMIN:
+        return InForce(Role.INVENTORY, NEVER_ADMIN_HELD)
     return InForce(own)
 
 
@@ -492,7 +499,7 @@ def checked_kind(kind: str | None) -> str:
     return kind
 
 
-def _checked_answerable(db: Session, hid: str | None, field: str = "answerable_hid") -> User:
+def checked_answerable(db: Session, hid: str | None, field: str = "answerable_hid") -> User:
     """Return the person an agent is to be answerable to, or refuse one it cannot be: a
     user of the kind `person` who is not retired (P-316). The writer's place is taken
     before the look, so that a retirement of the person at the same moment waits and then
@@ -791,7 +798,7 @@ def create_user(
             f"{KIND_WORDS[kind]} is answerable to nobody: an agent alone is",
             {"answerable_hid": "an agent alone is answerable to a person"},
         )
-    answerable = _checked_answerable(db, answerable_hid) if kind == AGENT else None
+    answerable = checked_answerable(db, answerable_hid) if kind == AGENT else None
     person = _checked_contact(db, contact_hid, None, kind) if contact_hid else None
     code = None
     if kind == PERSON:
@@ -884,7 +891,7 @@ def update_user(
             )
         if is_agent(user) and new != user.answerable_hid:
             changes.append(
-                change("answerable_hid", user.answerable_hid, _checked_answerable(db, new).hid)
+                change("answerable_hid", user.answerable_hid, checked_answerable(db, new).hid)
             )
     if fields.get("disabled") is not None and fields["disabled"] != user.disabled:
         changes.append(change("disabled", user.disabled, fields["disabled"]))

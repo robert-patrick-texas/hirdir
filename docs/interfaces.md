@@ -620,7 +620,11 @@ requests are held to now, which is `role` for a person and a service account and
 agent, the lower of `role` and its person's, null where its tokens are refused for the
 person; and `role_capped_by`, of an agent whose `role_in_force` is lower than `role`, why:
 `person_role`, the person's role is lower, `person_no_role`, `person_disabled` or
-`person_retired`; null where nothing holds it lower, and for the other kinds.
+`person_retired`; null where nothing holds it lower, and for the other kinds. An agent
+that holds Admin all the same, which no route gives it but a database edited by hand or
+restored from one may, is held at Inventory wherever its role is read, beside its
+person's: `role` says `admin`, `role_in_force` `inventory`, and `role_capped_by`
+`never_admin`, unless its person's role is lower still, `person_role`.
 `GET /auth/me`, and the user in the answer of signing in, answer each field of this
 section as a user does, `kind`, `answerable_hid`, `answerable`, `agents`, `grants`,
 `role_in_force` and `role_capped_by`, so that the token of an agent reads its kind, its
@@ -681,7 +685,9 @@ answerable to.
 An agent by itself is retired and brought back as a service account is, its tokens
 revoked when it is retired. `POST /users/{hid}/bring-back` takes `answerable_hid`, of an
 agent alone, a `422` for the other kinds: the person answerable for it from then on, as
-`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`. Left out,
+`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`, and held
+to the same rules before anything is changed: a retired person is a `422` on
+`answerable_hid`, the one the agent had among them. Left out,
 the agent stays its person's; where that person is retired it is a `409` on
 `answerable_hid` that names them as `existing`, and nothing changes. An agent may be
 brought back with no role, as a service account may.

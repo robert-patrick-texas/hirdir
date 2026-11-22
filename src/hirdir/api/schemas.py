@@ -149,7 +149,9 @@ NOTES_LENGTH = 10_000
 # to one.
 UserKind = Literal["person", "service", "agent"]
 # Why the role in force of an agent is lower than the role it holds (P-316).
-CappedBy = Literal["person_role", "person_no_role", "person_disabled", "person_retired"]
+CappedBy = Literal[
+    "person_role", "person_no_role", "person_disabled", "person_retired", "never_admin"
+]
 
 
 class AccountRef(Model):
@@ -228,9 +230,10 @@ class UserOut(Model):
         "is retired, its tokens being refused then (P-316)."
     )
     role_capped_by: CappedBy | None = Field(
-        description="Of an agent alone, where its person holds `role_in_force` lower than "
-        "`role`, why: the person's role is lower, `person_role`, or the person holds none, "
-        "is disabled or is retired. Null where nothing holds it lower."
+        description="Of an agent alone, where `role_in_force` is lower than `role`, why: "
+        "the person's role is lower, `person_role`, or the person holds none, is disabled or "
+        "is retired; or `never_admin`, an agent that holds Admin all the same, which no route "
+        "gives it, held at Inventory. Null where nothing holds it lower."
     )
     groups: list[GroupRef]
     last_sign_in_at: datetime | None
