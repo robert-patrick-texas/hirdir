@@ -212,6 +212,10 @@ class AuditEvent(Base):
     __table_args__ = (
         Index("audit_events_record", "record_type", "record_hid"),
         Index("audit_events_at", "at"),
+        # The events of one account, and of the accounts of one kind, and those made for
+        # one person by agents (P-316).
+        Index("audit_events_actor", "actor_hid"),
+        Index("audit_events_for", "for_hid"),
     )
 
     hid: Mapped[str] = _hid()
