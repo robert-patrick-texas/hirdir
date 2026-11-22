@@ -481,8 +481,9 @@ def checked_address(
 ) -> None:
     """Hold the country and the state of one set of an address to the lists (P-321).
 
-    `values` holds what the change gives, as the place's own rules took it. Where it
-    changes the country or the state of the set, both are checked: the country is a
+    `values` holds what the change gives, as the place's own rules took it. A country
+    given is the code it resolves to, and is no change where that is the code held. Where
+    the change changes the country or the state of the set, both are checked: the country is a
     listed one, found by its code or its name, and kept as its code, or blank, which is
     read as the United States and not written so; the state, where the country in force
     has states listed, one of them, kept as its code, or blank, and where it has none, text
@@ -494,14 +495,14 @@ def checked_address(
     def held(name: str) -> Any:
         return getattr(record, name) if record is not None else None
 
-    changed = [
-        name
-        for name in (country_field, state_field)
-        if name in fields and values.get(name) != held(name)
-    ]
-    if not changed:
-        return
     country = values.get(country_field, held(country_field))
+    if country_field in fields and country is not None and country != held(country_field):
+        # A country given by its name, or by its code in another case, is the code it
+        # resolves to: that it is spelled otherwise than the one held changes nothing.
+        country = values[country_field] = the_country(db, country, country_field).code
+    state_changed = state_field in fields and values.get(state_field) != held(state_field)
+    if not state_changed and country == held(country_field):
+        return
     state = values.get(state_field, held(state_field))
     code = US
     if country is not None:

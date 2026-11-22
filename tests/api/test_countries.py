@@ -303,6 +303,28 @@ def test_a_value_held_from_before_is_kept_until_its_country_or_state_is_changed(
     }
 
 
+def test_a_country_given_by_another_spelling_of_the_one_held_is_no_change(
+    client: TestClient, ivy: Maker
+) -> None:
+    """A country given by its name, or by its code in another case, is the code it
+    resolves to: where that is the one the set holds, no country is changed, and a state
+    held from before that no list holds stays (the review of 0.9.18, finding 4)."""
+    region = ivy.region("Americas")
+    mexico = ivy.site("Site-MX", region, city="Monterrey", country="MX")
+    _held(client, Site, mexico["hid"], state="Nuevo Leon")
+    version = ivy.get(f"/sites/{mexico['hid']}")["row_version"]
+    for given in ("Mexico", "mx", "MX"):
+        kept = ivy.patch(
+            f"/sites/{mexico['hid']}",
+            {"row_version": version, "city": f"Monterrey {given}", "country": given},
+        )
+        assert (kept["country"], kept["state"]) == ("MX", "Nuevo Leon"), given
+        version = kept["row_version"]
+    # Another country checks the state held.
+    refused = ivy.patch(f"/sites/{mexico['hid']}", {"row_version": version, "country": "CA"}, 422)
+    assert set(errors(refused)) == {"state"}
+
+
 def test_the_shipping_address_in_force_answers_the_names_with_its_source(ivy: Maker) -> None:
     region = ivy.region("Americas", ship_country="MX", ship_state="jalisco", ship_city="Zapopan")
     site = ivy.site("Site-3", region)
