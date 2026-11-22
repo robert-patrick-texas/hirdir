@@ -551,6 +551,25 @@ def test_an_agent_is_brought_back_answerable_to_a_person_who_is_not_retired(
         path, {"row_version": version, "role": "admin", "answerable_hid": kim["hid"]}, 422
     )
     assert errors(refused) == {"role": "an agent is never Admin"}
+    # Named again, the retired person is refused as a hand-over to them is, and nothing
+    # changes: the agent stays retired, and nobody lists it.
+    for retired in (sam, desk.person("pat")):
+        if retired is not sam:
+            desk.post(
+                f"/users/{retired['hid']}/retire",
+                {"row_version": desk.user(retired)["row_version"]},
+                200,
+            )
+        refused = desk.post(
+            path, {"row_version": version, "role": "viewer", "answerable_hid": retired["hid"]}, 422
+        )
+        assert errors(refused) == {"answerable_hid": "this account is retired"}
+        assert refused["detail"] == (
+            f"the account {retired['username']} is retired: an agent is answerable to a person "
+            "who is not"
+        )
+    assert desk.user(agent)["record_status"] == "retired"
+    assert desk.user(agent)["row_version"] == version
     back = desk.post(
         path, {"row_version": version, "role": "viewer", "answerable_hid": kim["hid"]}, 200
     )

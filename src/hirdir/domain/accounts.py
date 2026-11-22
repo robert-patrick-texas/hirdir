@@ -492,7 +492,7 @@ def checked_kind(kind: str | None) -> str:
     return kind
 
 
-def _checked_answerable(db: Session, hid: str | None, field: str = "answerable_hid") -> User:
+def checked_answerable(db: Session, hid: str | None, field: str = "answerable_hid") -> User:
     """Return the person an agent is to be answerable to, or refuse one it cannot be: a
     user of the kind `person` who is not retired (P-316). The writer's place is taken
     before the look, so that a retirement of the person at the same moment waits and then
@@ -791,7 +791,7 @@ def create_user(
             f"{KIND_WORDS[kind]} is answerable to nobody: an agent alone is",
             {"answerable_hid": "an agent alone is answerable to a person"},
         )
-    answerable = _checked_answerable(db, answerable_hid) if kind == AGENT else None
+    answerable = checked_answerable(db, answerable_hid) if kind == AGENT else None
     person = _checked_contact(db, contact_hid, None, kind) if contact_hid else None
     code = None
     if kind == PERSON:
@@ -884,7 +884,7 @@ def update_user(
             )
         if is_agent(user) and new != user.answerable_hid:
             changes.append(
-                change("answerable_hid", user.answerable_hid, _checked_answerable(db, new).hid)
+                change("answerable_hid", user.answerable_hid, checked_answerable(db, new).hid)
             )
     if fields.get("disabled") is not None and fields["disabled"] != user.disabled:
         changes.append(change("disabled", user.disabled, fields["disabled"]))

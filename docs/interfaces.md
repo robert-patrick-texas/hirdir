@@ -681,7 +681,9 @@ answerable to.
 An agent by itself is retired and brought back as a service account is, its tokens
 revoked when it is retired. `POST /users/{hid}/bring-back` takes `answerable_hid`, of an
 agent alone, a `422` for the other kinds: the person answerable for it from then on, as
-`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`. Left out,
+`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`, and held
+to the same rules before anything is changed: a retired person is a `422` on
+`answerable_hid`, the one the agent had among them. Left out,
 the agent stays its person's; where that person is retired it is a `409` on
 `answerable_hid` that names them as `existing`, and nothing changes. An agent may be
 brought back with no role, as a service account may.
