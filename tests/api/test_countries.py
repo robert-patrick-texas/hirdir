@@ -175,7 +175,10 @@ def test_a_code_that_an_address_holds_is_not_changed_and_its_country_is_not_remo
     assert "the site Site-X" in errors(refused)["code"]
     refused = _refused(desk, f"/countries/{land['hid']}")
     assert "the site Site-X" in errors(refused)["code"]
-    desk.delete(f"/states/{north['hid']}", 409)
+    # The refusal says what to give the one address first.
+    assert errors(refused)["code"].endswith("; give it another country first")
+    refused = _refused(desk, f"/states/{north['hid']}")
+    assert errors(refused)["code"].endswith("; give it another state first")
     desk.patch(f"/states/{north['hid']}", {"row_version": 1, "code": "NN"}, 409)
     # A state's country is not given another.
     desk.patch(f"/states/{north['hid']}", {"row_version": 1, "country": "CA"}, 422)
