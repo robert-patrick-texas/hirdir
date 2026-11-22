@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.db.models import AuditEvent, ServiceToken, User
 from hirdir.io import kept
-from hirdir.io.entities import LOAD_ORDER
+from hirdir.io.entities import LISTS, LOAD_ORDER
 from tests.api.inventory import API, Maker
 
 
@@ -41,7 +41,11 @@ def test_every_table_is_listed_in_the_order_of_loading_with_its_count_and_column
 
 
 def test_an_empty_table_exports_as_its_template(client: TestClient, viewer: dict[str, str]) -> None:
-    for table in tables(client, viewer):
+    """Every table of a new inventory is empty but the lists of countries and states,
+    which it starts with (P-321)."""
+    listed = tables(client, viewer)
+    assert [table["count"] for table in listed if table["entity"] in LISTS] == [55, 633]
+    for table in (table for table in listed if table["entity"] not in LISTS):
         response = client.post(
             f"{API}/exports",
             json={"entity": table["entity"], "own_values": True},

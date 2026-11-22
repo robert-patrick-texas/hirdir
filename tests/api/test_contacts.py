@@ -200,6 +200,9 @@ def test_a_shipping_address_is_taken_whole_and_instructions_by_themselves(make: 
             "state": None,
             "postal_code": None,
             "country": None,
+            # A blank country of an address is read as the United States (P-321).
+            "country_name": "United States",
+            "state_name": None,
         },
         "same_as_address": False,
         "source": "region",
@@ -295,6 +298,8 @@ def test_a_shipping_address_is_set_once_and_nothing_is_typed_twice(
         "state": None,
         "postal_code": None,
         "country": None,
+        "country_name": "United States",
+        "state_name": None,
     }
     assert (found["same_as_address"], found["source"]) == (True, "own")
     assert (found["overrides_hid"], found["overrides_path"]) == (metro["hid"], "Metro Area")
