@@ -797,6 +797,20 @@ describe("the agents of a person retired with them, or handed over (P-316)", () 
     expect(refusedAgents({}, ON_USER, WITH, handed)).toEqual({ rows: {}, shown: [] });
   });
 
+  it("finds an agent the words name by its whole username, not as part of another's (review 16)", () => {
+    const sync: LinkedUser = { ...AGENT, hid: "A3", username: "agent-sync" };
+    const sync2: LinkedUser = { ...AGENT, hid: "A4", username: "agent-sync2" };
+    const both: Linked = { ...PERSON, agents: [sync, sync2] };
+    const handed = hand(hand(startChoices(ON_USER, both, true), "A3", "U9"), "A4", "U9");
+    const fields = { "linked.agents": "agent-sync2 is handed to sam, who is retired." };
+    expect(refusedAgents(fields, ON_USER, both, handed).rows).toEqual({
+      "agent A4": fields["linked.agents"],
+    });
+    // Named at the end of a sentence, or before a comma, it is found.
+    const end = { "linked.agents": "sam, who is retired, cannot take agent-sync." };
+    expect(Object.keys(refusedAgents(end, ON_USER, both, handed).rows)).toEqual(["agent A3"]);
+  });
+
   it("finds the list changed where an agent is new", () => {
     expect(sameOthers(ON_USER, PERSON, WITH)).toBe(false);
     expect(sameOthers(ON_USER, WITH, { ...WITH, agents: [AGENT] })).toBe(true);
