@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -83,6 +83,16 @@ def whoami(url: Url = None, token: Token = None, output: Format = "table") -> No
         return
     groups = ", ".join(group["name"] for group in me["groups"]) or "-"
     typer.echo(f"{me['username']}  role: {me['role'] or '-'}  groups: {groups}")
+    if me["kind"] != "person":
+        # A service account and an agent are no person: they have no contact and no
+        # operator. An agent is answerable to a person, who holds its role (P-316).
+        line = f"{'kind':<14}{me['kind']}"
+        if me["answerable"] is not None:
+            line += f", for {me['answerable']['username']}"
+            if me["role_in_force"] != me["role"]:
+                line += f", held to {me['role_in_force'] or 'no role'}"
+        typer.echo(line)
+        return
     for line in profile.lines(me):
         typer.echo(line)
 
@@ -95,15 +105,23 @@ def users_list(
     retired_only: Annotated[
         bool, typer.Option("--retired-only", help="The retired accounts alone.")
     ] = False,
+    kind: Annotated[
+        str | None,
+        typer.Option(
+            "--kind", metavar="person|service|agent", help="The accounts of one kind (P-316)."
+        ),
+    ] = None,
     url: Url = None,
     token: Token = None,
     output: Format = "table",
 ) -> None:
-    """List users: those that are not retired, unless the retired are asked for."""
+    """List users: those that are not retired, unless the retired are asked for. An agent
+    is followed by the person answerable for it."""
     which = "only" if retired_only else "yes" if retired else "no"
-    page = client.call(
-        client.load_target(url, token), "GET", "/users", params={"limit": 1000, "retired": which}
-    )
+    params: dict[str, Any] = {"limit": 1000, "retired": which}
+    if kind:
+        params["kind"] = kind
+    page = client.call(client.load_target(url, token), "GET", "/users", params=params)
     if output == "json":
         typer.echo(json.dumps(page["items"], indent=2))
         return
@@ -114,7 +132,12 @@ def users_list(
         if user["record_status"] == "retired":
             state = "retired"
         groups = ", ".join(group["name"] for group in user["groups"])
-        typer.echo(f"{user['username']:<24}{user['role'] or '-':<11}{kind:<9}{state:<10}{groups}")
+        line = f"{user['username']:<24}{user['role'] or '-':<11}{kind:<9}{state:<10}{groups}"
+        if user["answerable"] is not None:
+            line += f"  for {user['answerable']['username']}"
+            if user["role_in_force"] != user["role"]:
+                line += f", held to {user['role_in_force'] or 'no role'}"
+        typer.echo(line.rstrip())
 
 
 @users.command("retire")
@@ -122,13 +145,15 @@ def users_retire(
     username: Annotated[str, typer.Argument(help="A username or an HID.")],
     contact: people.Fate = None,
     operator: people.Labels = None,
+    agent: people.Agents = None,
     dry_run: people.DryRun = False,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Retire the account of somebody who has left: it signs in no longer and loses its
-    groups, its role and its code. Prints its contact and the operators of that
-    contact, and takes what becomes of each: --contact and, for each, --operator."""
+    groups, its role and its code. Prints its contact, the operators of that contact
+    and the agents answerable to it, and takes what becomes of each: --contact and, for
+    each, --operator and --agent (P-316)."""
     target = client.load_target(url, token)
     found = people.find_user(target, username)
     people.retire(
@@ -142,6 +167,7 @@ def users_retire(
         operators=operator,
         dry_run=dry_run,
         find_contact=inventory.find_contact,
+        agents=agent,
     )
 
 
@@ -165,17 +191,33 @@ def users_bring_back(
             help="viewer, inventory or admin: the role it holds again, which a person is given."
         ),
     ] = None,
+    answerable: Annotated[
+        str | None,
+        typer.Option(
+            "--for",
+            metavar="USER",
+            help="Of an agent: the person answerable for it from then on, which it needs "
+            "where its own is retired (P-316).",
+        ),
+    ] = None,
     dry_run: people.DryRun = False,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Bring a retired account back: active, with a new access code, printed once, the
     role given by --role and no group. A person is given a role, since an account with
-    none does not sign in. An account whose contact is retired is brought back with it."""
+    none does not sign in. An account whose contact is retired is brought back with it,
+    and an agent whose person is retired is brought back answerable to --for."""
     target = client.load_target(url, token)
     found = people.find_user(target, username)
     people.bring_back(
-        target, found, contact=contact, operators=operator, dry_run=dry_run, role=role
+        target,
+        found,
+        contact=contact,
+        operators=operator,
+        dry_run=dry_run,
+        role=role,
+        answerable=answerable,
     )
 
 
