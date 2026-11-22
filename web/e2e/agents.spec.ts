@@ -194,11 +194,12 @@ test("P-316: an agent's page names its person, holds it to their role, and hands
   await expect(hand.getByRole("button", { name: "Hand over" })).toBeDisabled();
   await choosePerson(page, "Hand to", jan.name);
   await hand.getByRole("button", { name: `Hand ${agent.username} to ${jan.name}` }).click();
-  await expect(
-    page.getByText(`${agent.username} is answerable to ${jan.name} from now on.`),
-  ).toBeVisible();
+  // The page read again names Jan, and still says what was done (review 2).
   await expect(
     page.getByTestId("user-answerable").getByRole("link", { name: jan.name }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`${agent.username} is answerable to ${jan.name} from now on.`),
   ).toBeVisible();
   await expect(page.getByTestId("user-role-capped")).toHaveCount(0);
   await expect(facts).toContainText("Inventory");

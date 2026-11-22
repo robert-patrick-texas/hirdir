@@ -119,11 +119,9 @@ function UserPage({ hid }: { hid: string }) {
           )}
           {/* 0.9.17: an agent's person, and the agent handed to another (P-316). */}
           {user.data.kind === "agent" && !retired && (
-            <Answerable
-              key={`answerable ${user.data.hid} ${user.data.row_version}`}
-              user={user.data}
-              reload={user.reload}
-            />
+            // Not keyed on the version: the words of a hand-over outlast the page read again
+            // (review 2).
+            <Answerable key={`answerable ${user.data.hid}`} user={user.data} reload={user.reload} />
           )}
           {user.data.kind === "person" && (
             <Person
@@ -462,6 +460,8 @@ function Answerable({ user, reload }: { user: User; reload: () => void }) {
     );
     if (!result.ok) return;
     setDone(`${user.username} is answerable to ${name} from now on.`);
+    setChosen("");
+    setName("");
     reload();
   }
 
