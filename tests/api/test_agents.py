@@ -688,8 +688,10 @@ def test_an_agent_is_in_no_gap_and_is_named_so_by_the_measures(
     account is not; and the server's own measures name it as an agent (P-316)."""
     desk = _desk(client, admin)
     agent = desk.agent("agent-reconcile", desk.person("sam"))
-    for which in ("contact", "operator"):
-        gaps = [one["username"] for one in desk.get("/users", **{which: "none"})["items"]]
+    for gaps in (
+        [one["username"] for one in desk.get("/users", contact="none")["items"]],
+        [one["username"] for one in desk.get("/users", operator="none")["items"]],
+    ):
         assert "sam" in gaps
         assert "agent-reconcile" not in gaps
     assert client.get(f"{API}/auth/me", headers=desk.token(agent)).status_code == 200

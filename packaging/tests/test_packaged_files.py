@@ -469,6 +469,7 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
     from hirdir.io import users_file
 
     versions = ROOT / "src/hirdir/db/migrations/versions"
+    # The revision of 0.9.14, which 0018 of 0.9.17 follows (P-316).
     revision = "0017"
     (migration,) = versions.glob(f"{revision}_*.py")
     source = migration.read_text(encoding="utf-8")
@@ -611,6 +612,9 @@ def test_the_install_page_and_the_package_test_say_of_no_role_what_the_code_says
     from hirdir.auth import codes
     from hirdir.domain import accounts, settings
 
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    # 0.9.15 stayed at 0017, which 0018 of 0.9.17 follows (P-316).
+    assert list(versions.glob("0017_*.py"))
     assert "### From 0.9.14 to 0.9.15" in INSTALL
     notes = INSTALL.split("### From 0.9.14 to 0.9.15\n", 1)[1].split("\n### ", 1)[0]
     page = " ".join(notes.split())
@@ -653,10 +657,8 @@ def test_the_install_page_and_the_package_test_say_of_no_role_what_the_code_says
     # The longer words are said to a session that was never ended, as the one from
     # before the upgrade is; a revocation of the last role ends the sessions, which are
     # then refused as any ended one is.
-    # From 0.9.17 the words of a token are the service account's or the agent's (P-316).
-    assert f'NotSignedIn("{session}")' in source
-    assert f'else "{token}"' in source
     for words in (session, token):
+        assert f'NotSignedIn("{words}")' in source
         assert words in hook
     assert token in script
     assert '204 401 the session has been ended"' in script
