@@ -524,7 +524,13 @@ def test_the_alert_of_the_day_is_worked_out_just_after_midnight_and_at_start(
     kept.drop()
     sessions = make_sessions(make_engine(config.database_url))
     scheduler = Scheduler(sessions, (LONG_REPORTS,))
-    start = datetime.now(UTC)
+    zone = ZoneInfo("America/New_York")
+    # Taken past the five minutes after midnight in which a day's reports fall due, so
+    # that what follows holds whatever time of day the test runs at: started within
+    # them, the reports of the day would still be due at the next night.
+    now = datetime.now(UTC)
+    past_midnight = datetime.combine(now.astimezone(zone).date(), time(0, 6), tzinfo=zone)
+    start = max(now, past_midnight.astimezone(UTC))
     assert scheduler.run_due(start, starting=True) == ["long reports"]
     with sessions() as db:
         stamp = kept.stamp(db)
@@ -533,7 +539,6 @@ def test_the_alert_of_the_day_is_worked_out_just_after_midnight_and_at_start(
     assert desk.get("/renewals/alert")["lapsed"]["count"] == 1
     # It is due again just after the next midnight, and not before.
     assert scheduler.run_due(start + timedelta(minutes=1)) == []
-    zone = ZoneInfo("America/New_York")
     # Five minutes past, once the record of the week is made, which another process
     # may make (P-267): at two minutes past it is not due yet.
     midnight = datetime.combine(
