@@ -36,13 +36,17 @@ def test_create_user_refuses_a_typed_code_that_is_too_short_and_says_the_length(
     tmp_path: Path, monkeypatch
 ) -> None:
     config = _installed(tmp_path, monkeypatch)
-    short = runner.invoke(app, ["admin", "create-user", "--access-code", "eleven-char", "ada"])
+    short = runner.invoke(
+        app, ["admin", "create-user", "--role", "viewer", "--access-code", "eleven-char", "ada"]
+    )
     assert short.exit_code == 4, short.output
     assert "the access code is too short: at least 12 characters" in short.output
     with make_sessions(make_engine(config.database_url))() as db:
         assert db.scalar(select(User).where(User.username == "ada")) is None
 
-    made = runner.invoke(app, ["admin", "create-user", "--access-code", "twelve-chars", "ada"])
+    made = runner.invoke(
+        app, ["admin", "create-user", "--role", "viewer", "--access-code", "twelve-chars", "ada"]
+    )
     assert made.exit_code == 0, made.output
     # A code that was typed is not printed back.
     assert "twelve-chars" not in made.output
@@ -53,7 +57,9 @@ def test_reset_access_code_refuses_a_typed_code_that_is_too_short_and_changes_no
     tmp_path: Path, monkeypatch
 ) -> None:
     config = _installed(tmp_path, monkeypatch)
-    runner.invoke(app, ["admin", "create-user", "--access-code", "twelve-chars", "ada"])
+    runner.invoke(
+        app, ["admin", "create-user", "--role", "viewer", "--access-code", "twelve-chars", "ada"]
+    )
     short = runner.invoke(app, ["admin", "reset-access-code", "--access-code", "short", "ada"])
     assert short.exit_code == 4, short.output
     assert "the access code is too short: at least 12 characters" in short.output
@@ -75,11 +81,13 @@ def test_the_setting_holds_for_hirdir_admin_and_a_made_code_is_as_long_as_it_ask
     with make_sessions(make_engine(config.database_url))() as db:
         settings.set_setting(db, audit.SYSTEM, settings.CODE_LENGTH_SETTING, 0, 20)
         db.commit()
-    short = runner.invoke(app, ["admin", "create-user", "--access-code", "twelve-chars", "ada"])
+    short = runner.invoke(
+        app, ["admin", "create-user", "--role", "viewer", "--access-code", "twelve-chars", "ada"]
+    )
     assert short.exit_code == 4, short.output
     assert "at least 20 characters" in short.output
 
-    made = runner.invoke(app, ["admin", "create-user", "ada"])
+    made = runner.invoke(app, ["admin", "create-user", "--no-role", "ada"])
     assert made.exit_code == 0, made.output
     code = made.output.split("access code: ")[1].splitlines()[0]
     # Made as long as the setting asks: five groups of four against 20 (P-300).

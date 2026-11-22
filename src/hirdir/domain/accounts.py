@@ -1559,23 +1559,22 @@ def _authenticate_service(db: Session, token: str) -> Principal:
     user = db.get(User, record.user_hid)
     if user is None or user.disabled or is_retired(user) or is_person(user):
         raise NotSignedIn("the token is not valid")
-    role = effective_role(db, user)
-    if role is None:
-        raise NotSignedIn(
-            f"the token is not accepted: the agent {user.username} holds no role"
-            if is_agent(user)
-            else "the token is not accepted: its service account holds no role"
-        )
     for_hid = None
     if is_agent(user):
         # The role in force of an agent is the lower of its own and its person's, read
         # now, so that the person's role caps it as it changes; nothing of the agent is
         # changed where the person cannot answer for it (P-316).
-        person = db.get(User, user.answerable_hid) if user.answerable_hid else None
         held = in_force(db, [user])[user.hid]
+        if held.role is None and held.capped_by is None:
+            raise NotSignedIn(f"the token is not accepted: the agent {user.username} holds no role")
         if held.role is None:
+            person = db.get(User, user.answerable_hid) if user.answerable_hid else None
             raise NotSignedIn(_not_answered_for(user, person, held.capped_by))
         role, for_hid = held.role, user.answerable_hid
+    else:
+        role = effective_role(db, user)
+        if role is None:
+            raise NotSignedIn("the token is not accepted: its service account holds no role")
     last = record.last_used_at
     if last is None or (now - last).total_seconds() > LAST_USED_GRANULARITY_SECONDS:
         _used(db, record, now)
