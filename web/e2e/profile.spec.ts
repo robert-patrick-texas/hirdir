@@ -36,7 +36,16 @@
 import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test";
 import { type Headers, make, session } from "./referenceSteps";
 import { region } from "./structure";
-import { type Account, createAccount, expectClean, mark, signIn, test, watch } from "./support";
+import {
+  type Account,
+  createAccount,
+  expectClean,
+  mark,
+  signIn,
+  test,
+  titled,
+  watch,
+} from "./support";
 
 const suffix = mark("profile");
 
@@ -299,7 +308,7 @@ test("P-294, P-295: a View-only person changes their details, their operator and
 
   // An email that another contact has: refused at the field, that contact a link, and
   // everything typed with it kept.
-  const renamed = `Kim A. Example ${suffix}`;
+  const renamed = titled(`Kim A. Example ${suffix}`);
   await name.fill(renamed);
   await email.fill(sam.email);
   await phone2.fill("+1 555 0113");

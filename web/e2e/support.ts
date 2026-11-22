@@ -105,6 +105,16 @@
 // another. A file that counts on what its page answers may find the mark on it: it is
 // in the menu bar, of the test id health-mark, and asks the server nothing.
 
+// 0.9.18, the input formats (P-322): formats.spec.ts sets `phone_formats`, which every
+// telephone number that every other file saves is written in, and turns
+// `title_case_names` off for a moment, which every name another file types follows,
+// which rule 5 forbids beside them. It runs in the project "the formats alone" of
+// playwright.config.ts, by itself, after "the ceiling alone"; it notes the two settings
+// as it found them and puts them back however it ends. `title_case_names` is true from
+// the start, and every other file runs with it so: a file that types a person's name,
+// a contact's, with its mark in it gives `titled` of it, below, which the page leaves as
+// it is, and so expects the same name whatever the random part of its mark starts with.
+
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import {
@@ -132,6 +142,27 @@ export interface Account {
  */
 export function mark(file: string, random: string = randomBytes(3).toString("hex")): string {
   return `${file}-${random}`;
+}
+
+/**
+ * 0.9.18: a person's name as the page writes it when it is typed, `title_case_names` being
+ * true from the start (P-322 (7)): the first letter of each word, after a space, a hyphen
+ * or an apostrophe, raised where it is in lower case, and no capital lowered. A file that
+ * types a person's name with its mark in it, `Ada Example people-3fa9c1`, gives this of
+ * it, `Ada Example People-3fa9c1`, which the page leaves as it is: the random part of a
+ * mark may start with a letter or a digit, and what the file expects is then the same
+ * whichever it is. A name made by the API or by a file is kept as given.
+ */
+export function titled(name: string): string {
+  let out = "";
+  let starts = true;
+  for (const character of name) {
+    const upper = character.toUpperCase();
+    const lower = character !== upper && character === character.toLowerCase();
+    out += starts && lower && [...upper].length === 1 ? upper : character;
+    starts = /[\s\-'’]/u.test(character);
+  }
+  return out;
 }
 
 /**

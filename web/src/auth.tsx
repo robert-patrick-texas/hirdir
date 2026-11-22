@@ -15,6 +15,7 @@ import { useNavigate } from "react-router";
 import { type ApiError, api, type Schemas, sessions } from "./api";
 import { Problem } from "./components/Problem";
 import { setZone } from "./lib/format";
+import { formatsOf, setFormats } from "./lib/formats";
 import { toApiError } from "./lib/hooks";
 import { site, siteOfAbout, useSite } from "./lib/product";
 import { SignIn } from "./pages/SignIn";
@@ -86,8 +87,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     // Every time on every page is in the application's time zone, so it is known
     // before the first page is shown. Every role reads the settings, and an account with
     // none is not signed in (P-299): where they cannot be read, the default stands.
+    // 0.9.18: so are the formats of what is typed or pasted (P-322 (7)).
     const zone = api.request("get", "/api/v1/settings", { signal: controller.signal }).then(
-      (settings) => settings.find((setting) => setting.key === "time_zone")?.value,
+      (settings) => {
+        if (!controller.signal.aborted) setFormats(formatsOf(settings));
+        return settings.find((setting) => setting.key === "time_zone")?.value;
+      },
       () => undefined,
     );
     const me = api.request("get", "/api/v1/auth/me", { signal: controller.signal });

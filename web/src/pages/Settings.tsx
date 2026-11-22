@@ -9,6 +9,7 @@ import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { setZone } from "../lib/format";
+import { formatsOf, OFFERED_PATTERNS, patternSample, setFormats, tidier } from "../lib/formats";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { END_OF_LIFE_DATES } from "../lib/lifecycleReports";
 import { CATALOG_KINDS } from "../lib/options";
@@ -17,13 +18,16 @@ import { site, siteOfSettings } from "../lib/product";
 import {
   FLAG_OPTIONS,
   listValue,
+  movedUp,
   type SettingRead,
+  settingFormat,
   settingInput,
   settingStart,
   settingText,
   settingValue,
   splitSettings,
   withExtension,
+  withPattern,
 } from "../lib/settings";
 import { dateValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
@@ -87,8 +91,11 @@ export function Settings() {
   // 0.9.2: the name of the product and whom the sign-in page lists, as the settings read
   // last say: a change shows on this page at once, in the menu bar and the title, and on
   // the sign-in page when this Admin signs out (P-168, P-169).
+  // 0.9.18: and the formats of what is typed or pasted, which every box follows (P-322).
   useEffect(() => {
-    if (settings.data) site.update(siteOfSettings(settings.data));
+    if (!settings.data) return;
+    site.update(siteOfSettings(settings.data));
+    setFormats(formatsOf(settings.data));
   }, [settings.data]);
 
   /** Close the form that is open, if any, and give the focus back to the setting's Change. */
@@ -432,6 +439,10 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
   const [extensions, setExtensions] = useState<string[]>(() =>
     Array.isArray(setting.value) ? setting.value.map(String) : [],
   );
+  // 0.9.18: the patterns a telephone number is written in, in the order tried (P-322).
+  const [patterns, setPatterns] = useState<string[]>(() =>
+    Array.isArray(setting.value) ? setting.value.map(String) : [],
+  );
   const action = useAction();
   const sectionId = formId(setting.key);
   const headingId = `${sectionId}-heading`;
@@ -447,12 +458,14 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
     const wanted: SettingRead =
       input === "extensions"
         ? { ok: true, value: extensions }
-        : input === "set"
-          ? listValue(
-              chosen,
-              options.map((option) => option.value),
-            )
-          : settingValue(setting, text);
+        : input === "patterns"
+          ? { ok: true, value: patterns }
+          : input === "set"
+            ? listValue(
+                chosen,
+                options.map((option) => option.value),
+              )
+            : settingValue(setting, text);
     if (!wanted.ok) {
       setFound(wanted.error);
       action.clear();
@@ -489,6 +502,16 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
             name={setting.key}
             list={extensions}
             onChange={setExtensions}
+            disabled={action.busy}
+            hint={hint}
+            error={found || action.error?.fields.value}
+          />
+        )}
+        {input === "patterns" && (
+          <PatternList
+            name={setting.key}
+            list={patterns}
+            onChange={setPatterns}
             disabled={action.busy}
             hint={hint}
             error={found || action.error?.fields.value}
@@ -542,6 +565,8 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
             name={setting.key}
             value={text}
             onChange={setText}
+            // 0.9.18: whom to ask's number and address, as the server writes them (P-322 (4)).
+            tidy={tidier(settingFormat(setting.key))}
             autoComplete="off"
             disabled={action.busy}
             hint={hint}
@@ -641,6 +666,124 @@ function ExtensionList({ name, list, onChange, disabled, hint, error }: Extensio
       </div>
       {error && (
         <p className="field-error" data-testid="extensions-refused">
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+interface PatternListProps {
+  name: string;
+  list: readonly string[];
+  onChange: (list: string[]) => void;
+  disabled: boolean;
+  hint: string;
+  error: string | undefined;
+}
+
+/**
+ * 0.9.18: the patterns a telephone number is written in, as the list it is, in the order
+ * they are tried (P-322 (1), (2)): each with a number written in it, moved up or removed;
+ * the two patterns of P-293 added with one press each, and one of the Admin's own typed.
+ * An empty list formats no number. What a pattern may be is the server's to say, and the
+ * form shows its refusal as it comes.
+ */
+function PatternList({ name, list, onChange, disabled, hint, error }: PatternListProps) {
+  const [typed, setTyped] = useState("");
+  const [wrong, setWrong] = useState("");
+
+  function add(pattern: string, own: boolean) {
+    const added = withPattern(list, pattern);
+    if (!added.ok) {
+      setWrong(added.error);
+      return;
+    }
+    setWrong("");
+    if (own) setTyped("");
+    onChange(added.list);
+  }
+
+  return (
+    <fieldset className="extension-list" aria-describedby={`${name}-hint`}>
+      <legend>New value</legend>
+      <p className="hint" id={`${name}-hint`}>
+        {hint} A number is written in the first pattern that fits its digits; one that none fits, or
+        with a letter in it, is kept as typed.
+      </p>
+      {list.length === 0 ? (
+        <p className="muted" data-testid="no-patterns">
+          No pattern: every number is kept as typed.
+        </p>
+      ) : (
+        <ol
+          className="extensions"
+          aria-label="The patterns, in the order tried"
+          data-testid="patterns"
+        >
+          {list.map((pattern, place) => (
+            <li key={pattern}>
+              <span className="mono">{pattern}</span>{" "}
+              <span className="muted">writes {patternSample(pattern)}</span>{" "}
+              {place > 0 && (
+                <button
+                  type="button"
+                  aria-label={`Move ${pattern} up`}
+                  disabled={disabled}
+                  onClick={() => onChange(movedUp(list, place))}
+                >
+                  Move up
+                </button>
+              )}{" "}
+              <button
+                type="button"
+                aria-label={`Remove ${pattern}`}
+                disabled={disabled}
+                onClick={() => onChange(list.filter((one) => one !== pattern))}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className="actions">
+        {OFFERED_PATTERNS.map((pattern) => (
+          <button
+            key={pattern}
+            type="button"
+            aria-label={`Add ${pattern}`}
+            disabled={disabled || list.includes(pattern)}
+            onClick={() => add(pattern, false)}
+          >
+            Add <span className="mono">{pattern}</span>
+          </button>
+        ))}
+      </p>
+      <div className="cell-form">
+        <TextField
+          label="Add a pattern of your own"
+          name={`${name}-add`}
+          value={typed}
+          onChange={setTyped}
+          maxLength={40}
+          autoComplete="off"
+          hint="# for each digit; digits before the first # alone, as a country's code; spaces and + - ( ) . / between them."
+          disabled={disabled}
+          error={wrong || undefined}
+          onKeyDown={(event) => {
+            // Enter in the box adds the pattern: it does not set the list.
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            add(typed, true);
+          }}
+        />
+        <button type="button" onClick={() => add(typed, true)} disabled={disabled}>
+          Add
+        </button>
+      </div>
+      {error && (
+        <p className="field-error" data-testid="patterns-refused">
           {error}
         </p>
       )}

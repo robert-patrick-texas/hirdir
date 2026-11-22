@@ -175,6 +175,17 @@ describe("valueText and changeText", () => {
     expect(changeText({ field: "tags", old: ["lab"], new: [] })).toBe("tags: lab → (blank)");
   });
 
+  it("say the file's value beside the one a format writes (P-322)", () => {
+    const change = (as_in_file: string | null) =>
+      ({ field: "phone", old: null, new: "+1 (555) 010-0124", as_in_file }) as Parameters<
+        typeof changeText
+      >[0];
+    expect(changeText(change("1 555 010 0124"))).toBe(
+      "phone: (blank) → +1 (555) 010-0124 (formatted; the file has 1 555 010 0124)",
+    );
+    expect(changeText(change(null))).toBe("phone: (blank) → +1 (555) 010-0124");
+  });
+
   it("say plainly that a row makes its record retired (P-311)", () => {
     expect(changeText({ field: "record_status", old: null, new: "retired" })).toBe(
       "made retired, as the file says: record_status: (blank) → retired",

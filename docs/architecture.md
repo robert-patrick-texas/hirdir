@@ -989,8 +989,17 @@ one stretch of refusing. `health-mark.spec.ts` and `about-load.spec.ts` run besi
 others: the health is of the whole server, so they compare no word of it with a word,
 and the first shows what a header makes of the mark with answers it writes itself.
 
+The browser scenarios of the input formats, `formats.spec.ts`, run in a project of
+their own, "the formats alone", after the ceiling's and with one worker (P-322): they set
+`phone_formats`, which every telephone number that every other file saves is written in,
+and turn `title_case_names` off for a moment, which every name another file types
+follows; they note both as they found them and put them back. Every other file runs
+with `title_case_names` true, its default: a file that types a person's name with its
+mark in it types it as the page writes it, in Title Case, so that it expects the same
+name whatever the random part of its mark starts with.
+
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
-but `weights.spec.ts`, `product.spec.ts` and `busy.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
+but `weights.spec.ts`, `product.spec.ts`, `busy.spec.ts` and `formats.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
 Playwright project of its own after all the others, puts the setting back, and is run
 by itself with `--no-deps`. Nor does any file hold the one writer for long beside the
 others but one: `cover-many.spec.ts` loads a thousand switches from a file and covers a

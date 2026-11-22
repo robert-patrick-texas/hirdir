@@ -4090,6 +4090,43 @@ And of the colour picker (P-311): beside the chip, a label as long as a label ma
 past the picker and the page, wherever the picker is: New operator, the Details of an
 operator, the Profile and New user.
 
+What 0.9.18 adds of what is typed or pasted, the input formats (P-293, P-322 (7)):
+
+- **The formats a page follows.** The page reads `phone_formats`, `email_lower_case`
+  and `title_case_names` with `time_zone` when a person signs in, and again whenever the
+  settings are read on Admin → Settings, so that a change there is followed at once.
+- **Where they apply.** A contact's Phone and Second phone take the first pattern of
+  `phone_formats` that fits their digits, its Email lower case where `email_lower_case`
+  is true, and its Name Title Case where `title_case_names` is true: on New contact and
+  a contact's Details, the Profile's Details, the new person of New user, of a user's
+  page and of New operator and Hand over, and the name, email and numbers changed on
+  the page of a user or an operator. The number and the address of whom to ask,
+  `help_phone` and `help_email`, take the number and email formats as they are typed on
+  Admin → Settings. Title Case is for a person's name alone: never for a search box, a
+  label, a host name, a username, or the name of a vendor, a group, a model or a place.
+- **When.** A box is tidied when the person leaves it having typed in it, or presses
+  Enter in it, which sends the form without leaving the box, and as something is pasted
+  into it; never at each key. Once a format has changed what was typed, it leaves the
+  box alone while the form is open, so that a person's own correction stands, unless
+  something is pasted into it again, or it is emptied. A value of a record that the person does not type in is left as it is held:
+  only an export loaded back tidies what is held (P-322 (6)).
+- **A paste is taken whole.** What is pasted into a line of text is taken as it is,
+  its line breaks within it as spaces, even past the most the field takes: the box then
+  says `At most 200 characters: this has 215.`, and the form sends nothing until it is
+  shortened. Typing stops at the most, as before.
+- **Admin → Settings.** `phone_formats` is changed as a list, in the order the patterns
+  are tried: each pattern with a number written in it (`###-###-####` writes
+  `555-010-0123`), moved up or removed; `Add ###-###-####` and `Add +1 (###) ###-####`
+  add the two patterns of P-293 with one press each, disabled while the list has them;
+  and Add a pattern of your own takes one typed, said wrong before it is sent where it is
+  not 4 to 40 characters of `#`, four at least, the digits of a country's code before
+  the first `#` and spaces and `+ - ( ) . /` between them, or is in the list already. An
+  empty list says `No pattern: every number is kept as typed.` `email_lower_case` and
+  `title_case_names` are Yes or No, as every setting that is true or false.
+- **The Import page's preview.** A change whose value a format wrote again, a change
+  with `as_in_file`, is shown with the file's value beside the one that will be saved:
+  `phone: (blank) → +1 (555) 010-0124 (formatted; the file has 1 555 010 0124)`.
+
 ### The grid
 
 One grid component is used on every list page.

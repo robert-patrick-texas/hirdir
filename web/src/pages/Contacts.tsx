@@ -172,6 +172,7 @@ function contactSpecs(tags: readonly string[], current: Contact | null = null): 
       required: true,
       maxLength: 200,
       hint: "A person, or a shared mailbox",
+      format: "person_name",
     },
     { name: "organization", label: "Organization", kind: "text", maxLength: 200 },
     {
@@ -180,9 +181,10 @@ function contactSpecs(tags: readonly string[], current: Contact | null = null): 
       kind: "text",
       maxLength: 254,
       hint: "Belongs to one contact only. A file finds a contact by it.",
+      format: "email",
     },
-    { name: "phone", label: "Phone", kind: "text", maxLength: 50 },
-    { name: "phone2", label: "Second phone", kind: "text", maxLength: 50 },
+    { name: "phone", label: "Phone", kind: "text", maxLength: 50, format: "phone" },
+    { name: "phone2", label: "Second phone", kind: "text", maxLength: 50, format: "phone" },
     { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
     { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
     {

@@ -47,7 +47,7 @@ import {
   treeRow,
 } from "./geographySteps";
 import { count, importFile, main, openItem, region, whenApplied } from "./structure";
-import { expectClean, mark, signIn, test, watch } from "./support";
+import { expectClean, mark, signIn, test, titled, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
@@ -96,9 +96,9 @@ const closetName = `Closet ${id}`;
 const closet = path(movedSite, closetName);
 
 // The people.
-const dana = `Dana Whitfield ${id}`;
+const dana = titled(`Dana Whitfield ${id}`);
 const danaMail = `dana.whitfield.${id}@example.net`;
-const receiving = `Receiving ${id}`;
+const receiving = titled(`Receiving ${id}`);
 const receivingMail = `receiving.${id}@example.net`;
 const lee = `Lee Okafor ${id}`;
 const leeMail = `lee.okafor.${id}@example.net`;

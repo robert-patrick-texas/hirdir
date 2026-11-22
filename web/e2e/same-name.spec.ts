@@ -16,10 +16,19 @@
 import { type APIRequestContext, expect, type Page } from "@playwright/test";
 import { type Headers, make, session } from "./referenceSteps";
 import { region } from "./structure";
-import { type Account, createAccount, expectClean, mark, signIn, test, watch } from "./support";
+import {
+  type Account,
+  createAccount,
+  expectClean,
+  mark,
+  signIn,
+  test,
+  titled,
+  watch,
+} from "./support";
 
 const suffix = mark("same-name");
-const shared = `Sam Roe ${suffix}`;
+const shared = titled(`Sam Roe ${suffix}`);
 
 /** The words of the contact's page, and of the Profile, of a name others have. */
 function saidOf(page: Page) {
@@ -74,10 +83,12 @@ test("P-315: a contact with the name of another is made and saved, and its page 
   // A save that names it otherwise takes the words away; one that names it back, as
   // typed in another case, brings them back.
   const details = region(page, "Details");
-  await details.getByLabel("Name (required)").fill(`Sam A. Roe ${suffix}`);
+  await details.getByLabel("Name (required)").fill(titled(`Sam A. Roe ${suffix}`));
   await details.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("The contact was saved.")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: `Sam A. Roe ${suffix}` })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: titled(`Sam A. Roe ${suffix}`) }),
+  ).toBeVisible();
   await expect(saidOf(page)).toHaveCount(0);
   await region(page, "Details").getByLabel("Name (required)").fill(shared.toUpperCase());
   await region(page, "Details").getByRole("button", { name: "Save", exact: true }).click();
