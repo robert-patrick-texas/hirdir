@@ -439,11 +439,14 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(page.getByTestId("place")).toHaveAttribute("data-level", "location");
 
   // The six kinds of record that 0.5.0 brought, the nine that 0.6.0 brought, the
-  // contacts of agreements and contracts of 0.7.0 and the seven of circuits of 0.8.0 are
-  // among what a file may hold, in the order they are loaded.
+  // contacts of agreements and contracts of 0.7.0, the seven of circuits of 0.8.0 and the
+  // lists of countries and states of 0.9.18, first, are among what a file may hold, in the
+  // order they are loaded.
   await page.goto("./import");
   await expect(page.getByLabel("Records").locator("option")).toHaveText([
     "As the file says",
+    "Countries",
+    "States",
     "Tags",
     "Vendors",
     "Catalog entries",
@@ -545,8 +548,21 @@ test("S25: a contact on the region and one on the site are both shown on the roo
   const siteDetails = region(page, "Details");
   await siteDetails.getByLabel("Shipping address line 1").fill("100 Example Way");
   await siteDetails.getByLabel("Shipping city").fill("Springfield");
-  await siteDetails.getByLabel("Shipping country").fill("US");
+  // 0.9.18: the country is chosen from the list by its name, the United States shown
+  // chosen where none is, and sent as its code beside the rest of the address (P-321).
+  await expect(siteDetails.getByLabel("Shipping country")).toHaveValue("US");
+  await expect(siteDetails.getByLabel("Shipping country").locator("option:checked")).toHaveText(
+    "United States",
+  );
+  const saved = page.waitForRequest(
+    (request) => request.method() === "PATCH" && request.url().includes("/api/v1/sites/"),
+  );
   await siteDetails.getByRole("button", { name: "Save" }).click();
+  expect((await saved).postDataJSON()).toMatchObject({
+    ship_address1: "100 Example Way",
+    ship_city: "Springfield",
+    ship_country: "US",
+  });
   await expect(page.getByText("The site was saved.")).toBeVisible();
 
   // The room has neither of its own: it shows both, each with the level it came from,
@@ -568,7 +584,9 @@ test("S25: a contact on the region and one on the site are both shown on the roo
   await expect(page.getByText("No contact is assigned here.")).toBeVisible();
   // The shipping address is the site's, whole, and the instructions are the region's.
   await expect(page.getByTestId("ship-address")).toHaveAttribute("data-source", "site");
-  await expect(page.getByTestId("ship-address")).toContainText("100 Example Way, Springfield, US");
+  await expect(page.getByTestId("ship-address")).toContainText(
+    "100 Example Way, Springfield, United States",
+  );
   await expect(page.getByTestId("ship-address")).toHaveClass(/inherited/);
   await expect(page.getByTestId("ship-instructions")).toHaveAttribute("data-source", "region");
   await expect(page.getByTestId("ship-instructions")).toContainText("Dock B, weekdays");

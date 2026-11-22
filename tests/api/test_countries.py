@@ -6,6 +6,7 @@ value held from before until its country or state is changed, and the places who
 addresses hold what no list holds are listed for a person to choose.
 """
 
+from dataclasses import replace
 from typing import Any, cast
 
 import pytest
@@ -15,6 +16,7 @@ from sqlalchemy import update
 
 from hirdir.db.engine import make_sessions
 from hirdir.db.models import Location, Region, Site
+from hirdir.domain import audit, reset
 from hirdir.ids import new_hid
 from tests.api.inventory import API, Maker, errors
 from tests.api.test_files import Files
@@ -303,6 +305,54 @@ def test_a_value_held_from_before_is_kept_until_its_country_or_state_is_changed(
     }
 
 
+def test_a_country_given_by_another_spelling_of_the_one_held_is_no_change(
+    client: TestClient, ivy: Maker
+) -> None:
+    """A country given by its name, or by its code in another case, is the code it
+    resolves to: where that is the one the set holds, no country is changed, and a state
+    held from before that no list holds stays (the review of 0.9.18, finding 4)."""
+    region = ivy.region("Americas")
+    mexico = ivy.site("Site-MX", region, city="Monterrey", country="MX")
+    _held(client, Site, mexico["hid"], state="Nuevo Leon")
+    version = ivy.get(f"/sites/{mexico['hid']}")["row_version"]
+    for given in ("Mexico", "mx", "MX"):
+        kept = ivy.patch(
+            f"/sites/{mexico['hid']}",
+            {"row_version": version, "city": f"Monterrey {given}", "country": given},
+        )
+        assert (kept["country"], kept["state"]) == ("MX", "Nuevo Leon"), given
+        version = kept["row_version"]
+    # Another country checks the state held.
+    refused = ivy.patch(f"/sites/{mexico['hid']}", {"row_version": version, "country": "CA"}, 422)
+    assert set(errors(refused)) == {"state"}
+
+
+def test_the_united_states_given_for_a_blank_country_is_no_change_of_the_country(
+    client: TestClient, ivy: Maker
+) -> None:
+    """A blank country of a set that has another field is the United States in force:
+    the United States given is no change of the country, and a state held from before
+    that no list holds stays until the state or the country in force is changed. What
+    was given is stored (the review of 0.9.18, finding 5)."""
+    region = ivy.region("Americas")
+    blank = ivy.site("Site-NY", region, city="Albany")
+    _held(client, Site, blank["hid"], state="N.Y.")
+    version = ivy.get(f"/sites/{blank['hid']}")["row_version"]
+    for given in ("US", None, "usa"):
+        kept = ivy.patch(
+            f"/sites/{blank['hid']}", {"row_version": version, "city": "Troy", "country": given}
+        )
+        # What was given is stored, as it always is: a code, or blank.
+        assert (kept["country"], kept["state"]) == ("US" if given else None, "N.Y."), given
+        version = kept["row_version"]
+    # Another country in force checks the state held.
+    refused = ivy.patch(f"/sites/{blank['hid']}", {"row_version": version, "country": "CA"}, 422)
+    assert set(errors(refused)) == {"state"}
+    # So does a state given, which is held to the list of the country in force.
+    chosen = ivy.patch(f"/sites/{blank['hid']}", {"row_version": version, "state": "New York"})
+    assert (chosen["country"], chosen["state"]) == ("US", "NY")
+
+
 def test_the_shipping_address_in_force_answers_the_names_with_its_source(ivy: Maker) -> None:
     region = ivy.region("Americas", ship_country="MX", ship_state="jalisco", ship_city="Zapopan")
     site = ivy.site("Site-3", region)
@@ -351,6 +401,25 @@ def test_the_unlisted_addresses_are_listed_for_a_person_to_choose(
     ivy.patch(f"/sites/{site['hid']}", {"row_version": site["row_version"], "ship_country": "US"})
     page = ivy.get("/places/unlisted-addresses", limit=1, offset=1)
     assert (page["total"], [one["field"] for one in page["items"]]) == (2, ["state"])
+
+
+def test_the_first_state_of_a_country_lists_a_state_typed_for_it(desk: Maker, ivy: Maker) -> None:
+    """A country with no states listed takes its state as typed; once an Admin adds its
+    first state, a state typed before is one that no list holds: it is kept, a change of
+    anything else of the place goes through, and it is listed for a person to choose (the
+    review of 0.9.18, finding 7)."""
+    desk.post("/countries", {"code": "XA", "name": "Example Land"})
+    region = ivy.region("Elsewhere")
+    site = ivy.site("Site-X", region, city="Upton", country="XA", state="Upland")
+    assert ivy.get("/places/unlisted-addresses")["total"] == 0
+    desk.post("/states", {"country": "XA", "code": "U", "name": "Uplands"})
+    (listed,) = ivy.get("/places/unlisted-addresses")["items"]
+    assert (listed["hid"], listed["field"], listed["value"]) == (site["hid"], "state", "Upland")
+    kept = ivy.patch(f"/sites/{site['hid']}", {"row_version": site["row_version"], "city": "Up"})
+    assert (kept["state"], kept["state_name"]) == ("Upland", None)
+    chosen = ivy.patch(f"/sites/{site['hid']}", {"row_version": kept["row_version"], "state": "U"})
+    assert chosen["state_name"] == "Uplands"
+    assert ivy.get("/places/unlisted-addresses")["total"] == 0
 
 
 def test_a_file_of_the_lists_is_an_admins_to_apply(
@@ -429,3 +498,23 @@ def test_a_file_of_the_lists_of_another_inventory_finds_them_by_their_codes(
     assert _hid_of(desk, "/countries", code="XE") == also
     states = keeper.preview("states", f"hid,country,code,name\n{new_hid()},US,TX,Texas\n")
     assert [(row["outcome"], row["record_hid"]) for row in states["rows"]] == [("unchanged", texas)]
+
+
+def test_an_inventory_holding_what_no_list_holds_is_fixed_before_it_is_moved(
+    client: TestClient, files: Files, ivy: Maker
+) -> None:
+    """The file of every table loads into an empty inventory but for a place whose
+    address holds a country or a state that no list holds: its row is rejected at that
+    field, and the value is chosen first (the owner's answer of 2026-11-22)."""
+    region = ivy.region("Americas")
+    site = ivy.site("Site-2", region, city="Springfield")
+    _held(client, Site, site["hid"], country="Untied States")
+    whole = {"own_values": True, "include_archived": True, "include_drafts": True}
+    regions, sites = (files.export(name, **whole) for name in ("regions", "sites"))
+    with make_sessions(cast(FastAPI, client.app).state.engine)() as db:
+        reset.clear_inventory(db, replace(audit.SYSTEM, request_id=new_hid()), "none")
+        db.commit()
+    files.load("regions", regions)
+    (row,) = files.preview("sites", sites)["rows"]
+    assert row["outcome"] == "rejected"
+    assert [one["field"] for one in row["reasons"]] == ["country"]

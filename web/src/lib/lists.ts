@@ -50,6 +50,19 @@ export function useTags() {
   return useList("tags", (signal) => api.request("get", "/api/v1/tags", { signal }));
 }
 
+/** 0.9.18: every country an address may be in, the United States first, then by name (P-321). */
+export function useCountries() {
+  return useList("countries", (signal) => api.request("get", "/api/v1/countries", { signal }));
+}
+
+/**
+ * 0.9.18: the states of every country, each country's together in the order of the
+ * countries and by name within it (P-321).
+ */
+export function useStates() {
+  return useList("states", (signal) => api.request("get", "/api/v1/states", { signal }));
+}
+
 /** Every setting with the value in force. Any role that reads the inventory may read them. */
 export function useSettings() {
   return useLoad("settings", (signal) => api.request("get", "/api/v1/settings", { signal }));

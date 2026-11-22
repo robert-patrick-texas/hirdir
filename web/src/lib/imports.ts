@@ -11,6 +11,10 @@ import type { Entity } from "./transfer";
 
 /** The kinds of record a file can carry, in the order they are loaded. */
 export const ENTITIES: ReadonlyArray<Option & { value: Entity }> = [
+  // 0.9.18: the lists an address takes its country and its state from come first, before
+  // the places whose addresses take them; a row of them is an Admin's to apply (P-321).
+  { value: "countries", label: "Countries" },
+  { value: "states", label: "States" },
   { value: "tags", label: "Tags" },
   { value: "vendors", label: "Vendors" },
   { value: "catalog_entries", label: "Catalog entries" },

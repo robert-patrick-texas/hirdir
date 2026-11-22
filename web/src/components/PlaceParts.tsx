@@ -16,9 +16,28 @@ import {
 } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
+import {
+  type Country,
+  countryOptions,
+  countryShown,
+  followingState,
+  type State,
+  stateOptions,
+  US,
+  unlistedCountryHint,
+  unlistedStateHint,
+} from "../lib/countries";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useReloadOn } from "../lib/hooks";
-import { EVERY, useChoices, useContactOptions, useRegions, useTags } from "../lib/lists";
+import {
+  EVERY,
+  useChoices,
+  useContactOptions,
+  useCountries,
+  useRegions,
+  useStates,
+  useTags,
+} from "../lib/lists";
 import { operatorOptionLabel } from "../lib/operators";
 import {
   choiceLabel,
@@ -153,6 +172,62 @@ const STREET: ReadonlyArray<[field: string, label: string]> = [
   ["country", "Country"],
 ];
 
+/** What the forms of a place offer: the kinds of a location, the tags, and the lists of an address. */
+export interface PlaceLists {
+  kinds: readonly Option[];
+  tags: readonly string[];
+  /** 0.9.18: the countries, the United States first, and the states of every country (P-321). */
+  countries: readonly Country[];
+  states: readonly State[];
+}
+
+/**
+ * 0.9.18: what the country and the state of one address, of the fields that begin with
+ * `prefix`, are in a form (P-321 (8)). The country is a list of the countries by name,
+ * sending the code, a blank shown as the United States and sent only beside another
+ * field of the address; the state a list of the states of the country the form shows,
+ * or a box of text where it has none, following the country as it is changed. A value
+ * held that no list holds is offered as it was typed, marked so, with a word beneath.
+ * The other fields are as any field of text.
+ */
+function addressPart(field: string, prefix: string, lists: PlaceLists): Partial<FieldSpec> {
+  const country = `${prefix}country`;
+  const state = `${prefix}state`;
+  if (field === "country") {
+    return {
+      optionsFrom: (values) => countryOptions(lists.countries, values[country]),
+      blankAs: {
+        value: US,
+        with: STREET.map(([name]) => `${prefix}${name}`).filter((name) => name !== country),
+      },
+      fills: (value, before) => ({
+        [state]: followingState(
+          lists.states,
+          countryShown(before[country]),
+          countryShown(value),
+          before[state],
+        ),
+      }),
+      hintFrom: (values) => unlistedCountryHint(lists.countries, values[country]),
+    };
+  }
+  if (field === "state") {
+    return {
+      blank: "None",
+      optionsFrom: (values) =>
+        stateOptions(lists.states, countryShown(values[country]), values[state]),
+      hintFrom: (values) =>
+        unlistedStateHint(
+          lists.countries,
+          lists.states,
+          countryShown(values[country]),
+          values[state],
+        ),
+    };
+  }
+  return {};
+}
+
 /**
  * The fields of a place that a form sets. A region has the shipping set and no street
  * address; a location also has a kind. What a place is in is not among them: a place is
@@ -160,7 +235,7 @@ const STREET: ReadonlyArray<[field: string, label: string]> = [
  */
 export function placeSpecs(
   level: Level,
-  lists: { kinds: readonly Option[]; tags: readonly string[] },
+  lists: PlaceLists,
   current: Place | null = null,
 ): FieldSpec[] {
   const shipFrom =
@@ -178,6 +253,7 @@ export function placeSpecs(
               label,
               kind: "text",
               maxLength: 200,
+              ...addressPart(name, "", lists),
               ...(place === 0
                 ? {
                     heading: "Street address",
@@ -285,6 +361,7 @@ export function placeSpecs(
         label: `Shipping ${label.toLowerCase()}`,
         kind: "text",
         maxLength: 200,
+        ...addressPart(name, "ship_", lists),
         ...(level === "region" ? {} : { when: typed, clearedWhenNotAsked: true }),
         ...(place === 0
           ? {
@@ -304,22 +381,29 @@ export function placeSpecs(
   ];
 }
 
-/** The kinds a location may be, and every tag, for the forms of a place. */
+/**
+ * The kinds a location may be, every tag, and the countries and the states an address
+ * takes its own from (P-321), for the forms of a place.
+ */
 export function usePlaceLists(currentKind: string | null = null) {
   const choices = useChoices();
   const tags = useTags();
-  const lists = useMemo(
+  const countries = useCountries();
+  const states = useStates();
+  const lists = useMemo<PlaceLists>(
     () => ({
       kinds: choiceOptions(choices.data, LOCATION_KIND_LIST, currentKind),
       tags: (tags.data ?? []).map((tag) => tag.label),
+      countries: countries.data ?? [],
+      states: states.data ?? [],
     }),
-    [choices.data, tags.data, currentKind],
+    [choices.data, tags.data, countries.data, states.data, currentKind],
   );
   return {
     lists,
     choices: choices.data,
-    error: choices.error ?? tags.error,
-    ready: !choices.loading && !tags.loading,
+    error: choices.error ?? tags.error ?? countries.error ?? states.error,
+    ready: !choices.loading && !tags.loading && !countries.loading && !states.loading,
   };
 }
 

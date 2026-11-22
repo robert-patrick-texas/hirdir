@@ -14,6 +14,9 @@ import {
 describe("entities", () => {
   it("are listed in the order they are loaded", () => {
     expect(ENTITIES.map((entity) => entity.value)).toEqual([
+      // 0.9.18: the lists of countries and states, before the places whose addresses take them.
+      "countries",
+      "states",
       "tags",
       "vendors",
       "catalog_entries",
@@ -196,6 +199,16 @@ describe("guessEntity", () => {
     expect(guessEntity("operators.csv")).toBe("operators");
     // A file of items named after a site is a file of items.
     expect(guessEntity("items-site2.csv")).toBe("items");
+  });
+
+  it("knows the lists of countries and states by the names of their files (P-321)", () => {
+    expect(guessEntity("countries.csv")).toBe("countries");
+    expect(guessEntity("states.json")).toBe("states");
+    expect(guessEntity("hirdir-states-20261122T101500-0500.csv")).toBe("states");
+    expect(entityLabel("countries")).toBe("Countries");
+    expect(entityLabel("states")).toBe("States");
+    // A file of sites in a state is a file of sites.
+    expect(guessEntity("sites-states-west.csv")).toBe("sites");
   });
 
   it("takes the kind that stands first in a name that holds more than one", () => {

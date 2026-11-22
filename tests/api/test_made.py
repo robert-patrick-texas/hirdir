@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -90,9 +91,21 @@ def test_two_applies_under_one_request_id_each_list_only_what_they_made(
     assert second == [("vendor", "Arista"), ("catalog_entry", "Arista 7050SX3-48YC8")]
 
 
-def test_the_examples_list_only_what_each_file_made(make: Maker, db: Session) -> None:
-    examples.load(db, examples.folder())
-    db.commit()
+def test_the_examples_list_only_what_each_file_made(
+    client: TestClient, make: Maker, db: Session
+) -> None:
+    # `hirdir admin load-examples` is run with the service stopped (P-166): with the
+    # application's worker running beside it, the worker may take a job the load has just
+    # queued, which no account asked for, and stop it for want of a role.
+    app = client.app
+    assert isinstance(app, FastAPI)
+    worker = app.state.worker
+    worker.stop()
+    try:
+        examples.load(db, examples.folder())
+        db.commit()
+    finally:
+        worker.start()
     jobs = {job["file_name"]: job for job in make.get("/imports", limit=100)["items"]}
     # The tags made nothing for a row; the catalog entries made their vendors' records
     # only where a model named one that the vendors' file had not.

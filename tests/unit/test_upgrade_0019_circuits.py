@@ -139,6 +139,12 @@ def test_the_upgrade_to_0019_keeps_every_circuits_dates_and_service(tmp_path: Pa
                 assert circuits.in_service_on(upgraded[hid], day) == _was_in_service(
                     status, activated, disconnected, day
                 ), (hid, day)
+    # A Z side that names a network, with no note of its own, as 0.9.18 allows.
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE circuit_groups SET kind = 'network' WHERE hid = 'g-1'"))
+        connection.execute(
+            text("UPDATE circuits SET z_note = NULL, z_group_hid = 'g-1' WHERE hid = 'c-4'")
+        )
     engine.dispose()
 
     command.downgrade(migrate.alembic_config(url), "0018")
@@ -150,5 +156,19 @@ def test_the_upgrade_to_0019_keeps_every_circuits_dates_and_service(tmp_path: Pa
             )
         ).all()
         assert [tuple(row) for row in rows] == list(HELD)
+        # Going back, it keeps the network's name as its note, which 0.9.17 needs of a
+        # side with no location.
+        notes = connection.execute(text("SELECT hid, z_note FROM circuits ORDER BY hid")).all()
+        assert [tuple(row) for row in notes] == [
+            ("c-1", "carrier network"),
+            ("c-2", "carrier network"),
+            ("c-3", "carrier network"),
+            ("c-4", "g-1"),
+        ]
+        # And it is in the network by a membership, beside the one added by hand.
+        members = connection.execute(
+            text("SELECT group_hid, circuit_hid FROM circuit_group_members ORDER BY circuit_hid")
+        ).all()
+        assert [tuple(row) for row in members] == [("g-1", "c-2"), ("g-1", "c-4")]
         names = {column["name"] for column in inspect(connection).get_columns("circuit_groups")}
         assert not names & {"kind", "carrier_hid"}

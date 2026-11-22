@@ -328,6 +328,48 @@ describe("addresses", () => {
     expect(addressLines(addressOf(place))).toEqual(["1 Example Plaza", "Springfield"]);
     expect(addressLines(addressOf(place, "ship_"))).toEqual(["100 Example Way", "US"]);
   });
+
+  it("writes the state and the country by the names the server reads from the lists (P-321)", () => {
+    const named = { ...address, country_name: "United States", state_name: "Illinois" };
+    expect(addressLines(named)).toEqual([
+      "100 Example Way",
+      "Springfield, Illinois 00000",
+      "United States",
+    ]);
+    // A blank country beside another field is the United States, by the server's name.
+    expect(addressLines({ ...named, country: null })).toEqual([
+      "100 Example Way",
+      "Springfield, Illinois 00000",
+      "United States",
+    ]);
+    // Where no name comes, as for a value no list holds, the value as it is held.
+    expect(
+      addressLines({
+        ...address,
+        state: "Ilinois",
+        country: "Untied States",
+        state_name: null,
+        country_name: null,
+      }),
+    ).toEqual(["100 Example Way", "Springfield, Ilinois 00000", "Untied States"]);
+  });
+
+  it("reads the names of the state and the country of each address of a place apart", () => {
+    const place = {
+      city: "Monterrey",
+      state: "NLE",
+      country: "MX",
+      country_name: "Mexico",
+      state_name: "Nuevo León",
+      ship_city: "Laredo",
+      ship_state: "TX",
+      ship_country: null,
+      ship_country_name: "United States",
+      ship_state_name: "Texas",
+    };
+    expect(addressLines(addressOf(place))).toEqual(["Monterrey, Nuevo León", "Mexico"]);
+    expect(addressLines(addressOf(place, "ship_"))).toEqual(["Laredo, Texas", "United States"]);
+  });
 });
 
 describe("ownRoles", () => {

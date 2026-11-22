@@ -9,20 +9,95 @@ import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { CHOICE_LISTS, optionLabel } from "../lib/options";
+import type { Option } from "../lib/patch";
 import { reordered } from "../lib/reorder";
 import { allows } from "../lib/roles";
 import { useSorting } from "../lib/useSorting";
+import { CountriesList, StatesList } from "./CountryLists";
 
 type Choice = Schemas["ChoiceOut"];
 
-/** Admin → Choices: the editable lists that some fields take their values from. */
+/**
+ * 0.9.18: the lists an address takes its country and its state from, beside the lists of
+ * choices: every role reads them and an Admin alone changes them (P-321).
+ */
+const ADDRESS_LISTS: readonly Option[] = [
+  { value: "countries", label: "Countries" },
+  { value: "states", label: "States" },
+];
+
+/**
+ * Admin → Choices: the editable lists that some fields take their values from, and
+ * since 0.9.18 the lists of countries and states, an Admin's (P-321).
+ */
 export function Choices() {
   useTitle("Choices");
   const { user } = useAuth();
-  const mayEdit = allows(user.role, "inventory");
   const [params, setParams] = useSearchParams();
   const wanted = params.get("list") ?? "";
-  const list = CHOICE_LISTS.some((known) => known.value === wanted) ? wanted : "catalog_type";
+  const list = [...CHOICE_LISTS, ...ADDRESS_LISTS].some((known) => known.value === wanted)
+    ? wanted
+    : "catalog_type";
+  const country = params.get("country") ?? "";
+  const ofAddresses = ADDRESS_LISTS.some((known) => known.value === list);
+
+  return (
+    <>
+      <AdminNav />
+      <h1>Choices</h1>
+      {ofAddresses ? (
+        <p data-testid="countries-intro">
+          The countries and states that every address takes its own from: a list shows each by its
+          name and the address keeps its code, as ISO 3166 has them. Every role reads them; an Admin
+          changes them. The United States is always first, and is the country of an address that
+          names none: it may be renamed, and is neither removed nor given another code. A code that
+          an address holds is not changed, nor removed.
+        </p>
+      ) : (
+        <p>
+          The values a field offers. A value is what is stored on a record; its label is what people
+          read. A value in use cannot be removed, only made inactive: it is then no longer offered,
+          and the records that hold it keep it.
+        </p>
+      )}
+      <div className="inline">
+        <SelectField
+          label="List"
+          name="list"
+          value={list}
+          onChange={(next) => setParams(next === "catalog_type" ? {} : { list: next })}
+        >
+          {CHOICE_LISTS.map((known) => (
+            <option key={known.value} value={known.value}>
+              {known.label}
+            </option>
+          ))}
+          <optgroup label="Kept by an Admin">
+            {ADDRESS_LISTS.map((known) => (
+              <option key={known.value} value={known.value}>
+                {known.label}
+              </option>
+            ))}
+          </optgroup>
+        </SelectField>
+      </div>
+      {list === "countries" ? (
+        <CountriesList mayEdit={allows(user.role, "admin")} />
+      ) : list === "states" ? (
+        <StatesList
+          mayEdit={allows(user.role, "admin")}
+          country={country}
+          onCountry={(code) => setParams({ list: "states", country: code })}
+        />
+      ) : (
+        <ChoiceValues key={list} list={list} mayEdit={allows(user.role, "inventory")} />
+      )}
+    </>
+  );
+}
+
+/** The values of one list of choices, which the Inventory role edits. */
+function ChoiceValues({ list, mayEdit }: { list: string; mayEdit: boolean }) {
   const choices = useLoad(`choices ${list}`, (signal) =>
     api.request("get", "/api/v1/choices", { query: { list }, signal }),
   );
@@ -70,31 +145,6 @@ export function Choices() {
 
   return (
     <>
-      <AdminNav />
-      <h1>Choices</h1>
-      <p>
-        The values a field offers. A value is what is stored on a record; its label is what people
-        read. A value in use cannot be removed, only made inactive: it is then no longer offered,
-        and the records that hold it keep it.
-      </p>
-      <div className="inline">
-        <SelectField
-          label="List"
-          name="list"
-          value={list}
-          onChange={(next) => {
-            setDone("");
-            action.clear();
-            setParams(next === "catalog_type" ? {} : { list: next });
-          }}
-        >
-          {CHOICE_LISTS.map((known) => (
-            <option key={known.value} value={known.value}>
-              {known.label}
-            </option>
-          ))}
-        </SelectField>
-      </div>
       {list === "item_condition" && (
         <p className="hint">
           The condition of an item: the state of its hardware, as a person knows it. Health is
