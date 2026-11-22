@@ -259,3 +259,36 @@ def test_a_bulk_edit_links_no_living_item_to_a_retired_record(files: Files, make
         preview = make.post("/items/bulk-update", {"hids": [item["hid"]], "set": set_})
         assert preview["job"]["rejected"] == 1, (set_, preview["rows"])
         assert not any("links to the retired" in note for note in preview["rows"][0]["notes"])
+
+
+def test_a_row_that_changes_a_record_links_it_to_no_retired_one(files: Files, make: Maker) -> None:
+    """Second review, 2, the lead's reading of the owner's words: a row that makes its
+    record may link it to a retired one the app keeps so; a row that changes a record
+    that is there is held to the API's rules, and a new link to a retired one is refused.
+    A value the record has already is no new link, and is passed over as before."""
+    _retired_owner_and_operator(files, make)
+    vendor = make.vendor("Example Vendor")
+    old_model = make.entry(vendor, "EX-OLD")
+    make.post(f"/catalog-entries/{old_model['hid']}/retire", {"row_version": 1}, 200)
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n")
+    item = make.item(name="ex-live")
+    group = make.group("ex-group", "custom")
+    files.load(
+        "device_groups", f"hid,name,type,record_status\n{new_hid()},ex-old-grp,custom,retired\n"
+    )
+    places = make.layout()
+    for entity, text, field in (
+        ("items", f"hid,owner\n{item['hid']},Ex Old Team\n", "owner"),
+        ("items", "name,owner\nex-live,Ex Old Team\n", "owner"),
+        ("items", f"hid,operator\n{item['hid']},old-op\n", "operator"),
+        ("items", f"hid,vendor,pid\n{item['hid']},Example Vendor,EX-OLD\n", "pid"),
+        ("items", f"hid,parent\n{item['hid']},ex-gone\n", "parent"),
+        ("device_groups", f"hid,parent\n{group['hid']},ex-old-grp\n", "parent"),
+        # A place names the field as its rule does.
+        ("sites", f"hid,operator\n{places['site']['hid']},old-op\n", "operator_hid"),
+    ):
+        said = _reasons(files, entity, text)
+        assert said[0]["field"] == field, (text, said)
+    # A row that makes its record may, as before.
+    (row,) = files.preview("items", "name,owner\nex-new,Ex Old Team\n")["rows"]
+    assert row["outcome"] == "create"

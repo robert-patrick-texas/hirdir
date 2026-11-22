@@ -223,8 +223,10 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     # keeps (P-311); one that would retire a record that is there is refused by its write.
     retired = records.making_retired() if record is None and says_retired(values) else nullcontext()
     # A link the app keeps to a retired record is taken from a file alone, and not from a
-    # bulk edit, which is the API's and held to its rules (P-311).
-    filed = run.context.via == "import"
+    # bulk edit, which is the API's and held to its rules; and from a row that makes its
+    # record, as a file carries an inventory over, and not from one that changes a record
+    # that is there, which is held to the API's rules as a change by the API is (P-311).
+    filed = run.context.via == "import" and new
     with records.filing() if filed else nullcontext([]) as linked, retired:
         if made_as is not None:
             with ids.given(which.record_type, made_as):
