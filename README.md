@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.17, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.18, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -79,7 +79,11 @@ address may be an interface's. 0.9.16 puts a user made by `hirdir admin create-u
 in groups, with a group's role. 0.9.17 adds agents, accounts that decide what to change,
 answerable to a person, held to that person's role and never Admin, and marked in the
 audit trail; says on a user's page where each role comes from; and makes Export
-everything load whole into an empty inventory.
+everything load whole into an empty inventory. 0.9.18 gives each side of a circuit its
+dates and a circuit's Z side the carrier network it reaches; keeps the country and the
+state of every address as codes chosen from lists an Admin keeps, starting with the
+Americas; and puts telephone numbers, email addresses and people's names into one form
+as they are typed or pasted.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are
