@@ -623,7 +623,8 @@ def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
     accounts = contacts.accounts_of(db, hids)
     users = contacts.standing(accounts)
     behind = contacts.operators_of(db, hids)
-    # 0.9.17: how many others not retired have its name, for the page to say (P-315).
+    # 0.9.17: how many others have its name, as a file finds them, for the page to say
+    # (P-315).
     namesakes = contacts.same_names(db, hids)
     return [
         shapes.ContactOut(

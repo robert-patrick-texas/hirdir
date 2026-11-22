@@ -4,8 +4,9 @@ import { Link } from "react-router";
 import { namedAddress, sameNameWords, type Whose } from "../lib/sameName";
 
 /**
- * Where other contacts not retired have this name, says so and links to the contacts of
- * that name; says nothing where none has it. The name is saved all the same.
+ * Where other contacts have this name, the retired and the drafts among them, as a file
+ * finds them, says so and links to the contacts of that name; says nothing where none has
+ * it. The name is saved all the same.
  */
 export function SameName({ name, others, whose }: { name: string; others: number; whose: Whose }) {
   const words = sameNameWords(name, others, whose);
