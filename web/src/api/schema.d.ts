@@ -14457,7 +14457,10 @@ export interface components {
     };
     /** One field a row changes, in the columns of the file. */
     RowChange: {
+      /** The value in the file, where an input format writes it in another form: `1 555 010 0124` beside `+1 (555) 010-0124`, as `phone_formats` and `email_lower_case` say. Null otherwise (P-322). */
+      as_in_file?: string | null;
       field: string;
+      /** The value as it will be saved. */
       new: unknown;
       old: unknown;
     };

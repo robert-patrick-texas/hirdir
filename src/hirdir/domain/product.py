@@ -23,8 +23,9 @@ MOST_NAME = 40
 MOST_ORGANIZATION = 200
 MOST_EMAIL = 254
 MOST_PHONE = 40
-# What a phone number holds besides letters and digits.
-PHONE_MARKS = frozenset(" +-().,#*")
+# What a phone number holds besides letters and digits: the `/` that a pattern of
+# `phone_formats` may write among them (P-322).
+PHONE_MARKS = frozenset(" +-().,#*/")
 # What text shown in a page and written into one never holds (as a link's text, D-189).
 MARKS = ("<", ">")
 # What an email address to write to holds none of: what would add to the message a
@@ -102,10 +103,11 @@ def check_email(value: Any) -> str:
 
 
 def check_phone(value: Any) -> str:
-    """A number to call, shown as it is typed, with a digit in it."""
+    """A number to call, with a digit in it, shown as it is saved: an Admin's setting
+    writes it in a pattern of `phone_formats` first (P-322)."""
     expected = (
         f"a number to call, at most {MOST_PHONE} characters of digits, spaces, letters "
-        "and + - ( ) . , # *"
+        "and + - ( ) . , # * /"
     )
     text = _plain(value)
     if text is None or len(text) > MOST_PHONE:
