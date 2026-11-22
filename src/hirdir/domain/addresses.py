@@ -167,8 +167,11 @@ def get_address(db: Session, hid: str) -> Address:
     return address
 
 
-def _holder(db: Session, fields: dict[str, Any]) -> dict[str, Any]:
-    """Return the item or the group a new address belongs to: exactly one of the two."""
+def _holder(db: Session, fields: dict[str, Any], filed: bool = False) -> dict[str, Any]:
+    """Return the item or the group a new address belongs to: exactly one of the two.
+
+    A retired one is given no new address, but by a file, which holds the addresses a
+    retired record keeps (P-311)."""
     given = {name: fields.get(name) or None for name in HOLDERS}
     if sum(1 for hid in given.values() if hid) != 1:
         raise Invalid(
@@ -182,7 +185,7 @@ def _holder(db: Session, fields: dict[str, Any]) -> dict[str, Any]:
         holder = db.get(model, hid)
         if holder is None:
             raise Invalid(f"there is no such {what}", {name: f"there is no {what} {hid}"})
-        if holder.record_status == "retired":
+        if holder.record_status == "retired" and not filed:
             raise Invalid(f"the {what} is retired", {name: f"this {what} is retired"})
     return given
 
@@ -251,6 +254,75 @@ def primary_of(db: Session, field: str, hid: str, which: int) -> Address | None:
     )
 
 
+# What an event of an address holds of it whatever changed, so that a later sync reads
+# from the event alone which address it is and whose (P-310): the address itself, the
+# item or the group it belongs to, and the network it is under. Where one of them does
+# not change, it is written with `old` and `new` the same.
+WHICH = ("address", "item_hid", "group_hid", "network_hid")
+
+
+def _apply(
+    db: Session,
+    context: AuditContext,
+    address: Address,
+    row_version: int | None,
+    values: dict[str, Any],
+) -> bool:
+    """Write values to an address and audit what changed, with what it is and whose."""
+    changing = {entry["field"] for entry in records.differences(address, values)}
+    same = [
+        change(name, getattr(address, name), getattr(address, name))
+        for name in WHICH
+        if name not in changing and getattr(address, name) is not None
+    ]
+    return records.apply(
+        db, context, RECORD_TYPE, address, row_version, values, same if changing else None
+    )
+
+
+def as_held(address: Address) -> dict[str, Any]:
+    """Return an address as the event of the item or the group that holds it lists it."""
+    return {"hid": address.hid} | {
+        name: records.jsonable(getattr(address, name), name) for name in FIELDS
+    }
+
+
+# What the event of a record's retirement, and of its bringing back, holds of what it is
+# known by on a network, so that a later sync reads from the event alone what goes out
+# of service or comes back into it (P-310): its names, where it has them, each with
+# `old` and `new` the same, and for an item or a group its addresses, as `addresses`.
+NAMED_BY = ("name", "hostname", "fqdn")
+
+
+def standing_still(
+    db: Session,
+    record: Any,
+    values: dict[str, Any],
+    holder: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return the entries of what a record is known by on a network that a change of its
+    record status leaves as it is, for the event of its retirement or of its bringing
+    back; none for a change that neither retires it nor brings it back.
+
+    `holder` is the field of an address that names the record, `item_hid` or
+    `group_hid`, for one that has addresses. A name the same change alters is not
+    written twice: the change says it.
+    """
+    status = values.get("record_status", record.record_status)
+    if (status == "retired") == (record.record_status == "retired"):
+        return []
+    changing = {entry["field"] for entry in records.differences(record, values)}
+    entries = [
+        change(name, getattr(record, name), getattr(record, name))
+        for name in NAMED_BY
+        if name not in changing and getattr(record, name, None) not in (None, "")
+    ]
+    if holder is not None:
+        held = [as_held(one) for one in of_holders(db, holder, [record.hid])[record.hid]]
+        entries.append(change("addresses", held, held))
+    return entries
+
+
 def _one_primary(db: Session, context: AuditContext, address: Address) -> None:
     """Take the mark off whichever other address of the record was primary in its family.
 
@@ -267,14 +339,15 @@ def _one_primary(db: Session, context: AuditContext, address: Address) -> None:
         )
     )
     for other in others:
-        records.apply(db, context, RECORD_TYPE, other, None, {"is_primary": False})
+        _apply(db, context, other, None, {"is_primary": False})
 
 
 def create_address(db: Session, context: AuditContext, fields: dict[str, Any]) -> Address:
     """Give an item or a group an address."""
     if "address" not in fields:
         raise Invalid("the address is not acceptable", {"address": "an IPv4 or IPv6 address"})
-    address = Address(**_holder(db, fields), **_checked(db, fields, None))
+    filed = context.via == "import"
+    address = Address(**_holder(db, fields, filed), **_checked(db, fields, None))
     records.created(db, context, RECORD_TYPE, address, FIELDS)
     if address.is_primary:
         _one_primary(db, context, address)
@@ -293,7 +366,7 @@ def update_address(
                 {name: "remove the address and give it to the other record"},
             )
     values = _checked(db, fields, address)
-    records.apply(db, context, RECORD_TYPE, address, row_version, values)
+    _apply(db, context, address, row_version, values)
     if address.is_primary:
         _one_primary(db, context, address)
     return address
@@ -310,9 +383,7 @@ def move_to_group(db: Session, context: AuditContext, hid: str, group_hid: str) 
     address = get_address(db, hid)
     if address.item_hid is None:
         raise Invalid("the address is not an item's", {"address": "it belongs to a group already"})
-    records.apply(
-        db, context, RECORD_TYPE, address, None, {"item_hid": None, "group_hid": group_hid}
-    )
+    _apply(db, context, address, None, {"item_hid": None, "group_hid": group_hid})
     return address
 
 

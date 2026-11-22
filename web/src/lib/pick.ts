@@ -8,6 +8,15 @@ import { itemName } from "./format";
 
 // How many items a search offers.
 export const PICK_LIMIT = 8;
+
+/**
+ * What a screen reader calls a field's Clear, after "Clear": the label after "the", its
+ * first letter alone made small, so that a label or a name in it is as it is written
+ * (review 13): `Clear the person to hand KL over to`.
+ */
+export function clearName(label: string): string {
+  return `the ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+}
 // The longest text sent as a value of the filter.
 const LONGEST = 200;
 

@@ -35,7 +35,7 @@ from hirdir.db.models import (
     Region,
     Site,
 )
-from hirdir.domain import choices, records, settings, tags
+from hirdir.domain import addresses, choices, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -726,7 +726,8 @@ def _linked(db: Session, model: Any, name: str, hid: Any, record: Any | None, wh
     if found is None:
         raise Invalid(f"there is no such {what}", {name: f"there is no {what} {hid}"})
     unchanged = record is not None and getattr(record, name) == hid
-    if found.record_status == "retired" and not unchanged:
+    # A place that a file makes retired may be in one that is retired (P-311).
+    if records.refuses_retired(found) and not unchanged:
         raise Invalid(f"the {what} is retired", {name: f"this {what} is retired"})
     return found
 
@@ -743,7 +744,7 @@ def _operator(db: Session, fields: dict[str, Any], values: dict[str, Any], recor
                 "there is no such operator", {"operator_hid": f"there is no operator {hid}"}
             )
         unchanged = record is not None and record.operator_hid == hid
-        if found.record_status == "retired" and not unchanged:
+        if records.refuses_retired(found) and not unchanged:
             raise Invalid("the operator is retired", {"operator_hid": "this operator is retired"})
     values["operator_hid"] = hid
 
@@ -1019,7 +1020,9 @@ def update_place(
     values = check(db, fields, record)
     tag_change = tags.set_labels(db, level, hid, labels) if has_tags else []
     opened = values.get("record_status") == "active" and record.record_status != "active"
-    records.apply(db, context, level, record, row_version, values, tag_change)
+    # A place brought back says its name again (P-310).
+    back = addresses.standing_still(db, record, values)
+    records.apply(db, context, level, record, row_version, values, tag_change + back)
     if opened:
         # What is planned for a place that is thereby in use is moved in. The module
         # that knows items and groups is fetched here: they are built on places.
@@ -1150,9 +1153,10 @@ def retire_place(db: Session, context: AuditContext, level: str, hid: str, row_v
                 f"{record.name} still holds {', '.join(inside)} not retired; "
                 "move or retire what is in it first"
             )
-    records.apply(
-        db, context, level, record, row_version, {"record_status": "retired"}, action="retire"
-    )
+    retired = {"record_status": "retired"}
+    # The name that goes out of service is said in its event (P-310).
+    known = addresses.standing_still(db, record, retired)
+    records.apply(db, context, level, record, row_version, retired, known, action="retire")
     return record
 
 

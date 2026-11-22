@@ -1,6 +1,8 @@
 """What every editable record shares: clean text, stale-edit refusal and audited changes."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Generator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -8,12 +10,40 @@ from typing import Any
 from sqlalchemy import Select
 from sqlalchemy.orm import Session
 
-from hirdir import clock
+from hirdir import clock, ids
 from hirdir.domain import audit
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid, StaleVersion
 
 RECORD_STATUSES = ("draft", "active", "retired")
+RETIRED = "retired"
+# Whether the record being made is one a row of a file makes retired (P-311): it is made
+# so, in its one create event, and the links it keeps to records that are retired too
+# are taken, as a retired record keeps its links in the app.
+_MAKING_RETIRED: ContextVar[bool] = ContextVar("making_retired", default=False)
+
+
+@contextmanager
+def making_retired() -> Generator[None]:
+    """Within it, the record a row of a file makes is made retired, as the row says."""
+    token = _MAKING_RETIRED.set(True)
+    try:
+        yield
+    finally:
+        _MAKING_RETIRED.reset(token)
+
+
+def is_making_retired() -> bool:
+    """Say whether the record being made is one a file makes retired (P-311)."""
+    return _MAKING_RETIRED.get()
+
+
+def refuses_retired(found: Any) -> bool:
+    """Say whether a new link to `found` is refused for its being retired: it is, but
+    from a record that a file makes retired, which may keep it (P-311)."""
+    return getattr(found, "record_status", None) == RETIRED and not is_making_retired()
+
+
 # What puts the rows of a statement in the order that was asked for, before the order
 # the statement has of its own. `hirdir.io.tables` makes one from a `sort`.
 type AnySelect = Select[*tuple[Any, ...]]
@@ -98,6 +128,10 @@ def created(
     """
     record.created_by = context.actor_hid
     record.updated_by = context.actor_hid
+    # A row of a file that names its record by an HID no record has makes it so (P-311).
+    given = None if record.hid else ids.take_given(record_type)
+    if given is not None:
+        record.hid = given
     db.add(record)
     db.flush()
     changes = [
@@ -139,8 +173,11 @@ def apply(
 
 
 def checked_status(value: Any, allowed: tuple[str, ...] = ("draft", "active")) -> str:
-    """Return a record status that a change may set, or refuse it."""
+    """Return a record status that a change may set, or refuse it. A record that a
+    file makes retired takes `retired` (P-311)."""
     status = key(str(value or ""))
+    if status == RETIRED and is_making_retired():
+        return status
     if status not in allowed:
         raise Invalid(
             "the record status is not acceptable",
@@ -187,7 +224,7 @@ def linked(
     """Return the HID of a record that a change refers to in `field`.
 
     A reference that is left as it is, is not looked at again. A new one is to a
-    record that exists and is not retired.
+    record that exists and is not retired, but from a record a file makes retired.
     """
     hid = value or None
     if hid is None or (record is not None and getattr(record, field) == hid):
@@ -195,7 +232,7 @@ def linked(
     found = db.get(model, hid) if isinstance(hid, str) else None
     if found is None:
         raise Invalid(f"there is no such {what}", {field: f"there is no {what} {hid}"})
-    if getattr(found, "record_status", None) == "retired":
+    if refuses_retired(found):
         raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
     return hid
 

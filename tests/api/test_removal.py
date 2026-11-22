@@ -480,9 +480,10 @@ def test_a_file_that_names_a_deleted_hid_is_told_it_was_deleted(
         said = errors({"errors": row["reasons"]})["hid"]
         assert said.startswith(f"the {what} {hid} was deleted on "), said
         assert said.endswith(" by ada"), said
-    # One that never was is told so, as before.
+    # One that never was is made with it, since 0.9.17, so that a file of another
+    # inventory loads with its HIDs (P-311).
     (row,) = files.preview("items", f"hid,name\n{NOBODY},again\n")["rows"]
-    assert errors({"errors": row["reasons"]})["hid"] == f"there is no record {NOBODY}"
+    assert row["outcome"] == "create"
 
 
 def test_every_route_of_a_deleted_record_that_reads_it_says_it_was_deleted(

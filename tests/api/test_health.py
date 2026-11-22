@@ -729,7 +729,7 @@ def test_a_site_loads_what_it_observed_as_a_file(make: Maker, files: Files) -> N
     assert changes(preview["rows"][0]) == {
         "condition": (None, "good"),
         "observed_status": (None, "online"),
-        "observed_at": (None, "2026-11-02T15:00:00+00:00"),
+        "observed_at": (None, "2026-11-02T15:00:00Z"),
     }
     # A moment the row does not give is the moment of the change, and is not part of
     # what the row is said to do: the preview and the apply are made at different ones.
@@ -783,7 +783,7 @@ def test_the_master_that_is_seen_travels_on_the_row_of_its_member(
     )
     assert changes(preview["rows"][0]) == {
         "observed_master": (False, True),
-        "master_observed_at": (None, "2026-11-02T15:00:00+00:00"),
+        "master_observed_at": (None, "2026-11-02T15:00:00Z"),
     }
     files.apply(preview)
     seen = make.get(f"/device-groups/{stack['hid']}")

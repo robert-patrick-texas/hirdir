@@ -40,6 +40,19 @@ def user_out(db: Session, user: User) -> schemas.UserOut:
     return users_out(db, [user])[0]
 
 
+def own_contact(db: Session, contact: Contact) -> schemas.OwnContact:
+    """Return the contact a person is, as their profile reads it, with how many others
+    not retired have its name (P-315)."""
+    return schemas.OwnContact(
+        **{
+            name: getattr(contact, name)
+            for name in schemas.OwnContact.model_fields
+            if name != "same_name"
+        },
+        same_name=contacts.same_names(db, [contact.hid])[contact.hid],
+    )
+
+
 def me_out(db: Session, user: User) -> schemas.MeOut:
     """Return the signed-in user as it reads itself, by `GET /auth/me`, by the routes
     under it and in the answer of signing in: with the contact it is and the operators
@@ -53,7 +66,7 @@ def me_out(db: Session, user: User) -> schemas.MeOut:
         hid=base.hid,
         username=base.username,
         contact_hid=base.contact_hid,
-        contact=schemas.OwnContact.model_validate(contact) if contact is not None else None,
+        contact=own_contact(db, contact) if contact is not None else None,
         display_name=base.display_name,
         email=base.email,
         operators=[

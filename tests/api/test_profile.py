@@ -68,6 +68,7 @@ def test_me_carries_the_contact_and_the_operators_with_their_versions(
         **KIM,
         "record_status": "active",
         "row_version": contact["row_version"],
+        "same_name": 0,
     }
     operator = made["operator"]
     assert me["operators"] == [
@@ -194,6 +195,7 @@ def test_each_role_changes_its_own_contact_and_is_named_in_the_audit_trail(
         **KIM,
         "record_status": "active",
         "row_version": before["contact"]["row_version"] + 1,
+        "same_name": 0,
     }
     assert (me["display_name"], me["email"]) == ("Kim Lee", "kim.lee@example.com")
     # The contact everybody reads is the one that changed.

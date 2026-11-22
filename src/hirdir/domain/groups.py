@@ -736,7 +736,9 @@ def update_group(
     labels = fields.pop("tags", None) or []
     values = _checked(db, fields, group, context.via != "import")
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
-    records.apply(db, context, RECORD_TYPE, group, row_version, values, tag_change)
+    # A group brought back says what it is known by on a network again (P-310).
+    back = addresses.standing_still(db, group, values, "group_hid")
+    records.apply(db, context, RECORD_TYPE, group, row_version, values, tag_change + back)
     return group
 
 
@@ -772,7 +774,9 @@ def retire_group(db: Session, context: AuditContext, hid: str, row_version: int)
     group = get_group(db, hid)
     _refuse_if_hosting(db, group)
     values = {"record_status": "retired", "observed_master_hid": None, "master_observed_at": None}
-    records.apply(db, context, RECORD_TYPE, group, row_version, values, action="retire")
+    # What goes out of service with it is said in its event (P-310).
+    known = addresses.standing_still(db, group, values, "group_hid")
+    records.apply(db, context, RECORD_TYPE, group, row_version, values, known, action="retire")
     day = today(db)
     for member in current_members(db, hid):
         # A membership that began on a later day than this one ends on the day it began.
@@ -1046,7 +1050,10 @@ def add_members(
         item = db.get(Item, item_hid)
         if item is None:
             raise Invalid("there is no such item", {"item_hid": f"there is no item {item_hid}"})
-        if item.record_status == "retired":
+        # A retired item is in no group, and keeps the memberships it had, which have
+        # ended: one entered with its `left_on` is that history, as a retired group takes
+        # one (P-311).
+        if item.record_status == "retired" and given.get("left_on") is None:
             raise Invalid(
                 f"{items.shown_name(item)} is retired", {"item_hid": "this item is retired"}
             )

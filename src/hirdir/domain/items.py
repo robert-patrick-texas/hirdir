@@ -25,6 +25,7 @@ from hirdir.db.models import (
     PurchaseRequest,
 )
 from hirdir.domain import (
+    addresses,
     audit,
     catalog,
     choices,
@@ -361,7 +362,8 @@ def _checked_parent(db: Session, value: Any, item: Item | None) -> str | None:
     parent = db.get(Item, hid)
     if parent is None:
         raise Invalid("there is no such item", {field: f"there is no item {hid}"})
-    if parent.record_status == "retired":
+    # A minor item that a file makes retired may be in one that is retired (P-311).
+    if records.refuses_retired(parent):
         raise Invalid("the parent is retired", {field: "this item is retired"})
     above = [parent, *ancestors(db, parent)]
     if item is not None and item.hid in {one.hid for one in above}:
@@ -395,7 +397,8 @@ def _reference(
     record = db.get(model, hid)
     if record is None:
         raise Invalid(f"there is no such {what}", {field: f"there is no {what} {hid}"})
-    if record.record_status == "retired":
+    # An item that a file makes retired may keep its links to retired records (P-311).
+    if records.refuses_retired(record):
         raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
     return hid
 
@@ -833,8 +836,10 @@ def update_item(
         **_standing_on_update(db, fields, item),
     }
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
+    # An item brought back says what it is known by on a network again (P-310).
+    back = addresses.standing_still(db, item, values, "item_hid")
     on_line = item.purchase_line_hid
-    records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change)
+    records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change + back)
     if item.purchase_line_hid != on_line:
         _settle_line(db, context, item.purchase_line_hid)
     return item
@@ -870,9 +875,10 @@ def retire_item(
         _leave_groups(db, context, hid)
         # A retired item is under no contract any more: its coverage ends today.
         contracts.end_for_item(db, context, hid)
-    records.apply(
-        db, context, RECORD_TYPE, item, row_version, {"record_status": "retired"}, action="retire"
-    )
+    retired = {"record_status": "retired"}
+    # What goes out of service with it is said in its event (P-310).
+    known = addresses.standing_still(db, item, retired, "item_hid")
+    records.apply(db, context, RECORD_TYPE, item, row_version, retired, known, action="retire")
     if retiring:
         _retire_hosted(db, context, item, went)
     return item

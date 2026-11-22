@@ -26,6 +26,7 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { ValueLink } from "../components/ValueLink";
 import {
+  accountWords,
   cappedWords,
   holdsTokens,
   KINDS,
@@ -52,6 +53,7 @@ import {
   NEW_USER_FIELDS,
   newUserBody,
   newUserErrors,
+  noUsersWords,
   queryOf,
   typeLabel,
   USERS_GAPS,
@@ -205,7 +207,8 @@ export function Users() {
           <p className="hint">
             A user is the part of a person who signs in. Its name, its email and its numbers are
             those of its contact, and are changed on the contact, or on the page of the user. The
-            operators are the labels the person works equipment under.{" "}
+            operators are the labels the person works equipment under. A service account and an
+            agent are no person: each holds tokens, and has no contact and no operator.{" "}
             {/* 0.9.17: Active users is every account that is not retired (P-314). */}
             {gap === "retired"
               ? "These accounts are retired: each signs in with nothing, and is brought back on its page."
@@ -335,7 +338,7 @@ export function Users() {
                 {users.data.items.length === 0 && (
                   <tr>
                     <td colSpan={10} className="muted">
-                      {noUsers(q, gap)}
+                      {noUsersWords(q, gap, kind)}
                     </td>
                   </tr>
                 )}
@@ -428,15 +431,6 @@ function UserRole({ user }: { user: User }) {
       {capped && <span className="user-role-capped">{capped}</span>}
     </>
   );
-}
-
-/** What the list says when it holds nobody: of the search, of the gap, or of the whole. */
-function noUsers(q: string, gap: UsersGap): string {
-  if (q) return "No user matches the search.";
-  if (gap === "no-contact") return "Every user who is a person has a contact.";
-  if (gap === "no-operator") return "Every user who is a person works as an operator.";
-  if (gap === "retired") return "No account is retired.";
-  return "There are no users.";
 }
 
 /**
@@ -659,7 +653,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           required
           maxLength={64}
           autoComplete="off"
-          hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. An Admin can change it later."
+          hint={accountWords(kind).newUsernameHint}
           error={fields.username}
         />
         <RadioGroupField

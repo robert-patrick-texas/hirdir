@@ -4,7 +4,7 @@
   {"group": "site2-rtr-wan", "item": "AT-000141", "role": "active", "position": null, "joined_on": "2020-02-10", "left_on": null, "observed_master": false, "master_observed_at": null},
   {"group": "site2-rtr-wan", "item": "AT-000142", "role": "standby", "position": null, "joined_on": "2020-02-10", "left_on": null, "observed_master": false, "master_observed_at": null},
   {"group": "site2-sw-core", "item": "AT-000121", "role": "master", "position": 1, "joined_on": "2023-09-04", "left_on": null, "observed_master": false, "master_observed_at": null},
-  {"group": "site2-sw-core", "item": "AT-000122", "role": "member", "position": 2, "joined_on": "2023-09-04", "left_on": null, "observed_master": true, "master_observed_at": "2026-11-02T15:00:00+00:00"},
+  {"group": "site2-sw-core", "item": "AT-000122", "role": "member", "position": 2, "joined_on": "2023-09-04", "left_on": null, "observed_master": true, "master_observed_at": "2026-11-02T15:00:00Z"},
   {"group": "site2-sw-floor", "item": "AT-000131", "role": "master", "position": 1, "joined_on": "2021-06-14", "left_on": null, "observed_master": false, "master_observed_at": null},
   {"group": "site2-sw-floor", "item": "AT-000132", "role": "member", "position": 2, "joined_on": "2021-06-14", "left_on": null, "observed_master": false, "master_observed_at": null},
   {"group": "site2-sw-floor", "item": "AT-000133", "role": "member", "position": 3, "joined_on": "2021-06-14", "left_on": "2026-06-30", "observed_master": false, "master_observed_at": null},

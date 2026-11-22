@@ -12,8 +12,9 @@
 // records: a total of the whole inventory is never compared with a number. The scenarios
 // run in order and share the places the first one makes.
 
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Page, Response } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { answer, listed, queried } from "./answers";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -41,6 +42,19 @@ async function make(
   const answer = await request.post(`./api/v1${path}`, { headers, data });
   expect(answer.status(), `post ${path}: ${await answer.text()}`).toBe(201);
   return (await answer.json()) as { hid: string };
+}
+
+// P-309: each read of the server is waited for before what the page shows of it is
+// expected, with answer, listed and queried of answers.ts.
+
+/** The page's answer to a search of the items whose body holds each of `parts`. */
+function itemsFound(page: Page, ...parts: string[]): Promise<Response> {
+  return queried(page, "/items/query", ...parts);
+}
+
+/** The answers to a search of Find a place: the sites and the locations that match. */
+function placesFound(page: Page, ...parts: string[]): Promise<Response[]> {
+  return Promise.all([listed(page, "/sites", ...parts), listed(page, "/locations", ...parts)]);
 }
 
 // What the first scenario makes, which the others use.
@@ -95,7 +109,10 @@ test("P-194: a site's contacts stand above its files, and its email and number a
   await places(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
+  // What is in force at the site, its contacts among it, is read for the page.
+  const inForce = answer(page, "GET", `/sites/${made.site}/effective`);
   await page.goto(`./geography/site/${made.site}`);
+  await inForce;
   const contacts = page.getByTestId("in-force-contacts");
   const row = contacts.locator('tr[data-role="technical"]');
   await expect(row.getByRole("link", { name: label("Rowan Vale") })).toBeVisible();
@@ -150,22 +167,36 @@ test("P-195: Home shows its totals before the summary by operator, and a total o
     await held;
     await route.continue();
   });
+  // The totals, the summary of the whole inventory asked with nothing beside it.
+  const totals = answer(
+    page,
+    "GET",
+    "/reports/summary",
+    (request) => new URL(request.url()).search === "",
+  );
   await page.goto("./");
+  await totals;
   await expect(page.getByTestId("total-components")).toBeVisible();
   await expect(page.getByTestId("unassigned")).toHaveCount(0);
   // A total of health is a link, where it counts any.
   const health = page.getByTestId("totals-by-health");
   await expect(health.getByRole("link").first()).toBeVisible();
+  const byOperator = listed(page, "/reports/summary", "by=operator");
   release();
+  await byOperator;
   await expect(page.getByTestId("unassigned")).toBeVisible();
   await page.unroute("**/api/v1/reports/summary?by=operator*");
 
   // On the summary, within its filter: the link opens the list of what it counted.
+  const summary = listed(page, "/reports/summary", id);
   await page.goto(`./reports?filter=${encodeURIComponent(`hostname:contains:${id}`)}`);
+  await summary;
   const cell = page.getByTestId("total-health-unknown");
   await expect(cell).toHaveText("3");
+  const counted = itemsFound(page, id);
   await cell.getByRole("link").click();
   await expect(page).toHaveURL(/\/items\?/);
+  await counted;
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
   await expectClean(page, seen);
 });
@@ -194,23 +225,29 @@ test("P-187: plain words in the filter box find items, and Export CSV holds the 
   await wordItems(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
+  const first = answer(page, "POST", "/items/query");
   await page.goto("./items");
+  await first;
   const box = page.getByLabel("Filter", { exact: true });
   await expect(box).toBeVisible();
+  /** Words in the filter box, and the list they find once the server has answered. */
+  const search = async (words: string) => {
+    await box.fill(words);
+    const found = itemsFound(page, ...words.split(" "));
+    await box.press("Enter");
+    await found;
+  };
 
   // Two words, each held by one of the fields an item is known by: no condition typed.
-  await box.fill(`core ${id}`);
-  await box.press("Enter");
+  await search(`core ${id}`);
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   await expect(box).not.toHaveAttribute("aria-invalid", "true");
   // A serial number, in any case.
-  await box.fill(`sn${id}q`);
-  await box.press("Enter");
+  await search(`sn${id}q`);
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
 
   // Words, then Export CSV: the file holds the rows shown, and no other.
-  await box.fill(`core ${id}`);
-  await box.press("Enter");
+  await search(`core ${id}`);
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
@@ -228,7 +265,9 @@ test("P-187: plain words in the filter box find items, and Export CSV holds the 
   ).toEqual([...words.core].sort());
 
   // Text that is neither words nor conditions is answered with the list's own example.
+  const contactsListed = listed(page, "/contacts");
   await page.goto("./contacts");
+  await contactsListed;
   const contacts = page.getByLabel("Filter", { exact: true });
   await contacts.fill(`rowan tags:has:${id}`);
   await contacts.press("Enter");
@@ -237,11 +276,15 @@ test("P-187: plain words in the filter box find items, and Export CSV holds the 
   await expect(page.getByText(/lifecycle_state:in:Test,Prod/)).toHaveCount(0);
   // And words find a contact by its name or its email.
   await contacts.fill(`rowan.${id}@example`);
+  const contactFound = listed(page, "/contacts", `rowan.${id}@example`);
   await contacts.press("Enter");
+  await contactFound;
   await expect(page.getByTestId("grid-total")).toHaveText("1 contact");
 
   // Owners has the box the other lists have.
+  const ownersListed = listed(page, "/owners");
   await page.goto("./owners");
+  await ownersListed;
   await expect(page.getByLabel("Filter", { exact: true })).toBeVisible();
   await expectClean(page, seen);
 });
@@ -267,8 +310,10 @@ test("P-187: words typed while the list is still being read on a busy server sti
   await box.press("Enter");
   await page.getByRole("button", { name: "Clear" }).click();
   await box.fill(`core ${id}`);
+  const found = itemsFound(page, "core", id);
   await box.press("Enter");
-  await expect(page.getByTestId("grid-total")).toHaveText("2 items", { timeout: 20_000 });
+  await found;
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   await page.unroute("**/api/v1/items/query");
   await expectClean(page, seen);
 });
@@ -292,8 +337,10 @@ test("P-187: Find an item, in the menu bar of every page, opens the items with t
 
   await page.evaluate(() => window.scrollTo(0, 200));
   await find.getByRole("searchbox", { name: "Find an item" }).fill(`edge ${id}`);
+  const edge = itemsFound(page, "edge", id);
   await find.getByRole("searchbox", { name: "Find an item" }).press("Enter");
   await expect(page).toHaveURL(/\/items\?filter=edge%20.*&minor=1$/);
+  await edge;
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   await expect(page.getByLabel("Filter", { exact: true })).toHaveValue(`edge ${id}`);
   // The page begins at its top, with the keyboard in its content (P-167).
@@ -304,12 +351,16 @@ test("P-187: Find an item, in the menu bar of every page, opens the items with t
   // with them (B5 of the review of 0.9.5).
   const grid = page.getByLabel("Filter", { exact: true });
   await grid.fill(`core ${id}`);
+  const core = itemsFound(page, "core", id);
   await grid.press("Enter");
+  await core;
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   const findBox = find.getByRole("searchbox", { name: "Find an item" });
   await findBox.fill(`edge ${id}`);
+  const edgeAgain = itemsFound(page, "edge", id);
   await findBox.press("Enter");
   await expect(grid).toHaveValue(`edge ${id}`);
+  await edgeAgain;
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   await expectClean(page, seen);
 });
@@ -342,7 +393,11 @@ test("P-187: text that cannot be read never shows every item, from Find an item 
   // A list opened with that text says why at once, and asks for no row: nothing to count,
   // to select, to export or to edit in bulk.
   reads = 0;
+  // The page asks for no row, but it is there, its grid with it, once it has read the
+  // choices it offers: a busy server sends its scripts and that answer late (P-309).
+  const ready = answer(page, "GET", "/choices");
   await page.goto(`./items?filter=${encodeURIComponent("core:sw:01")}&minor=1`);
+  await ready;
   const filter = page.getByLabel("Filter", { exact: true });
   await expect(filter).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByText(/^Words alone find a record by its/)).toBeVisible();
@@ -357,7 +412,9 @@ test("P-187: text that cannot be read never shows every item, from Find an item 
 
   // Text that reads takes its place, and the rows come.
   await filter.fill(`edge ${id}`);
+  const edge = itemsFound(page, "edge", id);
   await filter.press("Enter");
+  await edge;
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   await expect(filter).not.toHaveAttribute("aria-invalid", "true");
   await expectClean(page, seen);
@@ -395,15 +452,25 @@ test("P-188: Find a place lists the sites and the locations, a location narrowed
   const sites = find.getByRole("list", { name: "Sites that match" });
   const locations = find.getByRole("list", { name: "Locations that match" });
 
+  /**
+   * Words in Find a place, and what it finds once the server has answered both of its
+   * searches: `sent` is a word of what is typed that the one before did not hold.
+   */
+  const search = async (typed: string, sent: string) => {
+    const found = placesFound(page, sent, id);
+    await box.fill(typed);
+    await found;
+  };
+
   // By its code: the location, by its path; no site has that code.
-  await box.fill(`C4-${id}`);
+  await search(`C4-${id}`, "C4-");
   await expect(locations.getByRole("link")).toHaveText([
     `${label("Eastmarch")} > ${label("Quarry Point")} > ${label("Cage 4")}`,
   ]);
   await expect(sites).toContainText("No site matches.");
 
   // By its name: the site, a draft marked as one, and no retired place.
-  await box.fill(`bay ${id}`);
+  await search(`bay ${id}`, "bay");
   await expect(locations.getByRole("listitem")).toHaveCount(1);
   await expect(locations.getByRole("listitem")).toContainText(label("Draft bay"));
   await expect(locations.getByRole("listitem")).toContainText("Draft");
@@ -412,13 +479,13 @@ test("P-188: Find a place lists the sites and the locations, a location narrowed
   // The site named with the room narrows it, by the site's code or as a path is pasted
   // (B3 of the review of 0.9.5).
   const cage = `${label("Eastmarch")} > ${label("Quarry Point")} > ${label("Cage 4")}`;
-  await box.fill(`QP-${id} cage`);
+  await search(`QP-${id} cage`, "QP-");
   await expect(locations.getByRole("link")).toHaveText([cage]);
-  await box.fill(`${label("Quarry Point")} > Cage`);
+  await search(`${label("Quarry Point")} > Cage`, "Point");
   await expect(locations.getByRole("link")).toHaveText([cage]);
 
   // Ten of each, and how many more match.
-  await box.fill(`Shelf ${id}`);
+  await search(`Shelf ${id}`, "Shelf");
   await expect(locations.getByRole("link")).toHaveCount(10);
   await expect(locations).toContainText("1 more location matches.");
 
@@ -432,7 +499,7 @@ test("P-188: Find a place lists the sites and the locations, a location narrowed
 
   // With Retired places on in the view, a retired place is found, and marked (B8).
   await page.goto("./geography?archived=1");
-  await box.fill(`bay ${id}`);
+  await search(`bay ${id}`, "bay");
   await expect(locations.getByRole("listitem")).toHaveCount(2);
   await expect(locations.getByRole("listitem").filter({ hasText: label("Old bay") })).toContainText(
     "Retired",
@@ -462,8 +529,18 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
   }
   const seen = await watch(page.context());
   await signIn(page, account);
-  // Words as the view: the items of the file's groups.
+  // Words as the view: the items of the file's groups. The three tables are counted at
+  // once, by operator, by site and by group, which a busy server answers late: each count
+  // is waited for, and then what the page shows of it.
+  const counted = () =>
+    Promise.all(
+      ["operator", "site", "group"].map((by) =>
+        listed(page, "/reports/summary", `by=${by}`, "grp", id),
+      ),
+    );
+  const first = counted();
   await page.goto(`./reports/scoreboard?${new URLSearchParams({ filter: `grp ${id}` })}`);
+  await first;
 
   const tables = page.getByRole("navigation", { name: "The tables of the scoreboard" });
   await expect(tables.getByRole("link")).toHaveText([
@@ -474,7 +551,7 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
   ]);
   const groups = page.getByTestId("score-groups");
   const rows = groups.locator("tbody tr");
-  await expect(rows).toHaveCount(20, { timeout: 30_000 });
+  await expect(rows).toHaveCount(20);
   // The link brings the table into the window, and the keyboard to it. The address is
   // the router's, so that a path prefix is kept (B1 of the review of 0.9.5).
   const before = new URL(page.url());
@@ -526,9 +603,11 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
 
   // Opened at an address that names a table, the page stands at that table.
   await page.goto("./about");
+  const again = counted();
   await page.goto(
     `./reports/scoreboard?${new URLSearchParams({ filter: `grp ${id}` })}#score-sites`,
   );
+  await again;
   const sitesHeading = page.getByRole("heading", { name: "Sites", exact: true });
   await expect(sitesHeading).toBeFocused();
   await expect(sitesHeading).toBeInViewport();
