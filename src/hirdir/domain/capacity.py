@@ -155,7 +155,9 @@ def _targets(db: Session, given: Any, line: CapacityLine | None) -> list[str]:
                 f"{target.name} is not a staff line that adds",
                 {APPLIES_TO: f"{target.name} is not a supply line of the category staff that adds"},
             )
-        if target.record_status == "retired":
+        # A line that a file makes retired keeps the retired lines it applied to (P-311).
+        # A line that multiplies a retired one keeps it (P-311).
+        if records.refuses_retired(target, "capacity line", kept=True):
             raise Invalid(f"{target.name} is retired", {APPLIES_TO: f"{target.name} is retired"})
     return sorted(hids)
 
@@ -267,7 +269,7 @@ def _checked(
         )
     for name, model, what in (("region_hid", Region, "region"), ("site_hid", Site, "site")):
         if name in fields:
-            values[name] = records.linked(db, model, name, fields[name], line, what)
+            values[name] = records.linked(db, model, name, fields[name], line, what, kept=True)
     for name in ("starts_on", "ends_on"):
         if name in fields:
             values[name] = records.checked_day(name, fields[name])

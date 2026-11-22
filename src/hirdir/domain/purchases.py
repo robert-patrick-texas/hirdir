@@ -280,7 +280,7 @@ def _checked_model(
     """Return the model a line is given, and what becomes of the items that have
     arrived on it: None where nothing has arrived or the model stays as it is."""
     name = "catalog_entry_hid"
-    hid = records.linked(db, CatalogEntry, name, value, line, "catalog entry")
+    hid = records.linked(db, CatalogEntry, name, value, line, "catalog entry", kept=True)
     if line is None or hid == line.catalog_entry_hid:
         return hid, None
     arrived = received(db, [line.hid])[line.hid]
@@ -337,7 +337,13 @@ def _checked_line(
         values["quantity"] = quantity
     if "destination_site_hid" in fields:
         values["destination_site_hid"] = records.linked(
-            db, Site, "destination_site_hid", fields["destination_site_hid"], line, "site"
+            db,
+            Site,
+            "destination_site_hid",
+            fields["destination_site_hid"],
+            line,
+            "site",
+            kept=True,
         )
     if "expected_on" in fields:
         values["expected_on"] = records.checked_day("expected_on", fields["expected_on"])

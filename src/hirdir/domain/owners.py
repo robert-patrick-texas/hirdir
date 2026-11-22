@@ -174,7 +174,8 @@ def add_member(
     # Checked against the other members, so nobody else may be changing them meanwhile.
     dialect.hold_other_writers(db)
     owner = get_owner(db, owner_hid)
-    if owner.record_status == "retired":
+    # A retired owner keeps its people, and a retired contact its place among them (P-311).
+    if records.refuses_retired(owner, "owner", kept=True):
         raise Invalid("the owner is retired", {"owner_hid": "this owner is retired"})
     contact_hid = fields.get("contact_hid") or ""
     contact = db.get(Contact, contact_hid)
@@ -182,7 +183,7 @@ def add_member(
         raise Invalid(
             "there is no such contact", {"contact_hid": f"there is no contact {contact_hid}"}
         )
-    if contact.record_status == "retired":
+    if records.refuses_retired(contact, "contact", kept=True):
         raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
     there = _members(db, owner_hid)
     if any(member.contact_hid == contact.hid for member in there):

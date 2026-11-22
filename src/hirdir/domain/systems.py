@@ -199,7 +199,8 @@ def create_registration(db: Session, context: AuditContext, fields: dict[str, An
             "there is no such external system",
             {"system_hid": f"there is no external system {system_hid}"},
         )
-    if system.record_status == "retired":
+    # A retired system keeps its registrations on record (P-311).
+    if records.refuses_retired(system, "external system", kept=True):
         raise Invalid("the system is retired", {"system_hid": "this external system is retired"})
     named = [name for name in HOLDERS if fields.get(name)]
     if len(named) != 1:
@@ -212,7 +213,8 @@ def create_registration(db: Session, context: AuditContext, fields: dict[str, An
     holder = db.get(model, fields[field]) if isinstance(fields[field], str) else None
     if holder is None:
         raise Invalid(f"there is no such {what}", {field: f"there is no {what} {fields[field]}"})
-    if holder.record_status == "retired":
+    # A retired item or group keeps its registrations (P-311).
+    if records.refuses_retired(holder, what, kept=True):
         raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
     if find_registration(db, system.hid, field, holder.hid) is not None:
         raise Conflict(

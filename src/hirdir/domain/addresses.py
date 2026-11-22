@@ -26,6 +26,8 @@ MANAGEMENT = "management"
 NETWORK_FIELDS = ("label", "kind")
 FIELDS = ("item_hid", "group_hid", "address", "network_hid", "role", "is_primary")
 HOLDERS = ("item_hid", "group_hid")
+# The entry of the creation of an address whose item or group is retired (P-311).
+HOLDER_RETIRED = "holder_retired"
 UNSET: Final[Any] = object()
 
 
@@ -170,8 +172,9 @@ def get_address(db: Session, hid: str) -> Address:
 def _holder(db: Session, fields: dict[str, Any], filed: bool = False) -> dict[str, Any]:
     """Return the item or the group a new address belongs to: exactly one of the two.
 
-    A retired one is given no new address, but by a file, which holds the addresses a
-    retired record keeps (P-311)."""
+    A retired one is given no new address, but by a file, to a record that a file made
+    retired, which holds the addresses it kept as it was retired (P-311): one retired in
+    the app is given none, by a file either."""
     given = {name: fields.get(name) or None for name in HOLDERS}
     if sum(1 for hid in given.values() if hid) != 1:
         raise Invalid(
@@ -185,7 +188,10 @@ def _holder(db: Session, fields: dict[str, Any], filed: bool = False) -> dict[st
         holder = db.get(model, hid)
         if holder is None:
             raise Invalid(f"there is no such {what}", {name: f"there is no {what} {hid}"})
-        if holder.record_status == "retired" and not filed:
+        kind = "item" if name == "item_hid" else "device_group"
+        if holder.record_status == "retired" and not (
+            filed and records.made_retired_by_a_file(db, kind, holder)
+        ):
             raise Invalid(f"the {what} is retired", {name: f"this {what} is retired"})
     return given
 
@@ -348,7 +354,13 @@ def create_address(db: Session, context: AuditContext, fields: dict[str, Any]) -
         raise Invalid("the address is not acceptable", {"address": "an IPv4 or IPv6 address"})
     filed = context.via == "import"
     address = Address(**_holder(db, fields, filed), **_checked(db, fields, None))
-    records.created(db, context, RECORD_TYPE, address, FIELDS)
+    holder = db.get(Item, address.item_hid) if address.item_hid else None
+    holder = holder or (db.get(DeviceGroup, address.group_hid) if address.group_hid else None)
+    retired = holder is not None and holder.record_status == records.RETIRED
+    # An address a file gives a record it made retired is said so in its event: a sync
+    # reads it as nothing to add (P-311).
+    then = (lambda: [change(HOLDER_RETIRED, None, True)]) if retired else None
+    records.created(db, context, RECORD_TYPE, address, FIELDS, then=then)
     if address.is_primary:
         _one_primary(db, context, address)
     return address

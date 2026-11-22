@@ -178,8 +178,14 @@ class Run:
         self.mode = mode
         # The row that already named each record, by the record's HID.
         self.seen: dict[str, int] = {}
+        # The records the rows of this file made, of those it names: a row whose HID no
+        # record has may share its key with one of them, and with no other (P-311).
+        self.made: set[str] = set()
         # Records this run made because a row referred to them and they were not there.
         self.stubs: set[str] = set()
+        # The kinds of record the audit trail names, read once for the HIDs a file gives
+        # its new records (P-311).
+        self.trail_kinds: tuple[str, ...] | None = None
         self.notes: list[str] = []
         self._undo: list[Callable[[], None]] = []
         self._vendors: dict[str, str] = {}
@@ -526,13 +532,23 @@ OBSERVATION = (Column("observed_status", limit=12), Column("observed_at", "times
 
 def _status(values: Mapping[str, Any], record: Any) -> dict[str, Any]:
     """Return the record status a row sets. An import does not retire a record that is
-    there; a row that makes a record may make it retired (P-311)."""
+    there; a row that makes a record, with the HID it gives as every export writes one,
+    may make it retired (P-311). Without an HID, such a row would make a retired twin at
+    each load, the records that are retired being passed over by the keys of a file."""
     if "record_status" not in values:
         return {}
     wanted = values["record_status"]
     if wanted is not None and records.key(wanted) == records.RETIRED:
-        if record is None:
+        if record is None and values.get("hid"):
             return {"record_status": records.RETIRED}
+        if record is None:
+            raise Invalid(
+                "an import does not retire",
+                {
+                    "record_status": "a row makes a record retired with the HID it gives, "
+                    "as an export writes it; a file does not retire"
+                },
+            )
         if record.record_status == records.RETIRED:
             return {}
         raise Invalid(
@@ -5319,8 +5335,10 @@ LOAD_ORDER = (
     "contract_contacts",
     "purchase_requests",
     "purchase_lines",
-    "items",
+    # A group names no item, and an item may run on a group (P-246): the groups come
+    # first, so that an item hosted on a stack or a cluster finds it (P-311).
     "device_groups",
+    "items",
     "device_group_members",
     "item_replacements",
     "addresses",

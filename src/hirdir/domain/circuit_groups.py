@@ -185,8 +185,9 @@ def _checked(db: Session, fields: dict[str, Any], group: CircuitGroup | None) ->
         if name in fields:
             values[name] = records.clean(fields[name])
     if "owner_hid" in fields:
+        # A retired owner keeps what refers to it (P-311).
         values["owner_hid"] = records.linked(
-            db, Owner, "owner_hid", fields["owner_hid"], group, "owner"
+            db, Owner, "owner_hid", fields["owner_hid"], group, "owner", kept=True
         )
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
@@ -249,7 +250,8 @@ def add_members(
     # Checked against the members of the group, so nobody may be changing them.
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
-    if group.record_status == "retired":
+    # A retired group keeps its circuits listed in it, and a file of them holds them (P-311).
+    if records.refuses_retired(group, "circuit group", kept=True):
         raise Invalid(
             "the group is retired",
             {"circuit_hids": "a retired group takes no circuit; bring it back first"},
@@ -270,7 +272,7 @@ def add_members(
             raise Invalid(
                 "there is no such circuit", {"circuit_hids": f"there is no circuit {hid}"}
             )
-        if circuit.record_status == "retired":
+        if records.refuses_retired(circuit, "circuit", kept=True):
             raise Invalid(
                 f"{circuit.name} is retired",
                 {"circuit_hids": f"{circuit.name} is retired, and is added to no group"},

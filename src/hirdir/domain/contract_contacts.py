@@ -163,7 +163,8 @@ def _checked_contact(db: Session, value: Any) -> Contact:
             "there is no such contact",
             {"contact_hid": f"there is no contact {hid}" if hid else "must not be blank"},
         )
-    if contact.record_status == "retired":
+    # A retired contact stays named where it is (P-311).
+    if records.refuses_retired(contact, "contact", kept=True):
         raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
     return contact
 
@@ -200,7 +201,8 @@ def add(
     # Checked against the other namings of the record, so nobody may be changing them.
     dialect.hold_other_writers(db)
     record = holder(db, field, hid)
-    if record.record_status == "retired":
+    # A retired agreement or contract keeps its contacts (P-311).
+    if records.refuses_retired(record, _what(field), kept=True):
         what = _what(field)
         raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
     role = _checked_role(fields.get("role"))

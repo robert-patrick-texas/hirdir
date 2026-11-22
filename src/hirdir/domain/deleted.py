@@ -14,6 +14,25 @@ ACTION = "delete"
 REASON = "reason"
 
 
+def kinds_in_trail(db: Session) -> tuple[str, ...]:
+    """Return every kind of record the audit trail names, read once from its index."""
+    return tuple(kind for kind in db.scalars(select(AuditEvent.record_type).distinct()) if kind)
+
+
+def holder_of(db: Session, hid: str, kinds: tuple[str, ...]) -> AuditEvent | None:
+    """Return an event of the record of any kind that has or had `hid`, its deletion
+    first where it was deleted or removed, or None where no record ever had it (P-311).
+    Every record is audited as it is made, so the trail knows each HID that was given."""
+    if not kinds:
+        return None
+    return db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.record_type.in_(kinds), AuditEvent.record_hid == hid)
+        .order_by((AuditEvent.action == ACTION).desc(), AuditEvent.at.desc())
+        .limit(1)
+    ).first()
+
+
 def deletion(db: Session, record_type: str, hid: str) -> AuditEvent | None:
     """Return the event in which a record was deleted, or None where it never was."""
     return db.scalars(

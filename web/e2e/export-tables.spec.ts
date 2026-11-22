@@ -56,8 +56,9 @@ const TABLES: ReadonlyArray<readonly [string, string]> = [
   ["Contacts of agreements and contracts", "contract-contacts"],
   ["Purchase requests", "purchase-requests"],
   ["Lines of purchase requests", "purchase-lines"],
-  ["Items", "items"],
+  // 0.9.17: the groups before the items, which may run on one (P-311).
   ["Device groups", "device-groups"],
+  ["Items", "items"],
   ["Members of device groups", "device-group-members"],
   ["Replacements of items", "item-replacements"],
   ["Addresses", "addresses"],
@@ -329,11 +330,13 @@ test("a table is exported as the list counts it, the header row alone where it c
   await expect(count(page, "rejected")).toHaveText("0");
   // Applied, as the page reads it, which may wait behind other files' imports; the page
   // then reads what it made, and the counts again, each asked for once it has heard.
+  // Each wait is asked for before the press that leads to its request, as answers.ts
+  // has it: an answer that came before the wait was asked for would be waited for in vain.
   const applied = appliedAnswer(page);
-  await page.getByRole("button", { name: "Apply 1 row" }).click();
-  await applied;
   const made = answer(page, "GET", /\/api\/v1\/imports\/[^/]+\/created$/);
   const recounted = tablesCounted(page);
+  await page.getByRole("button", { name: "Apply 1 row" }).click();
+  await applied;
   await whenApplied(page, 1);
   await made;
   await expect(page.getByTestId("import-created")).toContainText(network);

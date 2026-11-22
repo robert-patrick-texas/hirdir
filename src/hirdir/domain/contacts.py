@@ -527,10 +527,11 @@ def operators_of(db: Session, hids: list[str]) -> dict[str, list[Operator]]:
 
 
 def same_names(db: Session, hids: list[str]) -> dict[str, int]:
-    """Return how many other contacts that are not retired have the name of each of the
-    contacts, compared as a file matches a contact by its name, by `name_key`: read in
-    one query for them all, and stored nowhere (P-315). A name another has is saved as
-    any other; this is what the pages and the CLI say of it."""
+    """Return how many other contacts have the name of each of the contacts, compared as
+    a file matches a contact by its name, by `name_key`, and counted as a file finds
+    them, the retired and the drafts among them: read in one query for them all, and
+    stored nowhere (P-315). A name another has is saved as any other; this is what the
+    pages and the CLI say of it."""
     counts = dict.fromkeys(hids, 0)
     if not hids:
         return counts
@@ -538,12 +539,7 @@ def same_names(db: Session, hids: list[str]) -> dict[str, int]:
     for piece in _pieces(sorted(set(hids))):
         counted = db.execute(
             select(Contact.hid, func.count(other.hid))
-            .join(
-                other,
-                (other.name_key == Contact.name_key)
-                & (other.hid != Contact.hid)
-                & (other.record_status != "retired"),
-            )
+            .join(other, (other.name_key == Contact.name_key) & (other.hid != Contact.hid))
             .where(Contact.hid.in_(piece))
             .group_by(Contact.hid)
         )
@@ -624,7 +620,8 @@ def _checked_assignment(
                 dict.fromkeys(named or PLACES, "exactly one of a region, a site and a location"),
             )
         place = geography.get_place(db, PLACES[named[0]], fields[named[0]])
-        if place.record.record_status == "retired":
+        # A retired place keeps the contacts assigned to it (P-311).
+        if records.refuses_retired(place.record, place.level, kept=True):
             raise Invalid("the place is retired", {named[0]: f"this {place.level} is retired"})
         values[named[0]] = place.hid
         where = (named[0], place.hid)
@@ -674,7 +671,8 @@ def _checked_assignment(
                     "there is no such contact",
                     {"contact_hid": f"there is no contact {contact_hid}"},
                 )
-            if contact.record_status == "retired":
+            # A retired contact still stands where it is assigned (P-311).
+            if records.refuses_retired(contact, "contact", kept=True):
                 raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
         values["contact_hid"] = contact_hid
     beside = _beside(db, *where, role, assignment.hid if assignment is not None else None)

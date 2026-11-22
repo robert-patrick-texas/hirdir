@@ -363,7 +363,8 @@ def _checked_parent(db: Session, value: Any, item: Item | None) -> str | None:
     if parent is None:
         raise Invalid("there is no such item", {field: f"there is no item {hid}"})
     # A minor item that a file makes retired may be in one that is retired (P-311).
-    if records.refuses_retired(parent):
+    # The app keeps a minor item in an item that is retired (P-311).
+    if records.refuses_retired(parent, "item", kept=True):
         raise Invalid("the parent is retired", {field: "this item is retired"})
     above = [parent, *ancestors(db, parent)]
     if item is not None and item.hid in {one.hid for one in above}:
@@ -387,6 +388,12 @@ def _checked_parent(db: Session, value: Any, item: Item | None) -> str | None:
     return hid
 
 
+# The links of an item that the app keeps once the record linked is retired: its model,
+# its owner and its operator, each passed over or kept as it was (P-311). Its location
+# is not one: a place is retired only when nothing in hand is in it.
+KEPT_WHEN_RETIRED = ("catalog_entry_hid", "owner_hid", "operator_hid")
+
+
 def _reference(
     db: Session, model: Any, field: str, value: Any, item: Item | None, what: str
 ) -> str | None:
@@ -398,7 +405,7 @@ def _reference(
     if record is None:
         raise Invalid(f"there is no such {what}", {field: f"there is no {what} {hid}"})
     # An item that a file makes retired may keep its links to retired records (P-311).
-    if records.refuses_retired(record):
+    if records.refuses_retired(record, what, kept=field in KEPT_WHEN_RETIRED):
         raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
     return hid
 

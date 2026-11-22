@@ -38,6 +38,8 @@ from hirdir.io.entities import Entity, Run, entity, says_retired
 from hirdir.io.files import Row, reason
 
 OUTCOMES = ("create", "update", "unchanged", "rejected")
+# What a row that makes its record retired says of it (P-311).
+MADE_RETIRED = "makes the record retired"
 # What an apply did with a row: as previewed, or not, because it was stale or refused.
 APPLIED_OUTCOMES = ("create", "update", "unchanged", "stale", "rejected")
 COUNTED = {"create": "created", "update": "updated", "unchanged": "unchanged"}
@@ -90,14 +92,14 @@ def _reasons(which: Entity, error: Exception) -> list[dict[str, str]]:
 DELETED_KINDS = {"item": "item", "device_group": "device group"}
 
 
-def _no_record(db: Session, which: Entity, hid: str) -> str:
-    """Say that a row's HID names no record: or, where an Admin deleted it, when and by
-    whom, as its 404 says."""
-    what = DELETED_KINDS.get(which.record_type)
-    if what is not None:
-        gone = deleted.missing(db, which.record_type, hid, what)
-        if isinstance(gone, Deleted):
-            return str(gone)
+def _no_record(db: Session, record_type: str, hid: str) -> str:
+    """Say that a row's HID names no record: or, where it was deleted by an Admin or
+    removed outright, as an address is, when and by whom, as the audit trail says, in
+    the words of the 404 of a deleted item (P-311)."""
+    what = DELETED_KINDS.get(record_type, record_type.replace("_", " "))
+    gone = deleted.missing(db, record_type, hid, what)
+    if isinstance(gone, Deleted):
+        return str(gone)
     return f"there is no record {hid}"
 
 
@@ -106,28 +108,38 @@ def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     its table has (P-311), so that the file of every table loads into an empty inventory
     with each record as it was, and a reference by HID finds what an earlier file made.
 
-    It is refused where the text is no HID; where the record of that HID was deleted or
-    removed, which the audit trail says, since a file brings nothing back; where the
-    row's own key finds another record, which it names, so that a file of another
-    inventory makes no second of what this one has; and in a bulk edit, which changes
-    records that exist.
+    It is refused where the text is no HID as the server makes one, a UUID of version
+    7; where a record of any table has that HID, or had it and was deleted or removed,
+    which the audit trail says, since an HID is one record's for good and a file brings
+    nothing back; where the row's own key finds another record, which it names, so that
+    a file of another inventory makes no second of what this one has; and in a bulk
+    edit, which changes records that exist.
     """
     db = run.db
     if run.mode == "update":
         raise Invalid("there is no such record", {"hid": "a bulk edit changes records that exist"})
-    if not ids.is_hid(hid):
+    if not ids.is_made_hid(hid):
         raise Invalid(
             "there is no such record",
-            {"hid": f"there is no record {hid}, and it is no HID, which an export writes"},
+            {"hid": f"there is no record {hid}, and it is no HID, a UUID of version 7"},
         )
-    if deleted.deletion(db, which.record_type, hid) is not None:
-        raise Invalid("there is no such record", {"hid": _no_record(db, which, hid)})
+    if run.trail_kinds is None:
+        run.trail_kinds = deleted.kinds_in_trail(db)
+    held = deleted.holder_of(db, hid, run.trail_kinds)
+    if held is not None and held.action == deleted.ACTION:
+        raise Invalid("there is no such record", {"hid": _no_record(db, held.record_type, hid)})
+    if held is not None:
+        kind = held.record_type.replace("_", " ")
+        raise Conflict(
+            f"the HID {hid} is another record's, of a {kind}",
+            {"hid": f"{hid} is the HID of a {kind}: an HID is one record's, for good"},
+        )
     try:
         other = which.find(run, {name: value for name, value in values.items() if name != "hid"})
     except Invalid:
         # The key answers to several records: it finds none of them by itself.
         other = None
-    if other is not None and other.hid not in run.seen:
+    if other is not None and other.hid not in run.made:
         named = which.key(values, other)
         raise Conflict(
             f"this row names {named}, which is another record, by an HID it does not have",
@@ -210,7 +222,7 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     # A row that makes its record retired makes it so, with the links a retired record
     # keeps (P-311); one that would retire a record that is there is refused by its write.
     retired = records.making_retired() if record is None and says_retired(values) else nullcontext()
-    with retired:
+    with records.filing() as linked, retired:
         if made_as is not None:
             with ids.given(which.record_type, made_as):
                 record = which.write(run, record, values, new)
@@ -218,6 +230,12 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
                 raise Invalid("the record was not made with its HID", {"hid": made_as})
         else:
             record = which.write(run, record, values, new)
+    # A row that makes its record retired says so plainly, and so does a link the app
+    # keeps to a retired record, in the row's notes, which the preview shows (P-311).
+    if isinstance(retired, nullcontext):
+        run.notes.extend(linked)
+    else:
+        run.notes.extend([MADE_RETIRED, *linked])
     db.flush()
     result.changes = [
         change
@@ -230,6 +248,7 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
         result.outcome = "update" if changed else "unchanged"
     else:
         result.record_hid = record.hid
+        run.made.add(record.hid)
     result.notes = list(run.notes)
     run.seen[record.hid] = result.row
 
@@ -869,6 +888,7 @@ def _apply_row(run: Run, which: Entity, was: _Stored, values: dict[str, Any]) ->
         run.forget_row()
         if result.record_hid is not None and run.seen.get(result.record_hid) == was.row:
             del run.seen[result.record_hid]
+            run.made.discard(result.record_hid)
         return _Done("stale", [reason("", why)])
     savepoint.commit()
     return _Done(result.outcome, record_hid=result.record_hid)
@@ -936,6 +956,7 @@ def _undo_batch(db: Session, run: Run, numbers: set[int]) -> None:
     for record_hid, number in list(run.seen.items()):
         if number in numbers:
             del run.seen[record_hid]
+            run.made.discard(record_hid)
 
 
 def _store_batch(
@@ -1190,6 +1211,16 @@ def work_job(
         # A job that is resumed knows again what its earlier batches made only for a
         # reference, so that a row that describes one of them is worked as previewed.
         run.stubs |= _stubs_made(db, hid)
+        # And the records its rows made, which a later row may share a key with (P-311).
+        run.made |= {
+            made
+            for made in db.scalars(
+                select(ImportRow.record_hid).where(
+                    ImportRow.job_hid == hid, ImportRow.applied_outcome == "create"
+                )
+            )
+            if made is not None
+        }
         cut, typed = _plan(db, hid, run, which)
         for number, batch in enumerate(cut):
             if number and stop.wait(PAUSE_BETWEEN_BATCHES):

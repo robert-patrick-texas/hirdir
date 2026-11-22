@@ -23,6 +23,17 @@ def is_hid(value: str) -> bool:
         return False
 
 
+def is_made_hid(value: str) -> bool:
+    """Say whether value is an HID as the server makes one: a UUID of version 7, of the
+    variant of RFC 9562, in lower-case canonical text. A file gives a new record no
+    other (P-311)."""
+    try:
+        made = uuid.UUID(value)
+    except ValueError:
+        return False
+    return str(made) == value and made.version == 7 and made.variant == uuid.RFC_4122
+
+
 @contextmanager
 def given(record_type: str, hid: str) -> Generator[None]:
     """Within it, the first record of `record_type` that is made is made with `hid`."""

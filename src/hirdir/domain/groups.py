@@ -382,7 +382,9 @@ def _checked_parent(db: Session, value: Any, group: DeviceGroup | None) -> str |
     parent = db.get(DeviceGroup, hid)
     if parent is None:
         raise Invalid("there is no such group", {field: f"there is no device group {hid}"})
-    if parent.record_status == "retired":
+    # A group that a file makes retired keeps its links to retired records (P-311).
+    # A retired group keeps the groups within it (P-311).
+    if records.refuses_retired(parent, "device group", kept=True):
         raise Invalid("the group is retired", {field: "this group is retired"})
     above, seen = [parent], {parent.hid}
     while above[-1].parent_group_hid and above[-1].parent_group_hid not in seen:
@@ -445,7 +447,7 @@ def _checked(
             owner = db.get(Owner, hid)
             if owner is None:
                 raise Invalid("there is no such owner", {"owner_hid": f"there is no owner {hid}"})
-            if owner.record_status == "retired":
+            if records.refuses_retired(owner, "owner", kept=True):
                 raise Invalid("the owner is retired", {"owner_hid": "this owner is retired"})
         values["owner_hid"] = hid
     if "location_hid" in fields:
@@ -456,7 +458,7 @@ def _checked(
                 raise Invalid(
                     "there is no such location", {"location_hid": f"there is no location {hid}"}
                 )
-            if location.record_status == "retired":
+            if records.refuses_retired(location):
                 raise Invalid(
                     "the location is retired", {"location_hid": "this location is retired"}
                 )
@@ -482,7 +484,7 @@ def _checked(
                 raise Invalid(
                     "there is no such operator", {"operator_hid": f"there is no operator {hid}"}
                 )
-            if operator.record_status == "retired":
+            if records.refuses_retired(operator, "operator", kept=True):
                 raise Invalid(
                     "the operator is retired", {"operator_hid": "this operator is retired"}
                 )
@@ -1051,9 +1053,13 @@ def add_members(
         if item is None:
             raise Invalid("there is no such item", {"item_hid": f"there is no item {item_hid}"})
         # A retired item is in no group, and keeps the memberships it had, which have
-        # ended: one entered with its `left_on` is that history, as a retired group takes
-        # one (P-311).
-        if item.record_status == "retired" and given.get("left_on") is None:
+        # ended: one entered by a file with its `left_on`, of an item a file made retired,
+        # is that history (P-311).
+        if item.record_status == "retired" and not (
+            given.get("left_on") is not None
+            and context.via == "import"
+            and records.made_retired_by_a_file(db, items.RECORD_TYPE, item)
+        ):
             raise Invalid(
                 f"{items.shown_name(item)} is retired", {"item_hid": "this item is retired"}
             )

@@ -7,10 +7,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
+from hirdir.db.models import AuditEvent
 from hirdir.domain import audit
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid, StaleVersion
@@ -38,10 +39,75 @@ def is_making_retired() -> bool:
     return _MAKING_RETIRED.get()
 
 
-def refuses_retired(found: Any) -> bool:
-    """Say whether a new link to `found` is refused for its being retired: it is, but
-    from a record that a file makes retired, which may keep it (P-311)."""
-    return getattr(found, "record_status", None) == RETIRED and not is_making_retired()
+def made_retired_by_a_file(db: Session, record_type: str, record: Any) -> bool:
+    """Say whether a retired record was made retired by a row of a file, and is so still:
+    its first event is its creation from a file, which says `retired`, and no event after
+    changes its status. What stands on a retired record is taken from a file for such a
+    one alone, and not for one retired in the app (P-311)."""
+    if getattr(record, "record_status", None) != RETIRED:
+        return False
+    events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.record_type == record_type, AuditEvent.record_hid == record.hid)
+        .order_by(AuditEvent.at, AuditEvent.hid)
+    )
+    first = True
+    for event in events:
+        statuses = [one for one in event.changes or [] if one.get("field") == "record_status"]
+        if first:
+            made = event.action == "create" and event.via == "import"
+            if not made or not any(one.get("new") == RETIRED for one in statuses):
+                return False
+            first = False
+        elif statuses or event.action == "retire":
+            return False
+    return not first
+
+
+# The notes of the row of a file that is being worked, where one is (P-311): a link to a
+# retired record that the app keeps once that record is retired, as an item keeps its
+# retired model, is taken from a file, and the row says so in them.
+_FILING: ContextVar[list[str] | None] = ContextVar("filing", default=None)
+
+
+@contextmanager
+def filing() -> Generator[list[str]]:
+    """Within it, a row of a file is worked: the links it makes that the app keeps to a
+    retired record are taken, each said in the notes it yields."""
+    notes: list[str] = []
+    token = _FILING.set(notes)
+    try:
+        yield notes
+    finally:
+        _FILING.reset(token)
+
+
+def _known_by(found: Any) -> str:
+    for name in ("name", "label", "pid", "number", "title"):
+        value = getattr(found, name, None)
+        if isinstance(value, str) and value:
+            return value
+    return str(getattr(found, "hid", ""))
+
+
+def refuses_retired(found: Any, what: str = "", *, kept: bool = False) -> bool:
+    """Say whether a new link to `found` is refused for its being retired.
+
+    It is not from a record that a file makes retired, which keeps its links (P-311);
+    nor, with `kept`, from a row of a file, where the link is one the app keeps once
+    `found` is retired, an item's model, an owner's people, a contact's assignments:
+    the row says it in its notes, as a record linked to a retired one. A link the app
+    does not keep, a living item in a retired location, is refused to a file as well.
+    """
+    if getattr(found, "record_status", None) != RETIRED or is_making_retired():
+        return False
+    notes = _FILING.get()
+    if kept and notes is not None:
+        said = f"links to the retired {what or 'record'} {_known_by(found)}"
+        if said not in notes:
+            notes.append(said)
+        return False
+    return True
 
 
 # What puts the rows of a statement in the order that was asked for, before the order
@@ -219,7 +285,14 @@ def checked_amount(name: str, value: Any) -> Decimal | None:
 
 
 def linked(
-    db: Session, model: Any, field: str, value: Any, record: Any | None, what: str
+    db: Session,
+    model: Any,
+    field: str,
+    value: Any,
+    record: Any | None,
+    what: str,
+    *,
+    kept: bool = False,
 ) -> str | None:
     """Return the HID of a record that a change refers to in `field`.
 
@@ -232,7 +305,7 @@ def linked(
     found = db.get(model, hid) if isinstance(hid, str) else None
     if found is None:
         raise Invalid(f"there is no such {what}", {field: f"there is no {what} {hid}"})
-    if refuses_retired(found):
+    if refuses_retired(found, what, kept=kept):
         raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
     return hid
 

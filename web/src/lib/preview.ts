@@ -113,7 +113,12 @@ export function changeText(change: Schemas["RowChange"]): string {
         : "not registered";
     return `registration with the system: ${status(change.old)} → ${status(change.new)}`;
   }
-  return `${change.field}: ${valueText(change.old)} → ${valueText(change.new)}`;
+  const said = `${change.field}: ${valueText(change.old)} → ${valueText(change.new)}`;
+  // 0.9.17: a row that makes its record retired says so plainly, before the change (P-311).
+  if (change.field === "record_status" && change.new === "retired" && !change.old) {
+    return `made retired, as the file says: ${said}`;
+  }
+  return said;
 }
 
 /** Why a row is rejected, as "field: message", or the message alone when it names no field. */
