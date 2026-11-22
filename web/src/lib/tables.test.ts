@@ -31,6 +31,18 @@ describe("tableRows", () => {
     expect(rows.every((row) => row.count === null)).toBe(true);
   });
 
+  it("lists the countries and the states first, as Choices exports them (P-321)", () => {
+    expect(
+      tableRows(undefined)
+        .slice(0, 3)
+        .map((row) => row.label),
+    ).toEqual(["Countries", "States", "Tags"]);
+    expect(tableRows(undefined, ["states", "countries"]).map((row) => row.entity)).toEqual([
+      "countries",
+      "states",
+    ]);
+  });
+
   it("keeps only the tables asked for, in the order of loading", () => {
     const only = ["sites", "regions"] as const;
     expect(tableRows(TABLES, only).map((row) => row.entity)).toEqual(["regions", "sites"]);

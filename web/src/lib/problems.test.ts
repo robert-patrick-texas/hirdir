@@ -143,6 +143,9 @@ describe("the record a duplicate is refused for (P-207)", () => {
     expect(existingLead({ record_type: "item" })).toBe("The item that has it:");
     expect(existingLead({ record_type: "catalog_entry" })).toBe("The catalog entry that has it:");
     expect(existingLead({ record_type: "something_new" })).toBe("The record that has it:");
+    // 0.9.18: a code or a name another country or state has (P-321).
+    expect(existingLead({ record_type: "country" })).toBe("The country that has it:");
+    expect(existingLead({ record_type: "state" })).toBe("The state that has it:");
   });
 
   it("leads to its page, where its kind has one", () => {

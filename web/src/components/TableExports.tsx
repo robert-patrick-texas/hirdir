@@ -1,8 +1,12 @@
 // 0.9.13: the tables a file is taken for, each exported whole in one press, an empty one
 // as the template of its import, and every table at once (P-286); and the three tables of
-// Geography from the Geography page (P-287).
+// Geography from the Geography page (P-287). 0.9.18: the lists of countries and states
+// from Admin › Choices, likewise (P-321).
 
+import type { ReactNode } from "react";
+import { Link } from "react-router";
 import { api } from "../api";
+import { UNLISTED_PATH } from "../lib/countries";
 import { latestOf, type Saving, savedText, useSaving } from "../lib/download";
 import { useLoad, useReloadOn } from "../lib/hooks";
 import { useSite } from "../lib/product";
@@ -101,6 +105,14 @@ export function TableExports({ turn }: { turn: number }) {
         {tablesText(rows)}, in the order their files are loaded, each exported whole as its import
         reads it. A table that holds nothing gives its CSV template: its header row alone.
       </p>
+      {/* 0.9.18: a row of a place whose country or state no list holds is refused where it is
+          loaded, at that field, until the value is chosen on its place (P-321). */}
+      <p className="hint" data-testid="unlisted-lead">
+        A place whose country or state is in no list is exported as it is held. Loaded back here as
+        it is, its row changes nothing; loaded into another inventory, it is refused at that field
+        until the value is chosen from the lists on the place. Each is named, with a link to its
+        place, under <Link to={UNLISTED_PATH}>Addresses not in the lists</Link>.
+      </p>
       <div className="table-exports-all">
         <span className="table-exports-lead">Export everything</span>{" "}
         <span className="actions table-export-buttons">
@@ -166,17 +178,20 @@ export function TableExports({ turn }: { turn: number }) {
 /** The three tables of Geography, in the order their files are loaded. */
 const GEOGRAPHY: readonly Entity[] = ["regions", "sites", "locations"];
 
+/** 0.9.18: the two lists an address takes its country and its state from (P-321). */
+const COUNTRIES_AND_STATES: readonly Entity[] = ["countries", "states"];
+
 /**
- * Geography's export: the regions, the sites and the locations, each as CSV and as JSON,
- * the very files of the Import page (P-287), whatever the page's view counts.
+ * A page's own tables, each as CSV and as JSON, the very files of the Import page
+ * (P-287), whatever the page shows of them, with what is to be said of them beneath.
  */
-export function GeographyExport() {
+function OwnTablesExport(props: { tables: readonly Entity[]; testId: string; hint: ReactNode }) {
   const saving = useSaving();
-  const rows = tableRows(undefined, GEOGRAPHY);
+  const rows = tableRows(undefined, props.tables);
   const keys = rows.flatMap((row) => FORMATS.map((format) => keyOf(row.entity, format)));
   return (
     // Each button is named in full, as Export Sites as CSV: the line needs no name of its own.
-    <div className="geography-export" data-testid="geography-export">
+    <div className="geography-export" data-testid={props.testId}>
       <p className="geography-export-tables">
         <span className="geography-export-lead">Export</span>
         {rows.map((row) => (
@@ -185,12 +200,49 @@ export function GeographyExport() {
           </span>
         ))}
       </p>
-      <p className="hint">
-        Each the whole table, the retired and the drafts among them, in the columns its import
-        reads, to be corrected and loaded back on the Import page. A table that holds nothing gives
-        its CSV template: its header row alone.
-      </p>
+      <p className="hint">{props.hint}</p>
       <Said saving={saving} keys={keys} />
     </div>
+  );
+}
+
+/**
+ * Geography's export: the regions, the sites and the locations, each as CSV and as JSON,
+ * the very files of the Import page (P-287), whatever the page's view counts.
+ */
+export function GeographyExport() {
+  return (
+    <OwnTablesExport
+      tables={GEOGRAPHY}
+      testId="geography-export"
+      hint="Each the whole table, the retired and the drafts among them, in the columns its import reads, to be corrected and loaded back on the Import page. A table that holds nothing gives its CSV template: its header row alone."
+    />
+  );
+}
+
+/**
+ * 0.9.18: the export of the lists of countries and states under Choices, each as CSV and
+ * as JSON, as Geography exports its tables; and for an Admin, who alone changes them, the
+ * way to the Import page, where a file of either is loaded (P-321).
+ */
+export function CountriesExport({ mayEdit }: { mayEdit: boolean }) {
+  return (
+    <OwnTablesExport
+      tables={COUNTRIES_AND_STATES}
+      testId="countries-export"
+      hint={
+        <>
+          Each the whole list, in the columns its import reads, the countries before their states.{" "}
+          {mayEdit ? (
+            <>
+              A file of either, corrected or of another inventory, is loaded on the{" "}
+              <Link to="/import">Import page</Link>: a row is found by its HID, or else by its code.
+            </>
+          ) : (
+            "An Admin loads a file of either on the Import page."
+          )}
+        </>
+      }
+    />
   );
 }

@@ -131,6 +131,9 @@ const KIND_WORDS: Readonly<Record<string, string>> = {
   choice: "value",
   network: "network",
   reference_file: "reference",
+  // 0.9.18: the lists an address takes its country and its state from (P-321).
+  country: "country",
+  state: "state",
 };
 
 /** A kind of record as a person calls it: "catalog entry"; one with no word, as it is named. */

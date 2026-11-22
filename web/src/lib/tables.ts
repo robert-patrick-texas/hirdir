@@ -1,7 +1,9 @@
 // 0.9.13: every table a file is taken for, exported whole (P-286, P-287).
 //
 // The Import page lists them all, in the order their files are loaded, each with how many
-// records it holds; Geography has its three. Each is exported as an import reads it, by
+// records it holds; Geography has its three, and Choices, since 0.9.18, the lists of
+// countries and states, which are loaded first and are never empty in an inventory, which
+// starts with them (P-321). Each is exported as an import reads it, by
 // `POST /exports` with `whole`: the server's word for the whole table as the zip of every
 // table holds it, so that the file is corrected and loaded back, and changes nothing where
 // it is loaded back as it is. The page holds no copy of what that is.

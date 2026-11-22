@@ -4293,6 +4293,52 @@ And of the colour picker (P-311): beside the chip, a label as long as a label ma
 past the picker and the page, wherever the picker is: New operator, the Details of an
 operator, the Profile and New user.
 
+What 0.9.18 adds of the lists of countries and states (P-318, P-321):
+
+- **Admin › Choices.** List offers, after the lists of choices and under the heading
+  Kept by an Admin, Countries and States, `?list=countries` and `?list=states`, for
+  every role to read. Countries is a table of the countries in the order of the list,
+  the United States first, each with its code, its name and how many states it has,
+  which is a link to them; States is a Country to choose, the United States at first,
+  `&country=MX`, and a table of its states by name, each with its code. An Admin has New
+  country and New state, of the country chosen, and on each row Edit, which opens the
+  form of its code and its name beneath the row, and Remove, which asks first and says,
+  of a country, how many states go with it. The code of the United States is shown in
+  its form and not offered to change, and its row has no Remove: it is always first and
+  is not removed. Any other refusal is the server's, in its words, as a code that an
+  address holds, which names the first place that holds it. Beneath each table, the
+  export of both lists, as CSV and as JSON, as Geography exports its three tables, and
+  for an Admin a link to the Import page, where a file of either is loaded. Then, on
+  both, Addresses not in the lists: each country and state of an address that no list
+  holds, from `GET /places/unlisted-addresses`, a hundred to a page, with the place by
+  its path, a link to its page, its kind, which address, the field and the value as it
+  was typed; none says so. The Import page says beneath its list of tables that such a
+  value is exported as it is held, changes nothing loaded back as it is, and is refused
+  at its field where a file of it is loaded into another inventory until it is chosen on
+  its place, with a link, Addresses not in the lists, to
+  `/admin/choices?list=countries#unlisted-addresses`, which brings the window to them with
+  the keyboard on their heading once the page has come.
+- **Every address form.** In New region, New site and New location and in the Details
+  of each, Country, and Shipping country, is a list of the countries by their names,
+  the United States first, which sends the code. A blank country is shown as the
+  United States, chosen, and is sent as `US` only beside another field of the same
+  address, and in a change only where that address held nothing before: so the
+  default gives no place an address, nor a shipping address that would stop what it
+  inherits, and changes no address a place holds. The United States chosen where no
+  other field of its address is filled is sent as blank. State or province is a list
+  of the states of the country chosen in the same form, by their names, with None, and
+  sends the code, where that country has states listed; a box of text where it has
+  none. It follows the country: a state of the country before is kept where the new
+  one has it, found by its code or its name, and is cleared where not. A country or a
+  state held that no list holds is shown as it was typed, marked not in the list, with
+  a word beneath it to choose one, until another is chosen; left as it is, it is not
+  sent.
+- **What is shown.** The street address of a site and of a location among its facts,
+  the shipping address in force and the one the form says is inherited are written
+  with the names of their state and their country, `country_name` and `state_name`, a
+  blank country beside another field being the United States, and with the value as it
+  is held where no name comes.
+
 What 0.9.18 adds of what is typed or pasted, the input formats (P-293, P-322 (7)):
 
 - **The formats a page follows.** The page reads `phone_formats`, `email_lower_case`
