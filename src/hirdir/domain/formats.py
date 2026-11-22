@@ -9,7 +9,10 @@ the web page's alone, and never applied here. The server and the page are held t
 list of cases, `contract/formats.json`.
 
 A format never refuses a value: a number that no pattern fits, or that holds what is
-not part of a number's form, such as the letters of an extension, is kept as typed.
+not part of a number's form, such as the letters of an extension, is kept as typed. And
+a number written in the form of one of the patterns already is kept as it is, so that a
+number formatted once is formatted the same again: what the page writes as a person
+leaves the box is what the server saves, and an export loads back as no change.
 """
 
 from collections.abc import Iterable
@@ -71,6 +74,14 @@ class Pattern:
             return digits
         return None
 
+    def writes(self, value: str) -> bool:
+        """Say whether value is in the form of the pattern: its characters exactly as
+        the pattern writes them, a digit 0 to 9 at each place."""
+        return len(value) == len(self.text) and all(
+            char in DIGITS if want == PLACE else char == want
+            for char, want in zip(value, self.text, strict=True)
+        )
+
     def write(self, digits: str) -> str:
         """Return the pattern with the digits in its places, in their order."""
         given = iter(digits)
@@ -112,14 +123,22 @@ def _first_digit(text: str) -> int:
 def phone(value: str | None, patterns: Iterable[Pattern]) -> str | None:
     """Return a telephone number written in the first pattern that fits its digits, or
     as it is typed where it holds anything but digits and the marks of a pattern, or
-    where no pattern fits."""
+    where no pattern fits.
+
+    A number in the form of one of the patterns already is kept as it is, though an
+    earlier pattern fits its digits: so what a pattern writes, which is in its form, is
+    written the same again (the review of 0.9.18).
+    """
     if not isinstance(value, str) or any(
         char not in DIGITS and char not in MARKS for char in value
     ):
         return value
+    tried = tuple(patterns)
+    if any(one.writes(value) for one in tried):
+        return value
     digits = "".join(char for char in value if char in DIGITS)
     plus = PLUS in value[: _first_digit(value)]
-    for one in patterns:
+    for one in tried:
         placed = one.fits(digits, plus)
         if placed is not None:
             return one.write(placed)

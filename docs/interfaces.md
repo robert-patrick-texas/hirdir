@@ -168,7 +168,13 @@ The server applies `phone_formats` to `phone` and `phone2` of a contact and
 `PATCH /contacts/{hid}`, `PATCH /auth/me/contact`, `contact` of `POST /users`, a file
 of contacts, and `hirdir admin create-user`. Both apply to
 `help_phone` and `help_email` when an Admin sets them by `PUT /settings/{key}`. What
-is answered is what was saved. A number with a letter in it, such as an extension, or
+is answered is what was saved. A number written already in the form of one of the
+patterns, its characters exactly as that pattern writes them with a digit at each `#`,
+is kept as it is; any other is written in the first pattern that fits its digits. So a
+number formatted once is formatted the same again, by the page and then the server, and
+by an export loaded back: with `#-###-###-####` and `1 (###) ###-####`, `5550100123` is
+`1 (555) 010-0123`, and that is kept, though the first pattern fits its eleven digits
+(the review of 0.9.18). A number with a letter in it, such as an extension, or
 anything else but digits, spaces and `+ - ( ) . /`, and one that no pattern fits, is
 kept as typed: a format never refuses a value, and the rules of each field, such as an
 email address of the form `name@host`, are held as before, after the format. Nothing
