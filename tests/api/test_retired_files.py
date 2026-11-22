@@ -240,3 +240,22 @@ def test_a_living_record_is_linked_from_a_file_to_a_retired_one_where_the_app_ke
     # By the API, a new link to a retired record is refused, as before.
     owner = make.get("/owners", filter="label:eq:Ex Old Team", include_archived=True)["items"][0]
     make.post("/items", {"name": "ex-api", "owner_hid": owner["hid"]}, 422)
+
+
+def _retired_owner_and_operator(files: Files, make: Maker) -> tuple[dict, dict]:
+    files.load("owners", f"hid,label,record_status\n{new_hid()},Ex Old Team,retired\n")
+    files.load("operators", f"hid,label,record_status\n{new_hid()},old-op,retired\n")
+    owner = make.get("/owners", filter="label:eq:Ex Old Team", include_archived=True)["items"][0]
+    operator = make.get("/operators", filter="label:eq:old-op", include_archived=True)["items"][0]
+    return owner, operator
+
+
+def test_a_bulk_edit_links_no_living_item_to_a_retired_record(files: Files, make: Maker) -> None:
+    """Second review, 1: a bulk edit is the API's, and is held to its rules: a new link
+    to a retired record is refused, as PATCH refuses it."""
+    _retired_owner_and_operator(files, make)
+    item = make.item(name="ex-sw")
+    for set_ in ({"owner": "Ex Old Team"}, {"operator": "old-op"}):
+        preview = make.post("/items/bulk-update", {"hids": [item["hid"]], "set": set_})
+        assert preview["job"]["rejected"] == 1, (set_, preview["rows"])
+        assert not any("links to the retired" in note for note in preview["rows"][0]["notes"])
