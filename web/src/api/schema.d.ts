@@ -12745,7 +12745,7 @@ export interface components {
       address2: string | null;
       city: string | null;
       code: string | null;
-      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the state or the country in force of the set is changed: a country given is the code it resolves to, and a blank one beside another field is the United States. */
       country: string | null;
       /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
       country_name: string | null;
@@ -12782,7 +12782,7 @@ export interface components {
       ship_address1: string | null;
       ship_address2: string | null;
       ship_city: string | null;
-      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the state or the country in force of the set is changed: a country given is the code it resolves to, and a blank one beside another field is the United States. */
       ship_country: string | null;
       /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
       ship_country_name: string | null;
@@ -14157,7 +14157,7 @@ export interface components {
       ship_address1: string | null;
       ship_address2: string | null;
       ship_city: string | null;
-      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the state or the country in force of the set is changed: a country given is the code it resolves to, and a blank one beside another field is the United States. */
       ship_country: string | null;
       /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
       ship_country_name: string | null;
@@ -14624,7 +14624,7 @@ export interface components {
       address1: string | null;
       address2: string | null;
       city: string | null;
-      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the state or the country in force of the set is changed: a country given is the code it resolves to, and a blank one beside another field is the United States. */
       country: string | null;
       /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
       country_name: string | null;
@@ -14688,7 +14688,7 @@ export interface components {
       address2: string | null;
       city: string | null;
       code: string | null;
-      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the state or the country in force of the set is changed: a country given is the code it resolves to, and a blank one beside another field is the United States. */
       country: string | null;
       /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
       country_name: string | null;
@@ -14717,7 +14717,7 @@ export interface components {
       ship_address1: string | null;
       ship_address2: string | null;
       ship_city: string | null;
-      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the state or the country in force of the set is changed: a country given is the code it resolves to, and a blank one beside another field is the United States. */
       ship_country: string | null;
       /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
       ship_country_name: string | null;

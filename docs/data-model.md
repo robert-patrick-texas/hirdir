@@ -717,8 +717,11 @@ them, given by its code or its name within that country and kept as its code, or
 blank; where the country has none listed, it is text as typed. A value that no list
 holds is refused at its field, naming where the list is. A country or a state held from
 before that no list holds, which the upgrade to `0019` kept as it was typed, is kept
-until the country or the state of that set is changed, when both are checked; a change
-of anything else of the place goes through. A country is a field of the shipping set as
+until the state or the country in force of that set is changed, when both are checked;
+a change of anything else of the place goes through. A country given is the code it
+resolves to and is stored as given, and it changes the country only where the country
+in force is another: `Mexico` given for `MX`, or the United States for a blank country
+beside another field, changes none. A country is a field of the shipping set as
 the other five are: a shipping set given a country alone has a shipping address of its
 own. An address answers, beside its fields, the names of its country and its state,
 read from the lists when it is read and stored nowhere.
