@@ -12,7 +12,7 @@ import { Link } from "react-router";
 import { api } from "../api";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
-import { rolesFor } from "../lib/accounts";
+import { bringBackRoleHint, rolesFor } from "../lib/accounts";
 import { toApiError, useAction, useLoad } from "../lib/hooks";
 import {
   type AgentAction,
@@ -800,11 +800,7 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
                 value={role}
                 onChange={setRole}
                 required={person}
-                hint={
-                  person
-                    ? "An account with no role cannot sign in: choose the one it is to hold."
-                    : "A service account may come back with none; its tokens are refused until it has one."
-                }
+                hint={bringBackRoleHint(user.kind)}
                 error={roleRefused}
                 disabled={action.busy}
               >

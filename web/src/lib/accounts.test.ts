@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   agentsOfGroupLead,
+  bringBackRoleHint,
   cappedWords,
   type Holder,
   kindName,
@@ -115,6 +116,20 @@ describe("the role an agent is held to (P-316)", () => {
   it("says nothing where nothing holds it lower, nor of a person", () => {
     expect(cappedWords({ ...agent, role_in_force: "inventory", role_capped_by: null })).toBeNull();
     expect(cappedWords({ ...agent, kind: "person", role_capped_by: null })).toBeNull();
+  });
+});
+
+describe("what Bring back says under Role, for each kind (review 7)", () => {
+  it("says of an agent what an agent may come back with", () => {
+    expect(bringBackRoleHint("person")).toBe(
+      "An account with no role cannot sign in: choose the one it is to hold.",
+    );
+    expect(bringBackRoleHint("service")).toBe(
+      "A service account may come back with none; its tokens are refused until it has one.",
+    );
+    expect(bringBackRoleHint("agent")).toBe(
+      "An agent may come back with none; its tokens are refused until it has one. It is never Admin, and holds no more than the role of its person.",
+    );
   });
 });
 

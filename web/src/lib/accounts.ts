@@ -33,6 +33,17 @@ export function kindHint(kind: string): string {
   return "Somebody who signs in with an access code.";
 }
 
+/** What Bring back says under Role, of the kind brought back (review 7). */
+export function bringBackRoleHint(kind: string): string {
+  if (kind === "agent") {
+    return "An agent may come back with none; its tokens are refused until it has one. It is never Admin, and holds no more than the role of its person.";
+  }
+  if (kind === "service") {
+    return "A service account may come back with none; its tokens are refused until it has one.";
+  }
+  return "An account with no role cannot sign in: choose the one it is to hold.";
+}
+
 /** Whether an account holds tokens rather than signing in: a service account or an agent. */
 export function holdsTokens(kind: string): boolean {
   return kind === "service" || kind === "agent";
