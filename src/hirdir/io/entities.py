@@ -305,9 +305,10 @@ class Run:
             return self._get(Vendor, known)
         if not create:
             return None
-        vendor = catalog.create_vendor(
-            self.db, self.context, {"name": text, "review_status": MADE_BY_A_FILE}
-        )
+        with ids.withheld():
+            vendor = catalog.create_vendor(
+                self.db, self.context, {"name": text, "review_status": MADE_BY_A_FILE}
+            )
         self._learn(self._vendors, key, vendor.hid)
         self._stub(vendor.hid, f"creates the vendor {vendor.name}, to be reviewed")
         return vendor
@@ -331,11 +332,12 @@ class Run:
             return self._get(CatalogEntry, known)
         if not create:
             return None
-        entry = catalog.create_entry(
-            self.db,
-            self.context,
-            {"vendor_hid": vendor.hid, "pid": pid, "review_status": MADE_BY_A_FILE},
-        )
+        with ids.withheld():
+            entry = catalog.create_entry(
+                self.db,
+                self.context,
+                {"vendor_hid": vendor.hid, "pid": pid, "review_status": MADE_BY_A_FILE},
+            )
         self._learn(self._entries, key, entry.hid)
         self._stub(
             entry.hid, f"creates the catalog entry {vendor.name} {entry.pid}, to be reviewed"
@@ -1596,6 +1598,38 @@ class CatalogEntries(Entity):
         if not vendor or not pid:
             return None
         return run.entry(vendor, pid)
+
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work a successor that the same file describes before the entry that names it,
+        so that each is made by its own row, with the HID it gives (P-311), and none is
+        made first for the reference."""
+
+        def model(vendor: Any, pid: Any) -> tuple[str, str] | None:
+            if isinstance(vendor, str) and vendor.strip() and isinstance(pid, str) and pid.strip():
+                return records.key(vendor), records.key(pid)
+            return None
+
+        at: dict[tuple[str, str], int] = {}
+        for number, row in enumerate(rows, start=1):
+            known = model(row.get("vendor"), row.get("pid"))
+            if known is not None:
+                at.setdefault(known, number)
+
+        def depth(number: int) -> int:
+            """How many successors the file describes beyond this row's, one after another."""
+            seen = {number}
+            count = 0
+            while True:
+                row = rows[number - 1]
+                vendor = row.get("successor_vendor") or row.get("vendor")
+                following = at.get(model(vendor, row.get("successor_pid")) or ("", ""))
+                if following is None or following in seen:
+                    return count
+                seen.add(following)
+                number = following
+                count += 1
+
+        return sorted(range(1, len(rows) + 1), key=lambda number: (depth(number), number))
 
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         named = " ".join(part for part in (values.get("vendor"), values.get("pid")) if part)

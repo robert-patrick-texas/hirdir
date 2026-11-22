@@ -108,6 +108,15 @@ def _day(value: Any) -> str:
         raise Unreadable("a date, as YYYY-MM-DD") from None
 
 
+def moment_text(moment: datetime) -> str:
+    """Write a time as the API gives it: in UTC, with `Z`, as 2026-11-14T15:04:05Z or
+    with its fraction of a second (P-311). One that names no zone is written as it is."""
+    if moment.tzinfo is None:
+        return moment.isoformat()
+    written = moment.astimezone(UTC).isoformat()
+    return written.removesuffix("+00:00") + "Z"
+
+
 def _moment(value: Any) -> str:
     """Read a date and time in ISO 8601, and write it in UTC when it names its zone.
 
@@ -118,11 +127,8 @@ def _moment(value: Any) -> str:
     try:
         if not isinstance(value, str):
             raise unreadable
-        moment = datetime.fromisoformat(value.strip())
-        if moment.tzinfo is None:
-            return moment.isoformat()
         # A moment at the very edge of the calendar cannot be told in another zone.
-        return moment.astimezone(UTC).isoformat()
+        return moment_text(datetime.fromisoformat(value.strip()))
     except ValueError, OverflowError:
         raise unreadable from None
 
@@ -309,6 +315,8 @@ def plain(column: Column, value: Any) -> Any:
         return links_text(value)
     if isinstance(value, Decimal):
         return decimal_text(column, value)
-    if isinstance(value, datetime | date):
+    if isinstance(value, datetime):
+        return moment_text(value)
+    if isinstance(value, date):
         return value.isoformat()
     return value

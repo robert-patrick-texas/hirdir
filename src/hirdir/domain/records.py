@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import Select
 from sqlalchemy.orm import Session
 
-from hirdir import clock
+from hirdir import clock, ids
 from hirdir.domain import audit
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid, StaleVersion
@@ -98,6 +98,10 @@ def created(
     """
     record.created_by = context.actor_hid
     record.updated_by = context.actor_hid
+    # A row of a file that names its record by an HID no record has makes it so (P-311).
+    given = None if record.hid else ids.take_given(record_type)
+    if given is not None:
+        record.hid = given
     db.add(record)
     db.flush()
     changes = [
