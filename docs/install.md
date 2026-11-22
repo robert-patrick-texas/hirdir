@@ -2422,7 +2422,8 @@ setting, so the upgrade says nothing of it. What the migration changes:
   as `US` and ` Mexico ` as `MX`; and a state written as a code or a name of the
   country in force, a blank country being read as the United States, is written as its
   code, `texas` as `TX` and `Coahuila de Zaragoza` as `COA`. A blank country stays
-  blank. Anything else is kept as it was typed, and nothing is guessed: `Untied States`
+  blank, and one of spaces alone is made blank. Anything else is kept as it was typed,
+  and nothing is guessed: `Untied States`
   stays `Untied States`, to be chosen by a person. Each place it changes is at its next
   row version and has an audit event of the upgrade, an update by `system` with the
   request ID `upgrade-0019` that holds each value before and after; the upgrade writes
@@ -2451,7 +2452,10 @@ What an Admin sees changed:
   as it was typed, marked not in the list, and kept until the country or the state of
   that address is changed; anything else of the place may be changed meanwhile.
   `GET /places/unlisted-addresses` lists each such value, with the place and the field
-  that holds it.
+  that holds it. A file that gives a country or a state that no list holds has that row
+  refused at its column until a person chooses the value, so Export everything loads
+  whole into an empty inventory only once every address is in the lists: choose each
+  value that `GET /places/unlisted-addresses` lists before you count on it.
 - **The Z side of a circuit has dates of its own** and may name a network, a circuit
   group of the kind Network, in the place of a location. The dates of the side that
   `cost_side` names decide whether a circuit is in service and the months its cost

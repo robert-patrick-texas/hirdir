@@ -4366,13 +4366,14 @@ else:
 # update whose every change is a value that an input format writes in another form, and
 # so has as_in_file, is passed over as well.
 rows_changed() {
-    local hid
+    local hid found
     if [ "$(json '(lambda j: j["unchanged"] == j["row_count"] and not j["rejected"])(d["job"])')" = true ]; then
         return 0
     fi
     hid=$(json 'd["job"]["hid"]')
     api GET "/imports/$hid/rows?limit=500"
-    printf ' %s' "$(json '[[r["row"], r["outcome"], r["key"], r["changes"], r["reasons"]] for r in d["items"] if r["outcome"] != "unchanged" and not ("'"${1:-}"'" == "tidied" and r["outcome"] == "update" and all(c.get("as_in_file") is not None for c in r["changes"]))][:3]')"
+    found="$(json '[[r["row"], r["outcome"], r["key"], r["changes"], r["reasons"]] for r in d["items"] if r["outcome"] != "unchanged" and not ("'"${1:-}"'" == "tidied" and r["outcome"] == "update" and all(c.get("as_in_file") is not None for c in r["changes"]))][:3]')"
+    [ "$found" = "[]" ] || printf ' %s' "$found"
 }
 
 # count_of TABLES ENTITY: how many records GET /exports/tables, kept in the file TABLES,
