@@ -137,7 +137,7 @@ def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     except Invalid:
         # The key answers to several records: it finds none of them by itself.
         other = None
-    if other is not None and other.hid not in run.seen:
+    if other is not None and other.hid not in run.made:
         named = which.key(values, other)
         raise Conflict(
             f"this row names {named}, which is another record, by an HID it does not have",
@@ -240,6 +240,7 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
         result.outcome = "update" if changed else "unchanged"
     else:
         result.record_hid = record.hid
+        run.made.add(record.hid)
     result.notes = list(run.notes)
     run.seen[record.hid] = result.row
 
@@ -879,6 +880,7 @@ def _apply_row(run: Run, which: Entity, was: _Stored, values: dict[str, Any]) ->
         run.forget_row()
         if result.record_hid is not None and run.seen.get(result.record_hid) == was.row:
             del run.seen[result.record_hid]
+            run.made.discard(result.record_hid)
         return _Done("stale", [reason("", why)])
     savepoint.commit()
     return _Done(result.outcome, record_hid=result.record_hid)
@@ -946,6 +948,7 @@ def _undo_batch(db: Session, run: Run, numbers: set[int]) -> None:
     for record_hid, number in list(run.seen.items()):
         if number in numbers:
             del run.seen[record_hid]
+            run.made.discard(record_hid)
 
 
 def _store_batch(
@@ -1200,6 +1203,16 @@ def work_job(
         # A job that is resumed knows again what its earlier batches made only for a
         # reference, so that a row that describes one of them is worked as previewed.
         run.stubs |= _stubs_made(db, hid)
+        # And the records its rows made, which a later row may share a key with (P-311).
+        run.made |= {
+            made
+            for made in db.scalars(
+                select(ImportRow.record_hid).where(
+                    ImportRow.job_hid == hid, ImportRow.applied_outcome == "create"
+                )
+            )
+            if made is not None
+        }
         cut, typed = _plan(db, hid, run, which)
         for number, batch in enumerate(cut):
             if number and stop.wait(PAUSE_BETWEEN_BATCHES):

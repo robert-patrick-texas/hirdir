@@ -366,6 +366,18 @@ def test_a_row_whose_hid_no_record_has_is_refused_where_it_would_bring_back_or_d
     assert known["hid"] in said
     said = refused("items", f"hid,asset_tag,name\n{new_hid()},EX-AT-1,ex-other\n")
     assert known["hid"] in said
+    # A record an earlier row of the file changed is one this inventory had: a later row
+    # with an HID no record has makes no second of it. One the file made, it may.
+    there = make.item(name="ex-new-sw")
+    rows = files.preview(
+        "items", f"hid,name,comments\n,ex-new-sw,touched\n{new_hid()},ex-new-sw,a second\n"
+    )["rows"]
+    assert [row["outcome"] for row in rows] == ["update", "rejected"]
+    assert there["hid"] in rows[1]["reasons"][0]["message"]
+    rows = files.preview("items", f"hid,name\n{new_hid()},ex-twin-9\n{new_hid()},ex-twin-9\n")[
+        "rows"
+    ]
+    assert [row["outcome"] for row in rows] == ["create", "create"]
     # Text that is no HID names nothing, nor does a UUID of another version than 7.
     assert "no HID" in refused("tags", "hid,label\nnot-an-hid,example-other\n")
     for other in (

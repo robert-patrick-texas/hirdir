@@ -178,6 +178,9 @@ class Run:
         self.mode = mode
         # The row that already named each record, by the record's HID.
         self.seen: dict[str, int] = {}
+        # The records the rows of this file made, of those it names: a row whose HID no
+        # record has may share its key with one of them, and with no other (P-311).
+        self.made: set[str] = set()
         # Records this run made because a row referred to them and they were not there.
         self.stubs: set[str] = set()
         # The kinds of record the audit trail names, read once for the HIDs a file gives
