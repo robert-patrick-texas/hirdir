@@ -2298,6 +2298,74 @@ Going back to 0.9.15 needs no backup, because the schema is the same:
 sudo apt install --allow-downgrades ./hirdir_0.9.15_amd64.deb
 ```
 
+### From 0.9.16 to 0.9.17
+
+The schema goes from revision `0017` to `0018`. The table of the users is made anew:
+`kind` takes the place of `is_service_account`, `service` for every service account and
+`person` for every other account, and `answerable_hid` is added, empty for each; the
+audit trail gains `for_hid`, empty for every event. No table is added, nothing else that
+is held is changed, there is no agent until an Admin makes one, and the upgrade writes
+no audit event. It takes its backup and stops and starts the service as every upgrade
+does. `/etc/hirdir/config.toml` gains no setting, so the upgrade says nothing of it.
+
+Every account from before is what it was, in another word: it signs in, or is refused,
+as it did, and keeps its contact, its role, its groups and its row version, and the
+tokens of a service account are taken as they were, or refused as they were for want of
+a role. A disabled account stays disabled and a retired one retired.
+
+What an Admin sees changed:
+
+- **The kind of each account.** Kind says Person, Service or Agent, in the list of users
+  and on a user's page, where it said whether the account was a service account, and
+  `hirdir users list --kind agent` lists the accounts of one kind. `hirdir admin
+  create-user` takes `--kind person`, `--kind service` or `--kind agent`, a person
+  where it is left out, in the place of `--service-account`, which is gone. The kind is
+  set when the account is made, and not changed after.
+- **Agents**, as [Agents](#agents) says: an account for a tool that decides what to
+  change, as a person does. An Admin makes one on New user with Kind Agent, naming the
+  person answerable for it, or with `sudo hirdir admin create-user --kind agent --for
+  sam agent-reconcile`. It holds tokens and a role, never Admin and never more than its
+  person's, and its tokens are refused while that person holds no role or is disabled.
+  Each change it makes is in the audit trail as the agent's, for its person, and the
+  Audit page shows the changes of agents together. Retiring a person says what becomes
+  of each of their agents, retired with them or handed to another person, and
+  `hirdir users retire` takes `--agent` for each.
+- **A person is made with a role, by the command line too** (P-313). `hirdir admin
+  create-user` of a person with no `--role` and no `--group` that grants one is refused,
+  exit `4`, before anything is made, and says to give `--role`, a `--group` that grants
+  one, or `--no-role`. With `--no-role` the person is made with no role, and is told, as
+  before, that it cannot sign in until an Admin gives it one. `--role` with `--no-role`
+  is a mistake of usage, exit `2`. A service account is made with no role as before,
+  with its warning.
+- **Where a role comes from** (P-307). The page of a user names each role it holds and
+  where from: of its own, or through a group, named and a link, the highest first.
+- **Active users.** Show, on the list of users, says Active users where it said Every
+  user, for every account that is not retired, beside Retired users.
+
+Before the upgrade, look at the scripts that read `is_service_account` from a user, send
+it to `POST /users`, or call `hirdir admin create-user --service-account`: from 0.9.17
+they read and send `kind`, and call `--kind service`. Look also at any that makes a
+person with `hirdir admin create-user` and no `--role` or `--group`: it is refused from
+0.9.17, and is given a role, a group that grants one, or `--no-role`.
+
+For a script that reads the API: every user answers `kind`, `person`, `service` or
+`agent`, where it answered `is_service_account`, which is gone; `POST /users` takes
+`kind`, and `is_service_account` is a `422` there as any field it does not know is;
+`PATCH /users/{hid}` with another `kind` is a `422` on `kind`. A user answers also
+`answerable_hid`, `answerable`, `agents`, `grants`, `role_in_force` and
+`role_capped_by`, and `GET /users` takes `kind`. An event of the audit trail answers
+`actor_kind`, `for_hid` and `for_name`, and `GET /audit-events` takes `actor_kind` and
+`for_hid`. The users' file has a column `answerable` after `kind`, blank but for an
+agent. `GET /users/{hid}/linked`, `GET /contacts/{hid}/linked` and
+`GET /operators/{hid}/linked` answer `agents`, and a retirement of a person who has an
+agent that is not retired says in `linked.agents` what becomes of each, or is a `409`
+that names it. These are newly refused: a grant of Admin to an agent, an agent put in a
+group that grants Admin, and Admin granted to a group that holds an agent.
+
+Going back to 0.9.16 is by the backup the upgrade took, as
+[Going back to the release before](#going-back-to-the-release-before) says, since the
+schema changed: what was entered since is lost, every agent made since among it.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,

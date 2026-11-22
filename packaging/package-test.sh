@@ -63,7 +63,11 @@
 #                      users, the colours and the users as a file, a person's own
 #                      profile and access code, an account retired and brought
 #                      back and a person retired together, an account with no role
-#                      refused and the access codes that the server makes, reference files
+#                      refused and the access codes that the server makes, hirdir admin
+#                      create-user refusing a person with no role unless --no-role, the
+#                      kind of each account and an agent answerable to a person, held to
+#                      that person's role, never Admin and handed over when that person is
+#                      retired, and each role of a user with where it comes from, reference files
 #                      uploaded and downloaded through nginx and a backup of them restored
 #                      on a second, clean host, then the inventory made by hand, and the
 #                      capacity balance of the worked example; and, where the package has
@@ -118,7 +122,8 @@
 # S35 for contracts and coverage, the end of life, the portfolio of a vendor, purchases,
 # registrations, drafts and archived items, S39 and S40 for the capacity balance, S56
 # to S58 for a person's own profile, a retired account and a person retired together, S59
-# and S60 for an account with no role and the access codes that are made. The others, marked pkg, are about the package alone, or about a record that has no
+# and S60 for an account with no role and the access codes that are made, S61 and S62 for
+# agents, the kind of an account and where a role comes from. The others, marked pkg, are about the package alone, or about a record that has no
 # scenario of its own yet, such as the condition of an item and the health of a stack.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
@@ -1069,12 +1074,14 @@ table_rows() {
     fi
 }
 
-# events_beside HIDS [REQUEST]: the audit trail as it is after an upgrade, beside the
-# events it held before, whose HIDs are named with a comma between them: how many of
-# those there are and one checksum of what they hold, as table_rows prints it of them
-# all; then how many events there are since that the started service did not write by
+# events_beside HIDS [REQUEST [COLUMN...]]: the audit trail as it is after an upgrade,
+# beside the events it held before, whose HIDs are named with a comma between them: how
+# many of those there are and one checksum of what they hold, as table_rows prints it of
+# them all, in the columns the table had, the COLUMNs that a migration added to it left
+# out; then how many events there are since that the started service did not write by
 # itself, and how many it did; and with REQUEST, how many of those since carry that
-# request ID, as the events that a migration writes do, apart from the others. From
+# request ID, as the events that a migration writes do, apart from the others. REQUEST
+# may be empty. From
 # 0.7.0 the service records the capacity balance of the week when it starts in a week
 # that has no record (D-188): one event, which the system makes and nobody, of the
 # action create on a capacity_record. From 0.8.0 it also works out the long reports when
@@ -1090,9 +1097,11 @@ import hashlib, sqlite3, sys
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
 then = set(sys.argv[1].split(","))
 request = sys.argv[2] if len(sys.argv) > 2 else ""
+added = set(sys.argv[3:])
 names = [column[1] for column in held.execute("PRAGMA table_info(audit_events)")]
 rows = held.execute("SELECT " + ", ".join(f"\"{name}\"" for name in names) + " FROM audit_events ORDER BY hid").fetchall()
-kept = [row for row in rows if row[names.index("hid")] in then]
+before = [place for place, name in enumerate(names) if name not in added]
+kept = [tuple(row[place] for place in before) for row in rows if row[names.index("hid")] in then]
 since = [dict(zip(names, row)) for row in rows if row[names.index("hid")] not in then]
 own = [e for e in since if (e["via"], e["actor_hid"], e["action"], e["record_type"]) == ("system", None, "create", "capacity_record")]
 upgraded = [e for e in since if request and e not in own and e["request_id"] == request]
@@ -1106,14 +1115,13 @@ print(len(kept), "rows", hashlib.sha256(repr(kept).encode()).hexdigest(), "|", l
 # its events: each must be as it was, and beside them there may be the one event that
 # the started service writes by itself, and nothing else. Where the file of a migration
 # names the request ID of the events that it writes, $upgrade_events, there may be
-# those as well, which that file looks at by itself.
+# those as well, which that file looks at by itself. Where a file names columns that its
+# migration adds to audit_events, in new_columns, each event is compared in the columns
+# it had, and the file looks at what the new ones hold.
 no_event_written() {
-    local found own written
-    if [ -n "$upgrade_events" ]; then
-        found=$(events_beside "$2" "$upgrade_events")
-    else
-        found=$(events_beside "$2")
-    fi
+    local found own written added
+    read -ra added <<<"$(printf '%s\n' "${new_columns[audit_events]:-}" | cut -d' ' -f1 | xargs)"
+    found=$(events_beside "$2" "$upgrade_events" "${added[@]}")
     own=$(printf '%s' "$found" | sed -n 's/.*other, \([0-9]*\) by the service itself.*$/\1/p')
     own=${own:-0}
     if [ -z "$upgrade_events" ]; then
@@ -3661,9 +3669,11 @@ previous_release() {
     expect "pkg the service token authenticates as the service account" \
         "$status $(json_field username) $(json_field role)" "200 upgrade-robot viewer"
 
-    # Everything as it is now, read with the session that is kept in hand.
+    # Everything as it is now, read with the session that is kept in hand. The retired
+    # users too, from 0.9.14, where a file of the pair makes one: the list leaves them
+    # out unless they are asked for, and a release before knows no such question.
     token=$old_session
-    api GET '/users?limit=1000'
+    api GET '/users?retired=yes&limit=1000'
     keep users
     users_before=$(json 'len(d["items"])')
     api GET /user-groups
@@ -3831,7 +3841,7 @@ upgrade() {
     # The accounts, read before anything is asked of the inventory, which a file of the
     # pair may try what is new on. What the files say is meant to change of a user, such
     # as a name that is now its contact's, is passed over here and looked at by them.
-    api GET '/users?limit=1000'
+    api GET '/users?retired=yes&limit=1000'
     expect "pkg every user is as before the upgrade ($users_before)${meant[users]:+, but for what is meant to change, which is looked at by itself}" \
         "$(unchanged users exact "${meant[users]:-}")" same
     api GET /user-groups
@@ -4640,11 +4650,13 @@ files() {
     # the examples and everything that the checks made beside them; and a person made in
     # one request, which the restore below takes away again with the rest. From 0.9.14:
     # a person's own profile, a retired account and a person retired together. From
-    # 0.9.15: an account with no role, and the access codes that are made.
+    # 0.9.15: an account with no role, and the access codes that are made. From 0.9.17:
+    # the kind of an account, agents, and where a role comes from.
     every_table
     people_at_once
     own_and_retired
     roles_and_codes
+    agents_and_kinds
 
     section "files: the examples taken out again by hirdir admin reset, and the inventory from before them restored, under $prefix/"
     # A file and a link on a location of the examples, from 0.9.0, for the reset to clear
@@ -4822,7 +4834,7 @@ people_at_once() {
 
     # A View-only service account, which has neither a contact nor an operator, and reads
     # the colours.
-    api POST /users '{"username": "pkg-desk-reader", "is_service_account": true, "role": "viewer"}'
+    api POST /users '{"username": "pkg-desk-reader", "kind": "service", "role": "viewer"}'
     made="$status $(json '[d["operator"], d["user"]["operators"], d["user"]["notes"]]')"
     reader=$(json 'd["user"]["hid"]')
     api POST "/users/$reader/service-tokens" '{"name": "package test, the users file"}'
@@ -4906,19 +4918,19 @@ print(json.dumps([len(grid), sorted({len(row) for row in grid}), len(set(every))
     authorized POST "$prefix/api/v1/users/export"
     cp "$work/body" "$work/users.csv"
     name=$(header content-disposition | sed -n 's/^attachment; filename="\(.*\)"$/\1/p')
-    expect "pkg POST $prefix/api/v1/users/export gives an Admin the users as CSV, named for the product and the moment, a row to each user, by username, in the thirteen columns of R11.10" \
+    expect "pkg POST $prefix/api/v1/users/export gives an Admin the users as CSV, named for the product and the moment, a row to each user, by username, in its fourteen columns, answerable after kind" \
         "$status $(header content-type | cut -d';' -f1) $(printf '%s\n' "$name" | grep -cE '^hirdir-users-[0-9]{8}T[0-9]{6}[-+][0-9]{4}\.csv$') $(table head "$work/users.csv") $(table '[r["username"] for r in rows]' "$work/users.csv")" \
-        "200 text/csv 1 [\"username\", \"name\", \"email\", \"phone\", \"phone2\", \"role\", \"groups\", \"operators\", \"kind\", \"state\", \"record_status\", \"last_sign_in_at\", \"notes\"] $usernames"
-    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact and its role; the service account its role and its kind; and $admin its role, and that it has signed in; and each is active, none of them retired" \
-        "$(table '[[r["username"], r["name"], r["email"], r["phone"], r["role"], r["groups"], r["operators"], r["kind"], r["state"], r["record_status"], bool(r["last_sign_in_at"]), r["notes"]] for r in rows if r["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]' "$work/users.csv")" \
+        "200 text/csv 1 [\"username\", \"name\", \"email\", \"phone\", \"phone2\", \"role\", \"groups\", \"operators\", \"kind\", \"answerable\", \"state\", \"record_status\", \"last_sign_in_at\", \"notes\"] $usernames"
+    expect "pkg each row says what its user is: the person made in one request its contact, with a number guarded as a spreadsheet would take it for a formula, its role, its two groups, its operator, that it has signed in, and its notes; the plain one its contact and its role; the service account its role and its kind; and $admin its role, and that it has signed in; none answerable to anybody, which is an agent's alone; and each is active, none of them retired" \
+        "$(table '[[r["username"], r["name"], r["email"], r["phone"], r["role"], r["groups"], r["operators"], r["kind"], r["answerable"], r["state"], r["record_status"], bool(r["last_sign_in_at"]), r["notes"]] for r in rows if r["username"] in ("'"$admin"'", "pkg-onboarded", "pkg-plain", "pkg-desk-reader")]' "$work/users.csv")" \
         "$(python3 -c '
 import json, sys
 
 print(json.dumps([
-    [sys.argv[1], "", "", "", "admin", "", "", "person", "enabled", "active", True, ""],
-    ["pkg-desk-reader", "", "", "", "viewer", "", "", "service", "enabled", "active", False, ""],
-    ["pkg-onboarded", "Example Onboarded Person", "onboarded.person@example.net", "'"'"'+1 555 0171", "inventory", "Package Test Engineers;Package Test Night Shift", "pkg-onboarded", "person", "enabled", "active", True, "Made in one step by the package test"],
-    ["pkg-plain", "Example Plain Person", "", "", "viewer", "", "", "person", "enabled", "active", False, ""],
+    [sys.argv[1], "", "", "", "admin", "", "", "person", "", "enabled", "active", True, ""],
+    ["pkg-desk-reader", "", "", "", "viewer", "", "", "service", "", "enabled", "active", False, ""],
+    ["pkg-onboarded", "Example Onboarded Person", "onboarded.person@example.net", "'"'"'+1 555 0171", "inventory", "Package Test Engineers;Package Test Night Shift", "pkg-onboarded", "person", "", "enabled", "active", True, "Made in one step by the package test"],
+    ["pkg-plain", "Example Plain Person", "", "", "viewer", "", "", "person", "", "enabled", "active", False, ""],
 ]))' "$admin")"
     for value in "$admin_code" "$onboarded_code" "$secret" "$first_token" \
         $(sqlite_text 'SELECT access_code_hash FROM users WHERE access_code_hash IS NOT NULL UNION ALL SELECT token_hash FROM service_tokens'); do
@@ -4973,7 +4985,7 @@ own_and_retired() {
     other=$(json 'd["user"]["hid"]')
     other_contact=$(json 'd["user"]["contact_hid"]')
     other_label=$(json 'd["operator"]["hid"]')
-    api POST /users '{"username": "pkg-own-robot", "is_service_account": true, "role": "viewer"}'
+    api POST /users '{"username": "pkg-own-robot", "kind": "service", "role": "viewer"}'
     api POST "/users/$(json 'd["user"]["hid"]')/service-tokens" '{"name": "package test, the profile"}'
     made="$made $status"
     secret=$(json_field secret)
@@ -5375,7 +5387,7 @@ roles_and_codes() {
         "$made $(json_field role)" "201 401 200 inventory"
 
     # A service account with no role, given a token.
-    api POST /users '{"username": "pkg-idle-robot", "is_service_account": true}'
+    api POST /users '{"username": "pkg-idle-robot", "kind": "service"}'
     made="$status $(json 'd["user"]["role"]')"
     robot=$(json 'd["user"]["hid"]')
     api POST "/users/$robot/service-tokens" '{"name": "package test, no role"}'
@@ -5394,7 +5406,8 @@ roles_and_codes() {
         "$made $status $(json_field role)" \
         "201 null 201 401 the token is not accepted: its service account holds no role | 201 200 viewer"
 
-    # A person with no role is not made by the API; hirdir admin makes one, and says so.
+    # A person with no role is not made by the API, nor by hirdir admin unless --no-role
+    # says so (P-313).
     api POST /users '{"username": "pkg-no-role", "contact": {"name": "Example Roleless Person"}, "operator": {}}'
     made="$status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
     api GET '/users?q=pkg-no-role'
@@ -5403,16 +5416,10 @@ roles_and_codes() {
     made="$made $(json_field total)"
     api POST /users "{\"username\": \"pkg-no-role\", \"group_hids\": [\"$group\"], \"contact\": {\"name\": \"Example Roleless Person\"}}"
     made="$made $status $(json 'd["user"]["role"]')"
-    code=0
-    inside hirdir admin create-user pkg-admin-made >"$work/create-user.log" 2>&1 || code=$?
-    typed=$(sed -n 's/^access code: //p' "$work/create-user.log")
-    made="$made | $code $(matches '^created pkg-admin-made$' "$work/create-user.log") $(matches '^pkg-admin-made holds no role, and cannot sign in until an Admin gives it one$' "$work/create-user.log") ${#typed}"
-    sign_in pkg-admin-made "$typed"
-    made="$made $status $(json_field title)"
-    token=$admin_token
-    expect "S59 a person with neither a role nor a group that grants one is refused by POST $prefix/api/v1/users, a 422 on role, and nothing is made, neither the user nor its contact; with the group that grants Inventory it is made, holding that role; hirdir admin create-user without --role makes the person all the same, and says that it holds no role and cannot sign in, and its code, made of 14 characters, is refused at sign-in for want of a role" \
+    expect "S59 a person with neither a role nor a group that grants one is refused by POST $prefix/api/v1/users, a 422 on role, and nothing is made, neither the user nor its contact; with the group that grants Inventory it is made, holding that role" \
         "$made" \
-        '422 [["role", "give a role, or a group that grants one"]] 0 0 201 inventory | 0 1 1 14 403 No role'
+        '422 [["role", "give a role, or a group that grants one"]] 0 0 201 inventory'
+    no_role_made
 
     # S60. An Admin changes their own access code on the profile with the code in hand.
     api POST /users "{\"username\": \"pkg-desk-admin\", \"access_code\": \"$desk_code\", \"role\": \"admin\"}"
@@ -5520,6 +5527,244 @@ roles_and_codes() {
 
     made="$(put_setting help_organization null) $(put_setting help_email null) $(put_setting help_phone null) $(put_setting help_url null)"
     expect "pkg whom to ask goes back to nobody" "$made" "200 null 200 null 200 null 200 null"
+}
+
+# no_role_made: S62 by hirdir admin create-user, from 0.9.17 (P-313). A person with no
+# --role and no --group that grants one is refused, exit 4, before anything is made, in
+# words that name the three ways on; with --no-role it is made, with the warning that it
+# holds no role, and its code is refused at sign-in for want of one; --role with
+# --no-role is a mistake of usage, exit 2; a --group that grants a role is enough; and a
+# service account is made with no role as before, with its warning.
+no_role_made() {
+    local admin_token=$token made code=0 typed users_then events_then
+    api GET '/users?retired=yes&limit=1000'
+    users_then=$(json_field total)
+    api GET '/audit-events?limit=1'
+    events_then=$(json_field total)
+    inside hirdir admin create-user pkg-admin-made --name 'Example Unmade Person' >"$work/create-user.log" 2>&1 || code=$?
+    made="$code $(matches '^hirdir: a person is made with a role, since an account with no role does not sign in: give --role, a --group that grants one, or --no-role to make it with none$' "$work/create-user.log") $(matches '^access code: ' "$work/create-user.log")"
+    api GET '/users?retired=yes&limit=1000'
+    made="$made $(($(json_field total) - users_then))"
+    authorized GET "$prefix/api/v1/contacts" --get --data-urlencode 'filter=name:eq:Example Unmade Person'
+    made="$made $(json_field total)"
+    api GET '/audit-events?limit=1'
+    made="$made $(($(json_field total) - events_then))"
+    expect "S62 hirdir admin create-user of a person with neither --role nor a --group that grants one is refused, exit 4, in words that name --role, a --group that grants one and --no-role, and nothing is made: no user, no contact, no event" \
+        "$made" "4 1 0 0 0 0"
+
+    code=0
+    inside hirdir admin create-user pkg-admin-made --no-role >"$work/create-user.log" 2>&1 || code=$?
+    typed=$(sed -n 's/^access code: //p' "$work/create-user.log")
+    made="$code $(matches '^created pkg-admin-made$' "$work/create-user.log") $(matches '^pkg-admin-made holds no role, and cannot sign in until an Admin gives it one$' "$work/create-user.log") ${#typed}"
+    sign_in pkg-admin-made "$typed"
+    made="$made $status $(json_field title)"
+    token=$admin_token
+    api GET '/users?q=pkg-admin-made'
+    made="$made $(json '[[u["kind"], u["role"], u["grants"]] for u in d["items"]]')"
+    expect "S62 with --no-role it makes the person all the same, and says that it holds no role and cannot sign in, and its code, made of 14 characters, is refused at sign-in for want of a role; the user is a person and holds no grant" \
+        "$made" '0 1 1 14 403 No role [["person", null, []]]'
+
+    code=0
+    inside hirdir admin create-user pkg-never-made --role viewer --no-role >"$work/create-user.log" 2>&1 || code=$?
+    made="$code $(matches '^hirdir: --role and --no-role are not given together$' "$work/create-user.log")"
+    api GET '/users?q=pkg-never-made&retired=yes'
+    made="$made $(json_field total)"
+    code=0
+    inside hirdir admin create-user pkg-stores-made --group 'Package Test Stores' >"$work/create-user.log" 2>&1 || code=$?
+    made="$made | $code $(matches '^pkg-stores-made holds the inventory role through its groups$' "$work/create-user.log") $(matches 'holds no role' "$work/create-user.log")"
+    code=0
+    inside hirdir admin create-user pkg-cli-robot --kind service >"$work/create-user.log" 2>&1 || code=$?
+    made="$made | $code $(matches '^pkg-cli-robot holds no role, and its tokens are refused until an Admin gives it one$' "$work/create-user.log") $(matches '^access code: ' "$work/create-user.log")"
+    api GET '/users?q=pkg-cli-robot'
+    made="$made $(json '[[u["kind"], u["role"]] for u in d["items"]]')"
+    expect "S62 --role with --no-role is a mistake of usage, exit 2, and makes nothing; a --group that grants Inventory is enough, and says so; and --kind service makes a service account with no role and no access code, with its warning" \
+        "$made" '2 1 0 | 0 1 0 | 0 1 0 [["service", null]]'
+}
+
+# agents_and_kinds: S61 and the rest of S62, from 0.9.17 (P-307, P-316). Each account
+# is of a kind, person, service or agent, which GET /users narrows to. An agent is made
+# answerable to an Inventory person, by the API and by hirdir admin create-user --kind
+# agent --for; its token acts with the lower of its role and its person's, and is
+# refused, with words that say why, while the person holds no role; Admin is refused to
+# it in each of the three ways; its change is in the audit trail as the agent's, for its
+# person; the person's retirement that says nothing of it is refused, naming it, and the
+# one that hands it to another person leaves it answerable to that one, whose role it
+# then holds; and a user answers each role it holds with where it comes from.
+agents_and_kinds() {
+    section "agents and the kind of an account, through nginx under $prefix/ and by hirdir admin create-user --kind agent --for (S61, S62)"
+    local admin_token=$token made code=0 field agents_group admins sam kim agent secret own vendor rv linked
+
+    # The kinds of the accounts made so far, and a list narrowed to each.
+    api GET '/users?limit=1000'
+    made=$(json '[[u["username"], u["kind"], u["answerable_hid"], u["agents"]] for u in d["items"] if u["username"] in ("'"$admin"'", "pkg-desk-reader", "pkg-plain")]')
+    for kind in person service agent; do
+        api GET "/users?kind=$kind&limit=1000"
+        made="$made $status $(json 'sorted({u["kind"] for u in d["items"]}) in ([], ["'"$kind"'"])') $(json '"pkg-desk-reader" in [u["username"] for u in d["items"]]')"
+    done
+    expect "S61 every user answers its kind, in the place of is_service_account: the first Admin and a person made through the API are persons, the service account a service, none answerable to anybody and none with agents; and GET $prefix/api/v1/users?kind= lists each kind alone" \
+        "$made" \
+        "[[\"$admin\", \"person\", null, []], [\"pkg-desk-reader\", \"service\", null, []], [\"pkg-plain\", \"person\", null, []]] 200 true false 200 true true 200 true false"
+
+    # Two persons: Sam, Inventory of their own, and Kim, Inventory through a group and
+    # View-only of their own; and a group that grants nothing, for the agent.
+    api POST /user-groups '{"name": "Package Test Field"}'
+    made=$status
+    field=$(json_field hid)
+    api POST /role-grants "{\"role\": \"inventory\", \"group_hid\": \"$field\"}"
+    made="$made $status"
+    api POST /user-groups '{"name": "Package Test Agents"}'
+    made="$made $status"
+    agents_group=$(json_field hid)
+    api POST /users '{"username": "pkg-sam", "contact": {"name": "Example Sam Answerable"}, "role": "inventory"}'
+    made="$made $status"
+    sam=$(json 'd["user"]["hid"]')
+    api POST /users "{\"username\": \"pkg-kim\", \"contact\": {\"name\": \"Example Kim Handed\"}, \"role\": \"viewer\", \"group_hids\": [\"$field\"]}"
+    made="$made $status"
+    kim=$(json 'd["user"]["hid"]')
+    api GET "/users/$kim"
+    expect "S62 a person who holds Inventory through the group Package Test Field and View-only of their own answers role Inventory and each grant, the highest first, the group's named and their own with no group" \
+        "$made $status $(json '[d["role"], [[g["role"], (g["group"] or {}).get("name")] for g in d["grants"]], d["role_in_force"]]')" \
+        '201 201 201 201 201 200 ["inventory", [["inventory", "Package Test Field"], ["viewer", null]], "inventory"]'
+
+    # An agent answerable to Sam, by the API, with Inventory of its own and a token.
+    api POST /users '{"username": "pkg-agent-loose", "kind": "agent", "role": "inventory"}'
+    made="$status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
+    api POST /users "{\"username\": \"pkg-agent-loose\", \"kind\": \"agent\", \"answerable_hid\": \"$sam\", \"contact\": {\"name\": \"Example Nobody\"}}"
+    made="$made $status $(json '[e["field"] for e in d["errors"]]')"
+    api POST /users "{\"username\": \"pkg-agent-reconcile\", \"kind\": \"agent\", \"answerable_hid\": \"$sam\", \"role\": \"inventory\", \"group_hids\": [\"$agents_group\"]}"
+    made="$made $status $(json '[d["user"]["kind"], d["user"]["answerable"]["username"], d["user"]["contact"], d["access_code"], d["user"]["role"], d["user"]["role_in_force"], d["user"]["role_capped_by"]]')"
+    agent=$(json 'd["user"]["hid"]')
+    api POST "/users/$agent/service-tokens" '{"name": "package test, the agent"}'
+    made="$made $status"
+    secret=$(json_field secret)
+    api GET "/users/$sam"
+    expect "S61 an agent is refused without a person answerable for it, a 422 on answerable_hid, and with a contact, a 422 on contact; answerable to Sam, it is made with no contact and no access code, holding Inventory as its person does, and given a token; and Sam's page lists it among Sam's agents" \
+        "$made $status $(json '[a["username"] for a in d["agents"]]')" \
+        '422 [["answerable_hid", "an agent is answerable to a person"]] 422 ["contact"] 201 ["agent", "pkg-sam", null, null, "inventory", "inventory", null] 201 200 ["pkg-agent-reconcile"]'
+
+    # Its token acts with Inventory, and what it changes is in the audit trail as the
+    # agent's, for Sam.
+    token=$secret
+    api GET /auth/me
+    made="$status $(json '[d["username"], d["kind"], d["role_in_force"]]')"
+    api POST /vendors '{"name": "Example Agent Networks"}'
+    made="$made $status"
+    vendor=$(json_field hid)
+    token=$admin_token
+    api GET "/audit-events?actor_kind=agent&limit=1000"
+    made="$made $status $(json '[[e["action"], e["record_type"], e["actor_name"], e["actor_kind"], e["for_hid"] == "'"$sam"'", e["for_name"]] for e in d["items"] if e["record_hid"] == "'"$vendor"'"]')"
+    api GET "/audit-events?for_hid=$sam&limit=1000"
+    made="$made $status $(json '[e["record_hid"] == "'"$vendor"'" for e in d["items"]]')"
+    api GET "/audit-events?actor_kind=person&limit=1000"
+    expect "S61 the agent's token acts with Inventory and makes a vendor; the event is the agent's, of the kind agent, for Sam, and the events of agents and those for Sam each find it, and those of persons do not" \
+        "$made $(json '[e["record_hid"] for e in d["items"]].count("'"$vendor"'")')" \
+        '200 ["pkg-agent-reconcile", "agent", "inventory"] 201 200 [["create", "vendor", "pkg-agent-reconcile", "agent", true, "pkg-sam"]] 200 [true] 0'
+
+    # Sam is moved to View-only: the agent is held to it at its next request.
+    api GET /role-grants
+    own=$(json '"".join(g["hid"] for g in d if g["user_hid"] == "'"$sam"'")')
+    api DELETE "/role-grants/$own"
+    made=$status
+    api POST /role-grants "{\"role\": \"viewer\", \"user_hid\": \"$sam\"}"
+    made="$made $status"
+    own=$(json_field hid)
+    token=$secret
+    api GET "/vendors/$vendor"
+    api PATCH "/vendors/$vendor" "{\"row_version\": $(json_field row_version), \"notes\": \"Never written\"}"
+    made="$made $status $(json_field detail)"
+    token=$admin_token
+    api GET "/vendors/$vendor"
+    made="$made $(json_field notes)"
+    api GET "/users/$agent"
+    expect "S61 with Sam moved to View-only, the agent's change is refused as View-only, a 403, and nothing changes; the agent still holds Inventory, and is held to View-only by its person" \
+        "$made $(json '[d["role"], d["role_in_force"], d["role_capped_by"]]')" \
+        '204 201 403 this needs the inventory role null ["inventory", "viewer", "person_role"]'
+
+    # Sam holds no role: the agent's token is refused, and the agent is not changed.
+    api DELETE "/role-grants/$own"
+    made=$status
+    token=$secret
+    api GET /auth/me
+    made="$made $status $(json_field detail)"
+    token=$admin_token
+    api GET "/users/$agent"
+    made="$made $(json '[d["disabled"], d["record_status"], d["role_in_force"], d["role_capped_by"]]')"
+    api POST /role-grants "{\"role\": \"inventory\", \"user_hid\": \"$sam\"}"
+    made="$made $status"
+    token=$secret
+    api GET /auth/me
+    token=$admin_token
+    expect "S61 while Sam holds no role the agent's token is refused, a 401 that says the agent is answerable to Sam, who holds no role, and the agent itself is not disabled or changed; with Inventory given to Sam again, the token is taken" \
+        "$made $status $(json_field role_in_force)" \
+        '204 401 the token is not accepted: the agent pkg-agent-reconcile is answerable to pkg-sam, who holds no role [false, "active", null, "person_no_role"] 201 200 inventory'
+
+    # Never Admin, in each of the three ways, and its kind is not changed.
+    api POST /role-grants "{\"role\": \"admin\", \"user_hid\": \"$agent\"}"
+    made="$status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
+    api POST /user-groups '{"name": "Package Test Admins"}'
+    admins=$(json_field hid)
+    api POST /role-grants "{\"role\": \"admin\", \"group_hid\": \"$admins\"}"
+    made="$made $status"
+    api PUT "/user-groups/$admins/members/$agent"
+    made="$made $status $(json '[[e["field"], e["message"]] for e in d["errors"]]')"
+    api POST /role-grants "{\"role\": \"admin\", \"group_hid\": \"$agents_group\"}"
+    made="$made $status $(json '[[e["field"] for e in d["errors"]], [r["label"] for r in d.get("depends_on", [])]]')"
+    api GET "/users/$agent"
+    api PATCH "/users/$agent" "{\"row_version\": $(json_field row_version), \"kind\": \"service\"}"
+    made="$made $status $(json '[e["field"] for e in d["errors"]]')"
+    api GET "/users/$agent"
+    expect "S61 Admin is refused to the agent: granted to it, a 422 on role, an agent is never Admin; the agent put in a group that grants Admin, a 409 on user_hid; and Admin granted to the group that holds it, a 409 on role that names it; its kind is not changed, a 422 on kind; and it holds Inventory still, in the one group" \
+        "$made $(json '[d["kind"], d["role"], [g["name"] for g in d["groups"]]]')" \
+        '422 [["role", "an agent is never Admin"]] 201 409 [["user_hid", "an agent is never Admin"]] 409 [["role"], ["pkg-agent-reconcile"]] 422 ["kind"] ["agent", "inventory", ["Package Test Agents"]]'
+
+    # By hirdir admin: --kind agent --for, never Admin, and never without a person.
+    code=0
+    inside hirdir admin create-user pkg-cli-agent --kind agent --for pkg-kim --role viewer >"$work/create-user.log" 2>&1 || code=$?
+    made="$code $(matches '^created pkg-cli-agent, an agent answerable to pkg-kim, with the viewer role$' "$work/create-user.log") $(matches '^access code: ' "$work/create-user.log")"
+    code=0
+    inside hirdir admin create-user pkg-cli-agent-2 --kind agent --role viewer >"$work/create-user.log" 2>&1 || code=$?
+    made="$made | $code $(matches '^hirdir: an agent is answerable to a person: name them with --for USERNAME$' "$work/create-user.log")"
+    code=0
+    inside hirdir admin create-user pkg-cli-agent-2 --kind agent --for pkg-kim --role admin >"$work/create-user.log" 2>&1 || code=$?
+    made="$made | $code $(matches '^hirdir: pkg-cli-agent-2 is an agent, and an agent is never Admin$' "$work/create-user.log")"
+    code=0
+    inside hirdir admin create-user pkg-cli-agent-2 --kind agent --for pkg-agent-reconcile --role viewer >"$work/create-user.log" 2>&1 || code=$?
+    made="$made | $code $(matches 'an agent is answerable to a person' "$work/create-user.log")"
+    api GET '/users?q=pkg-cli-agent&retired=yes&limit=1000'
+    made="$made | $(json '[[u["username"], u["kind"], u["answerable"]["username"], u["role"], u["contact"]] for u in d["items"]]')"
+    expect "S61 hirdir admin create-user --kind agent --for pkg-kim --role viewer makes an agent answerable to Kim, with no access code; with no --for it is a mistake of usage, exit 2; with --role admin it is refused, exit 4, an agent is never Admin; answerable to an agent, it is refused, exit 4; and nothing else is made" \
+        "$made" \
+        '0 1 0 | 2 1 | 4 1 | 4 1 | [["pkg-cli-agent", "agent", "pkg-kim", "viewer", null]]'
+
+    # Sam is retired: a retirement that says nothing of the agent is refused, naming it,
+    # and the one that hands it to Kim leaves it answerable to Kim.
+    api GET "/users/$sam/linked"
+    made="$status $(json '[[a["username"], a["role"]] for a in d["agents"]]')"
+    linked=$(linked_kept "users/$sam")
+    api GET "/users/$sam"
+    rv=$(json_field row_version)
+    api POST "/users/$sam/retire" "{\"row_version\": $rv, \"linked\": $linked}"
+    made="$made $status $(json '[[e["field"] for e in d["errors"]], [r["label"] for r in d.get("depends_on", [])]]')"
+    api GET "/users/$sam"
+    made="$made $(json_field record_status)"
+    linked=$(python3 -c 'import json, sys; plan = json.loads(sys.argv[1]); plan["agents"] = [{"hid": sys.argv[2], "action": "hand_over", "user_hid": sys.argv[3]}]; print(json.dumps(plan))' "$linked" "$agent" "$kim")
+    api POST "/users/$sam/retire" "{\"row_version\": $rv, \"linked\": $linked}"
+    made="$made $status $(json_field record_status)"
+    api GET "/users/$agent"
+    made="$made $(json '[d["answerable"]["username"], d["record_status"], d["role_in_force"], d["role_capped_by"]]')"
+    token=$secret
+    api GET /auth/me
+    made="$made $status"
+    token=$admin_token
+    api GET "/users/$kim"
+    expect "S61 Sam's retirement, which says what becomes of the contact and nothing of the agent, is a 409 on linked.agents that names the agent, and Sam is not retired; handing the agent to Kim, Sam is retired, and the agent is answerable to Kim, holding Inventory as Kim does, its token taken; and Kim's page lists both of Kim's agents" \
+        "$made $(json '[a["username"] for a in d["agents"]]')" \
+        '200 [["pkg-agent-reconcile", "inventory"]] 409 [["linked.agents"], ["pkg-agent-reconcile"]] active 200 retired ["pkg-kim", "active", "inventory", null] 200 ["pkg-agent-reconcile", "pkg-cli-agent"]'
+
+    api GET '/users?kind=agent&limit=1000'
+    expect "S61 GET $prefix/api/v1/users?kind=agent lists the two agents, each answerable to Kim" \
+        "$status $(json '[[u["username"], u["kind"], u["answerable"]["username"]] for u in d["items"] if u["username"].startswith("pkg-")]')" \
+        '200 [["pkg-agent-reconcile", "agent", "pkg-kim"], ["pkg-cli-agent", "agent", "pkg-kim"]]'
 }
 
 # ---- reference files --------------------------------------------------------------------
@@ -8139,7 +8384,7 @@ cover_and_purchases() {
     # Every write of 0.6.0 is role-checked on the server: a service account that holds
     # View-only reads the lists and the reports, and is refused each of the writes. What
     # it sends with them is no more than a row_version: the role is asked for first.
-    api POST /users '{"username": "pkgtest-reader", "is_service_account": true, "role": "viewer"}'
+    api POST /users '{"username": "pkgtest-reader", "kind": "service", "role": "viewer"}'
     made=$status
     api POST "/users/$(json 'd["user"]["hid"]')/service-tokens" '{"name": "package test"}'
     made="$made $status"
