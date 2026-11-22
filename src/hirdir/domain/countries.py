@@ -24,6 +24,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir.auth.roles import Role
+from hirdir.db import dialect
 from hirdir.db.models import ADDRESS_FIELDS, Country, Location, Region, Site, State
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
@@ -66,6 +67,14 @@ def _admins(role: Role | None) -> None:
         raise NotAllowed(
             "an Admin changes the lists of countries and states: this needs the admin role"
         )
+
+
+def _writing(db: Session) -> None:
+    """Take the one writer's place before a change looks at what the addresses hold, as
+    a change of a place takes it before it looks at the lists: of a site saved with a
+    country and an Admin removing that country at the same moment, the second waits for
+    the first to be stored and then sees it."""
+    dialect.hold_other_writers(db)
 
 
 def _first() -> Any:
@@ -296,6 +305,7 @@ def update_country(
     """Rename a country, or give it another code where no address holds the one it has,
     its states then being of the new code. An Admin's; a change that changes nothing is
     nobody's to refuse."""
+    _writing(db)
     country = get_country(db, hid)
     values = _checked_country(db, fields, country)
     if records.differences(country, values):
@@ -314,6 +324,7 @@ def delete_country(db: Session, context: AuditContext, hid: str, role: Role | No
     holds either, in one change; each removal is audited, and the country's event names
     the states removed with it. The United States is not removed."""
     _admins(role)
+    _writing(db)
     country = get_country(db, hid)
     if country.code == US:
         raise Conflict(
@@ -439,6 +450,7 @@ def update_state(
     """Rename a state, or give it another code where no address holds the one it has.
     Its country is not changed. An Admin's; a change that changes nothing is nobody's to
     refuse."""
+    _writing(db)
     state = get_state(db, hid)
     values = _checked_state(db, fields, state)
     if records.differences(state, values):
@@ -466,6 +478,7 @@ def _delete_state(db: Session, context: AuditContext, state: State) -> None:
 def delete_state(db: Session, context: AuditContext, hid: str, role: Role | None) -> None:
     """Remove a state that no address holds. An Admin's, audited."""
     _admins(role)
+    _writing(db)
     state = get_state(db, hid)
     held = state_held(db, state)
     if held[0]:
