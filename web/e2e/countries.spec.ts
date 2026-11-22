@@ -255,7 +255,9 @@ test("an address in a country with no states takes its state as text, and a stat
   await lead.getByRole("link", { name: "Addresses not in the lists" }).click();
   await expect(page).toHaveURL(/list=countries#unlisted-addresses$/);
   await arrived;
-  await expect(page.getByRole("heading", { level: 2, name: "Addresses not in the lists" })).toBeFocused();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Addresses not in the lists" }),
+  ).toBeFocused();
   await expect(unlisted).toBeInViewport();
   await unlisted.getByRole("link", { name: depot }).click();
   await expect(page.getByTestId("place-path")).toHaveText(depot);
