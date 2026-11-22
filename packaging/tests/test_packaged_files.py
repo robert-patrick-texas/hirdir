@@ -1143,7 +1143,15 @@ def test_the_install_page_and_the_package_test_say_of_circuit_sides_and_lists_as
     schemas = contract["components"]["schemas"]
     for name in dates:
         assert f"a_{name}" in schemas["CircuitOut"]["properties"]
+        assert f"z_{name}" in schemas["CircuitOut"]["properties"]
+        assert f"z_{name}" in schemas["CircuitEffective"]["properties"]
         assert name not in schemas["CircuitOut"]["properties"]
+    assert "`z_group_hid`" in page
+    assert "z_group_hid" in schemas["CircuitOut"]["properties"]
+    for field in ("kind", "carrier_hid"):
+        assert field in schemas["CircuitGroupOut"]["properties"]
+    assert "z_side" in schemas["CircuitGroupMemberOut"]["properties"]
+    assert "`z_side`" in page
     for field in ("country_name", "state_name", "ship_country_name", "ship_state_name"):
         assert field in schemas["SiteOut"]["properties"]
         assert field in schemas["LocationOut"]["properties"]
