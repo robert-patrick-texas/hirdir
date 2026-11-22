@@ -419,6 +419,29 @@ def test_an_admin_hands_an_agent_to_another_person(client: TestClient, admin: di
 # --- the audit trail -----------------------------------------------------------------
 
 
+def test_a_sign_in_typed_for_an_agent_is_no_change_of_an_agent(
+    client: TestClient, admin: dict
+) -> None:
+    """An account that holds tokens cannot sign in: a sign-in typed with its username is
+    an event of that account, as the record, and by nobody, so that the changes of agents
+    together hold only what agents did (P-316); and so for a service account."""
+    desk = _desk(client, admin)
+    agent = desk.agent("agent-reconcile", desk.person("sam"))
+    tool = desk.post("/users", {"username": "ex-tool", "kind": "service"})["user"]
+    for name in ("agent-reconcile", "ex-tool"):
+        typed = client.post(
+            f"{API}/auth/sign-in", json={"username": name, "access_code": "not-a-code-01"}
+        )
+        assert typed.status_code == 401
+    failed = desk.get("/audit-events", action="sign_in_failed")["items"]
+    assert [(one["record_hid"], one["actor_hid"], one["actor_kind"]) for one in failed] == [
+        (tool["hid"], None, None),
+        (agent["hid"], None, None),
+    ]
+    assert desk.get("/audit-events", actor_kind="agent")["total"] == 0
+    assert desk.get("/audit-events", actor_kind="service")["total"] == 0
+
+
 def test_each_event_of_an_agent_is_kept_for_its_person(client: TestClient, admin: dict, db) -> None:
     desk = _desk(client, admin)
     sam, kim = desk.person("sam"), desk.person("klee")
