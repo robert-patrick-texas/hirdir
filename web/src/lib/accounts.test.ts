@@ -147,7 +147,7 @@ describe("what a change leaves of the roles of an account (P-314)", () => {
 describe("what a confirmation says of whom a change leaves with no role (P-314)", () => {
   const klee: Holder = { username: "klee", kind: "person", grants: [TEAM] };
   const sroe: Holder = { username: "sroe", kind: "person", grants: [TEAM, TEAM_TOO] };
-  const jdoe: Holder = { username: "jdoe", kind: "person", grants: [OWN, TEAM] };
+  const rex: Holder = { username: "rex", kind: "person", grants: [OWN, TEAM] };
   const sync: Holder = { username: "svc-sync", kind: "service", grants: [TEAM] };
   const agent: Holder = { username: "agent-reconcile", kind: "agent", grants: [TEAM] };
 
@@ -158,14 +158,14 @@ describe("what a confirmation says of whom a change leaves with no role (P-314)"
   });
 
   it("names each member so left, and nobody who keeps a role", () => {
-    expect(leftWithNone([klee, sroe, jdoe], { kind: "leave", groupHid: "G1" })).toEqual([
+    expect(leftWithNone([klee, sroe, rex], { kind: "leave", groupHid: "G1" })).toEqual([
       klee,
       sroe,
     ]);
-    expect(noRoleWords([klee, sroe, jdoe], { kind: "leave", groupHid: "G1" })).toBe(
+    expect(noRoleWords([klee, sroe, rex], { kind: "leave", groupHid: "G1" })).toBe(
       "klee and sroe will each hold no role and be signed out.",
     );
-    expect(noRoleWords([klee, sroe, jdoe], { kind: "revoke", grantHid: "R2" })).toBe(
+    expect(noRoleWords([klee, sroe, rex], { kind: "revoke", grantHid: "R2" })).toBe(
       "klee will hold no role and be signed out.",
     );
   });
@@ -180,7 +180,7 @@ describe("what a confirmation says of whom a change leaves with no role (P-314)"
   });
 
   it("says nothing where everybody keeps a role", () => {
-    expect(noRoleWords([jdoe, sroe], { kind: "revoke", grantHid: "R2" })).toBeNull();
+    expect(noRoleWords([rex, sroe], { kind: "revoke", grantHid: "R2" })).toBeNull();
     expect(noRoleWords([], { kind: "revoke", grantHid: "R2" })).toBeNull();
   });
 });
