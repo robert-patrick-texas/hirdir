@@ -4,6 +4,7 @@
 // text that was typed: it never passes through a JavaScript number.
 
 import { colourProblem } from "./colour";
+import type { TextFormat } from "./formats";
 
 export type FieldKind =
   /** One line of text. */
@@ -124,6 +125,12 @@ export interface FieldSpec {
   sample?: (values: FormValues) => string;
   /** 0.9.13: for a colour, whether the sample is shown as an operator (the default) or a tag. */
   sampleAs?: "operator" | "tag";
+  /**
+   * 0.9.18: for a line of text, the format that writes what is typed or pasted again as
+   * the person leaves the box or pastes into it (P-322 (7)): a telephone number, an email
+   * address, or a person's name.
+   */
+  format?: TextFormat;
 }
 
 export type FormValue = string | boolean | string[];
@@ -269,6 +276,12 @@ export function read(spec: FieldSpec, value: FormValue | undefined): Read {
   }
   const typed = text(value).trim();
   if (typed === "") return { value: null };
+  // 0.9.18: a paste is taken whole, past the most the field takes, which is said here
+  // before anything is sent (P-293).
+  const length = [...typed].length;
+  if (spec.maxLength !== undefined && length > spec.maxLength) {
+    return { error: `At most ${spec.maxLength} characters: this has ${length}.` };
+  }
   if (spec.kind === "integer") {
     if (!/^\d{1,15}$/.test(typed)) return { error: "A whole number, with digits only." };
     return { value: Number.parseInt(typed, 10) };

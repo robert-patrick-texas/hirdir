@@ -6,6 +6,8 @@
 // them the values that are fixed in the code (D-187): each with `fixed` true, what it
 // limits and why it is fixed. A fixed value is listed and never changed.
 
+import { PHONE_FORMATS_KEY, patternProblem, type TextFormat } from "./formats";
+
 interface Setting {
   default: unknown;
 }
@@ -49,7 +51,7 @@ export function splitSettings<T extends Listed>(all: readonly T[]): { settings: 
  * and typed otherwise, as a setting whose default is blank is. A list of the extensions
  * of files is a list of its own, to which an Admin adds any other.
  */
-export type SettingInput = "set" | "choice" | "flag" | "text" | "extensions";
+export type SettingInput = "set" | "choice" | "flag" | "text" | "extensions" | "patterns";
 
 /** The two values of a setting that is true or false, as the form offers them. */
 export const FLAG_OPTIONS: ReadonlyArray<{ value: "true" | "false"; label: string }> = [
@@ -74,8 +76,29 @@ export function settingStart(setting: Listed): string {
  */
 const EXTENSION_LISTS: readonly string[] = ["reference_file_types"];
 
+/**
+ * 0.9.18: the settings that are a list of the patterns a telephone number is written in,
+ * in the order they are tried, which may be empty (P-322 (1)).
+ */
+const PATTERN_LISTS: readonly string[] = [PHONE_FORMATS_KEY];
+
+/**
+ * 0.9.18: the settings whose value is typed and that a format tidies as the server does
+ * when they are set: the telephone number and the address of whom to ask (P-322 (4)).
+ */
+const TEXT_FORMATS: Readonly<Record<string, TextFormat>> = {
+  help_phone: "phone",
+  help_email: "email",
+};
+
+/** The format that tidies a setting's value as it is typed, if any. */
+export function settingFormat(key: string): TextFormat | undefined {
+  return TEXT_FORMATS[key];
+}
+
 export function settingInput(setting: Listed): SettingInput {
   if (EXTENSION_LISTS.includes(setting.key)) return "extensions";
+  if (PATTERN_LISTS.includes(setting.key)) return "patterns";
   const listed = Array.isArray(setting.value) || Array.isArray(setting.default);
   if (listed) return "set";
   if (isFlag(setting)) return "flag";
@@ -124,6 +147,28 @@ export function withExtension(list: readonly string[], typed: string): Extension
   if (extension === "") return { ok: false, error: "Type an extension, as pdf." };
   if (list.includes(extension)) return { ok: false, error: `${extension} is in the list already.` };
   return { ok: true, list: [...list, extension] };
+}
+
+/**
+ * 0.9.18: a list of patterns with one more at its end, as it was typed, or what is wrong
+ * with it: a pattern as P-322 (2) has it, and not one in the list already. The server
+ * holds each to the same when the list is set, and says so.
+ */
+export function withPattern(list: readonly string[], typed: string): ExtensionAdded {
+  const pattern = typed.trim();
+  if (pattern === "") return { ok: false, error: "Type a pattern, as ###-###-####." };
+  if (list.includes(pattern)) return { ok: false, error: `${pattern} is in the list already.` };
+  const problem = patternProblem(pattern);
+  return problem === null ? { ok: true, list: [...list, pattern] } : { ok: false, error: problem };
+}
+
+/** 0.9.18: a list with the entry at a place moved one place up, the first staying first. */
+export function movedUp(list: readonly string[], place: number): string[] {
+  const moved = [...list];
+  if (place <= 0 || place >= moved.length) return moved;
+  const [entry] = moved.splice(place, 1);
+  if (entry !== undefined) moved.splice(place - 1, 0, entry);
+  return moved;
 }
 
 export function listValue(chosen: readonly string[], options: readonly string[]): SettingRead {
