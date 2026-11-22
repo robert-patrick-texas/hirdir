@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearName,
   entryLabel,
   entrySearch,
   entrySeen,
@@ -12,6 +13,14 @@ import {
   placeText,
   sawEntries,
 } from "./pick";
+
+describe("the Clear of a field, as a screen reader names it (review 13)", () => {
+  it("is the field's label after the, its first letter alone made small", () => {
+    expect(clearName("Location")).toBe("the location");
+    expect(clearName("Person to hand KL over to")).toBe("the person to hand KL over to");
+    expect(clearName("Person answerable")).toBe("the person answerable");
+  });
+});
 
 describe("itemSearch", () => {
   it("is no search for blank text", () => {

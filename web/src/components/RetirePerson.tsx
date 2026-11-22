@@ -9,9 +9,10 @@
 
 import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
+import { api } from "../api";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
-import { rolesFor } from "../lib/accounts";
+import { agentRoleWords, bringBackRoleHint, rolesFor } from "../lib/accounts";
 import { toApiError, useAction, useLoad } from "../lib/hooks";
 import {
   type AgentAction,
@@ -551,7 +552,7 @@ function RetireRows(props: RetireRowsProps) {
           <div className="person-row" data-row="agent" data-agent={agent.hid} key={agent.hid}>
             <p className="person-about">
               <Link to={`/admin/users/${encodeURIComponent(agent.hid)}`}>{agent.username}</Link> ·
-              agent · {roleLabel(agent.role)} · {userState(agent)}
+              agent · {agentRoleWords(agent.role)} · {userState(agent)}
             </p>
             <div className="person-choice">
               <RadioGroupField
@@ -677,7 +678,10 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
   // whose person is retired is given another (P-316).
   const agent = user.kind === "agent";
   const [answerable, setAnswerable] = useState("");
-  const personGone = agent && user.answerable?.record_status === "retired";
+  // The person it is answerable to as last read: the page's, until a refusal names them,
+  // as retired since the page was read; then the account is read again (review 6).
+  const [itsPerson, setItsPerson] = useState(user.answerable ?? null);
+  const personGone = agent && itsPerson?.record_status === "retired";
   const action = useAction();
   const linked = read.data;
   const offer = linked ? bringBackOffer(linked) : null;
@@ -722,6 +726,18 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
     else if (again) {
       setSentWith(linked);
       read.reload();
+      // An agent's person retired since: it is read again, and another is asked for.
+      if (agent) void readPerson();
+    }
+  }
+
+  /** Read again whom the agent is answerable to. */
+  async function readPerson() {
+    try {
+      const now = await api.request("get", "/api/v1/users/{hid}", { path: { hid: user.hid } });
+      setItsPerson(now.answerable);
+    } catch {
+      // Not read: the refusal says what there is to say.
     }
   }
 
@@ -750,6 +766,10 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
           shown={[...refused.shown, "role", "answerable_hid"]}
           onReload={() => void readAgain()}
           labels={LINKED_LABELS}
+          // The record a refusal of the person names is that person, not a duplicate.
+          {...(action.error?.fields.answerable_hid !== undefined
+            ? { existingLead: "The person it was answerable to:" }
+            : {})}
         />
         {reread && !changed && !action.error && (
           <p className="alert alert-info" data-testid="confirm-reread">
@@ -780,11 +800,7 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
                 value={role}
                 onChange={setRole}
                 required={person}
-                hint={
-                  person
-                    ? "An account with no role cannot sign in: choose the one it is to hold."
-                    : "A service account may come back with none; its tokens are refused until it has one."
-                }
+                hint={bringBackRoleHint(user.kind)}
                 error={roleRefused}
                 disabled={action.busy}
               >
@@ -805,14 +821,12 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
                   onChange={setAnswerable}
                   required={false}
                   blank={
-                    user.answerable && !personGone
-                      ? `${user.answerable.name}, as before`
-                      : "Nobody chosen"
+                    itsPerson && !personGone ? `${itsPerson.name}, as before` : "Nobody chosen"
                   }
-                  leaveOut={user.answerable ? [user.answerable.hid] : []}
+                  leaveOut={itsPerson ? [itsPerson.hid] : []}
                   hint={
                     personGone
-                      ? `${user.answerable?.username ?? "Its person"} is retired: choose the person the agent is answerable to from now on.`
+                      ? `${itsPerson?.username ?? "Its person"} is retired: choose the person the agent is answerable to from now on.`
                       : "Left as it is, the agent is answerable to the person it was; or choose another."
                   }
                   error={sentWith || changed ? undefined : action.error?.fields.answerable_hid}

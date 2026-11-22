@@ -107,6 +107,15 @@ test("P-314: a change that takes the last role from an account says so before, a
   ]);
   const own = await createAccount(request, `e2e-${suffix}-own`, "viewer", person("Ova"));
   madeAccounts.push(lee.hid, mia.hid, both.hid, own.hid);
+  // An agent of lee's, whose tokens go with lee's role (P-316).
+  const bot = (
+    (await make(request, headers, "/users", {
+      username: `e2e-${suffix}-lee-bot`,
+      kind: "agent",
+      answerable_hid: lee.hid,
+    })) as unknown as { user: { hid: string; username: string } }
+  ).user;
+  madeAccounts.push(bot.hid);
   const seen = await watch(page.context());
   await signIn(page, account);
 
@@ -117,7 +126,7 @@ test("P-314: a change that takes the last role from an account says so before, a
   await box.click();
   await expect(asked(page)).toContainText(`Take ${lee.username} out of ${onlyName}?`);
   await expect(asked(page).getByTestId("no-role-left")).toHaveText(
-    `${lee.username} will hold no role and be signed out.`,
+    `${lee.username} will hold no role and be signed out, and the tokens of ${bot.username} will be refused.`,
   );
   await asked(page).getByRole("button", { name: "Cancel" }).click();
   await expect(asked(page)).toHaveCount(0);

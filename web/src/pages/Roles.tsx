@@ -8,7 +8,7 @@ import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
-import { noRoleWords } from "../lib/accounts";
+import { agentsOfGroupLead, noRoleWords } from "../lib/accounts";
 import { actorLabel } from "../lib/audit";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { ROLES, roleLabel } from "../lib/roles";
@@ -207,7 +207,13 @@ function GrantForm({
     <section className="panel" aria-labelledby="grant">
       <h2 id="grant">Grant a role</h2>
       <form onSubmit={submit} className="stack">
-        <Problem error={action.error} shown={["role", "user_hid", "group_hid"]} />
+        {/* 0.9.17: Admin refused to a group that holds an agent names the agents, each a
+            link, as the group's (review 4, P-316). */}
+        <Problem
+          error={action.error}
+          shown={["role", "user_hid", "group_hid"]}
+          dependsLead={agentsOfGroupLead}
+        />
         <Problem error={groups.error} />
         <SelectField label="Role" name="role" value={role} onChange={setRole} error={fields.role}>
           {ROLES.map((name) => (

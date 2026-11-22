@@ -44,14 +44,16 @@ export function actorLabel(user: {
   username: string;
   record_status?: string | null;
   kind?: string;
-  answerable?: { username: string } | null;
+  answerable?: { username: string; record_status?: string | null } | null;
 }): string {
-  const marks: string[] = [];
-  if (user.kind === "agent") {
-    marks.push(user.answerable ? `agent, for ${user.answerable.username}` : "agent");
-  }
-  if (user.record_status === "retired") marks.push("retired");
-  return marks.length > 0 ? `${user.username} (${marks.join(", ")})` : user.username;
+  const retired = user.record_status === "retired";
+  if (user.kind !== "agent") return retired ? `${user.username} (retired)` : user.username;
+  // Review 11: of an agent, which of the two is retired is said, the agent or its person.
+  const agent = retired ? "retired agent" : "agent";
+  const person = user.answerable;
+  if (!person) return `${user.username} (${agent})`;
+  const gone = person.record_status === "retired" ? ", who is retired" : "";
+  return `${user.username} (${agent}, for ${person.username}${gone})`;
 }
 
 /** Who acted, as an event answers it (P-316 (6)). */

@@ -78,7 +78,11 @@ export function Problem(props: ProblemProps) {
           ) : (
             <p>
               {heading && <strong>{sentence(heading)} </strong>}
-              {sentence(visible.message)}
+              {/* 0.9.17: a username or a label it begins with is as it is written. */}
+              {sentence(visible.message, [
+                ...(visible.existing ? [visible.existing.label] : []),
+                ...visible.dependsOn.map((record) => record.label),
+              ])}
             </p>
           )}
           {/* 0.9.7: a record that was deleted: the detail says when and by whom (P-227). */}

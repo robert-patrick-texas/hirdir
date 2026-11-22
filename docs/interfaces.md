@@ -4013,8 +4013,10 @@ P-314, P-316):
   page by Remove, revokes a grant of a group, on the group's page or under Roles, or
   deletes a group, the confirmation says whom the change leaves with no role, from the
   roles each holds and where they come from: `klee will hold no role and be signed
-  out.`; for a group, each member so left, named; of a service account or an agent,
-  that its tokens will be refused. A change that leaves everybody a role says nothing
+  out.`; for a group, each member so left, named; of a person who has agents, that
+  their tokens will be refused too, `sroe will hold no role and be signed out, and the
+  tokens of agent-reconcile and agent-sync will be refused.`; of a service account or
+  an agent, that its tokens will be refused. A change that leaves everybody a role says nothing
   of it, and a box that leaves the account a role changes it at once, as before.
 - **Users, by kind.** The column Kind writes `Person`, `Service` or `Agent`, from
   `kind`, and Kind beside the search narrows the list to one, `kind=` in the address,
@@ -4038,7 +4040,12 @@ P-314, P-316):
   revoked under Tokens as a service account's are, and a new one says, where it is
   shown once, that it is refused while the agent or its person holds no role. Bring
   back of an agent asks whom it is answerable to, its person as before unless another
-  is chosen, and another where its person is retired.
+  is chosen, and another where its person is retired; where the person was retired
+  while the dialog was open, the refusal names them as the person it was answerable to,
+  the agent is read again, and Bring back waits for another person. The page of an agent
+  and of a service account speaks of an account that holds tokens: it has no chain of
+  one person and no Sessions, and its username, Disabled, Retire and Bring back are said
+  of tokens, revoked when it is retired and none given back.
 - **A person's page.** Agents lists every agent answerable to them, each a link, a
   retired one marked.
 - **The confirmation of a retirement**, where it retires the account, has a row for
@@ -4051,11 +4058,15 @@ P-314, P-316):
 - **Groups.** The page of a group lists the roles it grants, each revoked there, and
   the Kind of each member. Putting an agent in a group that grants Admin, or granting
   Admin to an agent or to a group that holds one, is refused by the server, and its
-  words are shown where the change was asked, beside the box, above the members or at
-  the role.
+  words are shown where the change was asked, beside the box, at the member chosen or
+  at the role, with no name of a field before them, and the agents of a group refused
+  Admin are named as the agents in the group, each a link. Words of the server that
+  begin with a username, as `agent-sync is an agent`, begin as it is written.
 - **Audit.** Kind, beside Who, narrows the trail to the changes of people, of service
   accounts or of agents, `actor_kind`, for every role that reads the trail; Who
-  writes an agent `agent-reconcile (agent, for sam)`. Who, on the Audit page and in an
+  writes an agent `agent-reconcile (agent, for sam)`, a retired one `agent-old (retired
+  agent, for sam)` and one whose person is retired `agent-tidy (agent, for rex, who is
+  retired)`. Who, on the Audit page and in an
   item's history, writes an agent's change `agent-reconcile for sam`, both links for an
   Admin.
 

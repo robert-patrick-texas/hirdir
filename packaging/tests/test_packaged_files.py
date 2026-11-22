@@ -599,7 +599,7 @@ def test_the_install_page_and_the_package_test_say_of_a_retired_user_what_the_co
 
 
 def test_the_install_page_and_the_package_test_say_of_no_role_what_the_code_says() -> None:
-    """The notes of the upgrade to 0.9.15, the newest, and what the package test asks for
+    """The notes of the upgrade to 0.9.15, and what the package test asks for
     it: no migration, and an account that holds no role refused at sign-in, its session
     and its token refused, and given a role when it is made or brought back (P-299); a
     new code that is the one in hand refused, and a code made as long as the setting asks
@@ -780,3 +780,218 @@ def test_the_nightly_upgrade_is_shipped_and_is_for_a_site_to_turn_on() -> None:
     assert "deb-systemd-invoke stop hirdir-upgrade.timer" in prerm
     assert "rm -f /etc/systemd/system/timers.target.wants/hirdir-upgrade.timer\n" in postrm
     assert "sudo systemctl enable --now hirdir-upgrade.timer" in INSTALL
+
+
+def test_the_short_browser_check_is_a_pass_that_runs_a_spec_file_of_the_web_ui() -> None:
+    """The pass --browser-check runs web/e2e/browser-check.spec.ts, which is there, keeps
+    the rules of support.ts and is no project's that runs alone, so that the host's run
+    and --e2e run it beside the others; every pass runs the check last, by itself, and
+    the release process and the architecture page name it for an ordinary release, in
+    the place of --e2e (P-305, P-309)."""
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (spec,) = re.findall(r"^check_spec=(\S+)$", script, re.M)
+    source = (ROOT / spec).read_text(encoding="utf-8")
+    assert 'from "./support";' in source
+    assert "await signIn(page, account);" in source
+    assert "expectClean(" in source
+    name = Path(spec).name
+    config = (ROOT / "web" / "playwright.config.ts").read_text(encoding="utf-8")
+    alone = re.findall(r"^const [A-Z_]+ = /(.+)/;$", config, re.M)
+    assert len(alone) >= 6
+    assert not any(re.search(pattern.replace("\\/", "/"), name) for pattern in alone)
+
+    # A pass of its own, which every pass runs by itself once the others have ended.
+    assert "--upgrade | --failed-upgrade | --fresh | --browser-check)" in script
+    assert "| --fresh | --browser-check]" in script
+    every = script.split("\nevery_pass() {\n", 1)[1].split("\n}\n", 1)[0]
+    assert every.index("    wait\n") < every.index("one_pass --browser-check")
+    (pass_itself,) = re.findall(
+        r'\n    if \[ "\$mode" = browser-check \]; then\n(.*?)\n    elif ', script, re.S
+    )
+    called = [line.strip() for line in pass_itself.splitlines() if not line.strip().startswith("#")]
+    assert called == ["setup", "through_nginx", "browser_check"]
+    assert '"${check_spec#web/}"' in script
+
+    process = " ".join((ROOT / "docs" / "release-process.md").read_text(encoding="utf-8").split())
+    assert "for an ordinary release `--failed-upgrade` and `--browser-check`" in process
+    assert f"`{spec}`" in process
+    assert "| `--browser-check` |" in ARCHITECTURE
+    assert f"`{spec}`" in ARCHITECTURE
+
+
+def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_code_says() -> None:
+    """The notes of the upgrade to 0.9.17, the newest, and what the package test asks for
+    it: migration 0018 makes the users' table anew, kind in the place of
+    is_service_account and answerable_hid, adds for_hid to the audit trail, creates no
+    table and writes no event, and the file of the package test declares each column as
+    the model does (P-316); the routes, fields and commands that the page names are those
+    of the contract and of the command line; and the package test asks for S61 and S62 on
+    the fresh install and on what the upgrade carried over, in the words of the server and
+    of hirdir admin, with its exit codes (P-307, P-313)."""
+    import json
+
+    from sqlalchemy import inspect
+    from sqlalchemy.dialects import sqlite
+
+    from hirdir.cli import admin
+    from hirdir.db.models import AuditEvent, User
+    from hirdir.domain import accounts
+    from hirdir.io import users_file
+
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
+    assert revision == "0018"
+    (migration,) = versions.glob(f"{revision}_*.py")
+    source = migration.read_text(encoding="utf-8")
+    assert 'down_revision = "0017"' in source
+    # No table: the pass whose migration fails puts the trigger in its way.
+    assert "op.create_table" not in source
+    assert 'users.drop_column("is_service_account")' in source
+
+    # The file of the package test says what the migration adds and drops, and declares
+    # each column as SQLite has it from the model.
+    hook = (PACKAGING / "package-test.d" / f"migration-{revision}.sh").read_text(encoding="utf-8")
+    assert "\nwrites_no_event=yes\n" in hook
+
+    def said(model: type, name: str) -> str:
+        column = inspect(model).columns[name]
+        declared = column.type.compile(dialect=sqlite.dialect())
+        return f"{column.name} {declared} {'NULL' if column.nullable else 'NOT NULL'} -"
+
+    users = User.__tablename__
+    added = f"{said(User, 'kind')}\n{said(User, 'answerable_hid')}"
+    assert f"\nalso new_columns {users} '{added}'\n" in hook
+    events = AuditEvent.__tablename__
+    assert f"\nalso new_columns {events} '{said(AuditEvent, 'for_hid')}'\n" in hook
+    assert "is_service_account" not in inspect(User).columns
+    gone = f'gone_columns[{users}]="${{gone_columns[{users}]:+${{gone_columns[{users}]}} }}'
+    assert f"{gone}is_service_account" in hook
+    (key,) = re.findall(
+        r'create_foreign_key\("\w+", "users", \["answerable_hid"\], \["hid"\]\)', source
+    )
+    (index,) = re.findall(r'create_index\("(\w+)", \["answerable_hid"\], unique=False\)', source)
+    assert key
+    assert f"index {index} on answerable_hid unique=0 origin=c partial=0'" in hook
+    assert "foreign key answerable_hid to users.hid\n" in hook
+    # And the indexes of the audit trail, as the model declares them.
+    trail = re.findall(r'events\.create_index\("(\w+)", \["(\w+)"\], unique=False\)', source)
+    assert sorted(trail) == sorted(
+        (index.name, column.name)
+        for index in AuditEvent.metadata.tables[AuditEvent.__tablename__].indexes
+        for column in index.columns
+        if column.name in ("actor_hid", "for_hid")
+    )
+    assert len(trail) == 2
+    for name, column in trail:
+        assert f"index {name} on {column} unique=0 origin=c partial=0" in hook
+    assert f'*) more_tables="${{more_tables:+$more_tables }}{users}" ;;' in hook
+
+    # The notes.
+    assert "### From 0.9.16 to 0.9.17" in INSTALL
+    notes = INSTALL.split("### From 0.9.16 to 0.9.17\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    assert f"The schema goes from revision `0017` to `{revision}`." in page
+    assert (
+        "`kind` takes the place of `is_service_account`, `service` for every service account "
+        "and `person` for every other account" in page
+    )
+    assert "the audit trail gains `for_hid`, empty for every event" in page
+    assert "the upgrade writes no audit event" in page
+    assert "Going back to 0.9.16 is by the backup the upgrade took" in page
+
+    # The routes, the fields and the questions that the page names are the contract's.
+    contract = json.loads((ROOT / "contract" / "openapi.json").read_text(encoding="utf-8"))
+    for method, path in (
+        ("post", "/users"),
+        ("patch", "/users/{hid}"),
+        ("get", "/users"),
+        ("get", "/audit-events"),
+        ("get", "/users/{hid}/linked"),
+        ("get", "/contacts/{hid}/linked"),
+        ("get", "/operators/{hid}/linked"),
+    ):
+        assert method in contract["paths"][f"/api/v1{path}"]
+        assert f"`{method.upper()} {path}`" in page
+    schemas = contract["components"]["schemas"]
+    assert schemas["UserCreate"]["additionalProperties"] is False
+    assert "is_service_account" not in schemas["UserCreate"]["properties"]
+    assert schemas["UserCreate"]["properties"]["kind"]["enum"] == list(accounts.KINDS)
+    for field in (
+        "kind",
+        "answerable_hid",
+        "answerable",
+        "agents",
+        "grants",
+        "role_in_force",
+        "role_capped_by",
+    ):
+        assert field in schemas["UserOut"]["properties"]
+        assert f"`{field}`" in page
+    for field in ("actor_kind", "for_hid", "for_name"):
+        assert field in schemas["AuditEventOut"]["properties"]
+        assert f"`{field}`" in page
+    asked = {one["name"] for one in contract["paths"]["/api/v1/audit-events"]["get"]["parameters"]}
+    assert {"actor_kind", "for_hid"} <= asked
+    asked = {one["name"] for one in contract["paths"]["/api/v1/users"]["get"]["parameters"]}
+    assert "kind" in asked
+    assert "agents" in schemas["Linked"]["properties"]
+    assert "`linked.agents`" in page
+    columns = list(users_file.COLUMNS)
+    assert columns[columns.index("kind") + 1] == "answerable"
+    assert "a column `answerable` after `kind`" in page
+
+    # The commands and their exit codes, as the page names them.
+    command = (ROOT / "src/hirdir/cli/admin.py").read_text(encoding="utf-8")
+    main = (ROOT / "src/hirdir/cli/main.py").read_text(encoding="utf-8")
+    people = (ROOT / "src/hirdir/cli/people.py").read_text(encoding="utf-8")
+    for option in ('"--kind"', '"--for"', '"--no-role"'):
+        assert option in command
+    assert '"--service-account"' not in command
+    assert "raise _fail(NO_ROLE_REFUSED, 4)" in command
+    assert 'raise _fail("--role and --no-role are not given together", 2)' in command
+    assert '"--kind", metavar="person|service|agent"' in main
+    assert '"--agent",' in people
+    for named in (
+        "`--kind person`, `--kind service` or `--kind agent`",
+        "in the place of `--service-account`, which is gone",
+        "`sudo hirdir admin create-user --kind agent --for sam agent-reconcile`",
+        "exit `4`",
+        "`--role` with `--no-role` is a mistake of usage, exit `2`",
+        "`hirdir users list --kind agent`",
+        "`hirdir users retire` takes `--agent`",
+    ):
+        assert named in page
+
+    # The package test asks for it in the words of the server and of hirdir admin.
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    assert f"^hirdir: {admin.NO_ROLE_REFUSED}$" in script
+    warned = admin.NO_ROLE_WARNING
+    assert f"^pkg-admin-made holds no role, and {warned[accounts.PERSON]}$" in script
+    assert f"^pkg-cli-robot holds no role, and {warned[accounts.SERVICE]}$" in script
+    assert f'[["role", "{accounts.NEVER_ADMIN}"]]' in script
+    assert f'[["user_hid", "{accounts.NEVER_ADMIN}"]]' in script
+    assert f"is an agent, and {accounts.NEVER_ADMIN}$" in script
+    domain = (ROOT / "src/hirdir/domain/accounts.py").read_text(encoding="utf-8")
+    assert (
+        'f"the token is not accepted: the agent {agent.username} is answerable to {whom}, '
+        'who {what}"' in domain
+    )
+    assert (
+        "the token is not accepted: the agent pkg-agent-reconcile is answerable to pkg-sam, "
+        "who holds no role" in script
+    )
+    assert (
+        "the token is not accepted: the agent upgrade-18-off-agent is answerable to "
+        "upgrade-18-off, who is disabled" in hook
+    )
+    for word in (accounts.PERSON_ROLE, accounts.PERSON_NO_ROLE):
+        assert f'"{word}"' in script
+    assert f'"{accounts.PERSON_ROLE}"' in hook
+    # S61 and S62 on the fresh install, and S61 on what the upgrade carried over.
+    assert "\n    agents_and_kinds\n" in script
+    assert "\n    no_role_made\n" in script
+    for scenario in ("S61", "S62"):
+        assert f'expect "{scenario} ' in script
+    assert 'expect "S61 after the upgrade, ' in hook
+    for function in ("before_0018", "changed_0018", "after_0018"):
+        assert f"\n{function}() {{\n" in hook

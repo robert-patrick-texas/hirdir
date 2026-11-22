@@ -305,6 +305,34 @@ export function usersAddress(
   return wanted;
 }
 
+/**
+ * What the list of users says when it holds nobody, of the search, the gap and the kind
+ * it is narrowed to (review 8): a service account and an agent are in no gap, since only
+ * a person has a contact and an operator.
+ */
+export function noUsersWords(q: string, gap: UsersGap, kind: Kind | ""): string {
+  const one =
+    kind === "service"
+      ? "service account"
+      : kind === "agent"
+        ? "agent"
+        : kind === "person"
+          ? "person's account"
+          : "";
+  if (q) return `No ${one || "user"} matches the search.`;
+  if ((gap === "no-contact" || gap === "no-operator") && (kind === "service" || kind === "agent")) {
+    const what = gap === "no-contact" ? "contact" : "operator";
+    return `${one === "agent" ? "An agent" : "A service account"} has no ${what} and is in no gap: only a person's account is.`;
+  }
+  if (gap === "no-contact") return "Every user who is a person has a contact.";
+  if (gap === "no-operator") return "Every user who is a person works as an operator.";
+  if (gap === "retired") return `No ${one || "account"} is retired.`;
+  if (kind === "service") return "There are no service accounts.";
+  if (kind === "agent") return "There are no agents.";
+  if (kind === "person") return "There is no person's account.";
+  return "There are no users.";
+}
+
 /** The kind a list of users is narrowed to, as the address of the page says it. */
 export function usersKindOf(params: URLSearchParams): Kind | "" {
   const kind = params.get("kind");

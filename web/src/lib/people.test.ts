@@ -10,7 +10,21 @@ import {
   SCOPES,
   scopeHint,
   scopeLabel,
+  userOptionLabel,
 } from "./people";
+
+describe("a person's account as a picker of people offers it (review 12)", () => {
+  it("is named as a contact is offered, with the username after", () => {
+    expect(
+      userOptionLabel({ display_name: "Sam Roe", email: "sroe@example.net", username: "sroe" }),
+    ).toBe(personLabel({ name: "Sam Roe", email: "sroe@example.net", user: { username: "sroe" } }));
+    expect(userOptionLabel({ display_name: "Sam Roe", email: "", username: "sroe" })).toBe(
+      "Sam Roe, user sroe",
+    );
+    // An account with no contact is its username alone.
+    expect(userOptionLabel({ display_name: "", email: "", username: "sroe" })).toBe("sroe");
+  });
+});
 
 describe("an operator internal or external (P-172)", () => {
   it("is internal where its person is a user, external where not, and neither where nobody is", () => {
