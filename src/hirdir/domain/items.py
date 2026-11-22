@@ -25,6 +25,7 @@ from hirdir.db.models import (
     PurchaseRequest,
 )
 from hirdir.domain import (
+    addresses,
     audit,
     catalog,
     choices,
@@ -833,8 +834,10 @@ def update_item(
         **_standing_on_update(db, fields, item),
     }
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
+    # An item brought back says what it is known by on a network again (P-310).
+    back = addresses.standing_still(db, item, values, "item_hid")
     on_line = item.purchase_line_hid
-    records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change)
+    records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change + back)
     if item.purchase_line_hid != on_line:
         _settle_line(db, context, item.purchase_line_hid)
     return item
@@ -870,9 +873,10 @@ def retire_item(
         _leave_groups(db, context, hid)
         # A retired item is under no contract any more: its coverage ends today.
         contracts.end_for_item(db, context, hid)
-    records.apply(
-        db, context, RECORD_TYPE, item, row_version, {"record_status": "retired"}, action="retire"
-    )
+    retired = {"record_status": "retired"}
+    # What goes out of service with it is said in its event (P-310).
+    known = addresses.standing_still(db, item, retired, "item_hid")
+    records.apply(db, context, RECORD_TYPE, item, row_version, retired, known, action="retire")
     if retiring:
         _retire_hosted(db, context, item, went)
     return item

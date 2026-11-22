@@ -1810,6 +1810,40 @@ as `new`; a stack whose seen master it was has an `update` that clears it. The e
 the record had before stay, and are found by its HID: a deletion removes nothing from
 the trail, and `hirdir admin reset` is the one thing that does.
 
+**What a sync reads** (P-310). After 1.0.0 the names and addresses that changes add,
+remove and alter are read from these events in batches, for the IPAM, the DNS and the
+monitoring tools (P-223). Each event of an item, a device group, a region, a site, a
+location or an address says, from itself alone, the value before and after and whose
+it is, whichever way the change came: the API, the web, the CLI, a bulk edit or a file.
+
+- **A name.** `create` of an item or a group holds its `name`, `hostname` and `fqdn`
+  as `new`, and of a place its `name`; `update` holds each that changes, with `old` and
+  `new`. They are the record's own: the event's `record_type` and `record_hid`.
+- **An address.** Every event of an address, `create`, `update` and `delete`, holds
+  the address and whose it is: `address`, the item or the group it belongs to as
+  `item_hid` or `group_hid`, and `network_hid` where it is under a network. What a
+  change leaves as it is, is written with `old` and `new` the same: an address whose
+  role or network changes holds its address and its holder so, and so does one made
+  primary and the one that loses the mark to it. An address that a stack takes from the
+  switch it is made of holds `item_hid` going and `group_hid` coming, with the address
+  the same (P-243). A `delete` holds what it was as `old`.
+- **Out of service and back.** `retire` of an item, a group or a place, and the
+  `update` that brings it back, hold what it is known by on a network, each with `old`
+  and `new` the same: its `name`, `hostname` and `fqdn`, those it has, and for an item
+  or a group `addresses`, a list of each as `{hid, item_hid, group_hid, address,
+  network_hid, role, is_primary}`. A name that the same change alters is written once,
+  with what it was. `delete` holds every field and the addresses as `old`, above.
+- **What a change was made by** is an entry of each event it made: `joining_group` and
+  `leaving_group`, the group's HID (P-217, P-218); `replacing`, a replacement's HID,
+  where an item that takes another's place gives up its name and addresses (P-242);
+  `retired_with`, the item that a hosted item ran on (P-247); and `deleted_with`. The
+  events of one request share its `request_id`, and those of a file have `via` of
+  `import`.
+
+A lifecycle move is a `transition` of the item and changes no name and no address; a
+change of a network's label is one `update` of the network, which every address under
+it is then under. Neither is written again on the addresses.
+
 ### `import_jobs` and `import_rows`
 
 A preview of a change to many records, kept so that what is applied is what was shown.
