@@ -48,7 +48,15 @@ describe("who acted, as the Audit page offers them (P-296)", () => {
         answerable: sam,
         record_status: "retired",
       }),
-    ).toBe("agent-reconcile (agent, for sam, retired)");
+    ).toBe("agent-reconcile (retired agent, for sam)");
+    // Review 11: whoever is retired is said so.
+    expect(
+      actorLabel({
+        username: "agent-reconcile",
+        kind: "agent",
+        answerable: { username: "rex", record_status: "retired" },
+      }),
+    ).toBe("agent-reconcile (agent, for rex, who is retired)");
     expect(actorLabel({ username: "svc-sync", kind: "service", answerable: null })).toBe(
       "svc-sync",
     );
