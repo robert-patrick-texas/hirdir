@@ -599,6 +599,9 @@ class Entity:
     # still told as changed where a row changes it: the status of an item's registration
     # with the system a file was read from (P-248).
     told: ClassVar[tuple[str, ...]] = ()
+    # The columns whose values an input format may write in another form than the file
+    # gives them (P-322): what a row changes of one says the file's value beside it.
+    formatted: ClassVar[frozenset[str]] = frozenset()
 
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
@@ -1242,6 +1245,7 @@ class Contacts(Entity):
         *BOOKKEEPING,
     )
     _direct = ("name", "organization", "email", "phone", "phone2", "notes", "tags")
+    formatted = frozenset({"email", "phone", "phone2"})
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         """Match a row to a contact: by its email address, and with none by its name."""

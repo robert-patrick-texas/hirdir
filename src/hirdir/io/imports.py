@@ -194,6 +194,19 @@ def _differences(
     return changes
 
 
+def _as_in_file(which: Entity, values: dict[str, Any], entry: dict[str, Any]) -> dict[str, Any]:
+    """Return a change with the file's value beside it, `as_in_file`, where an input
+    format wrote the value in another form (P-322); a space at either end is no other
+    form. A change that a format did not write is returned as it is, with no key of it,
+    so that it compares with one a release before stored."""
+    if entry["field"] not in which.formatted:
+        return entry
+    given = records.clean(values.get(entry["field"]))
+    if not isinstance(given, str) or given == entry["new"]:
+        return entry
+    return {**entry, "as_in_file": given}
+
+
 def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> None:
     """Work one row: find its record, write it, and say in result what that changed.
 
@@ -257,7 +270,7 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
         run.notes.extend([MADE_RETIRED, *linked])
     db.flush()
     result.changes = [
-        change
+        _as_in_file(which, values, change)
         for change in _differences(which, before, which.read_for(run, [record])[0])
         if change["field"] not in which.restated
         and (change["field"] not in which.by_the_clock or values.get(change["field"]) is not None)

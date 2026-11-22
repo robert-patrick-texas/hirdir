@@ -4701,7 +4701,13 @@ class RowChange(Model):
 
     field: str
     old: Any
-    new: Any
+    new: Any = Field(description="The value as it will be saved.")
+    as_in_file: str | None = Field(
+        default=None,
+        description="The value in the file, where an input format writes it in another "
+        "form: `1 555 010 0124` beside `+1 (555) 010-0124`, as `phone_formats` and "
+        "`email_lower_case` say. Null otherwise (P-322).",
+    )
 
 
 class RowReason(Model):
