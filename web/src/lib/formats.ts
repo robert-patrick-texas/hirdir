@@ -108,13 +108,30 @@ function written(pattern: string, digits: string, plus: boolean): string | null 
 }
 
 /**
+ * Whether a value is in the form of a pattern already: its characters exactly as the
+ * pattern writes them, a digit 0 to 9 at each `#`, compared as it is, untrimmed.
+ */
+function inFormOf(pattern: string, value: string): boolean {
+  if (value.length !== pattern.length) return false;
+  for (let at = 0; at < pattern.length; at++) {
+    const want = pattern.charAt(at);
+    const char = value.charAt(at);
+    if (want === "#" ? !/[0-9]/.test(char) : char !== want) return false;
+  }
+  return true;
+}
+
+/**
  * A telephone number as the patterns write it: in the first that fits its digits. A
  * number with anything in it but the digits 0 to 9, spaces and `+ - ( ) . /`, a letter
  * as of an extension above all, and one that no pattern fits, are kept as typed: a
- * format never refuses a value (P-322 (3)).
+ * format never refuses a value (P-322 (3)). A number in the form of one of the patterns
+ * already is kept as it is, though an earlier pattern fits its digits, so that what a
+ * pattern writes is written the same again, as the server has it.
  */
 export function phoneText(value: string, patterns: readonly string[]): string {
   if (patterns.length === 0 || !SEPARATORS.test(value)) return value;
+  if (patterns.some((pattern) => inFormOf(pattern, value))) return value;
   const digits = value.replace(/[^0-9]/g, "");
   if (digits === "") return value;
   const plus = value.trimStart().startsWith("+");

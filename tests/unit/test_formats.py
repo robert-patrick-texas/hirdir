@@ -1,6 +1,7 @@
 """The input formats, held to the cases that the web page is held to as well (P-322)."""
 
 import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +140,57 @@ def test_a_pattern_held_from_before_its_rule_is_passed_over() -> None:
     assert formats.of(None, None) == formats.Formats()
     assert formats.Formats().phone("5550100123") == "5550100123"
     assert formats.Formats().email("Kim.Lee@Example.NET") == "Kim.Lee@Example.NET"
+
+
+# Lists of patterns of which one writes a number in a form that another fits first, as
+# the review of 0.9.18 found, beside every list of the cases.
+TRICKY = (
+    ["#-###-###-####", "1 (###) ###-####"],
+    ["########", "1 ### ####"],
+    ["+1 (###) ###-####", "###-###-####", "###-####"],
+    ["(###) ###-####", "###.###.####", "1-###-###-####"],
+    ["+## ### ### ####", "+1 (###) ###-####", "## ### ### ####"],
+    ["1 ### ### ####", "##########", "+1 ##########", "###########"],
+    ["####", "#-###", "1 ####", "+1 ####", "#####"],
+)
+
+
+def _numbers() -> list[str]:
+    """Return what is typed in the cases and what they keep, and numbers made up of
+    digits, marks and a + or a 1 before them, as many people type them."""
+    found = [case[key] for case in _of("phone_formats") for key in ("typed", "kept")]
+    made = random.Random(322)  # noqa: S311 - numbers for a test, not a secret
+    for _ in range(600):
+        digits = "".join(made.choice("0123456789") for _ in range(made.randint(4, 14)))
+        parts, at = [], 0
+        while at < len(digits):
+            step = made.randint(1, 4)
+            parts.append(digits[at : at + step])
+            at += step
+        joined = "".join(part + made.choice(["", " ", "-", ".", "/", ") ", " ("]) for part in parts)
+        found.append(made.choice(["", "", "+", "+1 ", "1 ", "(", " "]) + joined.rstrip())
+    return found
+
+
+def test_a_number_formatted_once_is_formatted_the_same_again() -> None:
+    """What the page writes as a person leaves the box is what the server saves, and an
+    export loaded back changes nothing (P-322 (7), the review of 0.9.18)."""
+    numbers = _numbers()
+    lists = [*TRICKY, *(case["setting"] for case in _of("phone_formats"))]
+    for texts in lists:
+        patterns = _patterns(texts)
+        for number in numbers:
+            once = formats.phone(number, patterns)
+            assert formats.phone(once, patterns) == once, (texts, number, once)
+
+
+def test_a_number_in_the_form_of_a_pattern_is_kept_as_it_is() -> None:
+    patterns = _patterns(["#-###-###-####", "1 (###) ###-####"])
+    # Its characters exactly as the pattern writes them, a digit at each #.
+    assert formats.phone("1 (555) 010-0123", patterns) == "1 (555) 010-0123"
+    assert formats.phone("1 (555) 010-0123 ", patterns) == "1-555-010-0123"
+    assert formats.phone("1 (555)010-0123", patterns) == "1-555-010-0123"
+    assert formats.phone("2 (555) 010-0123", patterns) == "2-555-010-0123"
 
 
 def test_blank_and_none_are_kept() -> None:
