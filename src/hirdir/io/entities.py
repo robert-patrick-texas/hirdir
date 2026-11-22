@@ -5076,13 +5076,17 @@ class Circuits(Entity):
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
-        # A date of the Z side that is the very date it has from the A side, as the row
-        # leaves that, on a circuit that gives the Z side none of its own, leaves it
-        # reading the A side's: an import makes no override of what it inherits (D-65).
+        # A date of the Z side that is the very date it has from the A side, as the A
+        # side's stands before the row or after it, on a circuit that gives the Z side none
+        # of its own, leaves it reading the A side's: an import makes no override of what
+        # it inherits, also from a row that changes the A side and still holds the date in
+        # force before, as an export of dates in force writes it (D-65).
         for day in circuits.DAYS:
             own = getattr(record, f"z_{day}") if record is not None else None
-            a_side = given.get(f"a_{day}", getattr(record, f"a_{day}", None))
-            if own is None and given.get(f"z_{day}") is not None and given[f"z_{day}"] == a_side:
+            before = getattr(record, f"a_{day}") if record is not None else None
+            after = given.get(f"a_{day}", before)
+            wanted = given.get(f"z_{day}")
+            if own is None and wanted is not None and wanted in (before, after):
                 del given[f"z_{day}"]
         if "production" in given and given["production"] is None:
             # True unless said: a cleared cell says nothing.
