@@ -18,6 +18,9 @@ class AuditContext:
     `cause_of` names a record by its type and HID, of the events of that record alone:
     what follows from a change of an item, the end of its other memberships when it is
     released, is not said to have been made by leaving the group (P-218).
+
+    `for_hid`, where the actor is an agent, is the person it was answerable to when the
+    request came, which every event made in the context keeps (P-316).
     """
 
     actor_hid: str | None
@@ -25,6 +28,7 @@ class AuditContext:
     request_id: str = ""
     cause: tuple[str, Any, Any] | None = None
     cause_of: tuple[str, str] | None = None
+    for_hid: str | None = None
 
 
 SYSTEM = AuditContext(actor_hid=None, via="system")
@@ -62,6 +66,7 @@ def record(
         entries.append(change(*context.cause))
     event = AuditEvent(
         actor_hid=context.actor_hid,
+        for_hid=context.for_hid,
         via=context.via,
         request_id=context.request_id,
         action=action,

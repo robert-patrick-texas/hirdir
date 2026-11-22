@@ -31,6 +31,7 @@ COLUMNS = (
     "groups",
     "operators",
     "kind",
+    "answerable",
     "state",
     "record_status",
     "last_sign_in_at",
@@ -60,6 +61,7 @@ def rows(db: Session, retired: str = "no") -> list[dict[str, Any]]:
     )
     contacts = accounts.contacts_of(db, users)
     groups, roles = accounts.groups_of_users(db, users), accounts.roles_of(db, users)
+    persons = accounts.answerable_of(db, users)
     operators = accounts.operators_of(db, users)
     written: list[dict[str, Any]] = []
     for user in users:
@@ -79,7 +81,11 @@ def rows(db: Session, retired: str = "no") -> list[dict[str, Any]]:
                     for operator in operators.get(user.hid, [])
                     if operator.record_status != "retired"
                 ],
-                "kind": "service" if user.is_service_account else "person",
+                "kind": user.kind,
+                # The username of the person answerable for an agent (P-316).
+                "answerable": person.username
+                if (person := persons.get(user.answerable_hid or ""))
+                else None,
                 "state": "disabled" if user.disabled else "enabled",
                 "record_status": user.record_status,
                 "last_sign_in_at": _TIME.dump_python(user.last_sign_in_at, mode="json"),

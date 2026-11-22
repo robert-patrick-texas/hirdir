@@ -109,7 +109,7 @@ def users_list(
         return
     typer.echo(f"{'USERNAME':<24}{'ROLE':<11}{'KIND':<9}{'STATE':<10}GROUPS")
     for user in page["items"]:
-        kind = "service" if user["is_service_account"] else "person"
+        kind = user["kind"]
         state = "disabled" if user["disabled"] else "active"
         if user["record_status"] == "retired":
             state = "retired"

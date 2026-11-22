@@ -45,7 +45,7 @@ def test_the_first_admin_is_made_with_the_contact_it_is(tmp_path: Path, monkeypa
     )
     assert made.exit_code == 0, made.output
     assert "access code: " in made.output
-    bare = runner.invoke(app, ["admin", "create-user", "lee"])
+    bare = runner.invoke(app, ["admin", "create-user", "--no-role", "lee"])
     assert bare.exit_code == 0, bare.output
     with make_sessions(make_engine(config.database_url))() as db:
         ada = db.scalar(select(User).where(User.username == "ada"))
@@ -71,12 +71,13 @@ def test_an_account_made_with_no_role_is_told_what_that_means_for_it(
     tmp_path: Path, monkeypatch
 ) -> None:
     """A person with no role cannot sign in; a service account never signs in, and its
-    tokens are refused until it is given a role (P-299)."""
+    tokens are refused until it is given a role (P-299). A person is made so with
+    --no-role alone (P-313)."""
     _installed(tmp_path, monkeypatch)
-    person = runner.invoke(app, ["admin", "create-user", "lee"])
+    person = runner.invoke(app, ["admin", "create-user", "--no-role", "lee"])
     assert person.exit_code == 0, person.output
     assert "lee holds no role, and cannot sign in until an Admin gives it one" in person.output
-    service = runner.invoke(app, ["admin", "create-user", "--service-account", "svc2"])
+    service = runner.invoke(app, ["admin", "create-user", "--kind", "service", "svc2"])
     assert service.exit_code == 0, service.output
     assert (
         "svc2 holds no role, and its tokens are refused until an Admin gives it one"
@@ -104,7 +105,14 @@ def test_a_user_is_put_in_groups_by_name_and_has_a_groups_role(tmp_path: Path, m
     assert "in the groups NOC, Field team" in made.output
     assert "lee holds the inventory role through its groups" in made.output
     assert "holds no role" not in made.output
+    # A group that grants no role gives a person none: it is refused, and made with
+    # --no-role (P-313).
     plain = runner.invoke(app, ["admin", "create-user", "--group", "Field team", "kai"])
+    assert plain.exit_code == 4, plain.output
+    assert "--no-role" in plain.output
+    plain = runner.invoke(
+        app, ["admin", "create-user", "--group", "Field team", "--no-role", "kai"]
+    )
     assert plain.exit_code == 0, plain.output
     assert "kai holds no role, and cannot sign in until an Admin gives it one" in plain.output
     refused = runner.invoke(app, ["admin", "create-user", "--group", "Nobody", "sam"])

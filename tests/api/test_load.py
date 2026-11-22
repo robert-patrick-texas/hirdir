@@ -980,7 +980,7 @@ def test_a_service_token_is_listed_as_the_service_account_it_is_of(
     made = client.post(
         f"{API}/users",
         headers=admin,
-        json={"username": "collector", "is_service_account": True, "role": "viewer"},
+        json={"username": "collector", "kind": "service", "role": "viewer"},
     )
     assert made.status_code == 201, made.text
     account = made.json()["user"]["hid"]
