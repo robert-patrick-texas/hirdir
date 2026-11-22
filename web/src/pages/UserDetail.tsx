@@ -134,7 +134,7 @@ function UserPage({ hid }: { hid: string }) {
             <AccessCode user={user.data} reload={user.reload} />
           )}
           {!retired && <Sessions user={user.data} reload={user.reload} />}
-          {holdsTokens(user.data.kind) && <Tokens user={user.data} />}
+          {holdsTokens(user.data.kind) && <Tokens user={user.data} refresh={user.refresh} />}
           <RetireUser
             key={`retire ${user.data.hid} ${user.data.row_version}`}
             user={user.data}
@@ -899,7 +899,12 @@ function tokenState(token: Token, now: number): string {
   return "Active";
 }
 
-function Tokens({ user }: { user: User }) {
+/**
+ * The tokens of a service account or an agent. 0.9.17: the account is read again when a
+ * token is made, so that what the new one says of its being refused is said of the
+ * account as it is now, its person changed elsewhere too (review 9).
+ */
+function Tokens({ user, refresh }: { user: User; refresh: () => void }) {
   // 0.9.14: a retired account is given no token, and those it had are revoked (P-296).
   const retired = userState(user) === "Retired";
   const tokens = useLoad(`tokens ${user.hid}`, (signal) =>
@@ -943,6 +948,7 @@ function Tokens({ user }: { user: User }) {
     setExpires("");
     setSecret(result.value);
     tokens.reload();
+    refresh();
   }
 
   async function revokeToken(token: Token) {
