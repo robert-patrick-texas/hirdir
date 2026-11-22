@@ -8,6 +8,7 @@ signed in and no other. What may be changed, and by which rules, the server deci
 
 import json
 import os
+import shlex
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -89,6 +90,27 @@ def _the_operator(me: dict[str, Any], named: str | None) -> dict[str, Any]:
     raise client.fail(f"you are behind no operator {named}", client.EXIT_INVALID)
 
 
+def same_name_line(contact: dict[str, Any]) -> str | None:
+    """Return what is said of a name that other contacts not retired have, with how to
+    list them, or None where none has it (P-315). The name is saved all the same."""
+    others = contact["same_name"]
+    if not others:
+        return None
+    name = contact["name"]
+    who = "another contact is" if others == 1 else f"{others} other contacts are"
+    listed = shlex.quote(f"name:eq:{name}")
+    return (
+        f"{who} named {name}: a file tells you apart by your email or your HID; "
+        f"hirdir contacts list --filter {listed} lists them"
+    )
+
+
+def _same_name(contact: dict[str, Any]) -> None:
+    line = same_name_line(contact)
+    if line is not None:
+        typer.echo(line, err=True)
+
+
 @group.command("set")
 def set_(
     name: Annotated[str | None, typer.Option(help="Your name.")] = None,
@@ -132,6 +154,8 @@ def set_(
         version = me["contact"]["row_version"]
         me = client.call(target, "PATCH", "/auth/me/contact", {"row_version": version, **contact})
         stored = me["contact"]["row_version"] != version
+        if "name" in contact:
+            _same_name(me["contact"])
     if which is not None:
         body = {"row_version": which["row_version"], **marks}
         # The contact is changed by now, where the request changed it: a refusal of
