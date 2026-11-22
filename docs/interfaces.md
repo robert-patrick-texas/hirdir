@@ -702,7 +702,11 @@ history writes an agent's change as `agent-reconcile for sam`, the agent's usern
 then the person's. `GET /audit-events` takes `actor_kind`, which keeps the events of the
 accounts of one kind, `agent` the changes of agents together, and `for_hid`, those made
 for one person; and it sorts by `actor_kind` and `for_name` as by its other columns.
-Every account an answer names is read once for the whole page. The server's own
+Every account an answer names is read once for the whole page. A sign-in typed with
+the username of a service account or an agent, neither of which signs in, is an event of
+that account as its `record_hid` and by nobody, `actor_hid` null, as one typed for a
+username there is not is by nobody: so `actor_kind=agent` holds only what agents did,
+and `actor_kind=service` only what service accounts did. The server's own
 measures name an agent's requests with the kind `agent` (P-266).
 
 `POST /users/export` has a column `answerable` after `kind`, the username of the person
@@ -1889,8 +1893,10 @@ rejected, in both formats, for every table. A test holds it over all of them.
 `POST /users/export`, for an Admin, answers the users as CSV (P-288),
 `Example-Inventory-users-20261120T101500-0500.csv`: a row to each user, by username,
 with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a user
-with no contact, `role`, the role in force, granted to the user or to a group it is in,
-blank where it has none, `groups`, by name, `operators`, the labels of those behind
+with no contact, `role`, the role in force, what the account can do, granted to the
+user or to a group it is in, blank where it has none, and of an agent the lower of its
+own and its person's, as `role_in_force` of `GET /users` answers it, blank where its
+person cannot answer for it (P-316), `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person`, `service` or
 `agent`, `answerable`, the username of the person answerable for an agent and blank for
 the others (P-316), `state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the

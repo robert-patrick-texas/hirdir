@@ -9,7 +9,9 @@ Every service account is `service`, and every other account `person`: there is n
 before this release. `users.answerable_hid`, an agent's alone, names the person
 answerable for it, and is empty for every account here. `audit_events.for_hid` holds,
 for an event made by an agent, the person it was answerable to then; it is empty for
-every event here, since no agent made any.
+every event here, since no agent made any. Two indexes of `audit_events` are added, by
+`actor_hid` and by `for_hid`, so that the events of one account, of the accounts of one
+kind and those made for one person are found without reading the whole trail.
 
 No other value of a row is changed and no event is written: the kind of each account is
 what it was, in another word.
@@ -40,10 +42,14 @@ def upgrade() -> None:
         users.create_index("ix_users_answerable_hid", ["answerable_hid"], unique=False)
     with op.batch_alter_table("audit_events") as events:
         events.add_column(sa.Column("for_hid", sa.String(36)))
+        events.create_index("audit_events_actor", ["actor_hid"], unique=False)
+        events.create_index("audit_events_for", ["for_hid"], unique=False)
 
 
 def downgrade() -> None:
     with op.batch_alter_table("audit_events") as events:
+        events.drop_index("audit_events_for")
+        events.drop_index("audit_events_actor")
         events.drop_column("for_hid")
     with op.batch_alter_table("users") as users:
         users.drop_index("ix_users_answerable_hid")
