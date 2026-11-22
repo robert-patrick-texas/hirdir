@@ -343,12 +343,26 @@ def cases_of_0_8_0(picked: Picked) -> list[Case]:
         circuits("monthly_cost:gt:2000, by name", "monthly_cost:gt:2000"),
         circuits("monthly_cost:gt:2000, by -monthly_cost", "monthly_cost:gt:2000", "-monthly_cost"),
         circuits("no filter, by -monthly_cost", "", "-monthly_cost"),
+        # 0.9.18: the network a Z side reaches, and the Z side's dates in force (P-320).
+        circuits(
+            "z_group_hid:empty:false, by z_group.name", "z_group_hid:empty:false", "z_group.name"
+        ),
+        circuits(
+            "effective.z_installed_on:gte:2025-01-01, by -effective.z_installed_on",
+            "effective.z_installed_on:gte:2025-01-01",
+            "-effective.z_installed_on",
+        ),
         Case(
             "GET /circuits/{hid}, the one with the most parts",
             f"{API}/circuits/{picked.circuit_hid}",
             {},
         ),
         Case("GET /circuit-groups", f"{API}/circuit-groups", page),
+        Case(
+            "GET /circuit-groups kind:eq:network",
+            f"{API}/circuit-groups",
+            {**page, "filter": "kind:eq:network"},
+        ),
         Case(
             "GET /circuit-groups/{hid}, the largest", f"{API}/circuit-groups/{picked.group_hid}", {}
         ),

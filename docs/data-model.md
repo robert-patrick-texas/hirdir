@@ -34,6 +34,7 @@ where it came from.**
 | Site: `support_weight` | the setting `default_site_weight`. A region and a location have their own alone, and no place passes its weight down |
 | Circuit: `support_weight` | the setting `default_circuit_weight` |
 | Circuit: `down_mbps`, `up_mbps`, each by itself | its own `port_mbps`, the full rate of its port |
+| Circuit: `z_installed_on`, `z_activated_on`, `z_disconnected_on`, each by itself | its own A side's date of the same name, `a_installed_on`, `a_activated_on` or `a_disconnected_on`, with the source `a_side` (P-320) |
 | Circuit: the contacts of each role, `account_manager` and `support_contact`, all of one role together | its primary carrier, the vendor |
 | Circuit: the site contacts of each side, per role | the location of that side, resolved as for the location |
 | Catalog entry: `stack_discount_pct` | the global setting |
@@ -85,7 +86,7 @@ the rules of D-128, D-129, D-134 and P-175, said in one place, for whoever runs
 | A device group, nested | no: one group it is in | the same four, from that group and the groups above it |
 | A location, a site, a region | no: one parent location, one site, one region | contacts by role, the shipping address and instructions, the operator, each up that one line |
 | A contract | no: one support agreement | the dates, the support and the contacts that it does not override |
-| A circuit, in circuit groups | yes, any number | nothing: a circuit group is a way of looking at circuits and costing them |
+| A circuit, in circuit groups | yes, any number, by hand, and the network its Z side names | nothing: a circuit group is a way of looking at circuits and costing them, and a network is where a Z side ends |
 | A user, in user groups | yes | its role, the highest of what it and every group of its is granted, so no two can tie |
 | A contact | named by any number of places, owners, operators and users | nothing: what is true of a person is kept on the contact, and the others read it |
 
@@ -821,8 +822,9 @@ number entered once shows in all three places (P-172).
 | Field | Type | Notes |
 |---|---|---|
 | `contacts.name` | text | required. One record per person or shared mailbox |
-| `contacts.organization`, `phone`, `phone2`, `notes` | text | `phone2` is a second number. Each is optional |
-| `contacts.email` | text | unique when present, without regard to case |
+| `contacts.organization`, `notes` | text | each optional |
+| `contacts.phone`, `phone2` | text | `phone2` is a second number. Each is optional, at most 50 characters, and written in the first pattern of `phone_formats` that fits its digits, wherever it comes in: the API, a file, the command line, the Profile, New user and an operator's new person. One with a letter in it, such as an extension, or that no pattern fits, is kept as typed (P-322) |
+| `contacts.email` | text | unique when present, without regard to case, of the form `name@host` with any host, `localhost` among them; kept in lower case wherever it comes in while `email_lower_case` is true (P-322) |
 | `contacts.record_status` | choice | see Conventions. A contact takes tags |
 | `contacts.is_user`, `user` | read only | `is_user` is true where the contact is the person a user is, and `user` is the `hid`, `username` and `record_status` of that user. A retired account is no user: `is_user` is false for its contact, and `user` still answers it, marked `retired` (P-296) |
 | `contacts.same_name` | read only | how many other contacts have its name, compared without regard to case as a file matches a contact by its name, and counted as a file finds them, the retired and the drafts among them; read when the contact is read, and stored nowhere (P-315). A name that another contact has is saved as any other: the pages and the CLI say that a file then tells the two apart by the email or the HID |
@@ -1444,8 +1446,9 @@ event that holds what it was.
 A telecommunication circuit the team looks after, beside the device inventory: a link
 between two of the enterprise's places, or from one of them into a carrier's network or
 a cloud service. A circuit shares what the inventory holds: its ends are locations,
-its carriers vendors, its contacts contact records, its owner an owner, and its devices
-items and device groups (D-157, D-158, P-145 to P-154).
+its carriers vendors, its contacts contact records, its owner an owner, the carrier
+network its Z side reaches a circuit group, and its devices items and device groups
+(D-157, D-158, P-145 to P-154, P-317, P-319, P-320).
 
 | Field | Type | Notes |
 |---|---|---|
@@ -1456,13 +1459,15 @@ items and device groups (D-157, D-158, P-145 to P-154).
 | `port_mbps` | decimal | the speed of the physical interface, in Mbps, more than zero |
 | `down_mbps`, `up_mbps` | decimal | the rates the circuit is limited to, download and upload, in Mbps, more than zero and not more than `port_mbps`, which they need. Blank is the full rate of the port |
 | `a_location_hid`, `z_location_hid` | reference | the A side, the source, and the Z side, the destination: each a location, or blank where that end is not one of the enterprise's places. At least one is given |
-| `a_note`, `z_note` | text | where a side ends: "carrier network", "cloud on-ramp", "demarc in the basement". Required for a side with no location |
+| `z_group_hid` | reference | the carrier network the Z side reaches: a circuit group of the kind `network`, not retired when it is named, and never one of the kind `collection`. Optional, and never beside `z_location_hid`: a Z side names a location, a network, or neither. Named so since `networks` are the address ranges of the inventory |
+| `a_note`, `z_note` | text | where a side ends: "carrier network", "cloud on-ramp", "demarc in the basement". Required for a side with no location and, on the Z side, no network; a Z side that names a network may have one too |
 | `cost_side` | choice | `a` or `z`: the side whose site the circuit's cost and support weight count at. Given to a new circuit from the setting `circuit_cost_side` |
 | `carrier_hid` | reference | the primary carrier, or the other party that provides the circuit: a vendor. Optional |
 | `carrier_circuit_number` | text | the number the primary carrier gives the circuit. Optional, and needs `carrier_hid` |
 | `billing_account` | text | the billing account number |
 | `billing_contract` | text | the reference of the billing contract |
-| `a_installed_on`, `a_activated_on`, `a_disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation |
+| `a_installed_on`, `a_activated_on`, `a_disconnected_on` | date | the A side's dates: the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation. Called `installed_on`, `activated_on` and `disconnected_on` before 0.9.18, and no alias of the old names is kept (P-317) |
+| `z_installed_on`, `z_activated_on`, `z_disconnected_on` | date | the Z side's dates, where they differ from the A side's: one end may be installed or taken out on another day than the other, though the activation, the confirmation that the circuit works end to end, is most often one day for both. Each optional, a blank being read as the A side's and never copied (see "The two sides"). Any Z side has them: one at a location, one that names a network, and one with a note alone |
 | `production` | boolean | whether it carries the enterprise's production work. True unless said. It changes nothing of what the circuit costs |
 | `support_weight` | decimal | the work the circuit adds, blank unless given |
 | `owner_hid` | reference | the person or team responsible for the circuit, its primary stakeholder, who need not be the one who asked for it |
@@ -1481,14 +1486,34 @@ the rate is blank and is the port speed, and a list filters and sorts by them (P
 
 **The two sides.** A side at a location has that location's site, region, address and
 site contacts, read when it is asked for, and nothing is typed again. The far end of an
-internet or an MPLS circuit is in the carrier's network: that side has no location and
-a note. A side is not given a location that is retired (P-147).
+internet or an MPLS circuit is in the carrier's network: that side has no location,
+and has a note or, on the Z side, names the network it reaches, `z_group_hid`, a
+circuit group of the kind `network` (P-319). A side is not given a location that is
+retired, nor a Z side a network that is retired, and a retired circuit is not brought
+back while either is (P-147, P-320). The A side names a location or has a note, and at
+least one side is a location, so that a circuit's cost counts at a site: a Z side that
+names a network has an A side at a location. Such a side, with no location, has only
+the site contacts the circuit names for it.
 
-**In service.** A circuit is in service on a day that is not before its
-`a_activated_on` and not after its `a_disconnected_on`, a blank being open, while it is
-active, or a draft in a view that includes drafts. A retired circuit that has a
-`a_disconnected_on` was in service until then; one retired with none was taken out, and
-is in service on no day.
+Each side has its dates (P-317). A blank date of the Z side is read as the A side's,
+never copied: the record answers `effective.z_installed_on`,
+`effective.z_activated_on` and `effective.z_disconnected_on`, each the Z side's own
+with the source `own`, or the A side's with the source `a_side`, or blank with `none`.
+The order of each side is held on what is in force: no activation before the
+installation, and no disconnection before the activation or, where it has none, before
+the installation, the Z side's dates read as they are in force. So a change of an A
+side's date that would put the Z side's in force out of order is refused at the Z
+side's field that it breaks: an A side's installation moved after the Z side's own
+activation is refused at `z_activated_on` (P-320).
+
+**In service.** The dates that decide are those of the side `cost_side` names, the Z
+side's in force where it is `z`, whether or not that side is a location (P-320). A
+circuit is in service on a day that is not before that side's activation and not after
+its disconnection, a blank being open, while it is active, or a draft in a view that
+includes drafts. A retired circuit that has a disconnection on that side was in
+service until then; one retired with none was taken out, and is in service on no day.
+A circuit whose Z side has no dates of its own is so read by the A side's dates,
+whichever side it counts at, as every circuit was before 0.9.18.
 
 **Where it counts.** The cost and the support weight of a circuit count at one site:
 that of the location of its `cost_side`, or of the other side where that one has no
@@ -1500,8 +1525,9 @@ value of a circuit that a setting gives when the circuit is made rather than whe
 read: a change of the default is for new circuits only (P-150).
 
 **Its cost** is `monthly_cost`, the sum of its cost lines in date today while it is in
-service, and nothing on a day it is not, and `annual_cost`, twelve times that, both
-worked out when they are read (D-158). The lines keep their amounts, so a circuit that
+service, by the dates of the side `cost_side` names, and nothing on a day it is not,
+and `annual_cost`, twelve times that, both worked out when they are read (D-158,
+P-320). The months of the report of what circuits cost are counted by the same dates. The lines keep their amounts, so a circuit that
 is disconnected shows what it cost line by line. A draft is in service in a view that
 includes drafts, and so is its record read by itself: an ordered circuit shows what it
 will cost.
@@ -1597,12 +1623,20 @@ event that holds what it was.
 
 ### `circuit_groups` and `circuit_group_members`
 
-A collection of circuits that may land at different sites, looked at and costed
-together: Internet access, or a cloud on-ramp such as Azure ExpressRoute (P-152).
+Circuits that may land at different sites, looked at and costed together (P-152). A
+group has a kind (P-319): a `network`, a carrier's private MPLS network, the internet,
+a Metro Ethernet region or a cloud on-ramp such as Azure ExpressRoute, which the Z side
+of a circuit may name as the network it reaches; or a `collection`, a set of circuits
+looked at and costed together for the enterprise's own purpose, such as Internet
+access, as every group was before 0.9.18. Geography stays for the places where the
+enterprise's things are: a carrier network has no address, shipping, contacts,
+capacity or operator.
 
 | Field | Type | Notes |
 |---|---|---|
 | `circuit_groups.name` | text, unique | required, without regard to case |
+| `circuit_groups.kind` | choice | `network` or `collection`. Required: `collection` for every group made before 0.9.18, and for a new one unless said. A group is not made a `collection` while a circuit, retired or not, names it on its Z side (P-320) |
+| `circuit_groups.carrier_hid` | reference | a network's carrier, a vendor. Optional, and refused on a collection |
 | `circuit_groups.description`, `notes` | text | |
 | `circuit_groups.owner_hid` | reference | optional |
 | `circuit_groups.record_status` | choice | see Conventions. A group takes tags |
@@ -1611,8 +1645,15 @@ together: Internet access, or a cloud on-ramp such as Azure ExpressRoute (P-152)
 A membership is removed outright, with an audit event that holds what it was: a group
 is a way of looking at circuits, not a fact of their history. A retired circuit stays
 listed in its groups, marked so, and is added to none; a retired group takes no new
-circuit. A group answers how many circuits it has, how many of them are in service
-today, and their `monthly_cost` and `annual_cost`, each circuit once.
+circuit. **A network's circuits** are those added to it by hand and those whose Z side
+names it, each once (P-320). The second are read when the group is read and are not
+stored as memberships, so that a circuit given another network on its Z side leaves
+the first and is listed by the second in the same change. A circuit that names a
+network on its Z side may be added to it by hand as well, and then stays in it when its
+Z side is changed. A network is not retired while a circuit that is not retired names
+it: the refusal says how many, and names them. A group answers how many circuits it
+has, how many of them are in service today, and their `monthly_cost` and
+`annual_cost`, each circuit once.
 
 ### `reference_files` and `reference_attachments`
 
@@ -1720,7 +1761,8 @@ inactive value is no longer offered while the records that hold it keep it.
 
 A setting has a default, written in the code, which for the six weights of P-155 is
 blank: nothing is counted until an Admin sets one; the four of whom to ask (P-169) are
-blank too. The database has no row for a setting
+blank too, and `phone_formats` holds no pattern, so that no number is formatted until an
+Admin chooses one (P-322). The database has no row for a setting
 that has never been changed. Setting it to nothing returns it to the default; the row
 then stays, empty, and keeps its `row_version`. A number has at most two decimal places
 and is refused, not rounded, when it has more.
@@ -1751,8 +1793,8 @@ and is refused, not rounded, when it has more.
 | `reference_file_types` | jpg, jpeg, png, gif, webp, heic, heif, tif, tiff, pdf, doc, docx, xls, xlsx, ppt, pptx, vsd, vsdx, dwg, dxf, txt, csv, log, zip | the extensions of the files a reference may be. An Admin may add another of letters and digits, up to ten, kept as `application/octet-stream`, and never one of `refused_file_types`. A change of it changes no file that is kept |
 | `product_name` | hirdir | the name the web page gives the product, at the upper left of the menu bar, in the tab's title, on the sign-in page and in what the pages say, and the first part of the name of a downloaded file. 1 to 40 characters, with neither `<`, `>`, a control character nor one that turns the direction of the text. The commands, the package, the API and the documentation keep the name hirdir (P-168) |
 | `help_organization` | blank | the group that runs this installation, as About names it under Whom to ask. At most 200 characters, with neither `<` nor `>` (P-169) |
-| `help_email` | blank | the email address to write to, for help with this installation. A plain address: at most 254 characters, one `@` and a domain with a dot, no space and none of `? & = % / : ; , " ' < >` |
-| `help_phone` | blank | the number to call, shown as it is typed. At most 40 characters of digits, spaces, letters and `+ - ( ) . , # *`, a digit among them |
+| `help_email` | blank | the email address to write to, for help with this installation. A plain address: at most 254 characters, one `@` and a domain with a dot, no space and none of `? & = % / : ; , " ' < >`; kept in lower case where `email_lower_case` is true when an Admin sets it (P-322) |
+| `help_phone` | blank | the number to call, shown as it is saved: written in the first pattern of `phone_formats` that fits it when an Admin sets it, and otherwise as typed (P-322). At most 40 characters of digits, spaces, letters and `+ - ( ) . , # * /`, a digit among them |
 | `help_url` | blank | an address on the web for help, such as the team's page, opened in a new tab. `https://` or `http://`, as a link is |
 | `map_link` | `https://www.google.com/maps/search/?api=1&query={latitude},{longitude}` | the address of a map, with `{latitude}` and `{longitude}` where the coordinates of a site or a location go: the coordinates on the place's page open it in a new tab, and following it sends the map's site those coordinates and nothing else. Blank, the coordinates are plain numbers, as where there is no access to the internet. Blank, or an address of `https://` or `http://`, as a link is, of a host with no user or password before it and neither place in it, with both `{latitude}` and `{longitude}` after the host, and none of `"`, `'`, `<`, `>`, a backslash or a control character anywhere; a value stored before the rule was so, which it refuses, gives no place a map (P-229) |
 | `help_on_sign_in` | false | true lists whom to ask on the sign-in page too, which anyone who reaches the site sees; false keeps it to About |
@@ -1761,6 +1803,9 @@ and is refused, not rounded, when it has more.
 | `busy_over_seconds` | 30 | over how long the two measures of the ceiling are read, in seconds, and for how long after it last refused its reads the server refuses what is long. A whole number from 5 to 300 |
 | `reports_ahead_after_seconds` | 30 | how long after the newest change of the inventory or its settings the second process of the service works out again the long reports that the change left stale, in seconds: the coverage report, the renewal worklist, the renewal alert and the capacity balance, each for the view its page opens with. Somebody who asks sooner is answered by the server, which works the report out itself. A whole number from 0 to 3,600; 0, not by day, and they are worked out when the second process starts and at five minutes past midnight alone (P-276) |
 | `access_code_min_length` | 12 | the least length of an access code that is typed, by a person for themselves on their profile or by an Admin for an account, in characters. A whole number from 1 to 64. A code the server makes is of groups of four, three or as many more as make it at least this long (P-300), and a code that is held already is not looked at: nobody is signed out by the setting (P-295) |
+| `phone_formats` | none | the patterns a telephone number is written in, a list tried in its order: none, and no number is formatted until an Admin chooses a pattern (P-322). A pattern is 4 to 40 characters: `#` for each digit, four of them at least; digits before the first `#` alone, the code of a country such as the `1` of `+1 (###) ###-####`; and spaces and `+ - ( ) . /` between them. `###-###-####` and `+1 (###) ###-####` are offered beside a pattern of the Admin's own. A number is written in the first pattern that fits its digits: one whose `#` are as many as its digits, or whose leading digits followed by as many `#` as are left are its digits, the leading digits written once, so that `5550100123` and `1 555 010 0123` are both `+1 (555) 010-0123`. A number typed with a `+` before its first digit gives its country's code: it fits a pattern only by the pattern's leading digits, or by a pattern that has none and writes a `+` itself, so that no code is dropped or put in place of the one typed. A number with anything in it but digits, spaces and `+ - ( ) . /`, a letter of an extension, a `#`, a `*` or a comma among them, and one that no pattern fits, are kept as typed: a format never refuses a value. It applies to `contacts.phone`, `contacts.phone2` and `help_phone`; nothing held is written again when it changes |
+| `email_lower_case` | true | whether an email address is kept in lower case: `contacts.email` wherever it comes in, and `help_email` when an Admin sets it. Its form is held as before, whatever this says; nothing held is written again when it changes (P-322) |
+| `title_case_names` | true | whether the web page writes the name of a person, a contact's name, in Title Case where it is typed in lower case, when the person leaves its box or pastes into it: the first letter of each word, after a space, a hyphen or an apostrophe, raised, and no letter typed as a capital lowered, so that `McDonald`, `IT` and `NOC` stay as typed. The server keeps it for the page and applies it nowhere: a name that comes by the API, a file or the command line is kept as given (P-293, P-322) |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
@@ -2248,7 +2293,8 @@ of four switches.
 **The support weight of the report** is that of the items, as above, and beside it
 that of the places, the weight in force of each region, site and location that is
 active, and of the circuits, the weight in force of each circuit that is active and not
-disconnected before today: `items_weight`, `places_weight` and `circuits_weight`, which
+disconnected before today, by the disconnection of the side `cost_side` names, the Z
+side's in force where it is `z` (P-320): `items_weight`, `places_weight` and `circuits_weight`, which
 add up to `support_weight`. A site with none counts at `default_site_weight` and a
 circuit at `default_circuit_weight`, each raised to its minimum; the report says how
 many items, sites and circuits counted at a default and how many were raised (P-155).

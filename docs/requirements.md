@@ -305,13 +305,24 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   group, the place, the owner, the operator, the vendor and the model of an item, and
   likewise in every other list. It looks like the text around it and is underlined
   under the pointer and with the keyboard's focus (P-232).
+- **R10.9** What is typed or pasted MUST be put into one form by formats an Admin turns
+  on and defines, each a setting: a telephone number written in the first of the
+  patterns an Admin chooses that fits its digits, none until one is chosen; an email
+  address in lower case; and, on the web page alone, a person's name in Title Case
+  where it was typed in lower case, never lowering a capital that was typed. The
+  server applies the first two to what comes by the API, a file and the command line
+  as well as the page. Pasting is never hindered: a value is taken as it is pasted and
+  written again in the format, and one that no format fits, such as a number with an
+  extension, is kept as typed, never refused (P-293, P-322).
 
 ### R11 Import and export
 
 - **R11.1** Every record type MUST import from and export to CSV and JSON, from the web
   UI, the API and the CLI.
 - **R11.2** An import is previewed before it is applied. The preview lists creates,
-  updates, unchanged rows and rejected rows with reasons.
+  updates, unchanged rows and rejected rows with reasons. A value that an input format
+  writes in another form is shown as it will be saved, beside the value in the file,
+  so that what an import would tidy is seen before it is applied (P-322).
 - **R11.3** In an import, an empty cell leaves the value as it is. Clearing a value
   takes an explicit marker.
 - **R11.4** Importing the same file twice MUST change nothing the second time.
@@ -471,7 +482,10 @@ records; its owner is an owner; its devices are items and device groups.
   the circuit a number, as for dark fiber a business partner provides (D-158, P-145).
 - **R15.2** A circuit has an A side and a Z side, each a location, or, for an end that
   is not one of the enterprise's places such as the carrier's network, no location and
-  a note of where it ends; at least one side is a location (P-147).
+  a note of where it ends; at least one side is a location (P-147). The Z side MAY
+  name instead the carrier network it reaches, a carrier's private MPLS network, the
+  internet, a Metro Ethernet region or a cloud on-ramp: a circuit group of the kind
+  network, which lists every circuit whose Z side names it (P-319, P-320).
 - **R15.3** A circuit MUST list the devices it connects, each on its side, and each
   device and each location MUST show the circuits it is on (P-147).
 - **R15.4** A circuit has a primary carrier, or the other party that provides it, and
@@ -486,7 +500,10 @@ records; its owner is an owner; its devices are items and device groups.
   contract, its install and activation dates, the day it was disconnected, whether it
   carries production, its type, its speed, an optional support weight, and an owner,
   the person or team responsible for it. Who pays for it is said by a tag or a note
-  (P-145, P-146).
+  (P-145, P-146). The dates are the A side's, and the Z side MAY have its own, which
+  may differ, a blank one being the A side's; the dates of the side its `cost_side`
+  names decide whether it is in service, the months its cost counts and whether it
+  carries its support weight (P-317, P-320).
 - **R15.7** A circuit's monthly recurring cost is entered as the lines the carrier
   bills, and its annual cost is twelve times their sum. Its cost and its support weight
   count at the site of its A side, or of its Z side where it is switched; an Admin
@@ -497,7 +514,9 @@ records; its owner is an owner; its devices are items and device groups.
   of it, as the carrier bills it (P-151).
 - **R15.9** Circuits MAY be put into groups, a circuit into more than one, such as
   Internet access or a cloud on-ramp, and the cost of a group MUST be read as one sum
-  (P-152).
+  (P-152). A group is a network, which a Z side may name, with its carrier, or a
+  collection for the enterprise's own purpose; a network's circuits are those added to
+  it and those whose Z side names it, each counted once (P-319, P-320).
 - **R15.10** Circuits are listed, filtered, sorted and exported as items are, are
   loaded from files, where a row finds its circuit by the enterprise circuit ID, and
   are reached from the API, the command line and the web UI (P-153, P-154).
