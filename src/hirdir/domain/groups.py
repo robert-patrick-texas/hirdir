@@ -1034,14 +1034,20 @@ def add_members(
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
-    if group.record_status == "retired" and any(one.get("left_on") is None for one in members):
+    day = today(db)
+
+    def ended(given: Mapping[str, Any]) -> bool:
+        """A membership entered as one that has ended: by a day that has come (P-311)."""
+        left = given.get("left_on")
+        return left is not None and _checked_day(left, "left_on") <= day
+
+    if group.record_status == "retired" and not all(ended(one) for one in members):
         raise Invalid(
             "the group is retired", {"members": "a retired group takes no members; bring it back"}
         )
     if not members:
         raise Invalid("there is nobody to add", {"members": "name at least one item"})
     settings.check_items(db, len(members), "members", "members")
-    day = today(db)
     made = []
     # The members of a stack are numbered (P-219). A replacement hands its position over
     # as it is, which another member may hold from before this rule.
@@ -1056,7 +1062,7 @@ def add_members(
         # ended: one entered by a file with its `left_on`, of an item a file made retired,
         # is that history (P-311).
         if item.record_status == "retired" and not (
-            given.get("left_on") is not None
+            ended(given)
             and context.via == "import"
             and records.made_retired_by_a_file(db, items.RECORD_TYPE, item)
         ):

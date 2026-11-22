@@ -314,3 +314,29 @@ def test_a_coverage_of_a_retired_item_is_ended_only_by_a_day_that_has_come(
         f"{head}{new_hid()},C-LIVE,Example Vendor,ex-gone,2026-01-01,2026-01-31\n",
     )["rows"]
     assert row["outcome"] == "create", row
+
+
+def test_a_membership_of_a_retired_record_is_ended_only_by_a_day_that_has_come(
+    files: Files, make: Maker
+) -> None:
+    """Second review, 4: a membership whose end is to come is a current one, which no
+    retired item and no retired group takes."""
+    make.group("ex-kit", "custom")
+    make.item(name="ex-kept")
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n")
+    files.load(
+        "device_groups", f"hid,name,type,record_status\n{new_hid()},ex-old-kit,custom,retired\n"
+    )
+    head = "group,item,joined_on,left_on\n"
+    for line in (
+        "ex-kit,ex-gone,2026-01-05,2099-02-05",
+        "ex-old-kit,ex-kept,2026-01-05,2099-02-05",
+    ):
+        (row,) = files.preview("device_group_members", f"{head}{line}\n")["rows"]
+        assert row["outcome"] == "rejected", (line, row)
+    for line in (
+        "ex-kit,ex-gone,2026-01-05,2026-02-05",
+        "ex-old-kit,ex-kept,2026-01-05,2026-02-05",
+    ):
+        (row,) = files.preview("device_group_members", f"{head}{line}\n")["rows"]
+        assert row["outcome"] == "create", (line, row)
