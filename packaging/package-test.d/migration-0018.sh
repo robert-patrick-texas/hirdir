@@ -188,7 +188,13 @@ before_0018() {
     expect "pkg $previous_version holds accounts of each kind that migration 0018 gives a kind: a person who holds Inventory of their own, a person who holds View-only through a group alone, a disabled person and a retired one; a service account that holds Inventory, one that holds no role, and one that hirdir admin create-user --service-account made with View-only, each with a token. Each person signs in but the disabled and the retired one, and each token is taken but the one of the account with no role; and the API says is_service_account of each, and no kind" \
         "$made | $signed_before_0018 | $status $(json '[[u["username"][len("upgrade-18-"):], u["is_service_account"], "kind" in u, u["disabled"], u["record_status"], u["role"]] for u in d["items"] if u["username"].startswith("upgrade-18-")]')" \
         "$wanted | person 200 inventory grouped 200 viewer off 401 left 401 robot 200 inventory idle 401 the token is not accepted: its service account holds no role cli 200 viewer | 200 [[\"cli\", true, false, false, \"active\", \"viewer\"], [\"grouped\", false, false, false, \"active\", \"viewer\"], [\"idle\", true, false, false, \"active\", null], [\"left\", false, false, false, \"retired\", null], [\"off\", false, false, true, \"active\", \"viewer\"], [\"person\", false, false, false, \"active\", \"inventory\"], [\"robot\", true, false, false, \"active\", \"inventory\"]]"
-    keep people-0018
+    # The seven alone are kept: the accounts of the pass sign in again before the upgrade
+    # and after it, and are compared by the pass itself.
+    python3 -c '
+import json, sys
+
+users = json.load(open(sys.argv[1], encoding="utf-8"))["items"]
+print(json.dumps([u for u in users if u["username"].startswith("upgrade-18-")]))' "$work/body" >"$work/kept-people-0018.json"
 
     # What the previous release does not know: a kind, an agent and the person
     # answerable for one. Each is refused, and nothing changes.
@@ -249,17 +255,22 @@ print("same" if then == kinds else "differ", sorted(counted), answerable, defaul
     made=""
     for kind in person service agent; do
         api GET "/users?kind=$kind&retired=yes&limit=1000"
-        made="$made $status $(json '[u["username"] for u in d["items"] if u["username"].startswith("upgrade-")]')"
+        made="$made $status $(json '[u["username"] for u in d["items"] if u["username"].startswith("upgrade-18-")]') $(json '[u["username"] for u in d["items"] if u["kind"] != "'"$kind"'"]')"
     done
-    expect "pkg $when GET /users?kind= lists the accounts from before by their kind: the persons, the service accounts, among them the pass's own, and no agent" \
+    expect "pkg $when GET /users?kind= lists the accounts from before by their kind, the persons and the service accounts, each kind alone, and no agent" \
         "$made" \
-        ' 200 ["upgrade-18-grouped", "upgrade-18-left", "upgrade-18-off", "upgrade-18-person", "upgrade-admin", "upgrade-engineer"] 200 ["upgrade-18-cli", "upgrade-18-idle", "upgrade-18-robot", "upgrade-robot"] 200 []'
+        ' 200 ["upgrade-18-grouped", "upgrade-18-left", "upgrade-18-off", "upgrade-18-person"] [] 200 ["upgrade-18-cli", "upgrade-18-idle", "upgrade-18-robot"] [] 200 [] []'
+    # The events that the persons of the file made as they signed in, those that the
+    # system made, and every one: what the audit trail says of each actor's kind and of
+    # the person it was for.
     api GET '/audit-events?actor_kind=agent&limit=1'
     made="$status $(json_field total)"
+    api GET "/audit-events?actor_hid=${users_0018[person]}&limit=1000"
+    made="$made $status $(json 'sorted({str(e["actor_kind"]) for e in d["items"]})')"
     api GET '/audit-events?limit=1000'
-    expect "pkg $when the audit trail finds no event of an agent, and says of each event from before the kind of its actor, a person's for the Admin from before, none for what the system did, and that it was for nobody" \
-        "$made $status $(json 'sorted({str(e["actor_kind"]) for e in d["items"] if e["actor_name"] == "upgrade-admin"})') $(json 'sorted({str(e["actor_kind"]) for e in d["items"] if e["actor_hid"] is None})') $(json 'sorted({str(e["for_hid"]) + "/" + str(e["for_name"]) for e in d["items"]})')" \
-        '200 0 200 ["person"] ["None"] ["None/None"]'
+    expect "pkg $when the audit trail finds no event of an agent, and says of each event from before the kind of its actor, a person's for the person from before who signed in, none for what the system did, and that it was for nobody" \
+        "$made $status $(json 'sorted({str(e["actor_kind"]) for e in d["items"] if e["actor_hid"] is None})') $(json 'sorted({str(e["for_hid"]) + "/" + str(e["for_name"]) for e in d["items"]})')" \
+        '200 0 200 ["person"] 200 ["None"] ["None/None"]'
 }
 
 # What is asked of what was carried over: each user from before signs in, or is refused,
