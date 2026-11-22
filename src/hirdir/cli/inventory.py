@@ -866,7 +866,12 @@ def _show_rows(rows: list[dict[str, Any]], row_count: int) -> None:
             continue
         typer.echo(f"row {row['row']}  {row['outcome']}  {row['key']}")
         for change in row["changes"]:
-            typer.echo(f"    {change['field']}: {_value(change['old'])} → {_value(change['new'])}")
+            # Where an input format writes the value in another form, the file's (P-322).
+            in_file = change.get("as_in_file")
+            said = f" (in the file: {in_file})" if in_file is not None else ""
+            typer.echo(
+                f"    {change['field']}: {_value(change['old'])} → {_value(change['new'])}{said}"
+            )
         for reason in row["reasons"]:
             where = f"{reason['field']}: " if reason["field"] else ""
             typer.echo(f"    {where}{reason['message']}")
