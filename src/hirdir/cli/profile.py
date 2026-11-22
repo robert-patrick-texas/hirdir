@@ -91,17 +91,19 @@ def _the_operator(me: dict[str, Any], named: str | None) -> dict[str, Any]:
 
 
 def same_name_line(contact: dict[str, Any]) -> str | None:
-    """Return what is said of a name that other contacts not retired have, with how to
-    list them, or None where none has it (P-315). The name is saved all the same."""
+    """Return what is said of a name that other contacts have, the retired and the drafts
+    among them, with how to list them, or None where none has it (P-315). The name is
+    saved all the same."""
     others = contact["same_name"]
     if not others:
         return None
     name = contact["name"]
     who = "another contact is" if others == 1 else f"{others} other contacts are"
     listed = shlex.quote(f"name:eq:{name}")
+    # Every one of them is listed, the retired and the drafts too, as a file finds them.
     return (
         f"{who} named {name}: a file tells you apart by your email or your HID; "
-        f"hirdir contacts list --filter {listed} lists them"
+        f"hirdir contacts list --filter {listed} --include-archived --include-drafts lists them"
     )
 
 

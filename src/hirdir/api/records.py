@@ -783,10 +783,10 @@ class ContactOut(Model):
         )
     )
     same_name: int = Field(
-        description="How many other contacts that are not retired have its name, compared "
-        "without regard to case as a file matches a contact by its name (P-315). A name "
-        "another has is saved as any other; a file then tells them apart by the email or "
-        "the HID."
+        description="How many other contacts have its name, compared without regard to "
+        "case as a file matches a contact by its name, and counted as a file finds them, the "
+        "retired and the drafts among them (P-315). A name another has is saved as any "
+        "other; a file then tells them apart by the email or the HID."
     )
     row_version: int
     created_at: datetime

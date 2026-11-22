@@ -24,7 +24,9 @@ describe("a name another contact has is said, with how a file tells them apart (
 describe("the contacts of a name are one link away (P-315)", () => {
   it("narrows the list by the name, in the short form where it can", () => {
     expect(nameFilter("Kim Lee")).toBe("name:eq:Kim Lee");
-    expect(namedAddress("Kim Lee")).toBe("/contacts?filter=name%3Aeq%3AKim+Lee");
+    expect(namedAddress("Kim Lee")).toBe(
+      "/contacts?filter=name%3Aeq%3AKim+Lee&archived=1&drafts=1",
+    );
   });
 
   it("writes a name the short form cannot hold as a tree, read back whole", () => {

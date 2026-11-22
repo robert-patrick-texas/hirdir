@@ -208,6 +208,10 @@ export function Contacts() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
+  // 0.9.17: a link may ask for the retired and the drafts too, as the contacts of one
+  // name are listed (P-315).
+  const withArchived = params.get("archived") === "1";
+  const withDrafts = params.get("drafts") === "1";
   // 0.9.13: a press of a gap starts the grid on it, and marks it only while it is shown (P-280).
   const gaps = useGridGaps(startFilter);
   const [adding, setAdding] = useState(false);
@@ -256,7 +260,7 @@ export function Contacts() {
         onPress={gaps.pressed}
       />
       <DataGrid<Contact>
-        key={gaps.gridKey}
+        key={`${gaps.gridKey} ${withArchived} ${withDrafts}`}
         id="contacts"
         noun={["contact", "contacts"]}
         entity="contacts"
@@ -271,6 +275,14 @@ export function Contacts() {
         shortFilter="organization:contains:Operations tags:has:on-call"
         quickFields={["name", "email"]}
         startFilter={startFilter}
+        startSwitches={
+          withArchived || withDrafts
+            ? {
+                ...(withArchived ? { archived: true } : {}),
+                ...(withDrafts ? { drafts: true } : {}),
+              }
+            : null
+        }
         switches={{ archived: "Include retired", drafts: "Include drafts" }}
       >
         {allows(user.role, "inventory") && !adding && (

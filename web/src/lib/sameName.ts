@@ -1,7 +1,8 @@
 // 0.9.17: a contact may have the name of another, and is saved with a warning (P-315).
 //
-// The server counts, in `same_name`, how many other contacts that are not retired have
-// a contact's name, compared as a file matches a contact by its name. Nothing is
+// The server counts, in `same_name`, how many other contacts have a contact's name, the
+// retired and the drafts among them, as a file that names a contact by its name finds
+// them. Nothing is
 // refused for it: the page says so, and that a file then tells them apart by the email
 // or the HID, with a link to the contacts of that name.
 
@@ -31,9 +32,12 @@ export function nameFilter(name: string): string {
   return JSON.stringify({ field: "name", op: "eq", value: name });
 }
 
-/** The address of the list of the contacts that have a name, those not retired. */
+/**
+ * The address of the list of the contacts that have a name: every one, the retired and
+ * the drafts among them, as a file that names a contact by its name finds them (P-315).
+ */
 export function namedAddress(name: string): string {
-  return contactsAddress(nameFilter(name));
+  return `${contactsAddress(nameFilter(name))}&archived=1&drafts=1`;
 }
 
 /**

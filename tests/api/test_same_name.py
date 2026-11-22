@@ -57,14 +57,18 @@ def test_a_name_another_contact_has_is_saved_and_counted_by_each(make: Maker) ->
     assert back["same_name"] == 2
 
 
-def test_a_retired_contact_is_counted_by_none_and_still_counts_the_others(make: Maker) -> None:
+def test_a_retired_contact_and_a_draft_are_counted_as_a_file_finds_them(make: Maker) -> None:
+    """The lead's reading at the review of P-315: a file that names a contact by its name
+    alone finds every contact of that name, the retired and the drafts among them, so
+    each of them is counted."""
     kim = _contact(make, "Kim Lee", "kim.lee@example.com")
     gone = _contact(make, "Kim Lee", "k.lee@example.net")
     assert _same(make, kim) == 1
     make.post(f"/contacts/{gone['hid']}/retire", {"row_version": gone["row_version"]}, 200)
-    assert _same(make, kim) == 0
-    # The retired one is told of the one that is not.
+    assert _same(make, kim) == 1
     assert _same(make, gone) == 1
+    draft = make.post("/contacts", {"name": "KIM LEE", "record_status": "draft"})
+    assert [_same(make, one) for one in (kim, gone, draft)] == [2, 2, 2]
 
 
 def test_nothing_is_written_for_a_name_another_has(make: Maker) -> None:
@@ -179,7 +183,8 @@ def test_profile_set_says_that_another_contact_is_named_so(
     said = hirdir(kim, "profile", "set", "--name", "Sam Roe")
     assert said.stderr.splitlines() == [
         "another contact is named Sam Roe: a file tells you apart by your email or your HID; "
-        "hirdir contacts list --filter 'name:eq:Sam Roe' lists them"
+        "hirdir contacts list --filter 'name:eq:Sam Roe' --include-archived "
+        "--include-drafts lists them"
     ]
     assert "name          Sam Roe" in said.stdout.splitlines()
     _contact(make, "SAM ROE")

@@ -564,8 +564,8 @@ class OwnContact(Model):
     record_status: Literal["draft", "active", "retired"]
     row_version: int
     same_name: int = Field(
-        description="How many other contacts that are not retired have this name, as "
-        "`same_name` of a contact (P-315)."
+        description="How many other contacts have this name, the retired and the drafts "
+        "among them, as `same_name` of a contact (P-315)."
     )
 
 

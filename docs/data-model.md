@@ -807,7 +807,7 @@ number entered once shows in all three places (P-172).
 | `contacts.email` | text | unique when present, without regard to case |
 | `contacts.record_status` | choice | see Conventions. A contact takes tags |
 | `contacts.is_user`, `user` | read only | `is_user` is true where the contact is the person a user is, and `user` is the `hid`, `username` and `record_status` of that user. A retired account is no user: `is_user` is false for its contact, and `user` still answers it, marked `retired` (P-296) |
-| `contacts.same_name` | read only | how many other contacts that are not retired have its name, compared without regard to case as a file matches a contact by its name; read when the contact is read, and stored nowhere (P-315). A name that another contact has is saved as any other: the pages and the CLI say that a file then tells the two apart by the email or the HID |
+| `contacts.same_name` | read only | how many other contacts have its name, compared without regard to case as a file matches a contact by its name, and counted as a file finds them, the retired and the drafts among them; read when the contact is read, and stored nowhere (P-315). A name that another contact has is saved as any other: the pages and the CLI say that a file then tells the two apart by the email or the HID |
 | `contact_assignments.contact_hid` | reference | blank only on an assignment that stops inheritance |
 | `contact_assignments.region_hid`, `site_hid` or `location_hid` | reference | exactly one of the three, and not changed afterwards |
 | `contact_assignments.role` | choice | a value of the `contact_role` list: `shipping`, `technical`, `federal`, `operational`, `escalation` |
