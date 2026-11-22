@@ -192,7 +192,7 @@ answerable to and the person an event of an agent's was made for; its scenarios 
 telephone number, an email address, a name, by formats an Admin turns on and defines
 (P-293); gives each side of a circuit its dates (P-317) and a circuit's Z side the carrier network it reaches, a circuit group of the kind Network (P-319); and has the country and the
 state of every address chosen from lists of ISO 3166 codes and names that an Admin
-keeps, starting with North America, the United States first (P-318).
+keeps, starting with the Americas, the United States first (P-318).
 
 ## From 0.6.1 to 0.9.0
 
