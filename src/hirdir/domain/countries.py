@@ -288,6 +288,9 @@ def create_country(
 ) -> Country:
     """Add a country to the list. An Admin's."""
     _admins(role)
+    # A country made while its code is given to another, or a state made while its
+    # country is removed, waits for the other change, and then sees it.
+    _writing(db)
     values = _checked_country(db, {"code": None, "name": None, **fields}, None)
     country = Country(**values)
     records.created(db, context, "country", country, COUNTRY_FIELDS)
@@ -433,6 +436,7 @@ def create_state(
 ) -> State:
     """Add a state to a country of the list. An Admin's."""
     _admins(role)
+    _writing(db)
     values = _checked_state(db, {"country": None, "code": None, "name": None, **fields}, None)
     state = State(**values)
     records.created(db, context, "state", state, STATE_FIELDS)

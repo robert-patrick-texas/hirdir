@@ -60,3 +60,45 @@ def test_the_writers_place_is_taken_before_what_addresses_hold_is_read(
     change(db, land, north)
     assert "look" in said
     assert said[0] == "hold"
+
+
+@pytest.mark.parametrize(
+    ("make", "checked"),
+    [
+        (
+            lambda db: countries.create_country(
+                db, audit.SYSTEM, {"code": "XC", "name": "Another Example"}, ADMIN
+            ),
+            "_checked_country",
+        ),
+        (
+            lambda db: countries.create_state(
+                db, audit.SYSTEM, {"country": "XA", "code": "S", "name": "South"}, ADMIN
+            ),
+            "_checked_state",
+        ),
+    ],
+    ids=["create_country", "create_state"],
+)
+def test_a_country_or_a_state_is_added_holding_the_writers_place(
+    db: Session, monkeypatch: pytest.MonkeyPatch, make: Callable[..., Any], checked: str
+) -> None:
+    """A state added while its country is removed or recoded, on PostgreSQL, would
+    otherwise be left with a country that is no longer there (the second review of
+    0.9.18)."""
+    _land(db)
+    said: list[str] = []
+    hold, check = dialect.hold_other_writers, getattr(countries, checked)
+
+    def held_first(session: Any) -> None:
+        said.append("hold")
+        hold(session)
+
+    def looked(*given: Any) -> Any:
+        said.append("check")
+        return check(*given)
+
+    monkeypatch.setattr(dialect, "hold_other_writers", held_first)
+    monkeypatch.setattr(countries, checked, looked)
+    make(db)
+    assert said[:2] == ["hold", "check"]
