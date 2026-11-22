@@ -41,8 +41,8 @@ record names the ones it refers to:
 17. `contract-contacts.csv`
 18. `purchase-requests.csv`
 19. `purchase-lines.csv`
-20. `items.csv`
-21. `device-groups.csv`
+20. `device-groups.csv`
+21. `items.csv`
 22. `device-group-members.csv`
 23. `item-replacements.csv`
 24. `addresses.csv`
@@ -78,8 +78,8 @@ hirdir import examples/contracts.csv --entity contracts
 hirdir import examples/contract-contacts.csv --entity contract_contacts
 hirdir import examples/purchase-requests.csv --entity purchase_requests
 hirdir import examples/purchase-lines.csv --entity purchase_lines
-hirdir import examples/items.csv --entity items
 hirdir import examples/device-groups.csv --entity device_groups
+hirdir import examples/items.csv --entity items
 hirdir import examples/device-group-members.csv --entity device_group_members
 hirdir import examples/item-replacements.csv --entity item_replacements
 hirdir import examples/addresses.csv --entity addresses

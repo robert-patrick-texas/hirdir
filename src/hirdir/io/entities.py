@@ -5319,8 +5319,10 @@ LOAD_ORDER = (
     "contract_contacts",
     "purchase_requests",
     "purchase_lines",
-    "items",
+    # A group names no item, and an item may run on a group (P-246): the groups come
+    # first, so that an item hosted on a stack or a cluster finds it (P-311).
     "device_groups",
+    "items",
     "device_group_members",
     "item_replacements",
     "addresses",

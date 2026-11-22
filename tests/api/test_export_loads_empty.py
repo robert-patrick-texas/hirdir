@@ -15,16 +15,37 @@ it, loaded after it, is taken as the app keeps it on a retired record (P-311).
 import csv
 import io
 import json
+import shutil
 import zipfile
+from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from hirdir.db.engine import make_sessions
-from hirdir.domain import audit, reset
+from hirdir.auth.roles import Role
+from hirdir.config import Config
+from hirdir.db.engine import make_engine, make_sessions
+from hirdir.db.models import Location, Vendor
+from hirdir.domain import (
+    addresses,
+    audit,
+    catalog,
+    circuit_records,
+    contacts,
+    geography,
+    groups,
+    items,
+    operators,
+    owners,
+    people,
+    reset,
+)
 from hirdir.ids import new_hid
 from hirdir.io import examples
 from hirdir.io.entities import LOAD_ORDER, entity
@@ -38,7 +59,172 @@ from tests.api.test_export_loads_back import (
     preview,
     richer_db,  # noqa: F401 - the fixture that config is given
 )
+from tests.api.test_export_loads_back import _whole as whole
 from tests.api.test_files import Files
+
+# --- inventories of the shapes the app makes (the review of P-311) --------------------
+
+
+def _built(
+    factory: pytest.TempPathFactory, examples: Path, name: str, build: Callable[[Session], None]
+) -> Path:
+    """The examples, and what `build` adds to them by the rules: made once."""
+    folder = factory.mktemp(name)
+    made = Config(state_dir=folder)
+    assert made.database_path is not None
+    shutil.copyfile(examples, made.database_path)
+    engine = make_engine(made.database_url)
+    with make_sessions(engine)() as db:
+        build(db)
+        db.commit()
+    engine.dispose()
+    return whole(folder, made)
+
+
+def _models(db: Session) -> tuple[str, str]:
+    """A model of hardware, and one of a virtual machine, of the first vendor."""
+    vendor = db.scalars(select(Vendor).order_by(Vendor.name_key)).first()
+    assert vendor is not None
+    context = audit.SYSTEM
+    box = catalog.create_entry(
+        db, context, {"vendor_hid": vendor.hid, "pid": "EX-BOX9", "kind": "hardware"}
+    )
+    vm = catalog.create_entry(
+        db, context, {"vendor_hid": vendor.hid, "pid": "EX-VM9", "kind": "virtual_machine"}
+    )
+    return box.hid, vm.hid
+
+
+def _hosted(db: Session) -> None:
+    """A cluster and a stack that are not retired, each with a virtual machine on it."""
+    context = audit.SYSTEM
+    _, vm = _models(db)
+    cluster = groups.create_group(db, context, {"type": "cluster", "name": "ex-cl9"})
+    stack = groups.create_group(db, context, {"type": "stack", "name": "ex-st9"})
+    for name, group in (("ex-vm9", cluster), ("ex-vm10", stack)):
+        items.create_item(
+            db, context, {"catalog_entry_hid": vm, "name": name, "host_group_hid": group.hid}
+        )
+
+
+def _retired_shapes(db: Session) -> None:
+    """Retired as the app retires them: a host with a virtual machine, retired together,
+    and a minor item in it; a stack in a closet with an owner, an operator, a host name,
+    an address and members, retired; a cluster with a virtual machine, retired; a
+    circuit; the rack and the closet; a person with their labels; and the owner."""
+    context = audit.SYSTEM
+    box, vm = _models(db)
+    site = db.scalars(select(Location.site_hid).where(Location.site_hid.is_not(None))).first()
+    closet = geography.create_place(
+        db, context, geography.LOCATION, {"name": "Closet-R", "site_hid": site}
+    )
+    rack = geography.create_place(
+        db,
+        context,
+        geography.LOCATION,
+        {"name": "Rack-R", "site_hid": site, "parent_location_hid": closet.hid},
+    )
+    team = owners.create_owner(db, context, {"label": "Ex Old Team"})
+    person = contacts.create_contact(
+        db, context, {"name": "Rex Example", "email": "rex@example.net"}
+    )
+    label = operators.create_operator(db, context, {"label": "rex", "contact_hid": person.hid})
+    second = operators.create_operator(db, context, {"label": "rex2", "contact_hid": person.hid})
+    host = items.create_item(
+        db,
+        context,
+        {
+            "catalog_entry_hid": box,
+            "name": "ex-host1",
+            "hostname": "host1",
+            "serial_number": "EX-SN-H1",
+            "location_hid": rack.hid,
+            "owner_hid": team.hid,
+            "operator_hid": label.hid,
+        },
+    )
+    guest = items.create_item(
+        db, context, {"catalog_entry_hid": vm, "name": "ex-vm1", "host_item_hid": host.hid}
+    )
+    addresses.create_address(db, context, {"item_hid": host.hid, "address": "192.0.2.201"})
+    addresses.create_address(db, context, {"item_hid": guest.hid, "address": "192.0.2.202"})
+    part = items.create_item(db, context, {"name": "ex-psu", "parent_item_hid": host.hid})
+    stack = groups.create_group(
+        db,
+        context,
+        {
+            "type": "stack",
+            "name": "ex-stack",
+            "hostname": "stack1",
+            "location_hid": closet.hid,
+            "owner_hid": team.hid,
+            "operator_hid": second.hid,
+        },
+    )
+    members = [
+        items.create_item(
+            db, context, {"catalog_entry_hid": box, "name": name, "serial_number": serial}
+        )
+        for name, serial in (("ex-sw1m", "EX-SN-S1"), ("ex-sw2m", "EX-SN-S2"))
+    ]
+    groups.add_members(db, context, stack.hid, [{"item_hid": one.hid} for one in members])
+    addresses.create_address(db, context, {"group_hid": stack.hid, "address": "192.0.2.203"})
+    cluster = groups.create_group(
+        db, context, {"type": "cluster", "name": "ex-cluster", "location_hid": closet.hid}
+    )
+    on_cluster = items.create_item(
+        db, context, {"catalog_entry_hid": vm, "name": "ex-vm2", "host_group_hid": cluster.hid}
+    )
+    circuit = circuit_records.create_circuit(
+        db,
+        context,
+        {
+            "name": "ex-circ",
+            "a_location_hid": closet.hid,
+            "z_location_hid": rack.hid,
+            "owner_hid": team.hid,
+        },
+    )
+    db.flush()
+
+    def now(record: Any) -> int:
+        db.refresh(record)
+        return record.row_version
+
+    items.retire_item(db, context, host.hid, now(host))
+    items.retire_item(db, context, part.hid, now(part))
+    items.retire_item(db, context, on_cluster.hid, now(on_cluster))
+    items.retire_item(db, context, members[0].hid, now(members[0]))
+    groups.retire_group(db, context, stack.hid, now(stack))
+    groups.retire_group(db, context, cluster.hid, now(cluster))
+    circuit_records.retire_circuit(db, context, circuit.hid, now(circuit))
+    geography.retire_place(db, context, geography.LOCATION, rack.hid, now(rack))
+    geography.retire_place(db, context, geography.LOCATION, closet.hid, now(closet))
+    people.retire(
+        db,
+        context,
+        Role.ADMIN,
+        "contact",
+        person.hid,
+        now(person),
+        {
+            "operators": [
+                {"hid": label.hid, "action": "retire"},
+                {"hid": second.hid, "action": "retire"},
+            ]
+        },
+    )
+    owners.retire_owner(db, context, team.hid, now(team))
+
+
+@pytest.fixture(scope="module")
+def hosted_db(tmp_path_factory: pytest.TempPathFactory, examples_db: Path) -> Path:  # noqa: F811
+    return _built(tmp_path_factory, examples_db, "hosted", _hosted)
+
+
+@pytest.fixture(scope="module")
+def retired_db(tmp_path_factory: pytest.TempPathFactory, examples_db: Path) -> Path:  # noqa: F811
+    return _built(tmp_path_factory, examples_db, "retired", _retired_shapes)
 
 
 def _zip(client: TestClient, headers: dict[str, str], format_: str) -> zipfile.ZipFile:
@@ -73,7 +259,7 @@ def _rejected(client: TestClient, headers: dict[str, str], job: dict[str, Any]) 
     return [row for row in changed_rows(client, headers, job) if row["outcome"] == "rejected"]
 
 
-@pytest.mark.parametrize("config", ["examples_db", "richer_db"], indirect=True)
+@pytest.mark.parametrize("config", ["examples_db", "richer_db", "hosted_db"], indirect=True)
 @pytest.mark.parametrize("format_", FORMATS)
 def test_the_zip_of_every_table_loads_into_an_empty_inventory_as_it_was(
     client: TestClient, inventory: dict[str, str], format_: str

@@ -286,8 +286,8 @@ hirdir import examples/contracts.csv --entity contracts --apply
 hirdir import examples/contract-contacts.csv --entity contract_contacts --apply
 hirdir import examples/purchase-requests.csv --entity purchase_requests --apply
 hirdir import examples/purchase-lines.csv --entity purchase_lines --apply
-hirdir import examples/items.csv --entity items --apply
 hirdir import examples/device-groups.csv --entity device_groups --apply
+hirdir import examples/items.csv --entity items --apply
 hirdir import examples/device-group-members.csv --entity device_group_members --apply
 hirdir import examples/item-replacements.csv --entity item_replacements --apply
 hirdir import examples/addresses.csv --entity addresses --apply
