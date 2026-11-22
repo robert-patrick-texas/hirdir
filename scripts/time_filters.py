@@ -553,7 +553,7 @@ def drop_kept() -> None:
 
 
 def put_settings(
-    client: httpx2.Client, admin: dict[str, str] | None, values: dict[str, str | None]
+    client: httpx2.Client, admin: dict[str, str] | None, values: dict[str, Any]
 ) -> None:
     """Give settings values as the Admin gives them, one audited change each; None
     returns one to its default."""
@@ -584,6 +584,26 @@ def settings_set(
         yield
     finally:
         put_settings(client, admin, dict.fromkeys(case.settings))
+
+
+# The two measures of the server's ceiling (P-265), which 0 leaves unlooked at. Asked one
+# after another, the requests keep the server past its ceiling, and it would refuse the
+# long ones at once, which would time nothing (P-327).
+CEILING = ("busy_response_ms", "busy_cpu_percent")
+
+
+@contextmanager
+def ceiling_off(
+    client: httpx2.Client, admin: dict[str, str] | None, say: Callable[[str], None]
+) -> Generator[None]:
+    """Leave the measures of the server's ceiling unlooked at while the block runs, as
+    the Admin sets them, and return them to their defaults after."""
+    put_settings(client, admin, dict.fromkeys(CEILING, 0))
+    say(f"the ceiling of the server is off while it is timed: {' and '.join(CEILING)} at 0")
+    try:
+        yield
+    finally:
+        put_settings(client, admin, dict.fromkeys(CEILING))
 
 
 def keep_first(client: httpx2.Client, case: Case, anew: bool) -> None:
@@ -859,6 +879,22 @@ def run(
     if not anew and any(case.anew for case in chosen):
         say("the requests anew are left out: the kept answers are in the server's process")
         chosen = [case for case in chosen if not case.anew]
+    with ceiling_off(client, admin, say):
+        return _timed_all(client, chosen, runs, warm_up, admin, anew, engine, explain_to, say)
+
+
+def _timed_all(
+    client: httpx2.Client,
+    chosen: list[Case],
+    runs: int,
+    warm_up: int,
+    admin: dict[str, str] | None,
+    anew: bool,
+    engine: Engine | None,
+    explain_to: Path | None,
+    say: Callable[[str], None],
+) -> list[Timed]:
+    """Time each request chosen, in turn."""
     results = []
     for case in chosen:
         started = time.perf_counter()

@@ -54,7 +54,7 @@ def create_item(body: r.ItemCreate, _: Inventory, context: Audit, db: Db) -> r.I
     return shapes.item_out(db, items.create_item(db, context, body.model_dump()))
 
 
-@router.post("/bulk-update", status_code=201, tags=["Bulk"])
+@router.post("/bulk-update", status_code=201, tags=["Bulk"], responses=files.PREVIEWING)
 def bulk_update(
     body: r.BulkUpdate, principal: Inventory, context: Audit, db: Db
 ) -> r.ImportPreview:

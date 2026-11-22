@@ -16,7 +16,7 @@ rest go on.
 import hashlib
 import logging
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
@@ -298,12 +298,15 @@ def _work(
     rows: Sequence[Row],
     skip: frozenset[int] = frozenset(),
     system_hid: str | None = None,
+    progress: Callable[[int], None] | None = None,
 ) -> list[Result]:
     """Work every row, each in a savepoint of its own, and report them in the file's order.
 
     A row that is refused leaves nothing behind and is reported as rejected. The rows
     numbered in `skip` are not worked at all. `system_hid` is the external system a file
-    of items was read from (P-248).
+    of items was read from (P-248). `progress`, where it is given, is told how many rows
+    have been worked every `BATCH_ROWS` rows and once at the end, so that a preview in the
+    background can say how far it has got (P-325).
     """
     run = Run(db, context, role, mode)
     run.system_hid = system_hid
@@ -343,6 +346,8 @@ def _work(
         results.append(result)
         if worked % LET_GO_EVERY == 0:
             run.let_go()
+        if progress is not None and worked % BATCH_ROWS == 0:
+            progress(worked)
     results.sort(key=lambda result: result.row)
     # What is right or wrong only once every row is in: the members of a stack.
     wrong = which.finish(run)
@@ -351,6 +356,8 @@ def _work(
             result.outcome, result.changes, result.notes = "rejected", [], []
             result.reasons = wrong[result.row]
     run.let_go()
+    if progress is not None:
+        progress(len(places))
     return results
 
 
@@ -399,6 +406,7 @@ def preview_rows(
         file_sha256=file_sha256,
         status="previewed",
         row_count=len(rows),
+        rows_previewed=len(rows),
         created_by=context.actor_hid,
         system_hid=system_hid,
         complete=complete if system_hid is not None else None,

@@ -4763,13 +4763,23 @@ class ImportJobOut(Model):
     mode: Literal["create", "upsert", "update"]
     file_name: str | None
     file_sha256: str | None
-    status: Literal["previewed", "queued", "applying", "applied", "stopped", "failed"] = Field(
-        description="`queued` once an apply is asked for, until the background work takes "
-        "it up, in the order asked; `applying` while that work applies it; "
-        "`applied` once every row is worked, `stopped` when it stopped partway, to be "
-        "resumed. `failed` is a job of a release before 0.7.0 that was not applied."
+    status: Literal[
+        "previewing", "previewed", "queued", "applying", "applied", "stopped", "failed"
+    ] = Field(
+        description="`previewing` while the background work previews a file of more than a "
+        "hundred rows, `rows_previewed` of `row_count` (P-325), and `previewed` once every "
+        "row is; `queued` once an apply is asked for, until the background work takes it "
+        "up, in the order asked; `applying` while that work applies it; `applied` once "
+        "every row is worked, `stopped` when it stopped partway, to be resumed. `failed` "
+        "is a preview that an error nobody foresaw or a role that was lost ended, with "
+        "why in `failure`, or a job of a release before 0.7.0 that was not applied; "
+        "neither is applied."
     )
     row_count: int
+    rows_previewed: int = Field(
+        description="How many rows the preview has worked so far: `row_count` once it is "
+        "previewed (P-325)."
+    )
     created: int = Field(description="Rows that create a record, as the preview found.")
     updated: int = Field(description="Rows that change a record, as the preview found.")
     unchanged: int = Field(description="Rows that find their record as the row has it.")
@@ -4806,7 +4816,8 @@ class ImportJobOut(Model):
         "page of a job that waits to be applied names them again (P-248). Empty otherwise."
     )
     failure: str | None = Field(
-        description="Why a stopped job stopped, or why a failed one was not applied."
+        description="Why a stopped job stopped, or why a failed one was not previewed whole "
+        "or not applied."
     )
     applied_at: datetime | None = Field(description="When it was last asked to be applied.")
     applied_by: str | None = Field(description="Who last asked for it to be applied.")
@@ -4862,7 +4873,8 @@ class ImportPreview(Model):
 
     job: ImportJobOut
     rows: list[ImportRowOut] = Field(
-        description="The first hundred rows. `GET /imports/{hid}/rows` pages through all."
+        description="The first hundred rows. `GET /imports/{hid}/rows` pages through all. "
+        "Empty while the job is `previewing` (P-325)."
     )
     not_reported_first: list[RecordLabel] = Field(
         description="Of a `complete` import that is not applied yet: the first ten items it "

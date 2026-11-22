@@ -4499,6 +4499,12 @@ export interface paths {
             "application/json": components["schemas"]["ImportPreview"];
           };
         };
+        /** More than a hundred rows: stored as a job that is `previewing`, with no rows yet. The background work previews it; `GET /imports/{hid}` says how far it has got, `rows_previewed` of `row_count`, and that it is `previewed` (P-325). */
+        202: {
+          content: {
+            "application/json": components["schemas"]["ImportPreview"];
+          };
+        };
         /** Validation Error */
         422: {
           content: {
@@ -4789,6 +4795,12 @@ export interface paths {
       responses: {
         /** Successful Response */
         201: {
+          content: {
+            "application/json": components["schemas"]["ImportPreview"];
+          };
+        };
+        /** More than a hundred rows: stored as a job that is `previewing`, with no rows yet. The background work previews it; `GET /imports/{hid}` says how far it has got, `rows_previewed` of `row_count`, and that it is `previewed` (P-325). */
+        202: {
           content: {
             "application/json": components["schemas"]["ImportPreview"];
           };
@@ -11918,7 +11930,7 @@ export interface components {
       created_by: string | null;
       created_by_name: string | null;
       entity: string;
-      /** Why a stopped job stopped, or why a failed one was not applied. */
+      /** Why a stopped job stopped, or why a failed one was not previewed whole or not applied. */
       failure: string | null;
       file_name: string | null;
       file_sha256: string | null;
@@ -11935,13 +11947,15 @@ export interface components {
       row_count: number;
       /** How many rows the apply has worked so far. */
       rows_done: number;
+      /** How many rows the preview has worked so far: `row_count` once it is previewed (P-325). */
+      rows_previewed: number;
       /** Whether it was applied without them. */
       skip_rejected: boolean | null;
       source: "file" | "bulk";
       /** How many rows the apply left out because they changed since the preview. */
       stale: number;
-      /** `queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied. */
-      status: "previewed" | "queued" | "applying" | "applied" | "stopped" | "failed";
+      /** `previewing` while the background work previews a file of more than a hundred rows, `rows_previewed` of `row_count` (P-325), and `previewed` once every row is; `queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a preview that an error nobody foresaw or a role that was lost ended, with why in `failure`, or a job of a release before 0.7.0 that was not applied; neither is applied. */
+      status: "previewing" | "previewed" | "queued" | "applying" | "applied" | "stopped" | "failed";
       system: components["schemas"]["SystemRef"] | null;
       /** An import of items: the external system the file was read from, by whose identifier, `external_id`, its rows are matched first (P-248). */
       system_hid: string | null;
@@ -11955,7 +11969,7 @@ export interface components {
       job: components["schemas"]["ImportJobOut"];
       /** Of a `complete` import that is not applied yet: the first ten items it would mark `not_reported`, by label (P-248). Empty otherwise. */
       not_reported_first: components["schemas"]["RecordLabel"][];
-      /** The first hundred rows. `GET /imports/{hid}/rows` pages through all. */
+      /** The first hundred rows. `GET /imports/{hid}/rows` pages through all. Empty while the job is `previewing` (P-325). */
       rows: components["schemas"]["ImportRowOut"][];
     };
     /** One row of a preview: what it would do, or why it is rejected. */

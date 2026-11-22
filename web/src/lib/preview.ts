@@ -142,6 +142,7 @@ export function countsText(job: Job): string {
 }
 
 const STATUS_LABELS: Readonly<Record<Job["status"], string>> = {
+  previewing: "Being previewed",
   previewed: "Previewed, not applied",
   queued: "Waiting to be applied",
   applying: "Being applied",

@@ -15681,7 +15681,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why a stopped job stopped, or why a failed one was not applied.",
+            "description": "Why a stopped job stopped, or why a failed one was not previewed whole or not applied.",
             "title": "Failure"
           },
           "file_name": {
@@ -15763,6 +15763,11 @@
             "title": "Rows Done",
             "type": "integer"
           },
+          "rows_previewed": {
+            "description": "How many rows the preview has worked so far: `row_count` once it is previewed (P-325).",
+            "title": "Rows Previewed",
+            "type": "integer"
+          },
           "skip_rejected": {
             "anyOf": [
               {
@@ -15789,8 +15794,9 @@
             "type": "integer"
           },
           "status": {
-            "description": "`queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied.",
+            "description": "`previewing` while the background work previews a file of more than a hundred rows, `rows_previewed` of `row_count` (P-325), and `previewed` once every row is; `queued` once an apply is asked for, until the background work takes it up, in the order asked; `applying` while that work applies it; `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a preview that an error nobody foresaw or a role that was lost ended, with why in `failure`, or a job of a release before 0.7.0 that was not applied; neither is applied.",
             "enum": [
+              "previewing",
               "previewed",
               "queued",
               "applying",
@@ -15843,6 +15849,7 @@
           "file_sha256",
           "status",
           "row_count",
+          "rows_previewed",
           "created",
           "updated",
           "unchanged",
@@ -15884,7 +15891,7 @@
             "type": "array"
           },
           "rows": {
-            "description": "The first hundred rows. `GET /imports/{hid}/rows` pages through all.",
+            "description": "The first hundred rows. `GET /imports/{hid}/rows` pages through all. Empty while the job is `previewing` (P-325).",
             "items": {
               "$ref": "#/components/schemas/ImportRowOut"
             },
@@ -34458,7 +34465,7 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.9.18"
+    "version": "0.9.19"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -43412,6 +43419,16 @@
             },
             "description": "Successful Response"
           },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": "More than a hundred rows: stored as a job that is `previewing`, with no rows yet. The background work previews it; `GET /imports/{hid}` says how far it has got, `rows_previewed` of `row_count`, and that it is `previewed` (P-325)."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -44068,6 +44085,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": "More than a hundred rows: stored as a job that is `previewing`, with no rows yet. The background work previews it; `GET /imports/{hid}` says how far it has got, `rows_previewed` of `row_count`, and that it is `previewed` (P-325)."
           },
           "422": {
             "content": {

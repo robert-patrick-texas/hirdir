@@ -1020,8 +1020,8 @@ def test_the_install_page_and_the_package_test_say_of_circuit_sides_and_lists_as
     from hirdir.io.entities import LISTS
 
     versions = ROOT / "src/hirdir/db/migrations/versions"
-    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
-    assert revision == "0019"
+    # 0019 was the newest when 0.9.18 was made; 0020 of 0.9.19 follows it.
+    revision = "0019"
     (migration,) = versions.glob(f"{revision}_*.py")
     source = migration.read_text(encoding="utf-8")
     assert 'down_revision = "0018"' in source

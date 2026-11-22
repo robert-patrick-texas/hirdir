@@ -1372,6 +1372,8 @@ class ImportJob(Base):
     updated: Mapped[int] = mapped_column(Integer, default=0)
     unchanged: Mapped[int] = mapped_column(Integer, default=0)
     rejected: Mapped[int] = mapped_column(Integer, default=0)
+    # How far a preview in the background has got (P-325).
+    rows_previewed: Mapped[int] = mapped_column(Integer, default=0)
     # How far an apply in the background has got, and what it did.
     rows_done: Mapped[int] = mapped_column(Integer, default=0)
     applied: Mapped[int] = mapped_column(Integer, default=0)

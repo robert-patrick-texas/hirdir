@@ -34,6 +34,15 @@ APPLYING: dict[int | str, dict[str, Any]] = {
     },
     422: {"model": Problem, "description": "Rows are rejected, and `skip_rejected` is not given."},
 }
+# A preview of more than a hundred rows is stored and worked in the background (P-325).
+PREVIEWING: dict[int | str, dict[str, Any]] = {
+    202: {
+        "model": r.ImportPreview,
+        "description": "More than a hundred rows: stored as a job that is `previewing`, with no "
+        "rows yet. The background work previews it; `GET /imports/{hid}` says how far it has "
+        "got, `rows_previewed` of `row_count`, and that it is `previewed` (P-325).",
+    },
+}
 
 
 def _format(request: Request, file_name: str | None) -> str:
@@ -63,6 +72,7 @@ def begun(request: Request, background_tasks: BackgroundTasks, db: Db, job: Any)
 @imports_.post(
     "/preview",
     status_code=201,
+    responses=PREVIEWING,
     openapi_extra={
         "requestBody": {
             "required": True,

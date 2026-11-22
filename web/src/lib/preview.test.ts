@@ -37,6 +37,7 @@ function job(more: Partial<Job> = {}): Job {
     file_name: "items.csv",
     file_sha256: null,
     row_count: 9,
+    rows_previewed: 9,
     created: 2,
     updated: 3,
     unchanged: 3,
