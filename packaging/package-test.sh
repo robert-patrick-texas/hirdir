@@ -4,11 +4,13 @@
 # "make e2e" runs it with --e2e. It needs docker, curl, python3, make and dpkg-deb on
 # the host.
 #
-# Usage: packaging/package-test.sh [--e2e] [--upgrade | --upgrade-alone | --failed-upgrade | --fresh]
+# Usage: packaging/package-test.sh [--e2e] [--upgrade | --upgrade-alone | --failed-upgrade | --fresh | --browser-check]
 #
-# There are three passes, each in a container of its own. With none named, all three
-# run, side by side when the host has cores and memory free for it and one after another
-# when it has not, and a summary of them all ends the run.
+# There are four passes, each in a container of its own. With none named, all four run:
+# the first three side by side when the host has cores and memory free for it and one
+# after another when it has not, and the short browser check by itself after them; and a
+# summary of them all ends the run. A release runs them one after another, each named
+# (docs/release-process.md).
 #
 #   --upgrade          install the previous release, put accounts, a group, a role grant,
 #                      a service token, audit events, an inventory and a changed
@@ -73,10 +75,19 @@
 #                      after a change when the setting says and not with the setting at 0,
 #                      that the server answers a long report without it, and that a reset
 #                      clears what is kept and a restore brings it back
-#   --e2e              in the fresh pass, also run the browser scenarios of web/
-#                      against the container (npm --prefix web run e2e). The browser
-#                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
-#                      asks for the host's, or PW_TEST_CONNECT_WS_ENDPOINT names one.
+#   --browser-check    the short browser check through nginx (P-305, P-309): install on
+#                      a system that never had hirdir, behind nginx under /hirdir/, as
+#                      the fresh pass does, and run in a browser what only the
+#                      installed package can get wrong, which curl does not see: signing
+#                      in under the prefix, a list, a download, and a page reached by its
+#                      address, reloaded and opened afresh; the scenarios of
+#                      web/e2e/browser-check.spec.ts, each with a line of its own. About
+#                      two minutes, where --e2e takes about fifty
+#   --e2e              in the fresh pass, also run every browser scenario of web/
+#                      against the container (npm --prefix web run e2e). The browser,
+#                      for this and for --browser-check, runs in Playwright's container
+#                      image unless E2E_HOST_BROWSER=1 asks for the host's, or
+#                      PW_TEST_CONNECT_WS_ENDPOINT names one.
 # Environment:
 #   DEB            the package to test (default: dist/hirdir_<version>_amd64.deb, for
 #                  the version of this tree). The version that is tested is read from
@@ -126,7 +137,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 self=packaging/package-test.sh
 
 usage() {
-    echo "usage: $self [--e2e] [--upgrade | --upgrade-alone | --failed-upgrade | --fresh]" >&2
+    echo "usage: $self [--e2e] [--upgrade | --upgrade-alone | --failed-upgrade | --fresh | --browser-check]" >&2
     exit 2
 }
 
@@ -136,7 +147,7 @@ alone=0
 for argument in "$@"; do
     case $argument in
         --e2e) e2e=1 ;;
-        --upgrade | --failed-upgrade | --fresh)
+        --upgrade | --failed-upgrade | --fresh | --browser-check)
             [ -z "$mode" ] || usage
             mode=${argument#--}
             ;;
@@ -278,9 +289,11 @@ one_pass() {
 }
 
 # With no pass named: run each one as a command of its own, and sum them up. Each pass
-# has a container, an image and a port of its own, so they run side by side when the
-# host has room for it. The output of each is then shown whole, in the order of the
-# passes, when all have ended.
+# has a container, an image and a port of its own, so the first three run side by side
+# when the host has room for it. The output of each is then shown whole, in the order of
+# the passes, when all have ended. The short browser check runs after them, by itself: a
+# container that starts while a browser drives a page changes the host's network under
+# the browser, which then stops with net::ERR_NETWORK_CHANGED.
 every_pass() {
     local log logs failed=0 code option earlier options arguments width running=0 started
     log=$(mktemp)
@@ -328,8 +341,20 @@ every_pass() {
         echo "$code" >"$logs/${option#--}.status"
     done
     wait
+    if [ "$width" -gt 1 ]; then
+        for option in "${options[@]}"; do cat "$logs/${option#--}.log"; done
+    fi
+    # With --e2e every browser scenario runs in the fresh pass, the short check's among
+    # them, so it is not run again by itself.
+    if [ "$e2e" = 1 ]; then
+        echo "package-test: the short browser check is not run as a pass of its own: its scenarios, in web/e2e/browser-check.spec.ts, are among those that --e2e ran in the fresh pass"
+    else
+        code=0
+        one_pass --browser-check | tee "$logs/browser-check.log" || code=$?
+        echo "$code" >"$logs/browser-check.status"
+        options+=(--browser-check)
+    fi
     for option in "${options[@]}"; do
-        if [ "$width" -gt 1 ]; then cat "$logs/${option#--}.log"; fi
         cat "$logs/${option#--}.log" >>"$log"
         code=$(cat "$logs/${option#--}.status" 2>/dev/null || echo 1)
         if [ "$code" -ne 0 ]; then
@@ -1232,9 +1257,9 @@ start_container() {
     # apt's sandbox user must be able to read the packages, so they are copied in.
     inside mkdir -p /srv/debs
     docker cp --quiet "$deb" "$container:/srv/debs/hirdir-new.deb"
-    if [ "$mode" != fresh ]; then
-        docker cp --quiet "$previous" "$container:/srv/debs/hirdir-previous.deb"
-    fi
+    case $mode in
+        upgrade | failed-upgrade) docker cp --quiet "$previous" "$container:/srv/debs/hirdir-previous.deb" ;;
+    esac
     inside chmod -R a+rX /srv/debs
 }
 
@@ -8855,36 +8880,44 @@ state() {
 
 # ---- the browser scenarios --------------------------------------------------------------
 
-browser_scenarios() {
-    section "browser scenarios (npm --prefix web run e2e)"
-    local playwright browser_port
-    if [ -f web/package.json ] && python3 -c '
+# Whether web/ has the browser scenarios, run by npm --prefix web run e2e.
+has_e2e() {
+    [ -f web/package.json ] && python3 -c '
 import json, sys
-sys.exit(0 if "e2e" in json.load(open("web/package.json", encoding="utf-8")).get("scripts", {}) else 1)'; then
-        create_user e2e-admin
-        # The browser runs in Playwright's own container image, at the version of the
-        # Playwright package in web/, so the test does not depend on which libraries
-        # the host happens to have. E2E_HOST_BROWSER=1 uses the host's browser instead,
-        # and a PW_TEST_CONNECT_WS_ENDPOINT already set is left alone.
-        if [ -z "${PW_TEST_CONNECT_WS_ENDPOINT:-}" ] && [ "${E2E_HOST_BROWSER:-0}" != 1 ]; then
-            playwright=$(python3 -c '
+sys.exit(0 if "e2e" in json.load(open("web/package.json", encoding="utf-8")).get("scripts", {}) else 1)'
+}
+
+# A browser for the scenarios. It runs in Playwright's own container image, at the
+# version of the Playwright package in web/, so the test does not depend on which
+# libraries the host happens to have. E2E_HOST_BROWSER=1 uses the host's browser
+# instead, and a PW_TEST_CONNECT_WS_ENDPOINT already set is left alone.
+start_browser() {
+    local playwright browser_port
+    if [ -n "${PW_TEST_CONNECT_WS_ENDPOINT:-}" ] || [ "${E2E_HOST_BROWSER:-0}" = 1 ]; then return 0; fi
+    playwright=$(python3 -c '
 import json
 print(json.load(open("web/node_modules/@playwright/test/package.json", encoding="utf-8"))["version"])')
-            browser_port=$(python3 -c '
+    browser_port=$(python3 -c '
 import socket
 with socket.socket() as probe:
     probe.bind(("127.0.0.1", 0))
     print(probe.getsockname()[1])')
-            docker run --detach --name "$browser" --network host --ipc host \
-                "mcr.microsoft.com/playwright:v$playwright" \
-                npx --yes "playwright@$playwright" run-server \
-                --host 127.0.0.1 --port "$browser_port" >/dev/null
-            for _ in $(seq 1 120); do
-                if curl --silent --output /dev/null "http://127.0.0.1:$browser_port/"; then break; fi
-                sleep 1
-            done
-            export PW_TEST_CONNECT_WS_ENDPOINT="ws://127.0.0.1:$browser_port/"
-        fi
+    docker run --detach --name "$browser" --network host --ipc host \
+        "mcr.microsoft.com/playwright:v$playwright" \
+        npx --yes "playwright@$playwright" run-server \
+        --host 127.0.0.1 --port "$browser_port" >/dev/null
+    for _ in $(seq 1 120); do
+        if curl --silent --output /dev/null "http://127.0.0.1:$browser_port/"; then break; fi
+        sleep 1
+    done
+    export PW_TEST_CONNECT_WS_ENDPOINT="ws://127.0.0.1:$browser_port/"
+}
+
+browser_scenarios() {
+    section "browser scenarios (npm --prefix web run e2e)"
+    if has_e2e; then
+        create_user e2e-admin
+        start_browser
         if E2E_BASE_URL="https://localhost:$port/hirdir/" E2E_USERNAME=e2e-admin \
             E2E_ACCESS_CODE="$code" npm --prefix web run e2e; then
             pass "S02 npm --prefix web run e2e against https://localhost:$port/hirdir/"
@@ -8894,6 +8927,78 @@ with socket.socket() as probe:
     else
         skip "S02 browser scenarios: web/package.json defines no \"e2e\" script"
     fi
+}
+
+# ---- the short browser check through nginx --------------------------------------------------
+
+# The scenarios of what only the installed package can get wrong, which no request of
+# curl sees (P-305, P-309): signing in under the prefix, with every file of the page and
+# every request of it under the prefix and no cookie; a list; a download; and a page
+# reached by its address, reloaded and opened afresh. They are the browser scenarios of
+# one spec file, run against the fresh install behind nginx under /hirdir/, each said in
+# a line of its own, as Playwright's report of the run has it.
+check_spec=web/e2e/browser-check.spec.ts
+
+browser_check() {
+    section "the short browser check through nginx, under /hirdir/ ($check_spec)"
+    local started report said line verdict title
+    if [ "$web_ui" != yes ]; then
+        skip "S02 the short browser check: this package has NO WEB UI (build it with make deb)"
+        return
+    fi
+    if ! has_e2e || [ ! -f "$check_spec" ]; then
+        skip "S02 the short browser check: this tree has no $check_spec to run with npm --prefix web run e2e"
+        return
+    fi
+    create_user e2e-admin
+    check "S02 hirdir admin create-user --role admin makes the Admin of the browser check" test -n "$code"
+    start_browser
+    started=$SECONDS
+    report=$work/browser-check.json
+    E2E_BASE_URL="https://localhost:$port/hirdir/" E2E_USERNAME=e2e-admin E2E_ACCESS_CODE="$code" \
+        E2E_WORKERS=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$report" \
+        npm --prefix web run e2e -- --reporter=list,json "${check_spec#web/}" || true
+    note "the browser check took $((SECONDS - started)) s, with the browser started"
+    # One line for each scenario: whether it passed, failed or did not run, its title,
+    # and the first line of what went wrong.
+    said=$(python3 -c '
+import json, re, sys
+
+def specs(suite):
+    yield from suite.get("specs", [])
+    for inner in suite.get("suites", []):
+        yield from specs(inner)
+
+def first_line(text):
+    text = re.sub(r"\x1b\[[0-9;]*m", "", str(text or ""))
+    return next((line.strip() for line in text.splitlines() if line.strip()), "")[:200]
+
+try:
+    report = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError):
+    sys.exit()
+for suite in report.get("suites", []):
+    for spec in specs(suite):
+        for test in spec.get("tests", []):
+            status = test.get("status")
+            verdict = "PASS" if status == "expected" else "SKIP" if status == "skipped" else "FAIL"
+            why = [first_line(result.get("error", {}).get("message")) for result in test.get("results", [])]
+            print(verdict, "[" + str(test.get("projectName")) + "] " + spec["title"], next((one for one in why if one), ""), sep="\t")
+for error in report.get("errors", []):
+    print("FAIL", "the run itself", first_line(error.get("message")), sep="\t")' "$report" 2>&1)
+    if [ -z "$said" ]; then
+        fail "S02 the short browser check ran its scenarios against https://localhost:$port/hirdir/ (Playwright wrote no report of them)"
+        return
+    fi
+    while IFS=$'\t' read -r verdict title why; do
+        line="S02 browser check through nginx under /hirdir/: $title"
+        case $verdict in
+            PASS) pass "$line" ;;
+            # Playwright runs no scenario of a file after one of it that failed.
+            SKIP) skip "$line: not run, after a scenario before it failed or as the file skips it" ;;
+            *) fail "$line${why:+ ($why)}" ;;
+        esac
+    done <<<"$said"
 }
 
 # ---- another prefix -------------------------------------------------------------------
@@ -9068,10 +9173,11 @@ case $mode in
         title="an upgrade from hirdir $previous_version to $version whose migration fails"
         if ! migrating; then title="an upgrade from hirdir $previous_version to $version and back, with no migration that could fail"; fi
         ;;
+    browser-check) title="the short browser check through nginx of a fresh install of hirdir $version" ;;
     *) title="fresh install of hirdir $version" ;;
 esac
 printf '\n==== package-test, the %s pass: %s\n' "$mode" "$title"
-if [ "$mode" != fresh ]; then load_particulars; fi
+case $mode in upgrade | failed-upgrade) load_particulars ;; esac
 
 start_container
 if [ "$mode" = failed-upgrade ]; then
@@ -9089,11 +9195,17 @@ else
         upgrade
     else
         install_fresh
-        if [ -z "${PACKAGE_TEST_EVERY_PASS:-}" ]; then
+        if [ -z "${PACKAGE_TEST_EVERY_PASS:-}" ] && [ "$mode" = fresh ]; then
             skip "pkg upgrade from the previous release: --fresh asks for the fresh install alone, so no upgrade was tested by this run"
         fi
     fi
-    if [ "$alone" = 1 ]; then
+    if [ "$mode" = browser-check ]; then
+        # As the fresh pass sets it up: the site under /hirdir/ and the first Admin
+        # through nginx, and then the browser.
+        setup
+        through_nginx
+        browser_check
+    elif [ "$alone" = 1 ]; then
         skip "pkg everything the fresh pass does, on the upgraded installation: --upgrade-alone asks for the upgrade alone, so this run stops where the upgrade pass goes on to it, and is not the release check"
     else
         installed
@@ -9113,7 +9225,7 @@ else
     fi
     cookies=$(grep -ci '^set-cookie:' "$work/headers.all" || true)
     expect "S02 none of the $responses responses of this pass set a cookie" "$cookies" 0
-    if [ "$alone" != 1 ]; then purge; fi
+    if [ "$alone" != 1 ] && [ "$mode" != browser-check ]; then purge; fi
 fi
 
 # ---- summary --------------------------------------------------------------------------

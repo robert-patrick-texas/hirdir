@@ -68,12 +68,15 @@ A hold is never left in place silently.
    passes of the package test, one after another, never two at once:
    `packaging/package-test.sh --upgrade` (the upgrade from the previous release; see
    "The previous release's package" below) and `--fresh`, and for an ordinary release
-   `--failed-upgrade` and the short check of the package through nginx. The browser
-   scenarios against the installed package, every one of them (`--e2e`, which `make
-   e2e` runs), are run for a release that changes the packaging, `hirdir-setup`, nginx,
-   the prefix or the frame of the page, and for 1.0.0. The short check is built with
-   the next ordinary release after 0.9.16; until it is there, an ordinary release runs
-   `--e2e --fresh` in place of `--fresh`.
+   `--failed-upgrade` and `--browser-check`, the short browser check through nginx
+   (P-309): a fresh install behind nginx under `/hirdir/`, where a browser signs in,
+   reads a list, downloads it and opens a page by its address, reloaded and afresh, the
+   four scenarios of `web/e2e/browser-check.spec.ts`, in about two minutes. That check
+   takes the place, for an ordinary release, of every browser scenario run again
+   against the installed package (`--e2e`, which `make e2e` runs, about fifty minutes),
+   which is run, as `--e2e --fresh` in place of `--fresh`, for a release that changes
+   the packaging, `hirdir-setup`, nginx, the prefix or the frame of the page, and for
+   1.0.0. A small change runs neither.
 7. Commit, tag `v<version>`, push.
 8. `make -s release-body > /tmp/body.md`, then
    `gh release create v<version> --notes-file /tmp/body.md` with
@@ -278,6 +281,9 @@ release check. `packaging/package-test.sh --upgrade-alone` runs the upgrade pass
 where it goes on to what the fresh pass does, for work on the upgrade passes and for
 trying a pair of older releases named by `PREVIOUS_DEB` and `DEB`. It prints a `SKIP`
 line for what it left out and is not the release check either.
+`packaging/package-test.sh --browser-check` runs the short browser check alone, and is
+one of the passes of an ordinary release; "Testing" in
+[architecture.md](architecture.md#testing) says what it looks at.
 
 ## Release notes
 

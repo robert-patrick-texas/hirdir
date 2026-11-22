@@ -779,3 +779,40 @@ def test_the_nightly_upgrade_is_shipped_and_is_for_a_site_to_turn_on() -> None:
     assert "deb-systemd-invoke stop hirdir-upgrade.timer" in prerm
     assert "rm -f /etc/systemd/system/timers.target.wants/hirdir-upgrade.timer\n" in postrm
     assert "sudo systemctl enable --now hirdir-upgrade.timer" in INSTALL
+
+
+def test_the_short_browser_check_is_a_pass_that_runs_a_spec_file_of_the_web_ui() -> None:
+    """The pass --browser-check runs web/e2e/browser-check.spec.ts, which is there, keeps
+    the rules of support.ts and is no project's that runs alone, so that the host's run
+    and --e2e run it beside the others; every pass runs the check last, by itself, and
+    the release process and the architecture page name it for an ordinary release, in
+    the place of --e2e (P-305, P-309)."""
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (spec,) = re.findall(r"^check_spec=(\S+)$", script, re.M)
+    source = (ROOT / spec).read_text(encoding="utf-8")
+    assert 'from "./support";' in source
+    assert "await signIn(page, account);" in source
+    assert "expectClean(" in source
+    name = Path(spec).name
+    config = (ROOT / "web" / "playwright.config.ts").read_text(encoding="utf-8")
+    alone = re.findall(r"^const [A-Z_]+ = /(.+)/;$", config, re.M)
+    assert len(alone) >= 6
+    assert not any(re.search(pattern.replace("\\/", "/"), name) for pattern in alone)
+
+    # A pass of its own, which every pass runs by itself once the others have ended.
+    assert "--upgrade | --failed-upgrade | --fresh | --browser-check)" in script
+    assert "| --fresh | --browser-check]" in script
+    every = script.split("\nevery_pass() {\n", 1)[1].split("\n}\n", 1)[0]
+    assert every.index("    wait\n") < every.index("one_pass --browser-check")
+    (pass_itself,) = re.findall(
+        r'\n    if \[ "\$mode" = browser-check \]; then\n(.*?)\n    elif ', script, re.S
+    )
+    called = [line.strip() for line in pass_itself.splitlines() if not line.strip().startswith("#")]
+    assert called == ["setup", "through_nginx", "browser_check"]
+    assert '"${check_spec#web/}"' in script
+
+    process = " ".join((ROOT / "docs" / "release-process.md").read_text(encoding="utf-8").split())
+    assert "for an ordinary release `--failed-upgrade` and `--browser-check`" in process
+    assert f"`{spec}`" in process
+    assert "| `--browser-check` |" in ARCHITECTURE
+    assert f"`{spec}`" in ARCHITECTURE

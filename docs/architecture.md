@@ -872,7 +872,7 @@ volume.
 | `make browser` | the browser scenarios on the host, against a fresh scratch inventory, with one list of every scenario that failed; `ARGS="--last-failed"`, `ARGS="--since <commit>"` or spec files, see "The browser scenarios on the host" below |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
-| `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
+| `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, fresh, and fresh again for the short browser check through nginx |
 | `make fixture` | fills a database with 50,000 fictional items for timing |
 | `make time-filters` | times the filters and sorts of the item list on that database; see "Timing at scale" below |
 
@@ -886,7 +886,7 @@ itself is done once.
   at the least. The build host is shared, so before a run starts a busy host is waited
   for, ten minutes at the most, and the tests are then run all the same with fewer at
   once. `make check`, `make test`, `make test-changed` and `make acceptance` ask it,
-  and so does `make package-test` for its three passes. `HIRDIR_TEST_WORKERS` sets the
+  and so does `make package-test` for the three passes it runs side by side. `HIRDIR_TEST_WORKERS` sets the
   number outright and `HIRDIR_TEST_WAIT` the longest wait in seconds.
 - **One migrated database, copied.** The database of a test is a copy of one that was
   migrated once for each worker. The migrations themselves are tested on databases of
@@ -1056,8 +1056,32 @@ small change the spec files it reaches (P-305): the host run is for the files th
 changed, where a failure is quickest to see and to rerun. Every browser scenario is run
 again against the fresh install, by `make e2e`, only for a release that changes the
 packaging, `hirdir-setup`, nginx, the prefix or the frame of the page, and for 1.0.0;
-otherwise the package is checked through nginx by its other passes, and, once it is
-built, by a short browser check of what only the package can get wrong.
+otherwise the package is checked through nginx by its other passes, and by the short
+browser check of what only the package can get wrong, `--browser-check` below.
+
+**The short browser check through nginx** (P-305, P-309) is one spec file,
+`web/e2e/browser-check.spec.ts`, which the package test's pass `--browser-check` runs
+by itself against a fresh install behind nginx under `/hirdir/`, with the browser as
+`--e2e` has it. What only the package can get wrong is what the page and the browser
+make of the prefix, which no request of curl sees: its four scenarios build on one
+another. Signing in under the prefix: the page names the prefix as its base, and every
+address it asks for, its scripts, its stylesheet, its icon and the API, is under it,
+with no cookie set. A list: two items of the file's own, made through the API, in the
+grid filtered down to them. A download: that list exported as CSV, asked for under the
+prefix and saved under the name the server gives it, a header row and the two items by
+their HIDs. A page reached by its address: an item's page opened from the grid,
+reloaded, so that the address is asked of the server through nginx and every part of
+the page is fetched from under the prefix and not from under `items/`, and opened
+afresh by its address in a browser with no session, where the sign-in page is shown
+and signing in shows the item at that address. Each scenario is a line of its own in
+the pass, read from Playwright's report of the run. The file keeps the rules of
+`support.ts`, so `--e2e` and `make browser` run it beside the others, at the root of a
+development server too. Measured on the four-core build host at 0.9.17, with the host
+busy: the pass in 75 to 113 seconds, the browser and its four scenarios in under half a
+minute of it, against about fifty minutes for `--e2e`. Seen to fail: with nginx made to
+add a policy that lets no script run, every request of curl passed and the first
+scenario failed; with the addresses of the items' pages under the prefix answered `404`
+by nginx, the first three passed and the fourth failed.
 
 Measured against a development server on the four-core build host, the browser in
 Playwright's container: one file after another, which is how they ran before 0.5.0, the
@@ -1066,9 +1090,13 @@ they took 85 seconds while other work held one of the four cores. One file at a 
 they now take somewhat longer than before, because each of the three files loads for
 itself what one file loaded once.
 
-`make package-test` runs `packaging/package-test.sh`, which makes three passes, side by
-side when the host has cores and memory free for it and one after another when it has
-not. Each pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
+`make package-test` runs `packaging/package-test.sh`, which makes four passes: the first
+three side by side when the host has cores and memory free for it and one after another
+when it has not, and `--browser-check` by itself once they have ended, since a container
+that starts while a browser drives a page changes the host's network under it and the
+browser stops with `net::ERR_NETWORK_CHANGED`. With `--e2e`, whose browser scenarios in
+the fresh pass hold the short check's, that pass is not run again by itself. A release
+runs the passes one after another, each named ([release-process.md](release-process.md#steps)). Each pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
 Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
@@ -1076,6 +1104,7 @@ Docker and installs with apt, as an operator does.
 | `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx; and, where the new version has the unit of the background work, both units are enabled and running once the upgrade is done, also from a release that had no such unit; and, where the upgrade runs migration `0015`, that a copy of the upgrade's backup, migrated where no service runs, holds `kept_answers` empty and every other table row for row as the backup has it, that the second process then fills the table, and that the four long reports answer as the previous release answered them. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below. An upgrade that stops leaves both units stopped, and going back to a release that has no unit of the background work leaves no process, no unit and no link of it |
 | `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; the long reports worked out ahead (P-275, P-276): the four listed as `ahead` before anybody has asked, a check that finds none differing, each worked out again after a change no sooner than `reports_ahead_after_seconds` says and within half a minute more, by the moments of the server's own events, none with the setting at 0, the server answering a report alone with `hirdir-worker` stopped, the four back when it starts, the rows as they were after a restart of the service, a reset that empties `kept_answers`, counted with both units stopped once the four were waited for, and a restore that brings its rows back with nothing worked out again; a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
+| `--browser-check` | The short browser check through nginx (P-305, P-309), about two minutes. Installs on a system that never had `hirdir` and sets it up as the fresh pass does, `hirdir-setup --self-signed --prefix /hirdir`, the health probe, the first Admin and signing in through nginx, the page and one of its scripts under the prefix; then the four browser scenarios of `web/e2e/browser-check.spec.ts`, described above, each a line of its own, as an Admin made for them, `e2e-admin`; and that no response set a cookie. A package with no web UI, or a tree with no such spec file, is a `SKIP` line. It makes no purge: the container is removed |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
