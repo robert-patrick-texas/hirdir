@@ -233,7 +233,8 @@ export function behindOperator(operators: readonly Schemas["OperatorBrief"][]): 
 /**
  * What a list of users is narrowed to: a gap (P-280), no contact or no operator, or,
  * since 0.9.14, the retired accounts by themselves (P-292), which the list leaves out
- * until they are asked for.
+ * until they are asked for. 0.9.17: the list with no gap is Active users, every account
+ * that is not retired, as the owner named it (P-314).
  */
 export type UsersGap = "" | "no-contact" | "no-operator" | "retired";
 
@@ -243,7 +244,7 @@ export const USERS_GAPS: readonly {
   label: string;
   param: "contact" | "operator" | "retired" | null;
 }[] = [
-  { value: "", label: "Every user", param: null },
+  { value: "", label: "Active users", param: null },
   { value: "no-contact", label: "Users with no contact", param: "contact" },
   { value: "no-operator", label: "Users with no operator", param: "operator" },
   { value: "retired", label: "Retired users", param: "retired" },

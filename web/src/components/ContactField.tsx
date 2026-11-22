@@ -32,6 +32,8 @@ async function findContacts(
     options: page.items.map((contact) => ({
       value: contact.hid,
       label: personLabel(contact),
+      // 0.9.17: a sentence calls the contact by its name (P-314).
+      name: contact.name,
       draft: contact.record_status === "draft",
     })),
     total: page.total,

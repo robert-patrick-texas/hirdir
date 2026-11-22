@@ -294,6 +294,15 @@ describe("who is what, on the lists of people (P-280)", () => {
     expect(queryOf(usersAddress("", "", 0))).toBe("");
   });
 
+  it("names the list of every account that is not retired Active users (P-314)", () => {
+    expect(USERS_GAPS.map((gap) => gap.label)).toEqual([
+      "Active users",
+      "Users with no contact",
+      "Users with no operator",
+      "Retired users",
+    ]);
+  });
+
   it("keeps the retired accounts, asked for by themselves, in the address (P-292)", () => {
     expect(USERS_GAPS.find((gap) => gap.value === "retired")?.label).toBe("Retired users");
     expect(usersGapOf(new URLSearchParams("retired=only"))).toBe("retired");

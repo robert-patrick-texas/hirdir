@@ -16,6 +16,7 @@ import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { tokenWaits } from "../lib/accounts";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
@@ -768,6 +769,9 @@ function Tokens({ user }: { user: User }) {
         <SecretBox
           title={`Token ${secret.token.name} for ${user.username}`}
           secret={secret.secret}
+          // 0.9.17: an account that holds no role has its tokens refused (P-299, P-314),
+          // as the account now stands: a role given since, on this page, says nothing.
+          {...(user.role ? {} : { note: tokenWaits(user.username) })}
           onDone={() => setSecret(null)}
         />
       )}

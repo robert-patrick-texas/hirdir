@@ -475,9 +475,10 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await expect(of(service).getByTestId("user-operators")).toHaveText("");
 
   // Show, with the users with no contact: an address of its own, the search kept. Until
-  // a gap is chosen, the list is of every user, and says so.
+  // a gap is chosen, the list is of every account that is not retired, Active users, and
+  // says so (P-314).
   const show = page.getByRole("navigation", { name: "Show users" });
-  await expect(show.getByRole("link", { name: "Every user" })).toHaveAttribute(
+  await expect(show.getByRole("link", { name: "Active users" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -502,7 +503,7 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await page.goto("./admin/users");
   await page.goto(sent);
   await expect(page.getByTestId("users").locator("tbody tr[data-user]")).toHaveCount(2);
-  await show.getByRole("link", { name: "Every user" }).click();
+  await show.getByRole("link", { name: "Active users" }).click();
   await expect(page.getByTestId("users").locator("tbody tr[data-user]")).toHaveCount(5);
 
   // The Contacts list: Show, with those that are no user and those behind no operator.

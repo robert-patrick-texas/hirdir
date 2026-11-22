@@ -174,15 +174,19 @@ export function Users() {
             A user is the part of a person who signs in. Its name, its email and its numbers are
             those of its contact, and are changed on the contact, or on the page of the user. The
             operators are the labels the person works equipment under.{" "}
+            {/* 0.9.17: Active users is every account that is not retired (P-314). */}
             {gap === "retired"
               ? "These accounts are retired: each signs in with nothing, and is brought back on its page."
-              : "Retired accounts are left out: Retired users, above, lists them."}
+              : gap === ""
+                ? "Active users are every account that is not retired, those disabled among them: Retired users, above, lists the retired."
+                : "Retired accounts are left out: Retired users, above, lists them."}
           </p>
           <div className="scroll">
             <table data-testid="users" data-gap={gap || undefined}>
               <caption className="visually-hidden">
                 Users, each with the contact it is, its email and numbers, and the operators it
                 works as
+                {gap === "" && ": every account that is not retired"}
                 {gap === "no-contact" && ": those with no contact"}
                 {gap === "no-operator" && ": those with no operator"}
                 {gap === "retired" && ": the retired accounts"}

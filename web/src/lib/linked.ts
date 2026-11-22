@@ -432,22 +432,88 @@ export function backChanged(was: Linked, now: Linked): string | null {
 }
 
 /**
- * What the button that goes ahead says (review 9): the record, and how many more are
- * retired with it as the ticks stand, so that nobody retires a person thinking that
- * they release a label. An account ticked, a contact ticked and a label released are
- * each one more; a label handed over, left open or kept is not retired, and is not
- * counted. `Release KL only`, `Release KL and retire 2 more`, `Retire klee and 1 more`.
+ * The person each label handed over goes to, by the label's HID, from the names of the
+ * people chosen, by the HID of their contact: what the page says once it is done.
  */
-export function goWords(on: On, linked: Linked, choices: Choices, admin: boolean): string {
+export function handedTo(
+  choices: Choices,
+  names: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const to: Record<string, string> = {};
+  for (const [hid, choice] of Object.entries(choices.operators)) {
+    const name = names[choice.contactHid];
+    if (choice.action === "hand_over" && name !== undefined) to[hid] = name;
+  }
+  return to;
+}
+
+/**
+ * The clauses of a sentence, each a verb and what it is done to: two joined by "and",
+ * with a comma before it where either lists more than one record already; more by
+ * commas, the last with ", and".
+ */
+function clauses(parts: ReadonlyArray<{ text: string; many: boolean }>): string {
+  if (parts.length <= 1) return parts.map((part) => part.text).join("");
+  const [first, second] = parts;
+  if (parts.length === 2 && first && second) {
+    return first.many || second.many
+      ? `${first.text}, and ${second.text}`
+      : `${first.text} and ${second.text}`;
+  }
+  const texts = parts.map((part) => part.text);
+  return `${texts.slice(0, -1).join(", ")}, and ${texts[texts.length - 1]}`;
+}
+
+/**
+ * What the button that goes ahead says (review 9; 0.9.17, P-314): what it does as the
+ * ticks stand, each record it changes by what it is and what it is known by, so that
+ * nobody retires a person thinking that they release a label. The record the page is of
+ * comes first; then the labels released, those handed over, each to the person named in
+ * `names` by the HID of their contact, those left open, and the account and the contact
+ * retired. A record kept is not named, nothing being done to it.
+ * `Release KL and retire contact Kim Lee`;
+ * `Release KL, hand KM to Sam Roe, and retire account klee and contact Kim Lee`.
+ */
+export function goWords(
+  on: On,
+  linked: Linked,
+  choices: Choices,
+  admin: boolean,
+  names: Readonly<Record<string, string>> = {},
+): string {
   const others = othersOf(on, linked);
   const firm = held(on, linked, choices, admin);
-  const more =
-    (others.user && firm.user ? 1 : 0) +
-    (others.contact && firm.contact ? 1 : 0) +
-    others.operators.filter((operator) => firm.operators[operator.hid]?.action === "retire").length;
   const name = nameOf(on, linked);
-  if (on.kind === "operator") {
-    return more === 0 ? `Release ${name} only` : `Release ${name} and retire ${more} more`;
+  const released: string[] = on.kind === "operator" ? [name] : [];
+  const retired: string[] =
+    on.kind === "operator" ? [] : [`${on.kind === "user" ? "account" : "contact"} ${name}`];
+  const opened: string[] = [];
+  // Those handed over, by the person they go to: blank while none is chosen.
+  const handed = new Map<string, string[]>();
+  if (others.user && firm.user) retired.push(`account ${others.user.username}`);
+  if (others.contact && firm.contact) retired.push(`contact ${others.contact.name}`);
+  for (const operator of others.operators) {
+    const choice = firm.operators[operator.hid] ?? { action: "retire", contactHid: "" };
+    if (choice.action === "retire") released.push(operator.label);
+    else if (choice.action === "open") opened.push(operator.label);
+    else if (choice.action === "hand_over") {
+      const to = choice.contactHid === "" ? "" : (names[choice.contactHid] ?? "");
+      handed.set(to, [...(handed.get(to) ?? []), operator.label]);
+    }
   }
-  return more === 0 ? `Retire ${name} only` : `Retire ${name} and ${more} more`;
+  const of = (verb: string, records: readonly string[], after = "") =>
+    records.length === 0
+      ? []
+      : [{ text: `${verb} ${listed(records)}${after}`, many: records.length > 1 }];
+  const release = of("release", released);
+  const retire = of("retire", retired);
+  const parts = [
+    ...(on.kind === "operator" ? release : retire),
+    ...(on.kind === "operator" ? [] : release),
+    ...[...handed].flatMap(([to, labels]) => of("hand", labels, to ? ` to ${to}` : " over")),
+    ...of("leave", opened, " open"),
+    ...(on.kind === "operator" ? retire : []),
+  ];
+  const text = clauses(parts);
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }

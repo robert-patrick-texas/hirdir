@@ -3762,6 +3762,39 @@ server (P-299, P-300):
   have now", with the three boxes as typed and no session ended. An Admin who sets the
   code of somebody else may give the one they had.
 
+What 0.9.17 changes on the pages of accounts, of groups and of a retirement (P-307,
+P-314, P-316):
+
+- **The confirmation of a retirement.** The button that goes ahead names each record it
+  changes, by what it is and what it is known by, as the ticks stand, in place of how
+  many more: the record the page is of first, then the labels released, those handed
+  over, each with the person it goes to, those left open, and the account and the
+  contact retired, `Release KL and retire contact Kim Lee`, `Release KL, hand KM to Sam
+  Roe, and retire account klee and contact Kim Lee`, `Retire account klee and contact
+  Kim Lee, release KL, and leave KM open`. A record kept is not named, nothing being
+  done to it, so that with all else kept it is `Release KL` or `Retire account klee`. A
+  label to be handed over while nobody is chosen is `hand KM over`; labels going to
+  one person are named in one clause, `hand KL and KM to Sam Roe`. On a narrow window,
+  360 pixels, the button wraps onto more lines and is never shortened. The words once
+  it is done name the person each label went to.
+- **Users.** Show's first link is Active users, where it said Every user: every account
+  that is not retired, a disabled one among them, as the words above the list say,
+  beside Users with no contact, Users with no operator and Retired users.
+- **A token shown once.** Where the account holds no role, the new token, shown once,
+  says that it is refused until the account holds one, and how one is given; the words
+  go once a role is given on the same page, the token still on show.
+- **Where a role comes from.** A user's page says, under Role, beside the highest, each
+  role the account holds and from where: `of its own`, or `through` a group, the group a
+  link to its page (P-307). A grant of its own is revoked there, by an Admin.
+- **Who is left with no role.** Before an Admin revokes a grant of an account's own,
+  takes an account out of a group, on the account's page by its box or on the group's
+  page by Remove, revokes a grant of a group, on the group's page or under Roles, or
+  deletes a group, the confirmation says whom the change leaves with no role, from the
+  roles each holds and where they come from: `klee will hold no role and be signed
+  out.`; for a group, each member so left, named; of a service account or an agent,
+  that its tokens will be refused. A change that leaves everybody a role says nothing
+  of it, and a box that leaves the account a role changes it at once, as before.
+
 ### The grid
 
 One grid component is used on every list page.

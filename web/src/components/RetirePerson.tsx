@@ -21,6 +21,7 @@ import {
   contactGoes,
   contactUses,
   goWords,
+  handedTo,
   held,
   keptChoices,
   LINKED_LABELS,
@@ -54,6 +55,7 @@ import { allows, ROLES, roleLabel } from "../lib/roles";
 import { ContactField } from "./ContactField";
 import { CheckField, RadioGroupField, SelectField } from "./Field";
 import { OperatorMark } from "./Operator";
+import type { Picked } from "./PickField";
 import { Problem } from "./Problem";
 
 interface DialogProps {
@@ -198,6 +200,9 @@ function RetireAsk(props: RetireAskProps) {
   }
   // What is still to be chosen, said at its row before anything is sent.
   const [found, setFound] = useState<Record<string, string>>({});
+  // 0.9.17: the names of the people chosen to hand a label to, by the HID of their
+  // contact, so that the button names each (P-314).
+  const [names, setNames] = useState<Readonly<Record<string, string>>>({});
   const action = useAction();
 
   const linked = asked?.linked;
@@ -250,7 +255,7 @@ function RetireAsk(props: RetireAskProps) {
     if (result.ok) {
       // Whoever retires their own account is signed out by it.
       if (ownAccountGoes(on, linked, choices, admin, auth.user.hid)) auth.signOut();
-      else onRetired(retiredWords(on, linked, choices, admin));
+      else onRetired(retiredWords(on, linked, choices, admin, handedTo(choices, names)));
       return;
     }
     // What is linked may be other than it was when this opened, a record added, parted
@@ -314,6 +319,7 @@ function RetireAsk(props: RetireAskProps) {
             rows={rows}
             disabled={action.busy || blocked !== null}
             onChoose={choose}
+            onNamed={(picked) => setNames((was) => ({ ...was, [picked.hid]: picked.name }))}
           />
         )}
         {blocked && (
@@ -339,9 +345,9 @@ function RetireAsk(props: RetireAskProps) {
             onClick={() => void retire()}
             disabled={action.busy || !linked}
           >
-            {/* What it will do, as the ticks stand (review 9); the page's own words
-                where nothing is linked. */}
-            {linked && choices && !plain ? goWords(on, linked, choices, admin) : label}
+            {/* What it will do, as the ticks stand, each record named (review 9, P-314);
+                the page's own words where nothing is linked. */}
+            {linked && choices && !plain ? goWords(on, linked, choices, admin, names) : label}
           </button>
         )}
       </p>
@@ -360,6 +366,8 @@ interface RetireRowsProps {
   rows: Readonly<Record<string, string | undefined>>;
   disabled: boolean;
   onChoose: (next: Choices) => void;
+  /** A person was chosen to hand a label to: the button names them. */
+  onNamed: (picked: Picked) => void;
 }
 
 /** What a label may become, in the words of the page of an operator. */
@@ -381,7 +389,7 @@ function actionHint(action: OperatorAction, person: string): string {
 
 /** Each linked record that is not retired, with what is asked of it. */
 function RetireRows(props: RetireRowsProps) {
-  const { on, linked, choices, admin, ownHid, rows, disabled, onChoose } = props;
+  const { on, linked, choices, admin, ownHid, rows, disabled, onChoose, onNamed } = props;
   const others = othersOf(on, linked);
   const going = contactGoes(on, linked, choices);
   const person = linked.contact?.name ?? "";
@@ -492,6 +500,9 @@ function RetireRows(props: RetireRowsProps) {
                 name={`hand_over_${operator.hid}`}
                 value={choice.contactHid}
                 onChange={(hid) => set({ ...choice, contactHid: hid })}
+                onPicked={(picked) => {
+                  if (picked) onNamed(picked);
+                }}
                 blank="Nobody chosen"
                 error={
                   choice.action === "hand_over" ? rows[rowOf("operator", operator.hid)] : undefined

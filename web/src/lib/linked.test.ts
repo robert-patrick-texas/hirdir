@@ -8,6 +8,7 @@ import {
   contactGoes,
   contactUses,
   goWords,
+  handedTo,
   held,
   keptChoices,
   LINKED_LABELS,
@@ -557,40 +558,97 @@ describe("Bring back says what changed while it was open (review 5)", () => {
   });
 });
 
-describe("the button that goes ahead says what it will do (review 9)", () => {
-  it("counts what is retired with a label as it opens: the account, the contact, the other label", () => {
-    expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, true), true)).toBe(
-      "Release KL and retire 3 more",
+describe("the button that goes ahead names each record it changes (review 9, P-314)", () => {
+  const KM: LinkedOperator = { ...OP2, label: "KM" };
+  const TWO: Linked = { user: USER, contact: CONTACT, operators: [KL, KM] };
+  const NAMES = { C9: "Sam Roe" };
+
+  it("says the owner's words: what each record is, what it is known by, what is done to it", () => {
+    // A person with no account, behind one label.
+    const noAccount: Linked = { user: null, contact: CONTACT, operators: [KL] };
+    expect(goWords(ON_KL, noAccount, startChoices(ON_KL, noAccount, true), true)).toBe(
+      "Release KL and retire contact Kim Lee",
+    );
+    const handed = choose(startChoices(ON_KL, TWO, true), "O2", "hand_over", "C9");
+    expect(goWords(ON_KL, TWO, handed, true, NAMES)).toBe(
+      "Release KL, hand KM to Sam Roe, and retire account klee and contact Kim Lee",
+    );
+    const open = choose(startChoices(ON_USER, TWO, true), "O1", "open");
+    expect(goWords(ON_USER, TWO, open, true)).toBe(
+      "Retire account klee and contact Kim Lee, release KM, and leave KL open",
     );
   });
 
-  it("follows the ticks, and says only where nothing else is retired", () => {
-    let asked = { ...startChoices(ON_KL, PERSON, true), contact: false };
-    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and retire 2 more");
-    asked = { ...asked, user: false };
-    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and retire 1 more");
-    // A label handed over, left open or kept is not retired.
-    for (const action of ["open", "hand_over", "keep"]) {
-      expect(goWords(ON_KL, PERSON, choose(asked, "O2", action, "C9"), true)).toBe(
-        "Release KL only",
-      );
-    }
+  it("names what is retired with a label as it opens: the account, the contact, the other label", () => {
+    expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, true), true)).toBe(
+      "Release KL and Op2, and retire account klee and contact Kim Lee",
+    );
   });
 
-  it("is of the same manner on the page of the account and of the contact", () => {
+  it("follows the ticks, and names no record that is kept", () => {
+    let asked = { ...startChoices(ON_KL, PERSON, true), contact: false };
+    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and Op2, and retire account klee");
+    asked = { ...asked, user: false };
+    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and Op2");
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "open"), true)).toBe(
+      "Release KL and leave Op2 open",
+    );
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "hand_over", "C9"), true, NAMES)).toBe(
+      "Release KL and hand Op2 to Sam Roe",
+    );
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "keep"), true)).toBe("Release KL");
+  });
+
+  it("says a label is handed over, to nobody named, while no person is chosen", () => {
+    const asked = { ...startChoices(ON_KL, PERSON, true), contact: false, user: false };
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "hand_over"), true, NAMES)).toBe(
+      "Release KL and hand Op2 over",
+    );
+    // A person chosen whose name is not known is not guessed.
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "hand_over", "C8"), true, NAMES)).toBe(
+      "Release KL and hand Op2 over",
+    );
+  });
+
+  it("hands the labels going to one person in one clause", () => {
+    const three: Linked = {
+      user: null,
+      contact: CONTACT,
+      operators: [KL, KM, { ...OP2, hid: "O4", label: "KN" }],
+    };
+    let asked = startChoices(ON_CONTACT, three, true);
+    asked = choose(choose(asked, "O1", "hand_over", "C9"), "O2", "hand_over", "C9");
+    asked = choose(asked, "O4", "hand_over", "C7");
+    expect(goWords(ON_CONTACT, three, asked, true, { ...NAMES, C7: "Jane Doe" })).toBe(
+      "Retire contact Kim Lee, hand KL and KM to Sam Roe, and hand KN to Jane Doe",
+    );
+  });
+
+  it("puts the record the page is of first, on the page of the account and of the contact", () => {
     expect(goWords(ON_USER, PERSON, startChoices(ON_USER, PERSON, true), true)).toBe(
-      "Retire klee and 3 more",
+      "Retire account klee and contact Kim Lee, and release KL and Op2",
     );
     let kept = { ...startChoices(ON_USER, PERSON, true), contact: false };
     kept = choose(choose(kept, "O1", "keep"), "O2", "keep");
-    expect(goWords(ON_USER, PERSON, kept, true)).toBe("Retire klee only");
+    expect(goWords(ON_USER, PERSON, kept, true)).toBe("Retire account klee");
     const open = choose(startChoices(ON_CONTACT, PERSON, true), "O2", "open");
-    expect(goWords(ON_CONTACT, PERSON, open, true)).toBe("Retire Kim Lee and 2 more");
+    expect(goWords(ON_CONTACT, PERSON, open, true)).toBe(
+      "Retire contact Kim Lee and account klee, release KL, and leave Op2 open",
+    );
   });
 
-  it("counts no account for somebody who is no Admin, who retires none", () => {
+  it("names no account for somebody who is no Admin, who retires none", () => {
     expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, false), false)).toBe(
-      "Release KL and retire 1 more",
+      "Release KL and Op2",
     );
+  });
+});
+
+describe("the person each label handed over goes to", () => {
+  it("is named by the label, where the person chosen is known", () => {
+    let asked = choose(startChoices(ON_USER, PERSON, true), "O1", "hand_over", "C9");
+    asked = choose(asked, "O2", "hand_over", "C8");
+    expect(handedTo(asked, { C9: "Sam Roe" })).toEqual({ O1: "Sam Roe" });
+    expect(handedTo(choose(asked, "O1", "open", "C9"), { C9: "Sam Roe" })).toEqual({});
   });
 });
