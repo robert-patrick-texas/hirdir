@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountWords,
+  agentRoleWords,
+  agentsOfGroupLead,
+  bringBackRoleHint,
   cappedWords,
   type Holder,
   kindName,
@@ -117,6 +121,65 @@ describe("the role an agent is held to (P-316)", () => {
   });
 });
 
+describe("what Bring back says under Role, for each kind (review 7)", () => {
+  it("says of an agent what an agent may come back with", () => {
+    expect(bringBackRoleHint("person")).toBe(
+      "An account with no role cannot sign in: choose the one it is to hold.",
+    );
+    expect(bringBackRoleHint("service")).toBe(
+      "A service account may come back with none; its tokens are refused until it has one.",
+    );
+    expect(bringBackRoleHint("agent")).toBe(
+      "An agent may come back with none; its tokens are refused until it has one. It is never Admin, and holds no more than the role of its person.",
+    );
+  });
+});
+
+describe("the words of an account's page, for what the kind is (review 10)", () => {
+  it("speak of signing in and of an access code for a person alone", () => {
+    const person = accountWords("person");
+    expect(person.usernameHint).toContain("What the person signs in with");
+    expect(person.retireConfirm("klee")).toBe(
+      "klee signs in no longer, and leaves its groups and its role. An Admin can bring the account back, with a new access code.",
+    );
+    for (const kind of ["service", "agent"]) {
+      const words = accountWords(kind);
+      const all = [
+        words.usernameHint,
+        words.newUsernameHint,
+        words.disabledHint,
+        words.retireLead,
+        words.retireConfirm("agent-late"),
+        words.retiredAlert,
+        words.broughtBackLead,
+      ].join(" ");
+      expect(all).not.toMatch(/sign(s|ed)? in|session|access code/);
+      expect(words.retireConfirm("agent-late")).toBe(
+        "The tokens of agent-late are revoked, and it leaves its groups and its role. An Admin can bring the account back, with no token: new ones are made on its page.",
+      );
+      expect(words.disabledHint).toContain("tokens are refused");
+      expect(words.broughtBackLead).toContain("no token");
+    }
+    expect(accountWords("agent").broughtBackLead).toContain("answerable to its person");
+    expect(accountWords("service").broughtBackLead).not.toContain("answerable");
+  });
+});
+
+describe("an agent's role, as the confirmation of a retirement lists it (review 14)", () => {
+  it("says that one holding Admin all the same is held to Inventory", () => {
+    expect(agentRoleWords("admin")).toBe("Admin, held to Inventory: an agent is never Admin");
+    expect(agentRoleWords("inventory")).toBe("Inventory");
+    expect(agentRoleWords(null)).toBe("No role");
+  });
+});
+
+describe("the agents a refusal of Admin to a group names (review 4)", () => {
+  it("are said as the group's", () => {
+    expect(agentsOfGroupLead(1)).toBe("The agent in the group:");
+    expect(agentsOfGroupLead(2)).toBe("The 2 agents in the group:");
+  });
+});
+
 describe("where a role comes from (P-307)", () => {
   it("is of its own, or through a group, named", () => {
     expect(sourceWords(OWN)).toBe("of its own");
@@ -147,7 +210,7 @@ describe("what a change leaves of the roles of an account (P-314)", () => {
 describe("what a confirmation says of whom a change leaves with no role (P-314)", () => {
   const klee: Holder = { username: "klee", kind: "person", grants: [TEAM] };
   const sroe: Holder = { username: "sroe", kind: "person", grants: [TEAM, TEAM_TOO] };
-  const jdoe: Holder = { username: "jdoe", kind: "person", grants: [OWN, TEAM] };
+  const rex: Holder = { username: "rex", kind: "person", grants: [OWN, TEAM] };
   const sync: Holder = { username: "svc-sync", kind: "service", grants: [TEAM] };
   const agent: Holder = { username: "agent-reconcile", kind: "agent", grants: [TEAM] };
 
@@ -157,15 +220,43 @@ describe("what a confirmation says of whom a change leaves with no role (P-314)"
     );
   });
 
+  it("names the agents of a person so left, whose tokens are refused with them (P-316)", () => {
+    const active = { hid: "A1", name: "agent-reconcile", record_status: "active" as const };
+    const withAgents: Holder = {
+      ...sroe,
+      agents: [
+        { ...active, username: "agent-reconcile" },
+        { ...active, hid: "A2", username: "agent-sync" },
+        { ...active, hid: "A3", username: "agent-old", record_status: "retired" },
+      ],
+    };
+    expect(noRoleWords([withAgents], { kind: "leave", groupHid: "G1" })).toBe(
+      "sroe will hold no role and be signed out, and the tokens of agent-reconcile and agent-sync will be refused.",
+    );
+    // Of two people, each agent once, an agent left with no role itself among them.
+    const kleeToo: Holder = { ...klee, agents: [{ ...active, hid: "A4", username: "agent-tidy" }] };
+    const reconcile: Holder = { ...agent, grants: [TEAM] };
+    expect(noRoleWords([withAgents, kleeToo, reconcile], { kind: "leave", groupHid: "G1" })).toBe(
+      "sroe and klee will each hold no role and be signed out, and the tokens of agent-reconcile, agent-sync and agent-tidy will be refused.",
+    );
+    // A person who keeps a role says nothing of their agents.
+    expect(
+      noRoleWords([{ ...rex, agents: [{ ...active, username: "agent-x" }] }], {
+        kind: "leave",
+        groupHid: "G1",
+      }),
+    ).toBeNull();
+  });
+
   it("names each member so left, and nobody who keeps a role", () => {
-    expect(leftWithNone([klee, sroe, jdoe], { kind: "leave", groupHid: "G1" })).toEqual([
+    expect(leftWithNone([klee, sroe, rex], { kind: "leave", groupHid: "G1" })).toEqual([
       klee,
       sroe,
     ]);
-    expect(noRoleWords([klee, sroe, jdoe], { kind: "leave", groupHid: "G1" })).toBe(
+    expect(noRoleWords([klee, sroe, rex], { kind: "leave", groupHid: "G1" })).toBe(
       "klee and sroe will each hold no role and be signed out.",
     );
-    expect(noRoleWords([klee, sroe, jdoe], { kind: "revoke", grantHid: "R2" })).toBe(
+    expect(noRoleWords([klee, sroe, rex], { kind: "revoke", grantHid: "R2" })).toBe(
       "klee will hold no role and be signed out.",
     );
   });
@@ -180,7 +271,7 @@ describe("what a confirmation says of whom a change leaves with no role (P-314)"
   });
 
   it("says nothing where everybody keeps a role", () => {
-    expect(noRoleWords([jdoe, sroe], { kind: "revoke", grantHid: "R2" })).toBeNull();
+    expect(noRoleWords([rex, sroe], { kind: "revoke", grantHid: "R2" })).toBeNull();
     expect(noRoleWords([], { kind: "revoke", grantHid: "R2" })).toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import {
   type NewUserForm,
   newUserBody,
   newUserErrors,
+  noUsersWords,
   operatorLabelOf,
   operatorsCell,
   queryOf,
@@ -322,6 +323,22 @@ describe("who is what, on the lists of people (P-280)", () => {
       "?q=ex+ops&operator=none&offset=50",
     );
     expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("says, of a list that holds nobody, what it is narrowed to, the kind too (review 8)", () => {
+    expect(noUsersWords("", "", "")).toBe("There are no users.");
+    expect(noUsersWords("lee", "retired", "agent")).toBe("No agent matches the search.");
+    expect(noUsersWords("", "retired", "")).toBe("No account is retired.");
+    expect(noUsersWords("", "retired", "service")).toBe("No service account is retired.");
+    expect(noUsersWords("", "retired", "person")).toBe("No person's account is retired.");
+    expect(noUsersWords("", "no-contact", "")).toBe("Every user who is a person has a contact.");
+    expect(noUsersWords("", "no-contact", "agent")).toBe(
+      "An agent has no contact and is in no gap: only a person's account is.",
+    );
+    expect(noUsersWords("", "no-operator", "service")).toBe(
+      "A service account has no operator and is in no gap: only a person's account is.",
+    );
+    expect(noUsersWords("", "", "agent")).toBe("There are no agents.");
   });
 
   it("keeps the kind the users are narrowed to in the address (P-316)", () => {

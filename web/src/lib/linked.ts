@@ -269,6 +269,16 @@ export function refusedRows(
 }
 
 /**
+ * Whether words name a username whole (review 16): not as the start of a longer one, as
+ * `agent-sync` is of `agent-sync2`. A username is of letters, digits, dots, hyphens and
+ * underscores; a dot after it that ends a sentence is no part of it.
+ */
+function namesWhole(words: string, username: string): boolean {
+  const name = username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9._-])${name}(?=$|[^A-Za-z0-9._-]|\\.(?:$|\\s))`).test(words);
+}
+
+/**
  * 0.9.17: where what the server says of the agents, `linked.agents`, is said: at the
  * hand-over of each agent the sentence names, or, where it names none of them, above the
  * rows with the rest.
@@ -283,7 +293,7 @@ export function refusedAgents(
   if (message === undefined) return { rows: {}, shown: [] };
   const named = agentsToSay(on, linked, choices).filter(
     (agent) =>
-      choices.agents[agent.hid]?.action === "hand_over" && message.includes(agent.username),
+      choices.agents[agent.hid]?.action === "hand_over" && namesWhole(message, agent.username),
   );
   if (named.length === 0) return { rows: {}, shown: [] };
   const rows: Record<string, string> = {};

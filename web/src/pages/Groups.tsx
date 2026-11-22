@@ -313,6 +313,8 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
   const [chosen, setChosen] = useState("");
   const [done, setDone] = useState("");
   const action = useAction();
+  // Add, apart from Remove: its refusal is said at the member chosen.
+  const adding = useAction();
   const sorting = useSorting(group.members, {
     username: (member) => member.username,
     display_name: (member) => member.display_name,
@@ -334,7 +336,8 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
     if (chosen === "") return;
     setDone("");
     const user = candidates.find((candidate) => candidate.hid === chosen);
-    const result = await action.run(() =>
+    action.clear();
+    const result = await adding.run(() =>
       api.request("put", "/api/v1/user-groups/{hid}/members/{user_hid}", {
         path: { hid: group.hid, user_hid: chosen },
       }),
@@ -346,6 +349,7 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
 
   async function remove(member: Schemas["UserOut"]) {
     setDone("");
+    adding.clear();
     const result = await action.run(() =>
       api.request("delete", "/api/v1/user-groups/{hid}/members/{user_hid}", {
         path: { hid: group.hid, user_hid: member.hid },
@@ -358,6 +362,9 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
     <section aria-labelledby="members">
       <h2 id="members">Members</h2>
       <Problem error={action.error} />
+      {/* What the server refuses of Add is said in its words, and of the member chosen at
+          the field, with no name of a field before it (review 3). */}
+      <Problem error={adding.error} shown={["user_hid"]} />
       <Problem error={users.error} />
       <Notice text={done} />
       <div className="scroll">
@@ -419,8 +426,12 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
           label="Add a member"
           name="user_hid"
           value={chosen}
-          onChange={setChosen}
+          onChange={(hid) => {
+            adding.clear();
+            setChosen(hid);
+          }}
           disabled={!users.data}
+          error={adding.error?.fields.user_hid}
         >
           <option value="">Choose a user…</option>
           {candidates.map((user) => (
@@ -429,7 +440,7 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
             </option>
           ))}
         </SelectField>
-        <button type="submit" disabled={action.busy || chosen === ""}>
+        <button type="submit" disabled={action.busy || adding.busy || chosen === ""}>
           Add
         </button>
       </form>
