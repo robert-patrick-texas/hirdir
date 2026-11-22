@@ -2,13 +2,13 @@ import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { Actor } from "../components/Actor";
 import { SelectField, TextField } from "../components/Field";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
-import { ValueLink } from "../components/ValueLink";
-import { actorLabel, deletedRecords, isDeleted } from "../lib/audit";
+import { ACTOR_KINDS, actorKindOf, actorLabel, deletedRecords, isDeleted } from "../lib/audit";
 import { formatChanges } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
 import { kindPath } from "../lib/preview";
@@ -97,10 +97,13 @@ export function Audit() {
   const recordType = params.get("record_type") ?? "";
   // 0.9.14: who acted, by the HID of the account, kept in the address (P-296).
   const actor = params.get("actor_hid") ?? "";
+  // 0.9.17: the kind of account that acted, the changes of agents together (P-316).
+  const actorKind = actorKindOf(params.get("actor_kind"));
   const offset = toOffset(params.get("offset"));
   const [wantedAction, setWantedAction] = useState(action);
   const [wantedType, setWantedType] = useState(recordType);
   const [wantedActor, setWantedActor] = useState(actor);
+  const [wantedKind, setWantedKind] = useState<string>(actorKind);
   // The accounts an Admin chooses from, the retired among them, marked: what an account
   // did is still in the trail after it has left. The list of users is an Admin's.
   const actors = useLoad(`audit actors ${admin}`, async (signal) =>
@@ -121,22 +124,25 @@ export function Audit() {
     fields: AUDIT_SORT,
     local: { changes: (event) => formatChanges(event.changes).join("\n") },
     onChange: () => {
-      if (offset > 0) show({ action, recordType, actor, offset: 0 });
+      if (offset > 0) show({ action, recordType, actor, actorKind, offset: 0 });
     },
   });
   const events = sort.held(
-    useLoad(`audit ${offset} ${action} ${recordType} ${actor} ${sort.param ?? ""}`, (signal) =>
-      api.request("get", "/api/v1/audit-events", {
-        query: {
-          action,
-          record_type: recordType,
-          ...(actor ? { actor_hid: actor } : {}),
-          ...sort.query,
-          limit: PAGE,
-          offset,
-        },
-        signal,
-      }),
+    useLoad(
+      `audit ${offset} ${action} ${recordType} ${actor} ${actorKind} ${sort.param ?? ""}`,
+      (signal) =>
+        api.request("get", "/api/v1/audit-events", {
+          query: {
+            action,
+            record_type: recordType,
+            ...(actor ? { actor_hid: actor } : {}),
+            ...(actorKind ? { actor_kind: actorKind } : {}),
+            ...sort.query,
+            limit: PAGE,
+            offset,
+          },
+          signal,
+        }),
     ),
   );
   const items = events.data?.items ?? [];
@@ -145,11 +151,18 @@ export function Audit() {
   // (P-240). One deleted in an event not on show is a link, to a page that says so.
   const gone = deletedRecords(items);
 
-  function show(next: { action: string; recordType: string; actor: string; offset: number }) {
+  function show(next: {
+    action: string;
+    recordType: string;
+    actor: string;
+    actorKind: string;
+    offset: number;
+  }) {
     const wanted = new URLSearchParams();
     if (next.action) wanted.set("action", next.action);
     if (next.recordType) wanted.set("record_type", next.recordType);
     if (next.actor) wanted.set("actor_hid", next.actor);
+    if (next.actorKind) wanted.set("actor_kind", next.actorKind);
     if (next.offset > 0) wanted.set("offset", String(next.offset));
     setParams(wanted);
   }
@@ -160,6 +173,7 @@ export function Audit() {
       action: wantedAction.trim(),
       recordType: wantedType.trim(),
       actor: wantedActor,
+      actorKind: wantedKind,
       offset: 0,
     });
   }
@@ -168,7 +182,8 @@ export function Audit() {
     setWantedAction("");
     setWantedType("");
     setWantedActor("");
-    show({ action: "", recordType: "", actor: "", offset: 0 });
+    setWantedKind("");
+    show({ action: "", recordType: "", actor: "", actorKind: "", offset: 0 });
   }
 
   return (
@@ -222,12 +237,28 @@ export function Audit() {
             ))}
           </SelectField>
         )}
+        {/* 0.9.17: who acted, by the kind of the account: the changes of agents
+            together, for every role that reads the trail (P-316). */}
+        <SelectField label="Kind" name="actor_kind" value={wantedKind} onChange={setWantedKind}>
+          {ACTOR_KINDS.map((one) => (
+            <option key={one.value} value={one.value}>
+              {one.label}
+            </option>
+          ))}
+        </SelectField>
         <button type="submit">Filter</button>
         <button
           type="button"
           onClick={clear}
           disabled={
-            !action && !recordType && !actor && !wantedAction && !wantedType && !wantedActor
+            !action &&
+            !recordType &&
+            !actor &&
+            !actorKind &&
+            !wantedAction &&
+            !wantedType &&
+            !wantedActor &&
+            !wantedKind
           }
         >
           Clear
@@ -279,14 +310,9 @@ export function Audit() {
                         <Time at={event.at} />
                       </td>
                       <td>
-                        {/* The user who did it: an Admin opens the user's page (P-240). */}
-                        {event.actor_name ? (
-                          <ValueLink kind="user" hid={event.actor_hid} admin={admin}>
-                            {event.actor_name}
-                          </ValueLink>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
+                        {/* The user who did it: an Admin opens the user's page (P-240);
+                            0.9.17: an agent's change, with its person (P-316). */}
+                        <Actor event={event} admin={admin} />
                       </td>
                       <td>{event.via}</td>
                       <td>{event.action}</td>
@@ -314,7 +340,7 @@ export function Audit() {
                 {items.length === 0 && (
                   <tr>
                     <td colSpan={6} className="muted">
-                      {action || recordType
+                      {action || recordType || actor || actorKind
                         ? "No event matches the filter."
                         : "There are no events."}
                     </td>
@@ -328,7 +354,7 @@ export function Audit() {
             limit={PAGE}
             offset={offset}
             noun="events"
-            onChange={(next) => show({ action, recordType, actor, offset: next })}
+            onChange={(next) => show({ action, recordType, actor, actorKind, offset: next })}
           />
         </>
       )}

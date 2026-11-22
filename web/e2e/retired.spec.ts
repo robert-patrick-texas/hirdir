@@ -334,7 +334,7 @@ test("P-291, P-297: a contact is retired with its account, one label handed over
   await goAhead(ask).click();
   await expect(
     page.getByText(
-      `${kim.contact.name} was retired, with the account ${kim.user.username}. ${first.label} was handed over and ${second.label} was released.`,
+      `${kim.contact.name} was retired, with the account ${kim.user.username}. ${first.label} was handed over to Sam Example ${suffix} and ${second.label} was released.`,
     ),
   ).toBeVisible();
   await expect(ask).toHaveCount(0);

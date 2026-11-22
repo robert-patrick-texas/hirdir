@@ -604,7 +604,10 @@ export interface paths {
     };
   };
   "/api/v1/audit-events": {
-    /** List audit events, newest first unless a sort says otherwise. */
+    /**
+     * List audit events, newest first unless a sort says otherwise. Each answers the
+     * kind of the account that acted and, for an agent's, the person it was for (P-316).
+     */
     get: {
       parameters: {
         query?: {
@@ -612,8 +615,12 @@ export interface paths {
           record_hid?: string;
           action?: string;
           actor_hid?: string;
+          /** The events of the accounts of one kind: `agent` gives every change made by an agent (P-316). */
+          actor_kind?: "person" | "service" | "agent" | null;
+          /** The events made by agents for this person (P-316). */
+          for_hid?: string;
           request_id?: string;
-          /** What to sort by: `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas. */
+          /** What to sort by: `at`, `actor_name`, `actor_kind`, `for_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
@@ -643,7 +650,8 @@ export interface paths {
      * Return the signed-in user, with the role they hold right now, the contact they
      * are and the operators they are behind, each with the version it is changed at
      * (P-294). Its `notes` are null: the notes on an account are answered by the routes of
-     * users alone (P-281).
+     * users alone (P-281). The token of an agent is answered with its kind, the person
+     * answerable for it and the role its person holds it to (P-316).
      */
     get: {
       parameters: {
@@ -7793,7 +7801,7 @@ export interface paths {
         };
       };
     };
-    /** Grant a role to one user or one group. */
+    /** Grant a role to one user or one group. An agent is never Admin (P-316). */
     post: {
       parameters: {
         query?: never;
@@ -7812,10 +7820,16 @@ export interface paths {
             "application/json": components["schemas"]["GrantOut"];
           };
         };
-        /** Validation Error */
+        /** Admin to a group that holds an agent, each agent in `depends_on`: an agent is never Admin (P-316). Or the user is retired. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** Admin to an agent, on `role` (P-316); or a role there is not. */
         422: {
           content: {
-            "application/json": components["schemas"]["HTTPValidationError"];
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
@@ -8418,6 +8432,12 @@ export interface paths {
         204: {
           content?: never;
         };
+        /** The user is an agent and the group grants Admin: an agent is never Admin (P-316). Or the user is retired. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
         /** Validation Error */
         422: {
           content: {
@@ -8454,8 +8474,10 @@ export interface paths {
   "/api/v1/users": {
     /**
      * List users, by username unless a sort says otherwise. `q` matches part of a
-     * username or of the name of its contact; `contact` and `operator` find the gaps; and
-     * the retired accounts are left out unless `retired` asks for them.
+     * username or of the name of its contact; `contact` and `operator` find the gaps;
+     * `kind` keeps one kind; and the retired accounts are left out unless `retired` asks
+     * for them. Each answers the roles it holds and where each comes from (P-307), read
+     * for the whole page at once.
      */
     get: {
       parameters: {
@@ -8467,7 +8489,9 @@ export interface paths {
           operator?: "any" | "some" | "none";
           /** `no`, the accounts that are not retired; `yes`, the retired with the rest; `only`, the retired alone. A retired account is in no gap: neither `none` holds it (P-296). */
           retired?: "no" | "yes" | "only";
-          /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
+          /** The accounts of one kind: `person`, `service` or `agent` (P-316). */
+          kind?: "person" | "service" | "agent" | null;
+          /** What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `kind`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
@@ -8495,8 +8519,9 @@ export interface paths {
      * Create a user, and in the same change the contact it is, the operator it works
      * as, its role and its groups, each audited as if made by itself: where any part is
      * refused, nothing is made (P-282, P-283). A person is made with a role, of its own or
-     * through a group, or it is a `422` on `role` (P-299). The access code in the answer is
-     * not shown again.
+     * through a group, or it is a `422` on `role` (P-299). An agent names the person
+     * answerable for it and is never Admin (P-316). The access code in the answer is not
+     * shown again.
      */
     post: {
       parameters: {
@@ -8585,11 +8610,12 @@ export interface paths {
       };
     };
     /**
-     * Change a user: its username, its contact, its notes, or whether it is disabled.
-     * Disabling a user ends every session they have; a new username keeps them. The name,
-     * email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of
-     * a retired account only the username, the notes and its contact taken off are
-     * changed: anything else is a `409` (P-296).
+     * Change a user: its username, its contact, its notes, whether it is disabled, or
+     * the person answerable for an agent, which hands it over (P-316). Disabling a user
+     * ends every session they have; a new username keeps them. The name, email and numbers
+     * it shows are its contact's, changed by `PATCH /contacts/{hid}`. The kind is not
+     * changed. Of a retired account only the username, the notes and its contact taken
+     * off are changed: anything else is a `409` (P-296).
      */
     patch: {
       parameters: {
@@ -8682,7 +8708,7 @@ export interface paths {
             "application/json": components["schemas"]["UserBroughtBack"];
           };
         };
-        /** The account is not retired; or its contact is retired and is not brought back with it, the contact named on `linked.contact`. */
+        /** The account is not retired; or its contact is retired and is not brought back with it, the contact named on `linked.contact`; or it is an agent whose person is retired and no other is named, on `answerable_hid` (P-316). */
         409: {
           content: {
             "application/json": components["schemas"]["Problem"];
@@ -8699,8 +8725,9 @@ export interface paths {
   };
   "/api/v1/users/{hid}/linked": {
     /**
-     * Return the person a user is: itself, its contact and the operators of that
-     * contact, the retired among them, marked so (P-297). Every role reads it.
+     * Return the person a user is: itself, its contact, the operators of that contact
+     * and the agents answerable to it, the retired among them, marked so (P-297, P-316).
+     * Every role reads it.
      */
     get: {
       parameters: {
@@ -8731,9 +8758,10 @@ export interface paths {
     /**
      * Retire the account of somebody who has left (P-296): every session ends, the
      * access code is erased, the account leaves each of its groups and loses each role of
-     * its own, and a service account's tokens are revoked, each audited as when done by
-     * itself. `linked` says what becomes of its contact and of the operators of that
-     * contact (P-297). Refused where it would leave no Admin.
+     * its own, and the tokens of a service account or an agent are revoked, each audited
+     * as when done by itself. `linked` says what becomes of its contact, of the operators
+     * of that contact (P-297) and of the agents answerable to it (P-316). Refused where it
+     * would leave no Admin.
      */
     post: {
       parameters: {
@@ -8777,7 +8805,7 @@ export interface paths {
     };
   };
   "/api/v1/users/{hid}/service-tokens": {
-    /** List the tokens of a service account. */
+    /** List the tokens of a service account or an agent (P-316). */
     get: {
       parameters: {
         query?: never;
@@ -8802,7 +8830,11 @@ export interface paths {
         };
       };
     };
-    /** Create a token for a service account. The secret in the answer is not shown again. */
+    /**
+     * Create a token for a service account or an agent (P-316). The secret in the
+     * answer is not shown again. A token of an account that holds no role, or of an agent
+     * whose person cannot answer for it, is made, and refused until it can (P-299).
+     */
     post: {
       parameters: {
         query?: never;
@@ -9180,6 +9212,17 @@ export interface components {
     AccessCodeSet: {
       access_code?: string | null;
     };
+    /**
+     * An account as another names it: the person an agent is answerable to, or an agent
+     * of a person (P-316).
+     */
+    AccountRef: {
+      hid: string;
+      /** The name of its contact, or its username where it has none. */
+      name: string;
+      record_status: "active" | "retired";
+      username: string;
+    };
     /** A new address, of an item or of a group: exactly one of the two. */
     AddressCreate: {
       /** IPv4 or IPv6, in any common notation. */
@@ -9237,6 +9280,14 @@ export interface components {
       network: string | null;
       network_hid: string | null;
       role: string;
+    };
+    /** What becomes of one agent of a person who is retired (P-316). */
+    AgentPlan: {
+      /** `retire` retires the agent with the person, its tokens revoked; `hand_over` makes `user_hid` answerable for it. */
+      action: "retire" | "hand_over";
+      hid: string;
+      /** With `hand_over`, and with no other action: the person answerable for the agent from then on, a user of the kind `person`, not retired and not the one retired. */
+      user_hid?: string | null;
     };
     /** A new support agreement. Contracts are put into it afterwards. */
     AgreementCreate: {
@@ -9494,11 +9545,17 @@ export interface components {
     AuditEventOut: {
       action: string;
       actor_hid: string | null;
+      /** The kind of the account that acted, `person`, `service` or `agent`; null for the system (P-316). */
+      actor_kind: "person" | "service" | "agent" | null;
       actor_name: string | null;
       at: string;
       changes: {
         [key: string]: unknown;
       }[];
+      /** Of an event made by an agent: the person it was answerable to when the event was made. Null for every other (P-316). */
+      for_hid: string | null;
+      /** The username of that person, read now: a history writes `agent-reconcile for sam`. */
+      for_name: string | null;
       hid: string;
       record_hid: string | null;
       record_type: string;
@@ -9510,8 +9567,10 @@ export interface components {
      * it (P-298, P-299).
      */
     BringBack: {
+      /** Of an agent: the person answerable for it from then on, a user of the kind `person` who is not retired. Left out, it stays its person's; where that person is retired, it is a `409` on `answerable_hid` that names them. Given for another kind, a `422` (P-316). */
+      answerable_hid?: string | null;
       linked?: components["schemas"]["LinkedBack"] | null;
-      /** `viewer`, `inventory` or `admin`, granted in the same change. A person is given one, since an account with no role does not sign in: left out, it is a `422` on `role`. A service account may be brought back with none (P-299). */
+      /** `viewer`, `inventory` or `admin`, granted in the same change. A person is given one, since an account with no role does not sign in: left out, it is a `422` on `role`. A service account and an agent may be brought back with none (P-299), and an agent is never Admin (P-316). */
       role?: string | null;
       row_version: number;
     };
@@ -11975,6 +12034,8 @@ export interface components {
      * linked record that is not retired is said, and the record the route is on is not.
      */
     Linked: {
+      /** Where the request retires a user that is a person: what becomes of each agent answerable to it that is not retired, each to be said (P-316). Said where no user is retired, it is a `422`. */
+      agents?: components["schemas"]["AgentPlan"][];
       contact?: "retire" | "keep" | null;
       operators?: components["schemas"]["OperatorPlan"][];
       user?: "retire" | "keep" | null;
@@ -12004,7 +12065,10 @@ export interface components {
       /** How many items, groups and places are given it as their own. */
       uses: number;
     };
-    /** The user of a person, as the chain of the person shows it (P-297). */
+    /**
+     * The user of a person, as the chain of the person shows it (P-297), or an agent
+     * answerable to that user (P-316).
+     */
     LinkedUser: {
       disabled: boolean;
       hid: string;
@@ -12169,8 +12233,8 @@ export interface components {
       failed: number;
       /** Of the account. Null for `unnamed` and `others`. */
       hid: string | null;
-      /** `person` or `service`: an account. `unnamed`: the requests that nothing verifiable named an account for, together. `others`: the accounts past the fifty that are counted each by itself, together. */
-      kind: "person" | "service" | "unnamed" | "others";
+      /** `person`, `service` or `agent`: an account, by its kind (P-316). `unnamed`: the requests that nothing verifiable named an account for, together. `others`: the accounts past the fifty that are counted each by itself, together. */
+      kind: "person" | "service" | "agent" | "unnamed" | "others";
       /** When the last of its requests came. */
       last_at: string;
       /** Every request of the API, those refused among them. */
@@ -12267,13 +12331,13 @@ export interface components {
       response_ms: components["schemas"]["LoadTimes"];
     };
     /**
-     * Who asked a request: the account, a person's or a service's. `unnamed` where
-     * nothing verifiable said who: a sign-in, a token that did not hold, a request with
-     * none; its `hid` and `username` are null.
+     * Who asked a request: the account, a person's, a service's or an agent's (P-316).
+     * `unnamed` where nothing verifiable said who: a sign-in, a token that did not hold, a
+     * request with none; its `hid` and `username` are null.
      */
     LoadWho: {
       hid: string | null;
-      kind: "person" | "service" | "unnamed";
+      kind: "person" | "service" | "agent" | "unnamed";
       username: string | null;
     };
     /** A new location: in a site, or within a location of one. */
@@ -12498,7 +12562,13 @@ export interface components {
      * signed in and a retired account signs in nowhere (P-296).
      */
     MeOut: {
-      /** The contact the person is, with the version to change it at. None for a service account, or a user not given one. */
+      /** Of a person: the agents answerable to them, as on a user (P-316). */
+      agents: components["schemas"]["AccountRef"][];
+      /** Of an agent alone: the person answerable for it, read now (P-316). */
+      answerable: components["schemas"]["AccountRef"] | null;
+      /** Of an agent alone: the person answerable for it (P-316). */
+      answerable_hid: string | null;
+      /** The contact the person is, with the version to change it at. None for a service account and an agent, or a user not given one. */
       contact: components["schemas"]["OwnContact"] | null;
       contact_hid: string | null;
       created_at: string;
@@ -12507,9 +12577,12 @@ export interface components {
       display_name: string;
       /** The email of its contact; blank where it has none. */
       email: string;
+      /** Each role held and where it comes from, as on a user (P-307). */
+      grants: components["schemas"]["UserGrant"][];
       groups: components["schemas"]["GroupRef"][];
       hid: string;
-      is_service_account: boolean;
+      /** `person`, `service` or `agent` (P-316). */
+      kind: "person" | "service" | "agent";
       last_sign_in_at: string | null;
       /** Always null: the notes on an account are an Admin's, answered by the routes of users alone (P-281). */
       notes: string | null;
@@ -12517,6 +12590,10 @@ export interface components {
       operators: components["schemas"]["OwnOperator"][];
       /** The highest role held directly or through a group. */
       role: string | null;
+      /** Of an agent alone, where its person holds it lower than `role`, why, as on a user (P-316). */
+      role_capped_by: "person_role" | "person_no_role" | "person_disabled" | "person_retired" | "never_admin" | null;
+      /** The role the requests of this session or token are held to: `role`, or for an agent the lower of `role` and its person's (P-316). */
+      role_in_force: string | null;
       row_version: number;
       updated_at: string;
       username: string;
@@ -13228,6 +13305,8 @@ export interface components {
      * so. The record asked for is among them (P-291, P-297).
      */
     Person: {
+      /** Every agent answerable to the user, the retired among them, by username (P-316); none where there is no user, or it is no person. */
+      agents: components["schemas"]["LinkedUser"][];
       /** The contact; null for a user and for an operator that has none. */
       contact: components["schemas"]["LinkedContact"] | null;
       /** Every operator of the contact, in the order of their labels. */
@@ -14096,7 +14175,10 @@ export interface components {
       secret: string;
       token: components["schemas"]["ServiceTokenOut"];
     };
-    /** A service token. The secret is not kept and cannot be shown again. */
+    /**
+     * A token of a service account or an agent (P-316). The secret is not kept and
+     * cannot be shown again.
+     */
     ServiceTokenOut: {
       created_at: string;
       expires_at: string | null;
@@ -14453,7 +14535,7 @@ export interface components {
     };
     /**
      * A user brought back, with its new access code, shown this once; a service account
-     * has none (P-296).
+     * and an agent have none (P-296).
      */
     UserBroughtBack: {
       access_code: string | null;
@@ -14463,18 +14545,21 @@ export interface components {
     UserCreate: {
       /** Left out, a code is generated. */
       access_code?: string | null;
+      /** Of an agent, and required of it: the person answerable for it, a user of the kind `person` who is not retired. Refused to the other kinds (P-316). */
+      answerable_hid?: string | null;
       /** A new contact, made in the same change. */
       contact?: components["schemas"]["NewPerson"] | null;
       /** The contact the user is. */
       contact_hid?: string | null;
       /** The user groups to put the new user in, in the same change (P-282). */
       group_hids?: string[];
-      is_service_account?: boolean;
+      /** `person`, `service` or `agent`; not changed after (P-316). A service account and an agent take no contact, no access code and no operator: they hold tokens. */
+      kind?: "person" | "service" | "agent";
       /** Blank is none. */
       notes?: string | null;
       /** An operator to make in the same change, whose contact is the user's: it needs `contact` or `contact_hid` (P-283). */
       operator?: components["schemas"]["NewOperator"] | null;
-      /** A role to grant at once. A person is given one, or a group in `group_hids` that grants one, or it is a `422` on `role` (P-299); a service account may have none. */
+      /** A role to grant at once. A person is given one, or a group in `group_hids` that grants one, or it is a `422` on `role` (P-299); a service account and an agent may have none. An agent is never Admin (P-316). */
       role?: string | null;
       /** What the person signs in with. An Admin can change it later. */
       username: string;
@@ -14489,9 +14574,26 @@ export interface components {
       operator: components["schemas"]["OperatorOut"] | null;
       user: components["schemas"]["UserOut"];
     };
-    /** A user: the part of a person who signs in, or a service account (P-172). */
+    /** One role an account holds, and where it comes from (P-307). */
+    UserGrant: {
+      /** The group the role is granted to, which the account is in; null for a grant of the account's own. */
+      group: components["schemas"]["GroupRef"] | null;
+      /** The grant, as `/role-grants` names it. */
+      hid: string;
+      role: "viewer" | "inventory" | "admin";
+    };
+    /**
+     * A user: the part of a person who signs in, a service account or an agent (P-172,
+     * P-316).
+     */
     UserOut: {
-      /** The contact the user is. None for a service account, or a user not given one. */
+      /** Of a person: the agents answerable to them, the retired among them, by username. None for a service account or an agent. */
+      agents: components["schemas"]["AccountRef"][];
+      /** Of an agent alone: the person answerable for it, read now. */
+      answerable: components["schemas"]["AccountRef"] | null;
+      /** Of an agent alone: the person answerable for it (P-316). Null for the others. */
+      answerable_hid: string | null;
+      /** The contact the user is. None for a service account and an agent, or a user not given one. */
       contact: components["schemas"]["PersonRef"] | null;
       contact_hid: string | null;
       created_at: string;
@@ -14500,9 +14602,12 @@ export interface components {
       display_name: string;
       /** The email of its contact; blank where it has none. */
       email: string;
+      /** Every grant that gives the account a role, of its own or of a group it is in: the highest role first, a grant of its own before those of groups, and the groups by name (P-307). `role` is the highest of them. */
+      grants: components["schemas"]["UserGrant"][];
       groups: components["schemas"]["GroupRef"][];
       hid: string;
-      is_service_account: boolean;
+      /** `person`, `service` or `agent`, set when the account is made and not changed after (P-316). */
+      kind: "person" | "service" | "agent";
       last_sign_in_at: string | null;
       /** What the account is for, who asked for it, when it is to end (P-281). For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that change a user, and null from `GET /auth/me` and signing in, for anybody. */
       notes: string | null;
@@ -14512,15 +14617,23 @@ export interface components {
       record_status: "active" | "retired";
       /** The highest role held directly or through a group. */
       role: string | null;
+      /** Of an agent alone, where `role_in_force` is lower than `role`, why: the person's role is lower, `person_role`, or the person holds none, is disabled or is retired; or `never_admin`, an agent that holds Admin all the same, which no route gives it, held at Inventory. Null where nothing holds it lower. */
+      role_capped_by: "person_role" | "person_no_role" | "person_disabled" | "person_retired" | "never_admin" | null;
+      /** The role the account's requests are held to now. For a person and a service account, `role`. For an agent, the lower of `role` and the role of the person answerable for it, and null where the person holds no role, is disabled or is retired, its tokens being refused then (P-316). */
+      role_in_force: string | null;
       row_version: number;
       updated_at: string;
       username: string;
     };
     /** Fields of a user to change, and the version they were read at. */
     UserPatch: {
-      /** Another contact; null for none. A service account has none. */
+      /** Of an agent: another person answerable for it, a user of the kind `person` who is not retired, which hands the agent over. Null, or given for another kind, is a `422` on `answerable_hid` (P-316). */
+      answerable_hid?: string | null;
+      /** Another contact; null for none. A service account and an agent have none. */
       contact_hid?: string | null;
       disabled?: boolean | null;
+      /** The kind is not changed after the account is made: the kind it has is no change, and any other is a `422` on `kind` (P-316). */
+      kind?: "person" | "service" | "agent" | null;
       /** Null or blank clears them (P-281). */
       notes?: string | null;
       row_version: number;

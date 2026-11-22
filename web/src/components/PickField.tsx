@@ -4,10 +4,22 @@ import { useAsked, useFoundInView, useLoad, useReloadOn, useReloadOnReturn } fro
 import type { Option } from "../lib/patch";
 import { Problem } from "./Problem";
 
+/**
+ * A record a search offers: its HID and what the list calls it, and, where that is more
+ * than a sentence needs, what a sentence calls it, as a contact by its name alone.
+ */
+export type Offered = Option & { draft?: boolean; name?: string };
+
 /** What a search found: the first few that match, and how many match in all. */
 export interface Found {
-  options: Array<Option & { draft?: boolean }>;
+  options: Offered[];
   total: number;
+}
+
+/** The record chosen, by its HID and by what a sentence calls it. */
+export interface Picked {
+  hid: string;
+  name: string;
 }
 
 export interface PickFieldProps {
@@ -25,6 +37,11 @@ export interface PickFieldProps {
   disabled?: boolean;
   /** One must stay chosen: another may be chosen, and none is offered to clear it. */
   required?: boolean;
+  /**
+   * 0.9.17: the record chosen here, or null where it is cleared, by what a sentence calls
+   * it, so that a button can name it, as Hand KM to Sam Roe (P-314).
+   */
+  onPicked?: (picked: Picked | null) => void;
 }
 
 interface SearchProps extends PickFieldProps {
@@ -61,13 +78,13 @@ interface SearchProps extends PickFieldProps {
  */
 export function PickField(props: SearchProps) {
   const { label, name, value, onChange, known = [], blank = "None", hint, error, disabled } = props;
-  const { required = false } = props;
+  const { required = false, onPicked } = props;
   const { noun, how, find, none, after } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
   const { asked, again, askNow, forget } = useAsked(typed);
   // What the reader chose here, so that it can be called by its name at once.
-  const [picked, setPicked] = useState<Option | null>(null);
+  const [picked, setPicked] = useState<Offered | null>(null);
 
   const searching = asked.trim() !== "";
   const found = useLoad(`pick ${noun[0]} ${asked.trim()}`, (signal) => find(asked, signal));
@@ -87,9 +104,10 @@ export function PickField(props: SearchProps) {
     askNow();
   }
 
-  function choose(option: Option | null) {
+  function choose(option: Offered | null) {
     setPicked(option);
     onChange(option?.value ?? "");
+    onPicked?.(option ? { hid: option.value, name: option.name ?? option.label } : null);
     setTyped("");
     forget();
   }
@@ -165,7 +183,13 @@ export function PickField(props: SearchProps) {
                 <button
                   type="button"
                   disabled={disabled}
-                  onClick={() => choose({ value: option.value, label: option.label })}
+                  onClick={() =>
+                    choose({
+                      value: option.value,
+                      label: option.label,
+                      ...(option.name === undefined ? {} : { name: option.name }),
+                    })
+                  }
                 >
                   {option.label}
                 </button>

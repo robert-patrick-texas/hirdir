@@ -15,12 +15,14 @@ interface ConfirmButtonProps {
   onOpen?: () => void;
   /** The button that goes ahead is disabled: what it would do is not known yet. */
   confirmDisabled?: boolean;
+  /** 0.9.17: more of the label, for a screen reader alone, as whom a Remove of a row is of. */
+  hiddenLabel?: string;
 }
 
 /** A button for something that cannot be undone: it asks first, in a modal dialog. */
 export function ConfirmButton(props: ConfirmButtonProps) {
   const { label, title, children, confirmLabel, onConfirm, disabled } = props;
-  const { onOpen, confirmDisabled = false } = props;
+  const { onOpen, confirmDisabled = false, hiddenLabel } = props;
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,7 @@ export function ConfirmButton(props: ConfirmButtonProps) {
         }}
       >
         {label}
+        {hiddenLabel && <span className="visually-hidden"> {hiddenLabel}</span>}
       </button>
       <dialog ref={dialog} aria-labelledby={`${id}-title`}>
         <h2 id={`${id}-title`}>{title}</h2>

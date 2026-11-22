@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountGoes,
+  agentsToSay,
   backChanged,
   blockedWords,
   bringBackBody,
@@ -8,6 +10,7 @@ import {
   contactGoes,
   contactUses,
   goWords,
+  handedTo,
   held,
   keptChoices,
   LINKED_LABELS,
@@ -22,6 +25,7 @@ import {
   operatorUses,
   othersOf,
   ownAccountGoes,
+  refusedAgents,
   refusedHandOvers,
   refusedRows,
   retireBody,
@@ -70,7 +74,7 @@ const OLD: LinkedOperator = {
 };
 
 /** A user who is a contact behind two labels, and a third that is released. */
-const PERSON: Linked = { user: USER, contact: CONTACT, operators: [KL, OP2, OLD] };
+const PERSON: Linked = { user: USER, contact: CONTACT, operators: [KL, OP2, OLD], agents: [] };
 
 const ON_USER: On = { kind: "user", hid: "U1" };
 const ON_CONTACT: On = { kind: "contact", hid: "C1" };
@@ -89,13 +93,20 @@ describe("what a retirement has to say something of (P-297)", () => {
       user: null,
       contact: CONTACT,
       operators: [KL, OP2],
+      agents: [],
     });
     expect(othersOf(ON_CONTACT, PERSON)).toEqual({
       user: USER,
       contact: null,
       operators: [KL, OP2],
+      agents: [],
     });
-    expect(othersOf(ON_KL, PERSON)).toEqual({ user: USER, contact: CONTACT, operators: [OP2] });
+    expect(othersOf(ON_KL, PERSON)).toEqual({
+      user: USER,
+      contact: CONTACT,
+      operators: [OP2],
+      agents: [],
+    });
   });
 
   it("leaves out what is retired already", () => {
@@ -103,17 +114,20 @@ describe("what a retirement has to say something of (P-297)", () => {
       user: { ...USER, record_status: "retired" },
       contact: { ...CONTACT, record_status: "retired" },
       operators: [KL, OLD],
+      agents: [],
     };
-    expect(othersOf(ON_KL, left)).toEqual({ user: null, contact: null, operators: [] });
+    expect(othersOf(ON_KL, left)).toEqual({ user: null, contact: null, operators: [], agents: [] });
     expect(nothingLinked(ON_KL, left)).toBe(true);
   });
 
   it("is nothing for a record that answers itself alone", () => {
-    expect(nothingLinked(ON_USER, { user: USER, contact: null, operators: [] })).toBe(true);
+    expect(nothingLinked(ON_USER, { user: USER, contact: null, operators: [], agents: [] })).toBe(
+      true,
+    );
     expect(
       nothingLinked(
         { kind: "operator", hid: "O2" },
-        { user: null, contact: null, operators: [OP2] },
+        { user: null, contact: null, operators: [OP2], agents: [] },
       ),
     ).toBe(true);
     expect(nothingLinked(ON_USER, PERSON)).toBe(false);
@@ -126,6 +140,7 @@ describe("the confirmation opens with Retire ticked for each linked record (P-29
       user: true,
       contact: true,
       operators: { O2: { action: "retire", contactHid: "" } },
+      agents: {},
     });
     expect(startChoices(ON_USER, PERSON, true)).toEqual({
       user: false,
@@ -134,6 +149,7 @@ describe("the confirmation opens with Retire ticked for each linked record (P-29
         O1: { action: "retire", contactHid: "" },
         O2: { action: "retire", contactHid: "" },
       },
+      agents: {},
     });
   });
 
@@ -145,7 +161,7 @@ describe("the confirmation opens with Retire ticked for each linked record (P-29
   });
 
   it("lets the Inventory role retire a contact that is no user's, with its labels", () => {
-    const external: Linked = { user: null, contact: CONTACT, operators: [KL] };
+    const external: Linked = { user: null, contact: CONTACT, operators: [KL], agents: [] };
     expect(startChoices(ON_KL, external, false).contact).toBe(true);
     expect(blockedWords(ON_CONTACT, external, false)).toBeNull();
   });
@@ -170,12 +186,13 @@ describe("a contact is not retired while its account or a label stands on it (P-
       user: false,
       contact: false,
       operators: { O2: { action: "keep", contactHid: "" } },
+      agents: {},
     });
     expect(contactGoes(ON_KL, PERSON, firm)).toBe(false);
   });
 
   it("holds the rule on the contact's own page, where the contact always goes", () => {
-    const asked = choose({ user: false, contact: false, operators: {} }, "O1", "keep");
+    const asked = choose({ user: false, contact: false, operators: {}, agents: {} }, "O1", "keep");
     const firm = held(ON_CONTACT, PERSON, asked, true);
     expect(firm.user).toBe(true);
     expect(firm.operators.O1?.action).toBe("retire");
@@ -231,13 +248,17 @@ describe("one Retire sends one request that says every linked record (P-297)", (
       ok: true,
       body: {
         row_version: 7,
-        linked: { user: "keep", contact: "keep", operators: [{ hid: "O2", action: "keep" }] },
+        linked: {
+          user: "keep",
+          contact: "keep",
+          operators: [{ hid: "O2", action: "keep" }],
+        },
       },
     });
   });
 
   it("sends the version alone where nothing is linked", () => {
-    const alone: Linked = { user: USER, contact: null, operators: [] };
+    const alone: Linked = { user: USER, contact: null, operators: [], agents: [] };
     expect(retireBody(ON_USER, alone, startChoices(ON_USER, alone, true), 2, true)).toEqual({
       ok: true,
       body: { row_version: 2 },
@@ -312,7 +333,7 @@ describe("a refusal is said in the confirmation, at the record it names", () => 
   });
 
   it("keeps what was chosen when the list is read again, and ticks what is new", () => {
-    const before: Linked = { user: USER, contact: CONTACT, operators: [KL] };
+    const before: Linked = { user: USER, contact: CONTACT, operators: [KL], agents: [] };
     let asked = { ...startChoices(ON_USER, before, true), contact: false };
     asked = choose(asked, "O1", "keep");
     const now = keptChoices(ON_USER, { linked: before, choices: asked }, PERSON, true);
@@ -323,9 +344,10 @@ describe("a refusal is said in the confirmation, at the record it names", () => 
         O1: { action: "keep", contactHid: "" },
         O2: { action: "retire", contactHid: "" },
       },
+      agents: {},
     });
     // A contact given to the account since is ticked, as at the start.
-    const bare: Linked = { user: USER, contact: null, operators: [] };
+    const bare: Linked = { user: USER, contact: null, operators: [], agents: [] };
     const start = startChoices(ON_USER, bare, true);
     expect(keptChoices(ON_USER, { linked: bare, choices: start }, PERSON, true).contact).toBe(true);
   });
@@ -374,7 +396,7 @@ describe("what a page says once a retirement is done", () => {
   });
 
   it("says the record alone where nothing is linked", () => {
-    const alone: Linked = { user: USER, contact: null, operators: [] };
+    const alone: Linked = { user: USER, contact: null, operators: [], agents: [] };
     expect(retiredWords(ON_USER, alone, startChoices(ON_USER, alone, true), true)).toBe(
       "klee was retired.",
     );
@@ -386,6 +408,7 @@ describe("Bring back of a user offers its retired contact and that contact's lab
     user: { ...USER, record_status: "retired" },
     contact: { ...CONTACT, record_status: "retired" },
     operators: [{ ...KL, record_status: "retired" }, OP2, OLD],
+    agents: [],
   };
 
   it("offers the contact where it is retired, and the labels that are", () => {
@@ -394,7 +417,7 @@ describe("Bring back of a user offers its retired contact and that contact's lab
       operators: [{ ...KL, record_status: "retired" }, OLD],
     });
     expect(bringBackOffer({ ...left, contact: CONTACT }).contact).toBeNull();
-    expect(bringBackOffer({ user: left.user, contact: null, operators: [] })).toEqual({
+    expect(bringBackOffer({ user: left.user, contact: null, operators: [], agents: [] })).toEqual({
       contact: null,
       operators: [],
     });
@@ -407,17 +430,20 @@ describe("Bring back of a user offers its retired contact and that contact's lab
     });
     expect(bringBackBody(left, ["O3", "O2"], 5)).toEqual({
       row_version: 5,
-      linked: { contact: "bring_back", operators: [{ hid: "O3", action: "bring_back" }] },
+      linked: {
+        contact: "bring_back",
+        operators: [{ hid: "O3", action: "bring_back" }],
+      },
     });
   });
 
   it("sends the version alone for an account with nothing retired to bring", () => {
-    const alone: Linked = { user: left.user, contact: null, operators: [] };
+    const alone: Linked = { user: left.user, contact: null, operators: [], agents: [] };
     expect(bringBackBody(alone, [], 3)).toEqual({ row_version: 3 });
   });
 
   it("sends the role chosen, and none where none is (P-299)", () => {
-    const alone: Linked = { user: left.user, contact: null, operators: [] };
+    const alone: Linked = { user: left.user, contact: null, operators: [], agents: [] };
     expect(bringBackBody(alone, [], 3, "viewer")).toEqual({ row_version: 3, role: "viewer" });
     expect(bringBackBody(left, [], 5, "admin")).toEqual({
       row_version: 5,
@@ -482,21 +508,35 @@ describe("a label is not brought back onto a retired contact (P-298)", () => {
 
 describe("a list that changed while the confirmation was open (review 3)", () => {
   it("is the same list where the records to be said are the same, whatever else changed", () => {
-    expect(sameOthers(ON_USER, PERSON, { ...PERSON, operators: [OP2, KL, OLD] })).toBe(true);
+    expect(sameOthers(ON_USER, PERSON, { ...PERSON, operators: [OP2, KL, OLD], agents: [] })).toBe(
+      true,
+    );
     const renamed: Linked = { ...PERSON, contact: { ...CONTACT, name: "Kim Okafor", uses: 9 } };
     expect(sameOthers(ON_USER, PERSON, renamed)).toBe(true);
   });
 
   it("is another list where a record is parted, retired or added", () => {
     // The label is parted from the contact.
-    expect(sameOthers(ON_USER, PERSON, { ...PERSON, operators: [OP2, OLD] })).toBe(false);
+    expect(sameOthers(ON_USER, PERSON, { ...PERSON, operators: [OP2, OLD], agents: [] })).toBe(
+      false,
+    );
     // The contact is taken off the account.
-    expect(sameOthers(ON_USER, PERSON, { user: USER, contact: null, operators: [] })).toBe(false);
+    expect(
+      sameOthers(ON_USER, PERSON, { user: USER, contact: null, operators: [], agents: [] }),
+    ).toBe(false);
     // A label is released by somebody else.
-    const released: Linked = { ...PERSON, operators: [{ ...KL, record_status: "retired" }, OP2] };
+    const released: Linked = {
+      ...PERSON,
+      operators: [{ ...KL, record_status: "retired" }, OP2],
+      agents: [],
+    };
     expect(sameOthers(ON_CONTACT, PERSON, released)).toBe(false);
     // A label is added.
-    const more: Linked = { ...PERSON, operators: [KL, OP2, { ...OLD, record_status: "active" }] };
+    const more: Linked = {
+      ...PERSON,
+      operators: [KL, OP2, { ...OLD, record_status: "active" }],
+      agents: [],
+    };
     expect(sameOthers(ON_CONTACT, PERSON, more)).toBe(false);
   });
 
@@ -536,61 +576,229 @@ describe("Bring back says what changed while it was open (review 5)", () => {
   const user: LinkedUser = { ...USER, record_status: "retired" };
   const gone: LinkedContact = { ...CONTACT, record_status: "retired" };
   const label: LinkedOperator = { ...KL, record_status: "retired" };
-  const was: Linked = { user, contact: gone, operators: [label] };
+  const was: Linked = { user, contact: gone, operators: [label], agents: [] };
 
   it("says that the contact is back already, where somebody else brought it back", () => {
-    expect(backChanged(was, { user, contact: CONTACT, operators: [label] })).toBe(
+    expect(backChanged(was, { user, contact: CONTACT, operators: [label], agents: [] })).toBe(
       "The contact Kim Lee is back already: it was brought back since this was opened. Press Bring back again to bring the account back.",
     );
   });
 
   it("says that the linked records have changed, where it is something else", () => {
     // A label is back, or the contact was taken off the account.
-    expect(backChanged(was, { user, contact: gone, operators: [KL] })).toBe(LIST_CHANGED);
-    expect(backChanged(was, { user, contact: null, operators: [] })).toBe(LIST_CHANGED);
+    expect(backChanged(was, { user, contact: gone, operators: [KL], agents: [] })).toBe(
+      LIST_CHANGED,
+    );
+    expect(backChanged(was, { user, contact: null, operators: [], agents: [] })).toBe(LIST_CHANGED);
   });
 
   it("says nothing where what is offered is what it was", () => {
     expect(
-      backChanged(was, { user, contact: { ...gone, uses: 7 }, operators: [label] }),
+      backChanged(was, { user, contact: { ...gone, uses: 7 }, operators: [label], agents: [] }),
     ).toBeNull();
   });
 });
 
-describe("the button that goes ahead says what it will do (review 9)", () => {
-  it("counts what is retired with a label as it opens: the account, the contact, the other label", () => {
-    expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, true), true)).toBe(
-      "Release KL and retire 3 more",
+describe("the button that goes ahead names each record it changes (review 9, P-314)", () => {
+  const KM: LinkedOperator = { ...OP2, label: "KM" };
+  const TWO: Linked = { user: USER, contact: CONTACT, operators: [KL, KM], agents: [] };
+  const NAMES = { C9: "Sam Roe" };
+
+  it("says the owner's words: what each record is, what it is known by, what is done to it", () => {
+    // A person with no account, behind one label.
+    const noAccount: Linked = { user: null, contact: CONTACT, operators: [KL], agents: [] };
+    expect(goWords(ON_KL, noAccount, startChoices(ON_KL, noAccount, true), true)).toBe(
+      "Release KL and retire contact Kim Lee",
+    );
+    const handed = choose(startChoices(ON_KL, TWO, true), "O2", "hand_over", "C9");
+    expect(goWords(ON_KL, TWO, handed, true, NAMES)).toBe(
+      "Release KL, hand KM to Sam Roe, and retire account klee and contact Kim Lee",
+    );
+    const open = choose(startChoices(ON_USER, TWO, true), "O1", "open");
+    expect(goWords(ON_USER, TWO, open, true)).toBe(
+      "Retire account klee and contact Kim Lee, release KM, and leave KL open",
     );
   });
 
-  it("follows the ticks, and says only where nothing else is retired", () => {
-    let asked = { ...startChoices(ON_KL, PERSON, true), contact: false };
-    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and retire 2 more");
-    asked = { ...asked, user: false };
-    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and retire 1 more");
-    // A label handed over, left open or kept is not retired.
-    for (const action of ["open", "hand_over", "keep"]) {
-      expect(goWords(ON_KL, PERSON, choose(asked, "O2", action, "C9"), true)).toBe(
-        "Release KL only",
-      );
-    }
+  it("names what is retired with a label as it opens: the account, the contact, the other label", () => {
+    expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, true), true)).toBe(
+      "Release KL and Op2, and retire account klee and contact Kim Lee",
+    );
   });
 
-  it("is of the same manner on the page of the account and of the contact", () => {
+  it("follows the ticks, and names no record that is kept", () => {
+    let asked = { ...startChoices(ON_KL, PERSON, true), contact: false };
+    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and Op2, and retire account klee");
+    asked = { ...asked, user: false };
+    expect(goWords(ON_KL, PERSON, asked, true)).toBe("Release KL and Op2");
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "open"), true)).toBe(
+      "Release KL and leave Op2 open",
+    );
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "hand_over", "C9"), true, NAMES)).toBe(
+      "Release KL and hand Op2 to Sam Roe",
+    );
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "keep"), true)).toBe("Release KL");
+  });
+
+  it("says a label is handed over, to nobody named, while no person is chosen", () => {
+    const asked = { ...startChoices(ON_KL, PERSON, true), contact: false, user: false };
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "hand_over"), true, NAMES)).toBe(
+      "Release KL and hand Op2 over",
+    );
+    // A person chosen whose name is not known is not guessed.
+    expect(goWords(ON_KL, PERSON, choose(asked, "O2", "hand_over", "C8"), true, NAMES)).toBe(
+      "Release KL and hand Op2 over",
+    );
+  });
+
+  it("hands the labels going to one person in one clause", () => {
+    const three: Linked = {
+      user: null,
+      contact: CONTACT,
+      operators: [KL, KM, { ...OP2, hid: "O4", label: "KN" }],
+      agents: [],
+    };
+    let asked = startChoices(ON_CONTACT, three, true);
+    asked = choose(choose(asked, "O1", "hand_over", "C9"), "O2", "hand_over", "C9");
+    asked = choose(asked, "O4", "hand_over", "C7");
+    expect(goWords(ON_CONTACT, three, asked, true, { ...NAMES, C7: "Ada Example" })).toBe(
+      "Retire contact Kim Lee, hand KL and KM to Sam Roe, and hand KN to Ada Example",
+    );
+  });
+
+  it("puts the record the page is of first, on the page of the account and of the contact", () => {
     expect(goWords(ON_USER, PERSON, startChoices(ON_USER, PERSON, true), true)).toBe(
-      "Retire klee and 3 more",
+      "Retire account klee and contact Kim Lee, and release KL and Op2",
     );
     let kept = { ...startChoices(ON_USER, PERSON, true), contact: false };
     kept = choose(choose(kept, "O1", "keep"), "O2", "keep");
-    expect(goWords(ON_USER, PERSON, kept, true)).toBe("Retire klee only");
+    expect(goWords(ON_USER, PERSON, kept, true)).toBe("Retire account klee");
     const open = choose(startChoices(ON_CONTACT, PERSON, true), "O2", "open");
-    expect(goWords(ON_CONTACT, PERSON, open, true)).toBe("Retire Kim Lee and 2 more");
+    expect(goWords(ON_CONTACT, PERSON, open, true)).toBe(
+      "Retire contact Kim Lee and account klee, release KL, and leave Op2 open",
+    );
   });
 
-  it("counts no account for somebody who is no Admin, who retires none", () => {
+  it("names no account for somebody who is no Admin, who retires none", () => {
     expect(goWords(ON_KL, PERSON, startChoices(ON_KL, PERSON, false), false)).toBe(
-      "Release KL and retire 1 more",
+      "Release KL and Op2",
     );
+  });
+});
+
+describe("the person each label handed over goes to", () => {
+  it("is named by the label, where the person chosen is known", () => {
+    let asked = choose(startChoices(ON_USER, PERSON, true), "O1", "hand_over", "C9");
+    asked = choose(asked, "O2", "hand_over", "C8");
+    expect(handedTo(asked, { C9: "Sam Roe" })).toEqual({ O1: "Sam Roe" });
+    expect(handedTo(choose(asked, "O1", "open", "C9"), { C9: "Sam Roe" })).toEqual({});
+  });
+});
+
+describe("the agents of a person retired with them, or handed over (P-316)", () => {
+  const AGENT: LinkedUser = {
+    hid: "A1",
+    username: "agent-reconcile",
+    record_status: "active",
+    disabled: false,
+    role: "inventory",
+  };
+  const OLD_AGENT: LinkedUser = {
+    ...AGENT,
+    hid: "A2",
+    username: "agent-old",
+    record_status: "retired",
+  };
+  const WITH: Linked = { ...PERSON, agents: [AGENT, OLD_AGENT] };
+  const hand = (was: Choices, hid: string, userHid = ""): Choices => ({
+    ...was,
+    agents: { ...was.agents, [hid]: { action: "hand_over", userHid } },
+  });
+
+  it("lists each agent that is not retired, Retire ticked, while the account goes", () => {
+    const start = startChoices(ON_USER, WITH, true);
+    expect(start.agents).toEqual({ A1: { action: "retire", userHid: "" } });
+    expect(agentsToSay(ON_USER, WITH, start)).toEqual([AGENT]);
+    expect(
+      nothingLinked(ON_USER, { user: USER, contact: null, operators: [], agents: [AGENT] }),
+    ).toBe(false);
+    // On a label's page, only while the account is ticked.
+    const kept = held(
+      ON_KL,
+      WITH,
+      { ...startChoices(ON_KL, WITH, true), contact: false, user: false },
+      true,
+    );
+    expect(accountGoes(ON_KL, WITH, kept)).toBe(false);
+    expect(agentsToSay(ON_KL, WITH, kept)).toEqual([]);
+    // Nor to somebody who is no Admin, who retires no account.
+    expect(agentsToSay(ON_KL, WITH, startChoices(ON_KL, WITH, false))).toEqual([]);
+  });
+
+  it("sends each agent, retired or handed to a person, and none where the account stays", () => {
+    const start = startChoices(ON_USER, WITH, true);
+    expect(retireBody(ON_USER, WITH, start, 4, true)).toMatchObject({
+      ok: true,
+      body: { linked: { agents: [{ hid: "A1", action: "retire" }] } },
+    });
+    expect(retireBody(ON_USER, WITH, hand(start, "A1", "U9"), 4, true)).toMatchObject({
+      ok: true,
+      body: { linked: { agents: [{ hid: "A1", action: "hand_over", user_hid: "U9" }] } },
+    });
+    const kept = { ...startChoices(ON_KL, WITH, true), contact: false, user: false };
+    const sent = retireBody(ON_KL, WITH, kept, 4, true);
+    expect(sent.ok && sent.body.linked && "agents" in sent.body.linked).toBe(false);
+  });
+
+  it("says at its row what is still to be chosen of a hand-over", () => {
+    const start = startChoices(ON_USER, WITH, true);
+    expect(retireBody(ON_USER, WITH, hand(start, "A1"), 4, true)).toEqual({
+      ok: false,
+      errors: { "agent A1": "Choose the person the agent is handed to, or Retire it." },
+    });
+    expect(retireBody(ON_USER, WITH, hand(start, "A1", "U1"), 4, true)).toEqual({
+      ok: false,
+      errors: {
+        "agent A1": "This is the person who is retired: choose another person, or Retire it.",
+      },
+    });
+  });
+
+  it("names each agent on the button and once it is done", () => {
+    const start = startChoices(ON_USER, WITH, true);
+    expect(goWords(ON_USER, WITH, start, true)).toBe(
+      "Retire account klee, contact Kim Lee and agent agent-reconcile, and release KL and Op2",
+    );
+    const handed = hand(start, "A1", "U9");
+    expect(goWords(ON_USER, WITH, handed, true, { U9: "Sam Roe" })).toBe(
+      "Retire account klee and contact Kim Lee, release KL and Op2, and hand agent-reconcile to Sam Roe",
+    );
+    expect(goWords(ON_USER, WITH, hand(start, "A1"), true)).toBe(
+      "Retire account klee and contact Kim Lee, release KL and Op2, and hand agent-reconcile over",
+    );
+    expect(retiredWords(ON_USER, WITH, start, true)).toBe(
+      "klee was retired, with the contact Kim Lee and the agent agent-reconcile. KL was released and Op2 was released.",
+    );
+    expect(retiredWords(ON_USER, WITH, handed, true, handedTo(handed, { U9: "Sam Roe" }))).toBe(
+      "klee was retired, with the contact Kim Lee. KL was released, Op2 was released and agent-reconcile was handed to Sam Roe.",
+    );
+  });
+
+  it("says the server's words of a hand-over at the agent's row", () => {
+    const handed = hand(startChoices(ON_USER, WITH, true), "A1", "U9");
+    const fields = { "linked.agents": "agent-reconcile is handed to sam, who is retired" };
+    expect(refusedAgents(fields, ON_USER, WITH, handed)).toEqual({
+      rows: { "agent A1": fields["linked.agents"] },
+      shown: ["linked.agents"],
+    });
+    // Of an agent retired, or naming none, the words stand above the rows.
+    const start = startChoices(ON_USER, WITH, true);
+    expect(refusedAgents(fields, ON_USER, WITH, start)).toEqual({ rows: {}, shown: [] });
+    expect(refusedAgents({}, ON_USER, WITH, handed)).toEqual({ rows: {}, shown: [] });
+  });
+
+  it("finds the list changed where an agent is new", () => {
+    expect(sameOthers(ON_USER, PERSON, WITH)).toBe(false);
+    expect(sameOthers(ON_USER, WITH, { ...WITH, agents: [AGENT] })).toBe(true);
   });
 });
