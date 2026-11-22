@@ -85,10 +85,10 @@ def test_what_a_user_cannot_be_given_as_its_contact(client: TestClient, admin: d
     assert "another user's" in errors(refused)["contact_hid"]
     # A service account is no person.
     bot = desk.post(
-        "/users", {"username": "bot", "is_service_account": True, "contact": {"name": "Bot"}}, 422
+        "/users", {"username": "bot", "kind": "service", "contact": {"name": "Bot"}}, 422
     )
     assert "service account" in errors(bot)["contact"]
-    sync = desk.post("/users", {"username": "sync", "is_service_account": True})["user"]
+    sync = desk.post("/users", {"username": "sync", "kind": "service"})["user"]
     other = desk.contact("Sync Desk")
     refused = desk.patch(
         f"/users/{sync['hid']}",
@@ -407,7 +407,7 @@ def test_the_kind_of_a_system_in_a_file(client: TestClient, inventory: dict, mak
 
 def test_a_renamed_service_account_keeps_its_tokens(client: TestClient, admin: dict) -> None:
     desk = Maker(client, admin)
-    bot = desk.post("/users", {"username": "sync", "is_service_account": True})["user"]
+    bot = desk.post("/users", {"username": "sync", "kind": "service"})["user"]
     token = desk.post(f"/users/{bot['hid']}/service-tokens", {"name": "nightly"})["secret"]
     desk.post("/role-grants", {"role": "viewer", "user_hid": bot["hid"]})
     desk.patch(f"/users/{bot['hid']}", {"row_version": bot["row_version"], "username": "sync-2"})

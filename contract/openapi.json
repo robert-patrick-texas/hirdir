@@ -147,6 +147,41 @@
         "title": "AccessCodeSet",
         "type": "object"
       },
+      "AccountRef": {
+        "additionalProperties": false,
+        "description": "An account as another names it: the person an agent is answerable to, or an agent\nof a person (P-316).",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of its contact, or its username where it has none.",
+            "title": "Name",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "username",
+          "name",
+          "record_status"
+        ],
+        "title": "AccountRef",
+        "type": "object"
+      },
       "AddressCreate": {
         "additionalProperties": false,
         "description": "A new address, of an item or of a group: exactly one of the two.",
@@ -545,6 +580,45 @@
           "is_primary"
         ],
         "title": "AddressRef",
+        "type": "object"
+      },
+      "AgentPlan": {
+        "additionalProperties": false,
+        "description": "What becomes of one agent of a person who is retired (P-316).",
+        "properties": {
+          "action": {
+            "description": "`retire` retires the agent with the person, its tokens revoked; `hand_over` makes `user_hid` answerable for it.",
+            "enum": [
+              "retire",
+              "hand_over"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "hid": {
+            "maxLength": 36,
+            "title": "Hid",
+            "type": "string"
+          },
+          "user_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With `hand_over`, and with no other action: the person answerable for the agent from then on, a user of the kind `person`, not retired and not the one retired.",
+            "title": "User Hid"
+          }
+        },
+        "required": [
+          "hid",
+          "action"
+        ],
+        "title": "AgentPlan",
         "type": "object"
       },
       "AgreementCreate": {
@@ -2346,6 +2420,23 @@
             ],
             "title": "Actor Hid"
           },
+          "actor_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "person",
+                  "service",
+                  "agent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The kind of the account that acted, `person`, `service` or `agent`; null for the system (P-316).",
+            "title": "Actor Kind"
+          },
           "actor_name": {
             "anyOf": [
               {
@@ -2369,6 +2460,30 @@
             },
             "title": "Changes",
             "type": "array"
+          },
+          "for_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an event made by an agent: the person it was answerable to when the event was made. Null for every other (P-316).",
+            "title": "For Hid"
+          },
+          "for_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The username of that person, read now: a history writes `agent-reconcile for sam`.",
+            "title": "For Name"
           },
           "hid": {
             "title": "Hid",
@@ -2403,6 +2518,9 @@
           "at",
           "actor_hid",
           "actor_name",
+          "actor_kind",
+          "for_hid",
+          "for_name",
           "via",
           "request_id",
           "action",
@@ -2417,6 +2535,19 @@
         "additionalProperties": false,
         "description": "A retired user brought back, the role it is given and what is brought back with\nit (P-298, P-299).",
         "properties": {
+          "answerable_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent: the person answerable for it from then on, a user of the kind `person` who is not retired. Left out, it stays its person's; where that person is retired, it is a `409` on `answerable_hid` that names them. Given for another kind, a `422` (P-316).",
+            "title": "Answerable Hid"
+          },
           "linked": {
             "anyOf": [
               {
@@ -2436,7 +2567,7 @@
                 "type": "null"
               }
             ],
-            "description": "`viewer`, `inventory` or `admin`, granted in the same change. A person is given one, since an account with no role does not sign in: left out, it is a `422` on `role`. A service account may be brought back with none (P-299).",
+            "description": "`viewer`, `inventory` or `admin`, granted in the same change. A person is given one, since an account with no role does not sign in: left out, it is a `422` on `role`. A service account and an agent may be brought back with none (P-299), and an agent is never Admin (P-316).",
             "title": "Role"
           },
           "row_version": {
@@ -18233,6 +18364,16 @@
         "additionalProperties": false,
         "description": "What becomes of each record linked to the one a retirement is of (P-297). Every\nlinked record that is not retired is said, and the record the route is on is not.",
         "properties": {
+          "agents": {
+            "default": [],
+            "description": "Where the request retires a user that is a person: what becomes of each agent answerable to it that is not retired, each to be said (P-316). Said where no user is retired, it is a `422`.",
+            "items": {
+              "$ref": "#/components/schemas/AgentPlan"
+            },
+            "maxItems": 1000,
+            "title": "Agents",
+            "type": "array"
+          },
           "contact": {
             "anyOf": [
               {
@@ -18405,7 +18546,7 @@
       },
       "LinkedUser": {
         "additionalProperties": false,
-        "description": "The user of a person, as the chain of the person shows it (P-297).",
+        "description": "The user of a person, as the chain of the person shows it (P-297), or an agent\nanswerable to that user (P-316).",
         "properties": {
           "disabled": {
             "title": "Disabled",
@@ -19168,10 +19309,11 @@
             "title": "Hid"
           },
           "kind": {
-            "description": "`person` or `service`: an account. `unnamed`: the requests that nothing verifiable named an account for, together. `others`: the accounts past the fifty that are counted each by itself, together.",
+            "description": "`person`, `service` or `agent`: an account, by its kind (P-316). `unnamed`: the requests that nothing verifiable named an account for, together. `others`: the accounts past the fifty that are counted each by itself, together.",
             "enum": [
               "person",
               "service",
+              "agent",
               "unnamed",
               "others"
             ],
@@ -19609,7 +19751,7 @@
       },
       "LoadWho": {
         "additionalProperties": false,
-        "description": "Who asked a request: the account, a person's or a service's. `unnamed` where\nnothing verifiable said who: a sign-in, a token that did not hold, a request with\nnone; its `hid` and `username` are null.",
+        "description": "Who asked a request: the account, a person's, a service's or an agent's (P-316).\n`unnamed` where nothing verifiable said who: a sign-in, a token that did not hold, a\nrequest with none; its `hid` and `username` are null.",
         "properties": {
           "hid": {
             "anyOf": [
@@ -19626,6 +19768,7 @@
             "enum": [
               "person",
               "service",
+              "agent",
               "unnamed"
             ],
             "title": "Kind",
@@ -21231,6 +21374,37 @@
         "additionalProperties": false,
         "description": "The signed-in user, with what is their own: the answer of `GET /auth/me` and of\nthe routes under it, and `user` in the answer of signing in. It is a user as the\nroutes of users answer one, but for four things: `contact` and `operators` carry\nwhat the profile changes, and the version of each; `notes` is null; and there is no\n`record_status`, which would say `active` always, since whoever reads this is\nsigned in and a retired account signs in nowhere (P-296).",
         "properties": {
+          "agents": {
+            "description": "Of a person: the agents answerable to them, as on a user (P-316).",
+            "items": {
+              "$ref": "#/components/schemas/AccountRef"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "answerable": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent alone: the person answerable for it, read now (P-316)."
+          },
+          "answerable_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent alone: the person answerable for it (P-316).",
+            "title": "Answerable Hid"
+          },
           "contact": {
             "anyOf": [
               {
@@ -21240,7 +21414,7 @@
                 "type": "null"
               }
             ],
-            "description": "The contact the person is, with the version to change it at. None for a service account, or a user not given one."
+            "description": "The contact the person is, with the version to change it at. None for a service account and an agent, or a user not given one."
           },
           "contact_hid": {
             "anyOf": [
@@ -21272,6 +21446,14 @@
             "title": "Email",
             "type": "string"
           },
+          "grants": {
+            "description": "Each role held and where it comes from, as on a user (P-307).",
+            "items": {
+              "$ref": "#/components/schemas/UserGrant"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
           "groups": {
             "items": {
               "$ref": "#/components/schemas/GroupRef"
@@ -21283,9 +21465,15 @@
             "title": "Hid",
             "type": "string"
           },
-          "is_service_account": {
-            "title": "Is Service Account",
-            "type": "boolean"
+          "kind": {
+            "description": "`person`, `service` or `agent` (P-316).",
+            "enum": [
+              "person",
+              "service",
+              "agent"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "last_sign_in_at": {
             "anyOf": [
@@ -21331,6 +21519,37 @@
             "description": "The highest role held directly or through a group.",
             "title": "Role"
           },
+          "role_capped_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "person_role",
+                  "person_no_role",
+                  "person_disabled",
+                  "person_retired",
+                  "never_admin"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent alone, where its person holds it lower than `role`, why, as on a user (P-316).",
+            "title": "Role Capped By"
+          },
+          "role_in_force": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The role the requests of this session or token are held to: `role`, or for an agent the lower of `role` and its person's (P-316).",
+            "title": "Role In Force"
+          },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
@@ -21354,9 +21573,15 @@
           "email",
           "operators",
           "notes",
-          "is_service_account",
+          "kind",
+          "answerable_hid",
+          "answerable",
+          "agents",
           "disabled",
           "role",
+          "grants",
+          "role_in_force",
+          "role_capped_by",
           "groups",
           "last_sign_in_at",
           "row_version",
@@ -25196,6 +25421,14 @@
         "additionalProperties": false,
         "description": "The person a user, a contact or an operator belongs to: the user, the contact\nthat joins them and every operator of that contact, the retired among them, marked\nso. The record asked for is among them (P-291, P-297).",
         "properties": {
+          "agents": {
+            "description": "Every agent answerable to the user, the retired among them, by username (P-316); none where there is no user, or it is no person.",
+            "items": {
+              "$ref": "#/components/schemas/LinkedUser"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
           "contact": {
             "anyOf": [
               {
@@ -25230,7 +25463,8 @@
         "required": [
           "user",
           "contact",
-          "operators"
+          "operators",
+          "agents"
         ],
         "title": "Person",
         "type": "object"
@@ -30108,7 +30342,7 @@
       },
       "ServiceTokenOut": {
         "additionalProperties": false,
-        "description": "A service token. The secret is not kept and cannot be shown again.",
+        "description": "A token of a service account or an agent (P-316). The secret is not kept and\ncannot be shown again.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -32412,7 +32646,7 @@
       },
       "UserBroughtBack": {
         "additionalProperties": false,
-        "description": "A user brought back, with its new access code, shown this once; a service account\nhas none (P-296).",
+        "description": "A user brought back, with its new access code, shown this once; a service account\nand an agent have none (P-296).",
         "properties": {
           "access_code": {
             "anyOf": [
@@ -32453,6 +32687,19 @@
             "description": "Left out, a code is generated.",
             "title": "Access Code"
           },
+          "answerable_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent, and required of it: the person answerable for it, a user of the kind `person` who is not retired. Refused to the other kinds (P-316).",
+            "title": "Answerable Hid"
+          },
           "contact": {
             "anyOf": [
               {
@@ -32487,10 +32734,16 @@
             "title": "Group Hids",
             "type": "array"
           },
-          "is_service_account": {
-            "default": false,
-            "title": "Is Service Account",
-            "type": "boolean"
+          "kind": {
+            "default": "person",
+            "description": "`person`, `service` or `agent`; not changed after (P-316). A service account and an agent take no contact, no access code and no operator: they hold tokens.",
+            "enum": [
+              "person",
+              "service",
+              "agent"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "notes": {
             "anyOf": [
@@ -32525,7 +32778,7 @@
                 "type": "null"
               }
             ],
-            "description": "A role to grant at once. A person is given one, or a group in `group_hids` that grants one, or it is a `422` on `role` (P-299); a service account may have none.",
+            "description": "A role to grant at once. A person is given one, or a group in `group_hids` that grants one, or it is a `422` on `role` (P-299); a service account and an agent may have none. An agent is never Admin (P-316).",
             "title": "Role"
           },
           "username": {
@@ -32580,10 +32833,79 @@
         "title": "UserCreated",
         "type": "object"
       },
+      "UserGrant": {
+        "additionalProperties": false,
+        "description": "One role an account holds, and where it comes from (P-307).",
+        "properties": {
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The group the role is granted to, which the account is in; null for a grant of the account's own."
+          },
+          "hid": {
+            "description": "The grant, as `/role-grants` names it.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "viewer",
+              "inventory",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "role",
+          "group"
+        ],
+        "title": "UserGrant",
+        "type": "object"
+      },
       "UserOut": {
         "additionalProperties": false,
-        "description": "A user: the part of a person who signs in, or a service account (P-172).",
+        "description": "A user: the part of a person who signs in, a service account or an agent (P-172,\nP-316).",
         "properties": {
+          "agents": {
+            "description": "Of a person: the agents answerable to them, the retired among them, by username. None for a service account or an agent.",
+            "items": {
+              "$ref": "#/components/schemas/AccountRef"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "answerable": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent alone: the person answerable for it, read now."
+          },
+          "answerable_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent alone: the person answerable for it (P-316). Null for the others.",
+            "title": "Answerable Hid"
+          },
           "contact": {
             "anyOf": [
               {
@@ -32593,7 +32915,7 @@
                 "type": "null"
               }
             ],
-            "description": "The contact the user is. None for a service account, or a user not given one."
+            "description": "The contact the user is. None for a service account and an agent, or a user not given one."
           },
           "contact_hid": {
             "anyOf": [
@@ -32625,6 +32947,14 @@
             "title": "Email",
             "type": "string"
           },
+          "grants": {
+            "description": "Every grant that gives the account a role, of its own or of a group it is in: the highest role first, a grant of its own before those of groups, and the groups by name (P-307). `role` is the highest of them.",
+            "items": {
+              "$ref": "#/components/schemas/UserGrant"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
           "groups": {
             "items": {
               "$ref": "#/components/schemas/GroupRef"
@@ -32636,9 +32966,15 @@
             "title": "Hid",
             "type": "string"
           },
-          "is_service_account": {
-            "title": "Is Service Account",
-            "type": "boolean"
+          "kind": {
+            "description": "`person`, `service` or `agent`, set when the account is made and not changed after (P-316).",
+            "enum": [
+              "person",
+              "service",
+              "agent"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "last_sign_in_at": {
             "anyOf": [
@@ -32693,6 +33029,37 @@
             "description": "The highest role held directly or through a group.",
             "title": "Role"
           },
+          "role_capped_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "person_role",
+                  "person_no_role",
+                  "person_disabled",
+                  "person_retired",
+                  "never_admin"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent alone, where `role_in_force` is lower than `role`, why: the person's role is lower, `person_role`, or the person holds none, is disabled or is retired; or `never_admin`, an agent that holds Admin all the same, which no route gives it, held at Inventory. Null where nothing holds it lower.",
+            "title": "Role Capped By"
+          },
+          "role_in_force": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The role the account's requests are held to now. For a person and a service account, `role`. For an agent, the lower of `role` and the role of the person answerable for it, and null where the person holds no role, is disabled or is retired, its tokens being refused then (P-316).",
+            "title": "Role In Force"
+          },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
@@ -32716,10 +33083,16 @@
           "email",
           "operators",
           "notes",
-          "is_service_account",
+          "kind",
+          "answerable_hid",
+          "answerable",
+          "agents",
           "disabled",
           "record_status",
           "role",
+          "grants",
+          "role_in_force",
+          "role_capped_by",
           "groups",
           "last_sign_in_at",
           "row_version",
@@ -32733,6 +33106,19 @@
         "additionalProperties": false,
         "description": "Fields of a user to change, and the version they were read at.",
         "properties": {
+          "answerable_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of an agent: another person answerable for it, a user of the kind `person` who is not retired, which hands the agent over. Null, or given for another kind, is a `422` on `answerable_hid` (P-316).",
+            "title": "Answerable Hid"
+          },
           "contact_hid": {
             "anyOf": [
               {
@@ -32743,7 +33129,7 @@
                 "type": "null"
               }
             ],
-            "description": "Another contact; null for none. A service account has none.",
+            "description": "Another contact; null for none. A service account and an agent have none.",
             "title": "Contact Hid"
           },
           "disabled": {
@@ -32756,6 +33142,23 @@
               }
             ],
             "title": "Disabled"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "person",
+                  "service",
+                  "agent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The kind is not changed after the account is made: the kind it has is no change, and any other is a `422` on `kind` (P-316).",
+            "title": "Kind"
           },
           "notes": {
             "anyOf": [
@@ -34368,7 +34771,7 @@
     },
     "/api/v1/audit-events": {
       "get": {
-        "description": "List audit events, newest first unless a sort says otherwise.",
+        "description": "List audit events, newest first unless a sort says otherwise. Each answers the\nkind of the account that acted and, for an agent's, the person it was for (P-316).",
         "operationId": "list_audit_events_api_v1_audit_events_get",
         "parameters": [
           {
@@ -34412,6 +34815,41 @@
             }
           },
           {
+            "description": "The events of the accounts of one kind: `agent` gives every change made by an agent (P-316).",
+            "in": "query",
+            "name": "actor_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "person",
+                    "service",
+                    "agent"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The events of the accounts of one kind: `agent` gives every change made by an agent (P-316).",
+              "title": "Actor Kind"
+            }
+          },
+          {
+            "description": "The events made by agents for this person (P-316).",
+            "in": "query",
+            "name": "for_hid",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The events made by agents for this person (P-316).",
+              "title": "For Hid",
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "request_id",
             "required": false,
@@ -34422,7 +34860,7 @@
             }
           },
           {
-            "description": "What to sort by: `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas.",
+            "description": "What to sort by: `at`, `actor_name`, `actor_kind`, `for_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas.",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -34438,7 +34876,7 @@
                   "type": "null"
                 }
               ],
-              "description": "What to sort by: `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas.",
+              "description": "What to sort by: `at`, `actor_name`, `actor_kind`, `for_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas.",
               "title": "Sort"
             }
           },
@@ -34497,7 +34935,7 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Return the signed-in user, with the role they hold right now, the contact they\nare and the operators they are behind, each with the version it is changed at\n(P-294). Its `notes` are null: the notes on an account are answered by the routes of\nusers alone (P-281).",
+        "description": "Return the signed-in user, with the role they hold right now, the contact they\nare and the operators they are behind, each with the version it is changed at\n(P-294). Its `notes` are null: the notes on an account are answered by the routes of\nusers alone (P-281). The token of an agent is answered with its kind, the person\nanswerable for it and the role its person holds it to (P-316).",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
@@ -49194,7 +49632,7 @@
         ]
       },
       "post": {
-        "description": "Grant a role to one user or one group.",
+        "description": "Grant a role to one user or one group. An agent is never Admin (P-316).",
         "operationId": "grant_role_api_v1_role_grants_post",
         "requestBody": {
           "content": {
@@ -49217,15 +49655,25 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Admin to a group that holds an agent, each agent in `depends_on`: an agent is never Admin (P-316). Or the user is retired."
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Admin to an agent, on `role` (P-316); or a role there is not."
           }
         },
         "summary": "Grant Role",
@@ -50348,6 +50796,16 @@
           "204": {
             "description": "Successful Response"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The user is an agent and the group grants Admin: an agent is never Admin (P-316). Or the user is retired."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -50367,7 +50825,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "description": "List users, by username unless a sort says otherwise. `q` matches part of a\nusername or of the name of its contact; `contact` and `operator` find the gaps; and\nthe retired accounts are left out unless `retired` asks for them.",
+        "description": "List users, by username unless a sort says otherwise. `q` matches part of a\nusername or of the name of its contact; `contact` and `operator` find the gaps;\n`kind` keeps one kind; and the retired accounts are left out unless `retired` asks\nfor them. Each answers the roles it holds and where each comes from (P-307), read\nfor the whole page at once.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
@@ -50432,7 +50890,30 @@
             }
           },
           {
-            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+            "description": "The accounts of one kind: `person`, `service` or `agent` (P-316).",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "person",
+                    "service",
+                    "agent"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The accounts of one kind: `person`, `service` or `agent` (P-316).",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `kind`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -50448,7 +50929,7 @@
                   "type": "null"
                 }
               ],
-              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `is_service_account`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `operators`, `notes`, `kind`, `disabled`, `record_status`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
               "title": "Sort"
             }
           },
@@ -50505,7 +50986,7 @@
         ]
       },
       "post": {
-        "description": "Create a user, and in the same change the contact it is, the operator it works\nas, its role and its groups, each audited as if made by itself: where any part is\nrefused, nothing is made (P-282, P-283). A person is made with a role, of its own or\nthrough a group, or it is a `422` on `role` (P-299). The access code in the answer is\nnot shown again.",
+        "description": "Create a user, and in the same change the contact it is, the operator it works\nas, its role and its groups, each audited as if made by itself: where any part is\nrefused, nothing is made (P-282, P-283). A person is made with a role, of its own or\nthrough a group, or it is a `422` on `role` (P-299). An agent names the person\nanswerable for it and is never Admin (P-316). The access code in the answer is not\nshown again.",
         "operationId": "create_user_api_v1_users_post",
         "requestBody": {
           "content": {
@@ -50635,7 +51116,7 @@
         ]
       },
       "patch": {
-        "description": "Change a user: its username, its contact, its notes, or whether it is disabled.\nDisabling a user ends every session they have; a new username keeps them. The name,\nemail and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of\na retired account only the username, the notes and its contact taken off are\nchanged: anything else is a `409` (P-296).",
+        "description": "Change a user: its username, its contact, its notes, whether it is disabled, or\nthe person answerable for an agent, which hands it over (P-316). Disabling a user\nends every session they have; a new username keeps them. The name, email and numbers\nit shows are its contact's, changed by `PATCH /contacts/{hid}`. The kind is not\nchanged. Of a retired account only the username, the notes and its contact taken\noff are changed: anything else is a `409` (P-296).",
         "operationId": "update_user_api_v1_users__hid__patch",
         "parameters": [
           {
@@ -50783,7 +51264,7 @@
                 }
               }
             },
-            "description": "The account is not retired; or its contact is retired and is not brought back with it, the contact named on `linked.contact`."
+            "description": "The account is not retired; or its contact is retired and is not brought back with it, the contact named on `linked.contact`; or it is an agent whose person is retired and no other is named, on `answerable_hid` (P-316)."
           },
           "422": {
             "content": {
@@ -50804,7 +51285,7 @@
     },
     "/api/v1/users/{hid}/linked": {
       "get": {
-        "description": "Return the person a user is: itself, its contact and the operators of that\ncontact, the retired among them, marked so (P-297). Every role reads it.",
+        "description": "Return the person a user is: itself, its contact, the operators of that contact\nand the agents answerable to it, the retired among them, marked so (P-297, P-316).\nEvery role reads it.",
         "operationId": "user_linked_api_v1_users__hid__linked_get",
         "parameters": [
           {
@@ -50847,7 +51328,7 @@
     },
     "/api/v1/users/{hid}/retire": {
       "post": {
-        "description": "Retire the account of somebody who has left (P-296): every session ends, the\naccess code is erased, the account leaves each of its groups and loses each role of\nits own, and a service account's tokens are revoked, each audited as when done by\nitself. `linked` says what becomes of its contact and of the operators of that\ncontact (P-297). Refused where it would leave no Admin.",
+        "description": "Retire the account of somebody who has left (P-296): every session ends, the\naccess code is erased, the account leaves each of its groups and loses each role of\nits own, and the tokens of a service account or an agent are revoked, each audited\nas when done by itself. `linked` says what becomes of its contact, of the operators\nof that contact (P-297) and of the agents answerable to it (P-316). Refused where it\nwould leave no Admin.",
         "operationId": "retire_user_api_v1_users__hid__retire_post",
         "parameters": [
           {
@@ -50920,7 +51401,7 @@
     },
     "/api/v1/users/{hid}/service-tokens": {
       "get": {
-        "description": "List the tokens of a service account.",
+        "description": "List the tokens of a service account or an agent (P-316).",
         "operationId": "list_service_tokens_api_v1_users__hid__service_tokens_get",
         "parameters": [
           {
@@ -50965,7 +51446,7 @@
         ]
       },
       "post": {
-        "description": "Create a token for a service account. The secret in the answer is not shown again.",
+        "description": "Create a token for a service account or an agent (P-316). The secret in the\nanswer is not shown again. A token of an account that holds no role, or of an agent\nwhose person cannot answer for it, is made, and refused until it can (P-299).",
         "operationId": "create_service_token_api_v1_users__hid__service_tokens_post",
         "parameters": [
           {

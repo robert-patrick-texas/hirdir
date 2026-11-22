@@ -78,7 +78,7 @@ def _actions(db: Session) -> list[tuple[str, str | None, str | None]]:
 
 def test_a_service_account_has_no_profile_whatever_its_token_or_its_role(db: Session) -> None:
     kim = _person(db)
-    robot, _ = accounts.create_user(db, audit.SYSTEM, username="probe", is_service_account=True)
+    robot, _ = accounts.create_user(db, audit.SYSTEM, username="probe", kind="service")
     for user, kind in ((kim, "service"), (robot, "service"), (robot, "session")):
         principal, context = _as(user, kind)
         with pytest.raises(NotAllowed, match="a service account has no profile"):

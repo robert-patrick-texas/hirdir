@@ -127,21 +127,29 @@ test("P-282: a user's groups are ticked and unticked on its page, each at once",
   const boxes = page.getByTestId("user-groups");
   const box = (name: string) => boxes.getByRole("checkbox", { name, exact: true });
   const facts = page.getByTestId("user-facts");
+  // 0.9.17: the groups it is in, among the facts; Role names them too (P-307).
+  const inGroups = page.getByTestId("user-groups-fact");
 
   // Each group there is has a box, with what it grants.
   await expect(boxes.locator(`[data-group="${networkName}"]`)).toContainText("grants Inventory");
   await expect(boxes.locator(`[data-group="${serversName}"]`)).toContainText("grants nothing");
   await expect(box(networkName)).toBeChecked();
-  await expect(facts.getByRole("link", { name: networkName })).toBeVisible();
+  await expect(inGroups.getByRole("link", { name: networkName })).toBeVisible();
   await expect(facts).toContainText("Inventory");
 
-  // Unticked: out of it at once, and the role with it.
-  await box(networkName).uncheck();
-  await expect(facts.getByRole("link", { name: networkName })).toHaveCount(0);
+  // Unticked: out of it, and the role with it. 0.9.17: it is the only role gus holds, so
+  // the box asks first, saying so (P-314); then it is done at once.
+  await box(networkName).click();
+  const asked = page.getByRole("dialog");
+  await expect(asked.getByTestId("no-role-left")).toHaveText(
+    `${gus.username} will hold no role and be signed out.`,
+  );
+  await asked.getByRole("button", { name: `Take ${gus.username} out` }).click();
+  await expect(inGroups.getByRole("link", { name: networkName })).toHaveCount(0);
   await expect(facts).toContainText("No role");
   // Ticked: in the group again, and holding the role it grants.
   await box(networkName).check();
-  await expect(facts.getByRole("link", { name: networkName })).toBeVisible();
+  await expect(inGroups.getByRole("link", { name: networkName })).toBeVisible();
   await expect(facts).toContainText("Inventory");
 
   // Pressed twice while its request is held back: one request, and the box as asked first.
@@ -156,7 +164,7 @@ test("P-282: a user's groups are ticked and unticked on its page, each at once",
   await expect(boxes.locator(`[data-group="${serversName}"]`)).toContainText("Adding…");
   await box(serversName).click();
   await expect(box(serversName)).toBeChecked();
-  await expect(facts.getByRole("link", { name: serversName })).toBeVisible();
+  await expect(inGroups.getByRole("link", { name: serversName })).toBeVisible();
   await expect(boxes.locator(`[data-group="${serversName}"]`)).not.toContainText("Adding…");
   expect(sent).toBe(1);
   await page.unroute(held);
@@ -245,8 +253,11 @@ test("P-283: a new engineer is made by one Create, and read on the three lists",
   await expect(row.getByTestId("user-name").getByRole("link")).toHaveText(engineer.name);
   await expect(row.getByTestId("user-operators").getByRole("link")).toHaveText(engineer.username);
   await expect(row).toContainText("Inventory");
-  await expect(row.getByRole("link", { name: networkName })).toBeVisible();
-  await expect(row.getByRole("link", { name: serversName })).toBeVisible();
+  // 0.9.17: the groups in their column; Role names the one that grants it too (P-307).
+  const groupsCell = row.getByTestId("user-groups-cell");
+  await expect(groupsCell.getByRole("link", { name: networkName })).toBeVisible();
+  await expect(row.getByTestId("user-role").getByRole("link", { name: networkName })).toBeVisible();
+  await expect(groupsCell.getByRole("link", { name: serversName })).toBeVisible();
   await expect(row.getByTestId("user-notes")).toHaveText(engineer.notes);
   await expect(row.getByTestId("user-notes")).toHaveAttribute("title", engineer.notes);
   await expect(row.getByTestId("user-email")).toHaveText(engineer.email);
@@ -298,7 +309,7 @@ test("P-288: an Admin saves the users as a CSV file, its header as the file is r
   await download.saveAs(path);
   const lines = (await readFile(path, "utf8")).trimEnd().split(/\r?\n/);
   expect(lines[0]).toBe(
-    "username,name,email,phone,phone2,role,groups,operators,kind,state,record_status,last_sign_in_at,notes",
+    "username,name,email,phone,phone2,role,groups,operators,kind,answerable,state,record_status,last_sign_in_at,notes",
   );
   // The engineer's row: its person, the role in force, both groups and its operator.
   const row = lines.find((line) => line.startsWith(`${engineer.username},`)) ?? "";
@@ -306,7 +317,8 @@ test("P-288: an Admin saves the users as a CSV file, its header as the file is r
     expect(row).toContain(part);
   }
   // 0.9.14: and its record status, which a retired account alone has otherwise (P-296).
-  expect(row).toContain(",person,enabled,active,");
+  // 0.9.17: and the person answerable, blank but for an agent (P-316).
+  expect(row).toContain(",person,,enabled,active,");
   await expect(page.getByText(`Exported to ${download.suggestedFilename()}.`)).toBeVisible();
   await expectClean(page, seen);
 });
@@ -419,7 +431,7 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   let form = await newUserForm(page);
   const service = `e2e-${suffix}-svc`;
   await form.getByLabel("Username").fill(service);
-  await form.getByRole("checkbox", { name: "Service account" }).check();
+  await form.getByRole("radio", { name: "Service account" }).check();
   await expect(form.getByRole("checkbox", { name: "Also a contact" })).toHaveCount(0);
   await expect(form.getByRole("checkbox", { name: "Also an operator" })).toHaveCount(0);
   await form.getByLabel("Notes").fill("Reads the inventory for a report.");
@@ -475,9 +487,10 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await expect(of(service).getByTestId("user-operators")).toHaveText("");
 
   // Show, with the users with no contact: an address of its own, the search kept. Until
-  // a gap is chosen, the list is of every user, and says so.
+  // a gap is chosen, the list is of every account that is not retired, Active users, and
+  // says so (P-314).
   const show = page.getByRole("navigation", { name: "Show users" });
-  await expect(show.getByRole("link", { name: "Every user" })).toHaveAttribute(
+  await expect(show.getByRole("link", { name: "Active users" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -502,7 +515,7 @@ test("P-280: a service account and a person with no contact, and the gaps of eac
   await page.goto("./admin/users");
   await page.goto(sent);
   await expect(page.getByTestId("users").locator("tbody tr[data-user]")).toHaveCount(2);
-  await show.getByRole("link", { name: "Every user" }).click();
+  await show.getByRole("link", { name: "Active users" }).click();
   await expect(page.getByTestId("users").locator("tbody tr[data-user]")).toHaveCount(5);
 
   // The Contacts list: Show, with those that are no user and those behind no operator.

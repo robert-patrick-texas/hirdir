@@ -70,14 +70,16 @@ and CLI's types are generated from it.
 | Edit choices, tags | | yes | yes |
 | Edit settings and lifecycle rules, force a lifecycle move, and so the kinds of file a reference may be | | | yes |
 | List and check the kept answers of the long reports | | | yes |
-| Users, groups, role grants, access codes, service tokens | | | yes |
+| Users, groups, role grants, access codes, the tokens of service accounts and agents | | | yes |
 | Read audit events | yes | yes | yes |
 | Read the server's own measures, `GET /about/load`, as `GET /about` is read: signed in, with any role | yes | yes | yes |
 | Change what is one's own on the profile, and have an access code made, `GET /auth/new-access-code` | yes | yes | yes |
 
 An account that holds no role, none granted to it and none through any of its groups,
 is refused at sign-in and has no session (P-299): see
-[Signing in with no role](#signing-in-with-no-role).
+[Signing in with no role](#signing-in-with-no-role). An agent is never Admin, and its
+requests are held to the lower of its role and that of the person answerable for it
+(P-316): see [Agents, and where a role comes from](#agents-and-where-a-role-comes-from).
 
 ### Settings
 
@@ -151,13 +153,16 @@ plays (P-172). `GET /contacts` answers, with each contact, `is_user`, true where
 a user's, and filters and sorts by it, and `user`, the `hid` and `username` of that
 user, or nothing. Every role reads both.
 
-`POST /users` takes `username`, `is_service_account`, `access_code` and `role` as
-before. A person is made with a role, `role` or a group in `group_hids` that grants
+`POST /users` takes `username`, `kind`, `access_code` and `role` as before, `kind`
+having taken the place of `is_service_account` in 0.9.17, with `answerable_hid` for an
+agent (see [Agents, and where a role comes from](#agents-and-where-a-role-comes-from)).
+A person is made with a role, `role` or a group in `group_hids` that grants
 one, since an account with none does not sign in (P-299): one that would hold none is
-a `422` on `role` and nothing is made. A service account may be made with none. And it
-takes the person: `contact_hid`, a contact that is no other user's and is not
-retired, or `contact`, with `name`, `email`, `organization`, `phone` and `phone2`, a
-new contact made in the same change, or neither. A service account takes neither.
+a `422` on `role` and nothing is made. A service account and an agent may be made with
+none. And it takes the person: `contact_hid`, a contact that is no other user's and is
+not retired, or `contact`, with `name`, `email`, `organization`, `phone` and `phone2`, a
+new contact made in the same change, or neither. A service account and an agent take
+neither.
 `PATCH /users/{hid}` takes `username`, another name that the same rule holds
 (P-173); `contact_hid`, another contact or `null` for none; and `disabled`. A user
 answers `contact`, its contact's `hid`, `name`, `email`, `phone`, `phone2` and
@@ -206,7 +211,8 @@ says with `scope` null, in `operator=none`, and in neither `some`; the user stil
 answers its `contact`, with `record_status` `retired`, and its `operators`, so that a
 page shows what is left over. The three lists follow the one rule of who is behind a
 label, in `hirdir.domain.operators`. A service account is no person and is in neither
-`none`, so that `any` is `some`, `none` and the service accounts. What a page of users
+`none`, so that `any` is `some`, `none` and the service accounts, and nor is an agent
+(P-316). What a page of users
 shows of each, its contact, its role in force, its groups and its operators, is read
 once for the whole page and never for a row, and so are the size and the roles of each
 group of `GET /user-groups`: a page costs the same statements whatever its size. The
@@ -556,6 +562,167 @@ an operator that is not retired or is not of that contact, and one said twice ar
 a `422` on the field. The contact is brought back first, then the operators, then the
 user, in one transaction, the contact and each operator audited as an `update` of its
 `record_status`, as when it is brought back by itself.
+
+### Agents, and where a role comes from
+
+What 0.9.17 adds to accounts (P-307, P-313, P-316). An account is of one of three kinds,
+and every user answers `kind`, which takes the place of `is_service_account`: `person`,
+who signs in with an access code; `service`, a service account, which does a fixed job,
+application to application; and `agent`, which decides what to change as a person does,
+and is answerable to one. `POST /users` takes `kind`, `person` where it is left out, and
+the kind is not changed after: `PATCH /users/{hid}` with the kind the account has is no
+change, and with any other is a `422` on `kind`. `GET /users` takes `kind`, which keeps
+the accounts of one kind, and sorts by it, `agent`, `person`, `service`. Migration
+`0018` gives every service account the kind `service` and every other account `person`,
+and drops `is_service_account`; there is no agent until one is made.
+
+Like a service account, an agent has no contact, no access code, no operator and no
+session, and holds tokens, made and revoked by `/users/{hid}/service-tokens` as a
+service account's are: a contact, an access code or an operator given for either is a
+`422` on its field, a code set by `POST /users/{hid}/access-code` a `409`, and an
+agent's sign-in is refused as a service account's is. A service account and an agent
+are in no gap of `contact=none` and `operator=none`, and have no profile: the routes of
+a person's own refuse their tokens with a `403`.
+
+**The person answerable.** An agent names `answerable_hid`, the user answerable for it:
+a user of the kind `person` who is not retired. It is required of an agent and refused
+to the other kinds, each a `422` on `answerable_hid` that says why: a user there is not,
+an account of another kind, a retired one. It need not hold a role when it is named:
+while it holds none, or is disabled, the agent's tokens are refused, as below. An Admin
+hands an agent to another person by `PATCH /users/{hid}` with another `answerable_hid`,
+audited as an `update` of the user with `answerable_hid` among the changes; null is a
+`422`, and a retired agent is handed to nobody, a `409`. Each looks at the person in the
+one writer's place, so that a retirement of that person at the same moment waits and
+then finds the agent among what is to be said. A user answers `answerable_hid`, and
+`answerable`, the person's `hid`, `username`, `name`, its contact's or else its
+username, and `record_status`, read now, null for the other kinds; and `agents`, of a
+person, every agent answerable to them, the retired among them, by username, each with
+`hid`, `username`, `name` and `record_status`, and none for the other kinds.
+
+**Never Admin.** An agent holds a role as anybody does, a grant of its own or a group's,
+but never Admin. Each of these is refused and nothing changes:
+
+- `POST /role-grants` of `admin` to an agent: a `422` on `role`, "agent-reconcile is an
+  agent, and an agent is never Admin". So is `role` `admin` on `POST /users` and on
+  `POST /users/{hid}/bring-back` of an agent.
+- `PUT /user-groups/{hid}/members/{user_hid}` of an agent, to a group that grants Admin:
+  a `409` on `user_hid`, "the group Admins grants Admin, and agent-reconcile is an agent:
+  an agent is never Admin". So is a group that grants Admin in `group_hids` of
+  `POST /users` of an agent, a `422` on `group_hids` that names the group.
+- `POST /role-grants` of `admin` to a group that holds an agent: a `409` on `role`, "the
+  group Ops holds the agent agent-reconcile, and an agent is never Admin: take it out of
+  the group first", whose `depends_on` lists each agent of the group, with `record_type`
+  `user`.
+
+The last two look in the one writer's place, so that of the two at the same moment the
+second sees the first and is refused.
+
+**The role in force.** The role an agent's requests are held to is the lower of its own
+highest role and the role of the person answerable for it, read at each request, so
+that the person's role caps the agent's as it changes: an agent of Inventory whose
+person is moved to View-only reads and changes no more than View-only allows, from its
+next request. Where the person holds no role, is disabled or is retired, the agent's
+token is refused, a `401` whose words say why, "the token is not accepted: the agent
+agent-reconcile is answerable to sam, who holds no role" (`is disabled`, `is retired`),
+and nothing of the agent is changed: its tokens answer again once the person can answer
+for it. An agent that holds no role itself is refused as a service account is, "the
+token is not accepted: the agent agent-reconcile holds no role". An import or a bulk
+edit applied in the background for an agent is held to its role in force when each
+batch is applied, as a person's is to their role.
+
+A user answers `role`, the highest it holds, as before; `role_in_force`, the role its
+requests are held to now, which is `role` for a person and a service account and, for an
+agent, the lower of `role` and its person's, null where its tokens are refused for the
+person; and `role_capped_by`, of an agent whose `role_in_force` is lower than `role`, why:
+`person_role`, the person's role is lower, `person_no_role`, `person_disabled` or
+`person_retired`; null where nothing holds it lower, and for the other kinds. An agent
+that holds Admin all the same, which no route gives it but a database edited by hand or
+restored from one may, is held at Inventory wherever its role is read, beside its
+person's: `role` says `admin`, `role_in_force` `inventory`, and `role_capped_by`
+`never_admin`, unless its person's role is lower still, `person_role`.
+`GET /auth/me`, and the user in the answer of signing in, answer each field of this
+section as a user does, `kind`, `answerable_hid`, `answerable`, `agents`, `grants`,
+`role_in_force` and `role_capped_by`, so that the token of an agent reads its kind, its
+person and the role it is held to.
+
+**Where a role comes from.** Every user answers `grants`, each role it holds and from
+where (P-307): each with `hid`, the grant's, as `/role-grants` names it, `role`, and
+`group`, the `hid` and `name` of the group it is granted to, which the user is in, or
+null for a grant of the account's own; the highest role first, a grant of the account's
+own before those of groups, and the groups by name. `role` is the highest of them. It is
+read for a whole page of `GET /users` at once, in the statements that read the role, and
+never for a row, and so for the members of `GET /user-groups/{hid}`, each a user as
+`GET /users` answers one. That is what a page needs to say, before an Admin revokes a
+grant, takes somebody out of a group or revokes a group's grant, whom it leaves with no
+role (P-314): an account loses its last role where every one of its `grants` is the one
+revoked, or of the group it leaves; for a group, each member whose `grants` are all of
+that group, or all the grant revoked. `GET /user-groups/{hid}` lists every member with
+its `grants`, so nothing else is asked. The server's own rules of the last role (P-299)
+are as they were.
+
+**Retiring a person with their agents.** `GET /users/{hid}/linked`,
+`GET /contacts/{hid}/linked` and `GET /operators/{hid}/linked` answer `agents`, every
+agent answerable to the user of the person, the retired among them, by username, each
+with `hid`, `username`, `record_status`, `disabled` and `role`. A request of
+`POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` or
+`POST /operators/{hid}/retire` that retires that user says what becomes of each of its
+agents that is not retired, in `linked.agents`, each `{hid, action}`: `retire`, which
+retires the agent with the person, or `hand_over`, with `user_hid`, the person
+answerable for it from then on, a user of the kind `person` who is not retired and is
+not the one retired.
+
+```json
+{
+  "row_version": 4,
+  "linked": {
+    "contact": "retire",
+    "agents": [
+      {"hid": "…", "action": "hand_over", "user_hid": "…"},
+      {"hid": "…", "action": "retire"}
+    ]
+  }
+}
+```
+
+It is judged with the rest of `linked`, and in the same order. An agent that is not the
+user's, is retired already or is said twice, `hand_over` with no `user_hid`, or to an
+account that is not there, is not a person, is retired or is the one retired, and
+`user_hid` with `retire`, are each a `422` on `linked.agents`; and so are agents said
+where no user is retired by the request. An agent that is not retired and is not said is
+the `409` of every linked record left unsaid, `linked.agents` among its `errors` and each
+such agent in `depends_on`, with `record_type` `user`, after the operators, the user and
+the contact. The operators are changed first, then the agents, then the user, then the
+contact, all in one transaction and each audited as if done by itself: an agent retired
+as `POST /users/{hid}/retire` retires it, its tokens revoked, and one handed over as an
+`update` of its `answerable_hid`. An agent retired keeps naming the person it was
+answerable to.
+
+An agent by itself is retired and brought back as a service account is, its tokens
+revoked when it is retired. `POST /users/{hid}/bring-back` takes `answerable_hid`, of an
+agent alone, a `422` for the other kinds: the person answerable for it from then on, as
+`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`, and held
+to the same rules before anything is changed: a retired person is a `422` on
+`answerable_hid`, the one the agent had among them. Left out,
+the agent stays its person's; where that person is retired it is a `409` on
+`answerable_hid` that names them as `existing`, and nothing changes. An agent may be
+brought back with no role, as a service account may.
+
+**The audit trail.** Every event made in a request of an agent's token holds `for_hid`,
+the person it was answerable to at that moment, which a later hand-over does not change;
+for every other event it is null, and every event of an installation upgraded to 0.9.17
+has none. `GET /audit-events` and `GET /items/{hid}/history` answer, with each event,
+`actor_kind`, the kind of the account that acted, `person`, `service` or `agent`, and
+null for the system; `for_hid`; and `for_name`, the username of that person, read now. A
+history writes an agent's change as `agent-reconcile for sam`, the agent's username and
+then the person's. `GET /audit-events` takes `actor_kind`, which keeps the events of the
+accounts of one kind, `agent` the changes of agents together, and `for_hid`, those made
+for one person; and it sorts by `actor_kind` and `for_name` as by its other columns.
+Every account an answer names is read once for the whole page. The server's own
+measures name an agent's requests with the kind `agent` (P-266).
+
+`POST /users/export` has a column `answerable` after `kind`, the username of the person
+answerable for an agent and blank for the others, and `kind` is `person`, `service` or
+`agent`.
 
 ### Why a value, and what an operator is on
 
@@ -1252,8 +1419,8 @@ route, so that whoever supports the team sees who is having a bad time of it.
   with, its time, its status, its request ID and who asked. The path as it was asked
   and its query are not kept: no identifier and no word of a search.
 - **Who asked** is the account the check of the sign-in found, at no cost to the
-  request: `kind` is `person`, or `service` for a service account, which is listed by
-  its username as any account is. A request that nothing verifiable names an account
+  request: `kind` is `person`, `service` for a service account, or `agent` for an agent
+  (P-316), each listed by its username as any account is. A request that nothing verifiable names an account
   for, a sign-in, a token that did not hold, a request with none, has a `who` of kind
   `unnamed` with null `hid` and `username`, and all of them are counted together in one
   row of `people`.
@@ -1480,8 +1647,8 @@ the rows that a sort leaves tied.
 
 | Route | `sort` takes | With no `sort` |
 |---|---|---|
-| `GET /users` | `username`, `display_name`, the name of its contact, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at` | by username |
-| `GET /audit-events` | `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid` | newest first |
+| `GET /users` | `username`, `display_name`, the name of its contact, `role`, `groups`, `operators`, `notes`, `kind`, `disabled`, `record_status`, `last_sign_in_at` | by username |
+| `GET /audit-events` | `at`, `actor_name`, `actor_kind`, `for_name`, `via`, `action`, `record_type`, `record_hid` | newest first |
 | `GET /imports` | `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`, `rows_done`, `applied`, `stale`, `applied_at` | newest first |
 | `GET /imports/{hid}/rows` | `row`, `key`, `outcome`, `applied_outcome` | the order of the file |
 | `GET /reports/duplicates` | `address`, `network`, `count`, `holders` | by address and network |
@@ -1744,8 +1911,9 @@ rejected, in both formats, for every table. A test holds it over all of them.
 with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a user
 with no contact, `role`, the role in force, granted to the user or to a group it is in,
 blank where it has none, `groups`, by name, `operators`, the labels of those behind
-which its contact stands and that are not retired, `kind`, `person` or `service`,
-`state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the
+which its contact stands and that are not retired, `kind`, `person`, `service` or
+`agent`, `answerable`, the username of the person answerable for an agent and blank for
+the others (P-316), `state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the
 retired accounts being left out unless `retired=yes` or `retired=only` is in the
 address, as on `GET /users`, `last_sign_in_at`, in UTC in the form the API gives
 it, `2026-11-20T15:04:05.123456Z`, and `notes`; several
@@ -1755,7 +1923,7 @@ are. So that a cell of groups is read as it was written, the name of a user grou
 no semicolon, as a tag's label and an operator's do not: `POST /user-groups` and a
 rename by `PATCH /user-groups/{hid}` refuse one with a `422` on `name`, and a group
 that holds one from before 0.9.13 keeps its name until it is renamed. It holds no access code, no token and no hash of either, and no column beyond
-these thirteen. It is audited: an event `export` of the record type `user`, with no
+these fourteen. It is audited: an event `export` of the record type `user`, with no
 record of its own, whose `changes` hold `file_name` and `users`, how many rows the
 file holds; like a sign-in, it leaves every kept answer good. No file makes or changes
 a user.
@@ -2923,8 +3091,11 @@ hirdir contacts retire kim.lee@example.com --dry-run   # what is linked to the c
 hirdir contacts retire kim.lee@example.com --user retire \
     --operator 'KL=hand_over:sam.okafor@example.com' --operator LM=retire   # the person, in one change
 hirdir users list --retired                      # the retired accounts as well; --retired-only for them alone
+hirdir users list --kind agent                   # one kind: person, service or agent, each agent with its person (P-316)
 hirdir users retire klee --contact keep --operator KL=keep --operator LM=open   # an Admin: the account alone
 hirdir users bring-back klee --contact --role viewer   # an Admin: with its retired contact, a role and a new access code
+hirdir users retire sam --contact retire --agent agent-reconcile=hand_over:klee   # an agent of sam's to another person (P-316)
+hirdir users bring-back agent-reconcile --for klee --role inventory   # an agent whose person is retired, to another
 hirdir items set --filter 'group.name:eq:site2-sw-core' operator=LM --apply
 hirdir items list --filter 'effective.operator_hid:empty:true'    # what nobody is assigned to
 hirdir report summary --by operator              # who looks after how much
@@ -3027,7 +3198,7 @@ refused leaves the others as they went.
 | A stack of one switch | `hirdir items make-stack ITEM [--name NAME] [--member ITEM]...` makes a stack of an item that is in none, by `POST /items/{hid}/make-stack`, and prints the stack; each `--member` is one more member, added as a member that joins with its name and place given up, `drop_identity` (P-243) |
 | A replacement that was a mistake | `hirdir replacements remove HID --reason TEXT`, for an Admin, prints the replacement, its two items and its day, asks `Remove this replacement?`, and goes on only when it is answered yes, or `--yes` is given by a script; it then removes it by `POST /item-replacements/{hid}/remove` (P-238) |
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what went with it because it ran on it (P-247), what was retired already, what was refused with why, and what runs on it where that is why, and what was not found; `--dry-run` sends `dry_run` and prints the same of what it would do, changing nothing; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
-| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. A user is named by its username or its HID, a retired one too, the whole username being looked for first, since a username may have the form of an HID, a contact by its email address, its name or its HID, and an operator by its label or its HID: the record of the command and those its options name. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]... [--role ROLE]`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named and the role given, which the server asks of a person (P-299), and prints the role and the new access code once (P-298); `--dry-run` of a person with no `--role` is refused as the run is, exit `4`, and prints no plan as if it would be done. `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296) |
+| Retiring a person | `hirdir users retire USER`, `hirdir contacts retire CONTACT` and `hirdir operators retire LABEL`, of which `hirdir operators release` is another name, retire one of the three as `POST /users/{hid}/retire`, `POST /contacts/{hid}/retire` and `POST /operators/{hid}/retire` do (P-297). Each reads `GET .../linked` and prints the chain, operator, contact, user, each with what becomes of it: `retire`, `keep`, `leave open`, `hand over to`, `retired already`, or `not said`. What becomes of each linked record is an option: `--user retire|keep`, `--contact retire|keep`, and `--operator LABEL=ACTION` once for each operator, the action `retire`, `keep`, `open` or `hand_over:CONTACT`, the contact by its email address, its name or its HID. An option the record has no use for is not offered: `users retire` has no `--user`. A user is named by its username or its HID, a retired one too, the whole username being looked for first, since a username may have the form of an HID, a contact by its email address, its name or its HID, and an operator by its label or its HID: the record of the command and those its options name. `--dry-run` prints the chain and the plan and sends nothing. The command holds no rule: a linked record that no option says is refused by the server, exit code `5`, with each named, and a retirement of a user by anybody but an Admin exits with `3`. `hirdir users bring-back USER [--contact] [--operator LABEL]... [--role ROLE]`, for an Admin, brings a retired account back as `POST /users/{hid}/bring-back` does, with its retired contact and the retired operators named and the role given, which the server asks of a person (P-299), and prints the role and the new access code once (P-298); `--dry-run` of a person with no `--role` is refused as the run is, exit `4`, and prints no plan as if it would be done. `hirdir users list` leaves the retired accounts out; `--retired` lists them with the rest, their state `retired`, and `--retired-only` alone (P-296). Its `KIND` is `person`, `service` or `agent`, `--kind` keeps one, and an agent is followed by `for` and its person (P-316). A retirement that retires a user takes `--agent USERNAME=retire` or `--agent USERNAME=hand_over:USER`, once for each agent answerable to it, the person handed to by username or HID, and prints each agent under the user with what becomes of it; `--agent` where no user is retired is refused by the server as the rest is. `hirdir users bring-back AGENT --for USER` brings an agent back answerable to another person, which it needs where its own is retired |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, `--filter`, `--sort`, `--columns`, `--own-values`, `--include-sources`, `--place-codes`, `--include-archived` or `--include-drafts`, and refuses each with exit `2`, writing nothing: each table is whole, in the form that loads back, with its stored values and its retired and drafts (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
@@ -3056,6 +3227,9 @@ hirdir admin create-user --role admin NAME       # prints a new access code once
 hirdir admin create-user --access-code CODE NAME # a code of your choosing, of access_code_min_length at the least
 hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org NAME   # and its contact
 hirdir admin create-user --group NOC --group 'Field team' NAME   # in each group by its name; a group's role is the user's (P-304)
+hirdir admin create-user --no-role NAME          # a person who holds no role, with the warning that it cannot sign in (P-313)
+hirdir admin create-user --kind service --role viewer NAME   # a service account, which holds tokens
+hirdir admin create-user --kind agent --for sam --role inventory NAME   # an agent, answerable to sam (P-316)
 hirdir admin reset-access-code NAME
 hirdir admin migrate
 hirdir admin backup
@@ -3069,6 +3243,27 @@ hirdir admin serve                               # the server: what hirdir.servi
 hirdir admin work                                # the background work: what hirdir-worker.service runs
 hirdir admin serve --work                        # both in one process, for development
 ```
+
+`hirdir admin create-user` makes a person with a role (P-313), as New user does on
+the web page (P-299): a person with no `--role` and no `--group` that grants one is
+refused, exit `4`, before anything is made, with `hirdir: a person is made with a role,
+since an account with no role does not sign in: give --role, a --group that grants one,
+or --no-role to make it with none`. With `--no-role` the account is made and the warning
+is printed, on standard error, `NAME holds no role, and cannot sign in until an Admin
+gives it one`; a group that grants a role still gives it one, and then there is no
+warning. `--role` with `--no-role` is a mistake of usage, exit `2`, `hirdir: --role and
+--no-role are not given together`. `--kind` is `person`, where it is left out, `service`
+or `agent`, and takes the place of `--service-account` (P-316); any other is exit `2`. A
+service account and an agent are made with no access code, contact or role where none is
+given, each with its warning, `NAME holds no role, and its tokens are refused until an
+Admin gives it one`. An agent names the person answerable for it with `--for USERNAME`:
+without it, `hirdir: an agent is answerable to a person: name them with --for USERNAME`,
+and `--for` with another kind, `hirdir: --for names the person answerable for an agent:
+give it with --kind agent`, are each exit `2`; a username there is not, an account that
+is no person or is retired, `--role admin` and a `--group` that grants Admin are each
+refused by the rules, exit `4`, with nothing made. The agent made prints `created NAME,
+an agent answerable to sam, with the inventory role`, and, where sam holds no role or is
+disabled, `NAME's tokens are refused while sam holds no role`.
 
 `hirdir admin serve` answers requests and applies nothing. `hirdir admin work` is the
 second process of the service (P-267): it applies the imports and bulk edits that
@@ -3781,6 +3976,81 @@ server (P-299, P-300):
   refused by the server at New access code, in its words, "this is the access code you
   have now", with the three boxes as typed and no session ended. An Admin who sets the
   code of somebody else may give the one they had.
+
+What 0.9.17 changes on the pages of accounts, of groups and of a retirement (P-307,
+P-314, P-316):
+
+- **The confirmation of a retirement.** The button that goes ahead names each record it
+  changes, by what it is and what it is known by, as the ticks stand, in place of how
+  many more: the record the page is of first, then the labels released, those handed
+  over, each with the person it goes to, those left open, and the account and the
+  contact retired, `Release KL and retire contact Kim Lee`, `Release KL, hand KM to Sam
+  Roe, and retire account klee and contact Kim Lee`, `Retire account klee and contact
+  Kim Lee, release KL, and leave KM open`. A record kept is not named, nothing being
+  done to it, so that with all else kept it is `Release KL` or `Retire account klee`. A
+  label to be handed over while nobody is chosen is `hand KM over`; labels going to
+  one person are named in one clause, `hand KL and KM to Sam Roe`. On a narrow window,
+  360 pixels, the button wraps onto more lines and is never shortened. The words once
+  it is done name the person each label went to.
+- **Users.** Show's first link is Active users, where it said Every user: every account
+  that is not retired, a disabled one among them, as the words above the list say,
+  beside Users with no contact, Users with no operator and Retired users.
+- **A token shown once.** Where the account holds no role, the new token, shown once,
+  says that it is refused until the account holds one, and how one is given; the words
+  go once a role is given on the same page, the token still on show.
+- **Where a role comes from.** A user's page says, under Role, beside the highest, each
+  role the account holds and from where: `of its own`, or `through` a group, the group a
+  link to its page (P-307). A grant of its own is revoked there, by an Admin.
+- **Who is left with no role.** Before an Admin revokes a grant of an account's own,
+  takes an account out of a group, on the account's page by its box or on the group's
+  page by Remove, revokes a grant of a group, on the group's page or under Roles, or
+  deletes a group, the confirmation says whom the change leaves with no role, from the
+  roles each holds and where they come from: `klee will hold no role and be signed
+  out.`; for a group, each member so left, named; of a service account or an agent,
+  that its tokens will be refused. A change that leaves everybody a role says nothing
+  of it, and a box that leaves the account a role changes it at once, as before.
+- **Users, by kind.** The column Kind writes `Person`, `Service` or `Agent`, from
+  `kind`, and Kind beside the search narrows the list to one, `kind=` in the address,
+  kept by Show's links. Role says, under the highest, where each role comes from, of
+  its own or through a group, a link, and of an agent held lower, why: `held to
+  View-only by sam's role`.
+- **New user.** Kind offers Person, Service account and Agent, in place of the box
+  Service account. An agent, like a service account, has no contact, no operator and
+  no access code, and asks for the person answerable, searched for by username or name
+  among the people who are not retired, `answerable_hid`; Create with nobody chosen
+  says so at the field and sends nothing. Role offers an agent View-only and Inventory,
+  never Admin; a group ticked that grants Admin is refused by the server, in its words,
+  at the groups.
+- **An agent's page.** Kind is Agent; Answerable to names its person, a link, marked
+  where retired; Role says the role it holds, where it comes from, and the role it is
+  held to and why, `held to View-only by sam's role`, or that its tokens are refused
+  while sam holds no role, is disabled or is retired, or, of an agent that holds Admin
+  all the same, `held to Inventory: an agent is never Admin`. Answerable to, a section of its
+  own, hands it to another person, by `PATCH /users/{hid}` with `answerable_hid`, the
+  button naming them, `Hand agent-reconcile to Sam Roe`. Its tokens are made and
+  revoked under Tokens as a service account's are, and a new one says, where it is
+  shown once, that it is refused while the agent or its person holds no role. Bring
+  back of an agent asks whom it is answerable to, its person as before unless another
+  is chosen, and another where its person is retired.
+- **A person's page.** Agents lists every agent answerable to them, each a link, a
+  retired one marked.
+- **The confirmation of a retirement**, where it retires the account, has a row for
+  each agent of the account that is not retired, Retire ticked from the start, or Hand
+  to another person, searched for as above; each is named on the button, `retire agent
+  agent-reconcile`, `hand agent-reconcile to Sam Roe`, and sent as `linked.agents`. An
+  agent to be handed to nobody, or to the person retired, is said at its row and
+  nothing is sent; what the server refuses of a hand-over is said at that agent's row.
+  Where the account is kept, its agents are not asked of.
+- **Groups.** The page of a group lists the roles it grants, each revoked there, and
+  the Kind of each member. Putting an agent in a group that grants Admin, or granting
+  Admin to an agent or to a group that holds one, is refused by the server, and its
+  words are shown where the change was asked, beside the box, above the members or at
+  the role.
+- **Audit.** Kind, beside Who, narrows the trail to the changes of people, of service
+  accounts or of agents, `actor_kind`, for every role that reads the trail; Who
+  writes an agent `agent-reconcile (agent, for sam)`. Who, on the Audit page and in an
+  item's history, writes an agent's change `agent-reconcile for sam`, both links for an
+  Admin.
 
 What 0.9.17 adds of contacts, a name that another contact has (P-315):
 

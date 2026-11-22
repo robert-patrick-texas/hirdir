@@ -7,6 +7,7 @@ import { SelectField, TextField } from "../components/Field";
 import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
+import { kindWord, noRoleWords } from "../lib/accounts";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { roleLabel } from "../lib/roles";
@@ -170,6 +171,9 @@ export function GroupDetail() {
             group={group.data}
             reload={group.reload}
           />
+          {/* 0.9.17: the roles it grants, each revoked here, saying first whom that leaves
+              with no role (P-314 (4)). */}
+          <GroupGrants group={group.data} reload={group.reload} />
           <Members group={group.data} reload={group.reload} />
           <DeleteGroup group={group.data} />
         </>
@@ -229,6 +233,78 @@ function GroupForm({ group, reload }: { group: Group; reload: () => void }) {
   );
 }
 
+/**
+ * 0.9.17: the roles a group grants, each a grant revoked here by an Admin. Before it is,
+ * the confirmation says which members it leaves with no role, from the roles each holds
+ * and where they come from (P-314 (4)).
+ */
+function GroupGrants({ group, reload }: { group: Group; reload: () => void }) {
+  const auth = useAuth();
+  const grants = useLoad(`grants of group ${group.hid} ${group.row_version}`, async (signal) =>
+    (await api.request("get", "/api/v1/role-grants", { signal })).filter(
+      (grant) => grant.group_hid === group.hid,
+    ),
+  );
+  const [done, setDone] = useState("");
+  const action = useAction();
+
+  async function revoke(grant: Schemas["GrantOut"]) {
+    setDone("");
+    const result = await action.run(() =>
+      api.request("delete", "/api/v1/role-grants/{hid}", { path: { hid: grant.hid } }),
+    );
+    if (!result.ok) return;
+    setDone(`${roleLabel(grant.role)} was taken back from ${group.name}.`);
+    grants.reload();
+    reload();
+    // The reader's own role may be what changed.
+    auth.refresh();
+  }
+
+  return (
+    <section aria-labelledby="group-grants">
+      <h2 id="group-grants">Roles it grants</h2>
+      <Problem error={grants.error} />
+      <Problem error={action.error} />
+      <Notice text={done} />
+      {grants.data && grants.data.length === 0 && (
+        <p className="muted">
+          It grants no role: a role is granted to it under <Link to="/admin/roles">Roles</Link>.
+        </p>
+      )}
+      {grants.data && grants.data.length > 0 && (
+        <ul className="group-grants" data-testid="group-grants">
+          {grants.data.map((grant) => {
+            const leaves = noRoleWords(group.members, { kind: "revoke", grantHid: grant.hid });
+            return (
+              <li key={grant.hid} className="role-source" data-grant={grant.hid}>
+                {roleLabel(grant.role)}{" "}
+                <ConfirmButton
+                  label={`Revoke ${roleLabel(grant.role)}`}
+                  title={`Take ${roleLabel(grant.role)} back from ${group.name}?`}
+                  confirmLabel="Revoke role"
+                  onConfirm={() => revoke(grant)}
+                  disabled={action.busy}
+                >
+                  <p>
+                    Every member of the group {group.name} loses this role at once, unless they hold
+                    it another way.
+                  </p>
+                  {leaves && (
+                    <p data-testid="no-role-left">
+                      <strong>{leaves}</strong>
+                    </p>
+                  )}
+                </ConfirmButton>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function Members({ group, reload }: { group: Group; reload: () => void }) {
   const auth = useAuth();
   const users = useLoad("users for members", (signal) =>
@@ -241,6 +317,7 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
     username: (member) => member.username,
     display_name: (member) => member.display_name,
     role: (member) => roleLabel(member.role),
+    kind: (member) => kindWord(member.kind),
   });
   const inGroup = new Set(group.members.map((member) => member.hid));
   const candidates = (users.data?.items ?? []).filter((user) => !inGroup.has(user.hid));
@@ -297,6 +374,9 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
               <SortTh sort={sorting} column="role">
                 Role
               </SortTh>
+              <SortTh sort={sorting} column="kind">
+                Kind
+              </SortTh>
               <th scope="col">
                 <span className="visually-hidden">Actions</span>
               </th>
@@ -312,16 +392,20 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
                 </th>
                 <td>{member.display_name}</td>
                 <td>{roleLabel(member.role)}</td>
+                <td>{kindWord(member.kind)}</td>
                 <td>
-                  <button type="button" onClick={() => remove(member)} disabled={action.busy}>
-                    Remove<span className="visually-hidden"> {member.username}</span>
-                  </button>
+                  <RemoveMember
+                    group={group}
+                    member={member}
+                    disabled={action.busy}
+                    onRemove={() => remove(member)}
+                  />
                 </td>
               </tr>
             ))}
             {group.members.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={5} className="muted">
                   This group has no members.
                 </td>
               </tr>
@@ -359,10 +443,48 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
   );
 }
 
+/**
+ * Remove, of a member: at once, as before, unless it takes the member's last role; then
+ * it asks first, saying so (P-314 (4)).
+ */
+function RemoveMember(props: {
+  group: Group;
+  member: Schemas["UserOut"];
+  disabled: boolean;
+  onRemove: () => Promise<void>;
+}) {
+  const { group, member, disabled, onRemove } = props;
+  const leaves = noRoleWords([member], { kind: "leave", groupHid: group.hid });
+  if (leaves === null) {
+    return (
+      <button type="button" onClick={() => void onRemove()} disabled={disabled}>
+        Remove<span className="visually-hidden"> {member.username}</span>
+      </button>
+    );
+  }
+  return (
+    <ConfirmButton
+      label="Remove"
+      hiddenLabel={member.username}
+      title={`Take ${member.username} out of ${group.name}?`}
+      confirmLabel={`Take ${member.username} out`}
+      onConfirm={onRemove}
+      disabled={disabled}
+    >
+      <p>{`The roles ${group.name} grants are all that ${member.username} holds.`}</p>
+      <p data-testid="no-role-left">
+        <strong>{leaves}</strong>
+      </p>
+    </ConfirmButton>
+  );
+}
+
 function DeleteGroup({ group }: { group: Group }) {
   const navigate = useNavigate();
   const auth = useAuth();
   const action = useAction();
+  // 0.9.17: the members a deletion leaves with no role, said first (P-314 (4)).
+  const leaves = noRoleWords(group.members, { kind: "leave", groupHid: group.hid });
 
   async function remove() {
     const result = await action.run(() =>
@@ -389,6 +511,11 @@ function DeleteGroup({ group }: { group: Group }) {
             The group goes, with its {plural(group.member_count, "membership")} and every role
             granted to it. The users themselves stay.
           </p>
+          {leaves && (
+            <p data-testid="no-role-left">
+              <strong>{leaves}</strong>
+            </p>
+          )}
         </ConfirmButton>
       </p>
     </section>

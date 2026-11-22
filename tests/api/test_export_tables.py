@@ -104,6 +104,7 @@ USER_COLUMNS = [
     "groups",
     "operators",
     "kind",
+    "answerable",
     "state",
     "record_status",
     "last_sign_in_at",
@@ -149,7 +150,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
             },
         },
     )["user"]
-    service = people.post("/users", {"username": "ex-service", "is_service_account": True})
+    service = people.post("/users", {"username": "ex-service", "kind": "service"})
     people.post(f"/users/{service['user']['hid']}/service-tokens", {"name": "monitoring"})
     for name, role in (("Example Team East", "inventory"), ("Example Readers", "viewer")):
         group = people.post("/user-groups", {"name": name})
@@ -158,6 +159,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
             f"{API}/user-groups/{group['hid']}/members/{made['hid']}", headers=admin
         )
         assert response.status_code == 204, response.text
+    people.post("/users", {"username": "ex-agent", "kind": "agent", "answerable_hid": made["hid"]})
     contact = made["contact_hid"]
     make.post("/operators", {"label": "EP", "contact_hid": contact})
     make.post("/operators", {"label": "ex-ops", "contact_hid": contact})
@@ -179,6 +181,7 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         "groups": "Example Readers;Example Team East",
         "operators": "EP;ex-ops",
         "kind": "person",
+        "answerable": "",
         "state": "disabled",
         "record_status": "active",
         "last_sign_in_at": "",
@@ -188,6 +191,15 @@ def test_a_row_tells_the_person_the_role_in_force_the_groups_and_the_operators(
         **dict.fromkeys(USER_COLUMNS, ""),
         "username": "ex-service",
         "kind": "service",
+        "state": "enabled",
+        "record_status": "active",
+    }
+    # An agent, with the username of the person answerable for it (P-316).
+    assert rows["ex-agent"] == {
+        **dict.fromkeys(USER_COLUMNS, ""),
+        "username": "ex-agent",
+        "kind": "agent",
+        "answerable": "ex-ops",
         "state": "enabled",
         "record_status": "active",
     }
@@ -204,7 +216,7 @@ def test_the_users_file_holds_no_access_code_token_or_hash_and_is_audited(
     made = people.post(
         "/users", {"role": "viewer", "username": "ex-person", "access_code": "a-secret-code-1"}
     )
-    service = people.post("/users", {"username": "ex-service", "is_service_account": True})
+    service = people.post("/users", {"username": "ex-service", "kind": "service"})
     token = people.post(f"/users/{service['user']['hid']}/service-tokens", {"name": "a tool"})
     text = export_users(client, admin)
     db.expire_all()

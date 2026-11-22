@@ -104,7 +104,7 @@ test("review 2: a retired service account is offered no new token, and its token
   const username = `e2e-${suffix}-svc`;
   const made = await request.post("./api/v1/users", {
     headers,
-    data: { username, is_service_account: true },
+    data: { username, kind: "service" },
   });
   expect(made.status(), await made.text()).toBe(201);
   const service = ((await made.json()) as { user: { hid: string; username: string } }).user;
@@ -375,9 +375,10 @@ test("review 7: Reload in a confirmation that is stale keeps it open, with what 
     labelRow(ask, second).getByRole("radio", { name: "Leave open", exact: true }),
   ).toBeChecked();
   await goAhead(ask).click();
+  // 0.9.17: the words name the person the label went to (P-314).
   await expect(
     page.getByText(
-      `${lia.contact.name} was retired, with the account ${lia.user.username}. ${first.label} was handed over and ${second.label} was left open.`,
+      `${lia.contact.name} was retired, with the account ${lia.user.username}. ${first.label} was handed over to ${samName} and ${second.label} was left open.`,
     ),
   ).toBeVisible();
   await expectClean(page, seen, ["409 POST"]);
@@ -434,38 +435,47 @@ test("review 9: the button that confirms says what it will do, as the ticks stan
   const accountBox = ask.getByRole("checkbox", { name: `Retire the account ${noa.user.username}` });
 
   // On the page of a label: Release, as it opens, retires the account, the contact and
-  // the other label too, and the button says so.
+  // the other label too, and the button names each (0.9.17: P-314, in place of how many).
+  const both = `retire account ${noa.user.username} and contact ${noa.contact.name}`;
   await openOperator(page, first);
   await region(page, "Release").getByRole("button", { name: "Release", exact: true }).click();
-  await expect(go).toHaveText(`Release ${first.label} and retire 3 more`);
+  await expect(go).toHaveText(`Release ${first.label} and ${second.label}, and ${both}`);
   await contactBox.uncheck();
-  await expect(go).toHaveText(`Release ${first.label} and retire 2 more`);
+  await expect(go).toHaveText(
+    `Release ${first.label} and ${second.label}, and retire account ${noa.user.username}`,
+  );
   await accountBox.uncheck();
-  await expect(go).toHaveText(`Release ${first.label} and retire 1 more`);
+  await expect(go).toHaveText(`Release ${first.label} and ${second.label}`);
   const other = labelRow(ask, second);
-  // A label handed over or left open is not retired: it is not counted.
+  // A label left open is said so; one kept is not named.
   await other.getByRole("radio", { name: "Leave open", exact: true }).check();
-  await expect(go).toHaveText(`Release ${first.label} only`);
+  await expect(go).toHaveText(`Release ${first.label} and leave ${second.label} open`);
   await other.getByRole("radio", { name: "Keep", exact: true }).check();
-  await expect(go).toHaveText(`Release ${first.label} only`);
+  await expect(go).toHaveText(`Release ${first.label}`);
   await contactBox.check();
-  await expect(go).toHaveText(`Release ${first.label} and retire 3 more`);
+  await expect(go).toHaveText(`Release ${first.label} and ${second.label}, and ${both}`);
   await ask.getByRole("button", { name: "Cancel" }).click();
 
-  // The same manner on the page of the account and of the contact.
+  // The same manner on the page of the account and of the contact, which comes first.
   await openUser(page, noa.user);
   await region(page, "Retire").getByRole("button", { name: "Retire account" }).click();
-  await expect(go).toHaveText(`Retire ${noa.user.username} and 3 more`);
+  await expect(go).toHaveText(
+    `Retire account ${noa.user.username} and contact ${noa.contact.name}, and release ${first.label} and ${second.label}`,
+  );
   await contactBox.uncheck();
   await labelRow(ask, first).getByRole("radio", { name: "Keep", exact: true }).check();
   await other.getByRole("radio", { name: "Keep", exact: true }).check();
-  await expect(go).toHaveText(`Retire ${noa.user.username} only`);
+  await expect(go).toHaveText(`Retire account ${noa.user.username}`);
   await ask.getByRole("button", { name: "Cancel" }).click();
   await openContact(page, noa.contact);
   await region(page, "Retire").getByRole("button", { name: "Retire contact" }).click();
-  await expect(go).toHaveText(`Retire ${noa.contact.name} and 3 more`);
+  await expect(go).toHaveText(
+    `Retire contact ${noa.contact.name} and account ${noa.user.username}, and release ${first.label} and ${second.label}`,
+  );
   await other.getByRole("radio", { name: "Leave open", exact: true }).check();
-  await expect(go).toHaveText(`Retire ${noa.contact.name} and 2 more`);
+  await expect(go).toHaveText(
+    `Retire contact ${noa.contact.name} and account ${noa.user.username}, release ${first.label}, and leave ${second.label} open`,
+  );
 
   // The press does what the button said: the account, and one label released.
   await go.click();

@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -56,6 +56,21 @@ NO_ROLE = "this account holds no role, and so cannot sign in: an Admin gives it 
 NO_ROLE_MADE = "a person is made with a role: an account with no role does not sign in"
 NO_ROLE_BACK = "a person is brought back with a role: an account with no role does not sign in"
 GIVE_A_ROLE = "give a role, or a group that grants one"
+# The kinds of account (P-316): a person's, a service's, which does a fixed job, and an
+# agent's, which decides what to change as a person does and is answerable to one. A
+# service account and an agent hold tokens, and have no contact, no access code and no
+# session.
+PERSON, SERVICE, AGENT = "person", "service", "agent"
+KINDS = (PERSON, SERVICE, AGENT)
+# The words a kind is named by in a sentence.
+KIND_WORDS = {PERSON: "a person", SERVICE: "a service account", AGENT: "an agent"}
+NEVER_ADMIN = "an agent is never Admin"
+# Why the role in force of an agent is lower than the role it holds (P-316).
+PERSON_ROLE, PERSON_NO_ROLE = "person_role", "person_no_role"
+PERSON_DISABLED, PERSON_RETIRED = "person_disabled", "person_retired"
+# And an agent that holds Admin all the same, which no route gives it: a database edited
+# by hand or restored from one. It acts as Inventory at the most (the lead's reading).
+NEVER_ADMIN_HELD = "never_admin"
 
 
 class NotSignedIn(Exception):
@@ -64,11 +79,13 @@ class NotSignedIn(Exception):
 
 @dataclass(frozen=True)
 class Principal:
-    """Who a request comes from, and the role they hold right now."""
+    """Who a request comes from, and the role they hold right now: for an agent, the
+    role in force, which its person holds it to, and `for_hid`, that person (P-316)."""
 
     user: User
     role: Role | None
-    kind: str  # "session" or "service"
+    kind: str  # "session" or "service": how it signed in, a session or a token
+    for_hid: str | None = None
 
 
 def _key(text: str) -> str:
@@ -89,12 +106,96 @@ def effective_role(db: Session, user: User) -> Role | None:
     return highest(roles)
 
 
+def is_person(user: User) -> bool:
+    """Say whether an account is a person's: one that signs in with an access code, and
+    no service account or agent, which hold tokens (P-316)."""
+    return user.kind == PERSON
+
+
+def is_agent(user: User) -> bool:
+    """Say whether an account is an agent's (P-316)."""
+    return user.kind == AGENT
+
+
+@dataclass(frozen=True)
+class InForce:
+    """The role an account's requests are held to now, and, for an agent held lower than
+    its own role by its person, why (P-316)."""
+
+    role: Role | None
+    capped_by: str | None = None
+
+
+def _capped(own: Role | None, person: User | None, held: Role | None) -> InForce:
+    """Return the role in force of an agent that holds `own`, whose person holds `held`:
+    the lower of the two, or none where the person is retired, disabled or holds none.
+    An agent is never Admin, and is held at Inventory here too, where the role is read,
+    whatever it holds: so that a database edited by hand gives an agent no more."""
+    if own is None:
+        return InForce(None)
+    if person is None or is_retired(person):
+        return InForce(None, PERSON_RETIRED)
+    if person.disabled:
+        return InForce(None, PERSON_DISABLED)
+    if held is None:
+        return InForce(None, PERSON_NO_ROLE)
+    if held.rank < min(own.rank, Role.INVENTORY.rank):
+        return InForce(held, PERSON_ROLE)
+    if own is Role.ADMIN:
+        return InForce(Role.INVENTORY, NEVER_ADMIN_HELD)
+    return InForce(own)
+
+
+def in_force(
+    db: Session, users: Sequence[User], grants: Mapping[str, list[Held]] | None = None
+) -> dict[str, InForce]:
+    """Return the role in force of each of the users, by its HID: its own highest role,
+    or, for an agent, the lower of that and its person's (P-316). Read in a few
+    statements for them all, however many they are; `grants`, where the caller has read
+    them by `grants_of` already, are not read again."""
+    held_by = grants if grants is not None else grants_of(db, users)
+    roles = {hid: highest(one.grant.role for one in held) for hid, held in held_by.items()}
+    persons = answerable_of(db, users)
+    held = roles_of(db, list(persons.values()))
+    found = {}
+    for user in users:
+        own = roles[user.hid]
+        if not is_agent(user):
+            found[user.hid] = InForce(own)
+            continue
+        person = persons.get(user.answerable_hid or "")
+        found[user.hid] = _capped(own, person, held.get(person.hid) if person else None)
+    return found
+
+
+def answerable_of(db: Session, users: Sequence[User]) -> dict[str, User]:
+    """Return the person answerable for each of the agents among the users, by the
+    person's HID, read in one statement for them all."""
+    hids = {user.answerable_hid for user in users if user.answerable_hid}
+    if not hids:
+        return {}
+    return {one.hid: one for one in db.scalars(select(User).where(User.hid.in_(hids)))}
+
+
+def agents_of(db: Session, users: Sequence[User]) -> dict[str, list[User]]:
+    """Return the agents answerable to each of the users, the retired among them, by
+    username, by the user's HID, read in one statement for them all (P-316)."""
+    found: dict[str, list[User]] = {user.hid: [] for user in users}
+    people = [user.hid for user in users if is_person(user)]
+    if people:
+        for agent in db.scalars(
+            select(User).where(User.answerable_hid.in_(people)).order_by(User.username_key)
+        ):
+            found[agent.answerable_hid or ""].append(agent)
+    return found
+
+
 def _admin_count(db: Session) -> int:
-    """Count the people (not service accounts) who can sign in and hold Admin."""
+    """Count the people (not service accounts or agents) who can sign in and hold Admin."""
     people = db.scalars(
         select(User).where(
             User.disabled.is_(False),
-            User.is_service_account.is_(False),
+            User.kind == PERSON,
             User.record_status != "retired",
         )
     )
@@ -214,14 +315,14 @@ def _narrowed(query: AnySelect, contact: str, operator: str) -> AnySelect:
 
     `some` keeps the users that are one, `none` those that are not, and `any` all of
     them. A contact that is retired is as none. A service account is no person and is in
-    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280). A
-    retired account is in no gap: neither `none` holds it, whatever is asked of the
-    retired (P-296).
+    neither `none`, so that `any` is `some`, `none` and the service accounts (P-280); and
+    nor is an agent (P-316). A retired account is in no gap: neither `none` holds it,
+    whatever is asked of the retired (P-296).
     """
     for name, value in (("contact", contact), ("operator", operator)):
         if value not in WHICH:
             raise Invalid(f"{name} is not acceptable", {name: "any, some or none"})
-    person = and_(User.is_service_account.is_(False), User.record_status != "retired")
+    person = and_(User.kind == PERSON, User.record_status != "retired")
     if contact == "some":
         query = query.where(~operators.nobody_behind(Contact))
     elif contact == "none":
@@ -243,16 +344,19 @@ def list_users(
     contact: str = "any",
     operator: str = "any",
     retired: str = "no",
+    kind: str | None = None,
 ) -> tuple[list[User], int]:
     """Return one page of users, by username, and the total that match q.
 
     `arrange` sorts them as was asked for, and the username settles what that leaves tied.
     `contact` and `operator` keep those that are one, `some`, or the gaps, `none` (P-280).
     The retired accounts are left out unless `retired` asks for them, `yes`, or for them
-    alone, `only` (P-296).
+    alone, `only` (P-296). `kind` keeps the accounts of one kind (P-316).
     """
     query = select(User).outerjoin(Contact, Contact.hid == User.contact_hid)
     query = retired_or_not(query, retired)
+    if kind:
+        query = query.where(User.kind == checked_kind(kind))
     if q:
         query = query.where(
             or_(
@@ -276,13 +380,36 @@ def contacts_of(db: Session, users: Sequence[User]) -> dict[str, Contact]:
     return {one.hid: one for one in db.scalars(select(Contact).where(Contact.hid.in_(hids)))}
 
 
-def roles_of(db: Session, users: Sequence[User]) -> dict[str, Role | None]:
-    """Return the role in force of each of the users, by its HID, as `effective_role`
-    gives it for one: the highest granted to the user or to a group it is in. Read in two
-    statements for them all, however many they are."""
+@dataclass(frozen=True)
+class Held:
+    """One role an account holds, and where it comes from: the grant, and the group it
+    is granted to, which the account is in, or none for a grant of its own (P-307)."""
+
+    grant: RoleGrant
+    group: UserGroup | None
+
+
+def _held_order(one: Held) -> tuple[int, int, str, str]:
+    """The order a user's grants are given in: the highest role first, a grant of its
+    own before those of groups, and the groups by name."""
+    group = one.group
+    return (
+        -Role(one.grant.role).rank,
+        group is not None,
+        group.name_key if group else "",
+        one.grant.hid,
+    )
+
+
+def grants_of(db: Session, users: Sequence[User]) -> dict[str, list[Held]]:
+    """Return every grant that gives each of the users a role, of its own or of a group
+    it is in, by the user's HID, in the order `_held_order` gives (P-307). Read in two
+    statements for them all, however many they are: a page of users costs the same
+    whatever its size."""
     hids = [user.hid for user in users]
+    found: dict[str, list[Held]] = {hid: [] for hid in hids}
     if not hids:
-        return {}
+        return found
     members: dict[str, list[str]] = defaultdict(list)
     for user_hid, group_hid in db.execute(
         select(UserGroupMember.user_hid, UserGroupMember.group_hid).where(
@@ -290,15 +417,23 @@ def roles_of(db: Session, users: Sequence[User]) -> dict[str, Role | None]:
         )
     ):
         members[group_hid].append(user_hid)
-    granted: dict[str, list[str]] = {hid: [] for hid in hids}
-    for role, user_hid, group_hid in db.execute(
-        select(RoleGrant.role, RoleGrant.user_hid, RoleGrant.group_hid).where(
-            or_(RoleGrant.user_hid.in_(hids), RoleGrant.group_hid.in_(list(members)))
-        )
+    for grant, group in db.execute(
+        select(RoleGrant, UserGroup)
+        .outerjoin(UserGroup, UserGroup.hid == RoleGrant.group_hid)
+        .where(or_(RoleGrant.user_hid.in_(hids), RoleGrant.group_hid.in_(list(members))))
     ):
-        for hid in [user_hid] if user_hid else members.get(group_hid or "", []):
-            granted[hid].append(role)
-    return {hid: highest(roles) for hid, roles in granted.items()}
+        for hid in [grant.user_hid] if grant.user_hid else members.get(grant.group_hid or "", []):
+            found[hid].append(Held(grant, group))
+    return {hid: sorted(held, key=_held_order) for hid, held in found.items()}
+
+
+def roles_of(db: Session, users: Sequence[User]) -> dict[str, Role | None]:
+    """Return the highest role held by each of the users, by its HID, as `effective_role`
+    gives it for one: the highest granted to the user or to a group it is in. Read in two
+    statements for them all, however many they are."""
+    return {
+        hid: highest(one.grant.role for one in held) for hid, held in grants_of(db, users).items()
+    }
 
 
 def groups_of_users(db: Session, users: Sequence[User]) -> dict[str, list[UserGroup]]:
@@ -354,6 +489,44 @@ def name_of(user: User, contact: Contact | None) -> str:
     return contact.name if contact is not None else user.username
 
 
+def checked_kind(kind: str | None) -> str:
+    """Return the kind of a new account, a person's where none is given, or refuse one
+    there is not (P-316)."""
+    if not kind:
+        return PERSON
+    if kind not in KINDS:
+        raise Invalid("there is no such kind of account", {"kind": "person, service or agent"})
+    return kind
+
+
+def checked_answerable(db: Session, hid: str | None, field: str = "answerable_hid") -> User:
+    """Return the person an agent is to be answerable to, or refuse one it cannot be: a
+    user of the kind `person` who is not retired (P-316). The writer's place is taken
+    before the look, so that a retirement of the person at the same moment waits and then
+    finds the agent among the records to be said, or this finds the person retired."""
+    if not hid:
+        raise Invalid(
+            "an agent is answerable to a person: name the person",
+            {field: "an agent is answerable to a person"},
+        )
+    dialect.hold_other_writers(db)
+    person = db.get(User, hid)
+    if person is None:
+        raise Invalid("there is no such user", {field: f"there is no user {hid}"})
+    if not is_person(person):
+        raise Invalid(
+            f"{person.username} is {KIND_WORDS[person.kind]}: an agent is answerable to a person",
+            {field: "an agent is answerable to a person"},
+        )
+    if is_retired(person):
+        raise Invalid(
+            f"the account {person.username} is retired: an agent is answerable to a person "
+            "who is not",
+            {field: "this account is retired"},
+        )
+    return person
+
+
 def _checked_username(db: Session, username: str, user: User | None) -> str:
     username = username.strip()
     if not USERNAME.fullmatch(username):
@@ -380,12 +553,13 @@ def _checked_username(db: Session, username: str, user: User | None) -> str:
     return username
 
 
-def _checked_contact(db: Session, hid: str, user: User | None, service: bool) -> Contact:
-    """Return the contact a user is to be, or refuse one it cannot be (P-172)."""
-    if service:
+def _checked_contact(db: Session, hid: str, user: User | None, kind: str) -> Contact:
+    """Return the contact a user is to be, or refuse one it cannot be (P-172): a service
+    account and an agent are no person and have none (P-316)."""
+    if kind != PERSON:
         raise Invalid(
-            "a service account is no person and has no contact",
-            {"contact_hid": "a service account has no contact"},
+            f"{KIND_WORDS[kind]} is no person and has no contact",
+            {"contact_hid": f"{KIND_WORDS[kind]} has no contact"},
         )
     # An account does not stand on a retired contact. That is checked by reading the
     # contact and kept by writing the user, so the writer's place is taken before the
@@ -466,13 +640,24 @@ def _checked_groups(db: Session, hids: Sequence[str]) -> list[UserGroup]:
     return list(found.values())
 
 
-def checked_role(role: str | None) -> str | None:
+def checked_role(role: str | None, kind: str = PERSON, username: str = "") -> str | None:
+    """Return the role to grant an account of a kind, or refuse one there is not, and
+    Admin to an agent (P-316)."""
     if not role:
         return None
     try:
-        return Role(role).value
+        checked = Role(role).value
     except ValueError:
         raise Invalid("there is no such role", {"role": "viewer, inventory or admin"}) from None
+    if kind == AGENT and checked == Role.ADMIN.value:
+        raise _admin_to_an_agent(username)
+    return checked
+
+
+def _admin_to_an_agent(username: str) -> Invalid:
+    """Return the refusal of Admin to an agent, named (P-316)."""
+    who = f"{username} is an agent" if username else "this is an agent"
+    return Invalid(f"{who}, and {NEVER_ADMIN}", {"role": NEVER_ADMIN})
 
 
 def onboard(
@@ -480,7 +665,8 @@ def onboard(
     context: AuditContext,
     *,
     username: str,
-    is_service_account: bool = False,
+    kind: str = PERSON,
+    answerable_hid: str | None = None,
     access_code: str | None = None,
     contact_hid: str | None = None,
     contact: dict[str, Any] | None = None,
@@ -499,30 +685,42 @@ def onboard(
     names the field of the request it is for: `operator.label` for the label of the
     operator, `group_hids` for a group there is not. A person who would hold no role,
     neither `role` nor a group that grants one, is refused at `role`, since an account
-    with none does not sign in; a service account may be made with none (P-299).
+    with none does not sign in; a service account and an agent may be made with none
+    (P-299). An agent is answerable to a person, `answerable_hid`, and is never Admin: a
+    `role` of Admin and a group that grants it are refused at their fields (P-316).
 
     `operator` holds `label`, `colour` and `description`, each optional. The label left
     out, or blank, is the username, and a username that is no acceptable label is
     refused and never altered; the colour left out is the next that no operator has,
     and given as blank or null is none. It needs a contact in the same request.
     """
-    if operator is not None and (is_service_account or (contact is None and not contact_hid)):
+    kind = checked_kind(kind)
+    if operator is not None and (kind != PERSON or (contact is None and not contact_hid)):
         raise Invalid(
             "an operator is made of a person who is a contact",
             {
-                "operator": "a service account works as no operator"
-                if is_service_account
+                "operator": f"{KIND_WORDS[kind]} works as no operator"
+                if kind != PERSON
                 else "give the contact, new or there, that stands behind the operator"
             },
         )
-    granted = checked_role(role)
+    granted = checked_role(role, kind, username.strip())
     groups = _checked_groups(db, group_hids)
-    roleless = granted is None and not any(roles_of_groups(db, groups).values())
+    given = roles_of_groups(db, groups)
+    if kind == AGENT:
+        admins = [group.name for group in groups if Role.ADMIN.value in given[group.hid]]
+        if admins:
+            raise Invalid(
+                f"the group {', '.join(admins)} grants Admin, and {NEVER_ADMIN}",
+                {"group_hids": f"a group that grants Admin: {NEVER_ADMIN}"},
+            )
+    roleless = granted is None and not any(given.values())
     user, code = create_user(
         db,
         context,
         username=username,
-        is_service_account=is_service_account,
+        kind=kind,
+        answerable_hid=answerable_hid,
         access_code=access_code,
         contact_hid=contact_hid,
         contact=contact,
@@ -547,7 +745,7 @@ def onboard(
             made = operators.create_operator(db, context, fields)
         except (Invalid, Conflict) as error:
             raise _named_in("operator", error) from None
-    if roleless and not is_service_account:
+    if roleless and kind == PERSON:
         # An account with no role does not sign in, so a person is made with one
         # (P-299). What is wrong with any other part is said first; nothing is kept,
         # since the caller's transaction is not committed.
@@ -560,7 +758,8 @@ def create_user(
     context: AuditContext,
     *,
     username: str,
-    is_service_account: bool = False,
+    kind: str = PERSON,
+    answerable_hid: str | None = None,
     access_code: str | None = None,
     contact_hid: str | None = None,
     contact: dict[str, Any] | None = None,
@@ -568,12 +767,15 @@ def create_user(
 ) -> tuple[User, str | None]:
     """Create a user. Return it with its access code, which is shown this once.
 
-    A person gets the given access code, or a generated one. A service account gets
-    none: it holds tokens instead. The person is a contact: `contact_hid` names one,
-    `contact` holds the fields of a new one, made in the same change, or neither is
-    given and the user has none until an Admin gives it one (P-172). `onboard` makes
-    with it its operator, its role and its groups (P-283).
+    A person gets the given access code, or a generated one. A service account and an
+    agent get none: they hold tokens instead (P-316). The person is a contact:
+    `contact_hid` names one, `contact` holds the fields of a new one, made in the same
+    change, or neither is given and the user has none until an Admin gives it one
+    (P-172). An agent names the person answerable for it, `answerable_hid`, which no
+    other kind takes. `onboard` makes with it its operator, its role and its groups
+    (P-283).
     """
+    kind = checked_kind(kind)
     username = _checked_username(db, username, None)
     notes = _checked_notes(notes)
     if contact_hid is not None and contact is not None:
@@ -581,14 +783,25 @@ def create_user(
             "a user is given one contact",
             {"contact": "give contact_hid or contact, not both"},
         )
-    if contact is not None and is_service_account:
+    if contact is not None and kind != PERSON:
         raise Invalid(
-            "a service account is no person and has no contact",
-            {"contact": "a service account has no contact"},
+            f"{KIND_WORDS[kind]} is no person and has no contact",
+            {"contact": f"{KIND_WORDS[kind]} has no contact"},
         )
-    person = _checked_contact(db, contact_hid, None, is_service_account) if contact_hid else None
+    if kind != PERSON and access_code is not None:
+        raise Invalid(
+            f"{KIND_WORDS[kind]} has no access code: it holds tokens",
+            {"access_code": f"{KIND_WORDS[kind]} has no access code"},
+        )
+    if kind != AGENT and answerable_hid:
+        raise Invalid(
+            f"{KIND_WORDS[kind]} is answerable to nobody: an agent alone is",
+            {"answerable_hid": "an agent alone is answerable to a person"},
+        )
+    answerable = checked_answerable(db, answerable_hid) if kind == AGENT else None
+    person = _checked_contact(db, contact_hid, None, kind) if contact_hid else None
     code = None
-    if not is_service_account:
+    if kind == PERSON:
         code = _checked_code(db, access_code) if access_code is not None else made_code(db)
     if contact is not None:
         try:
@@ -600,7 +813,8 @@ def create_user(
         username=username,
         username_key=_key(username),
         contact_hid=person.hid if person is not None else None,
-        is_service_account=is_service_account,
+        kind=kind,
+        answerable_hid=answerable.hid if answerable is not None else None,
         access_code_hash=codes.hash_code(code) if code else None,
         notes=notes,
         created_by=context.actor_hid,
@@ -616,7 +830,8 @@ def create_user(
         user.hid,
         [
             change("username", None, user.username),
-            change("is_service_account", None, user.is_service_account),
+            change("kind", None, user.kind),
+            *([change("answerable_hid", None, user.answerable_hid)] if user.answerable_hid else []),
             *([change("contact_hid", None, user.contact_hid)] if user.contact_hid else []),
             *([change("notes", None, user.notes)] if user.notes else []),
         ],
@@ -626,16 +841,25 @@ def create_user(
 
 
 def update_user(
-    db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
+    db: Session,
+    context: AuditContext,
+    hid: str,
+    row_version: int | None,
+    fields: dict[str, Any],
 ) -> User:
-    """Change a user's username (P-173), its contact (P-172), its notes (P-281), or
-    whether it is disabled.
+    """Change a user's username (P-173), its contact (P-172), its notes (P-281), whether
+    it is disabled, or the person answerable for an agent, which hands it over (P-316).
 
     The name, the email and the numbers a user shows are its contact's, and are changed
     on the contact. A new username keeps the user's sessions and tokens: it is the same
-    record, by its HID.
+    record, by its HID. The kind is not changed: the one it has is no change.
     """
     user = get_user(db, hid)
+    if fields.get("kind") is not None and fields["kind"] != user.kind:
+        raise Invalid(
+            f"the kind of an account is not changed: {user.username} is {KIND_WORDS[user.kind]}",
+            {"kind": "the kind is set when the account is made"},
+        )
     if is_retired(user):
         # Of a retired account the username, the notes and its contact taken off are
         # all that is changed (P-296).
@@ -643,6 +867,8 @@ def update_user(
             raise _retired(user, "disabled", "is neither disabled nor enabled")
         if (fields.get("contact_hid") or None) not in (None, user.contact_hid):
             raise _retired(user, "contact_hid", "is given no other contact")
+        if "answerable_hid" in fields and fields["answerable_hid"] != user.answerable_hid:
+            raise _retired(user, "answerable_hid", "is handed to nobody")
     changes = []
     if fields.get("username") is not None:
         username = _checked_username(db, fields["username"], user)
@@ -652,9 +878,21 @@ def update_user(
     if "contact_hid" in fields:
         new = fields["contact_hid"] or None
         if new is not None and new != user.contact_hid:
-            _checked_contact(db, new, user, user.is_service_account)
+            _checked_contact(db, new, user, user.kind)
         if new != user.contact_hid:
             changes.append(change("contact_hid", user.contact_hid, new))
+    if "answerable_hid" in fields:
+        new = fields["answerable_hid"] or None
+        if not is_agent(user) and new is not None:
+            raise Invalid(
+                f"{user.username} is {KIND_WORDS[user.kind]}, answerable to nobody: an agent "
+                "alone is answerable to a person",
+                {"answerable_hid": "an agent alone is answerable to a person"},
+            )
+        if is_agent(user) and new != user.answerable_hid:
+            changes.append(
+                change("answerable_hid", user.answerable_hid, checked_answerable(db, new).hid)
+            )
     if fields.get("disabled") is not None and fields["disabled"] != user.disabled:
         changes.append(change("disabled", user.disabled, fields["disabled"]))
     if "notes" in fields:
@@ -710,9 +948,10 @@ def retire_user(db: Session, context: AuditContext, hid: str, row_version: int |
 
     Every session of the account ends and its access code is erased. It is taken out of
     each of its groups, each role granted to the account itself is revoked, and the
-    tokens of a service account are revoked, each audited as it is when done by itself,
-    and the account as `retire`. `disabled` stays what it was. Refused where it would
-    leave no Admin who can sign in, and for an account that is retired already.
+    tokens of a service account or an agent are revoked, each audited as it is when done
+    by itself, and the account as `retire`. `disabled` stays what it was, and so does
+    the person an agent is answerable to. Refused where it would leave no Admin who can
+    sign in, and for an account that is retired already.
     """
     user = get_user(db, hid)
     if is_retired(user):
@@ -755,7 +994,7 @@ def bring_back_user(
     db: Session, context: AuditContext, hid: str, row_version: int | None
 ) -> tuple[User, str | None]:
     """Bring a retired account back (P-296). Return it with its new access code, which is
-    shown this once; a service account has none.
+    shown this once; a service account and an agent have none.
 
     It is active again and not disabled, with no role and no group: what it held was
     taken away when it was retired, and an Admin gives it anew, the role in the same
@@ -766,7 +1005,7 @@ def bring_back_user(
     if not is_retired(user):
         raise Conflict(f"the account {user.username} is not retired")
     _touch(user, context, row_version)
-    code = None if user.is_service_account else made_code(db)
+    code = made_code(db) if is_person(user) else None
     changes = [change("record_status", "retired", "active")]
     if user.disabled:
         changes.append(change("disabled", True, False))
@@ -830,8 +1069,8 @@ def set_access_code(
     user = get_user(db, hid)
     if is_retired(user):
         raise _retired(user, None, "is given no access code")
-    if user.is_service_account:
-        raise Conflict("a service account has no access code; it holds tokens")
+    if not is_person(user):
+        raise Conflict(f"{KIND_WORDS[user.kind]} has no access code; it holds tokens")
     code = _checked_code(db, access_code) if access_code is not None else made_code(db)
     _touch(user, context, None)
     user.access_code_hash = codes.hash_code(code)
@@ -1034,6 +1273,16 @@ def add_member(db: Session, context: AuditContext, group_hid: str, user_hid: str
         raise _retired(user, None, "is put in no group")
     if db.get(UserGroupMember, (user.hid, group.hid)) is not None:
         return
+    if is_agent(user):
+        # Looked at in the writer's place, so that a grant of Admin to the group at the
+        # same moment waits, and then finds the agent in it (P-316).
+        dialect.hold_other_writers(db)
+        if Role.ADMIN.value in roles_of_groups(db, [group])[group.hid]:
+            raise Conflict(
+                f"the group {group.name} grants Admin, and {user.username} is an agent: "
+                f"{NEVER_ADMIN}",
+                {"user_hid": NEVER_ADMIN},
+            )
     with _ending_with_the_first_role(db, lambda: [user]):
         db.add(UserGroupMember(user_hid=user.hid, group_hid=group.hid))
     audit.record(
@@ -1086,8 +1335,24 @@ def grant_role(
         user = get_user(db, user_hid)
         if is_retired(user):
             raise _retired(user, "user_hid", "is granted no role")
+        if is_agent(user) and role == Role.ADMIN.value:
+            raise _admin_to_an_agent(user.username)
     else:
-        get_group(db, group_hid or "")
+        group = get_group(db, group_hid or "")
+        if role == Role.ADMIN.value:
+            # Looked at in the writer's place, so that an agent put in the group at the
+            # same moment waits, and is then refused (P-316).
+            dialect.hold_other_writers(db)
+            agents = [one for one in _members(db, group.hid) if is_agent(one)]
+            if agents:
+                names = ", ".join(sorted(one.username for one in agents))
+                which = "it" if len(agents) == 1 else "them"
+                raise Conflict(
+                    f"the group {group.name} holds the agent{'s' if len(agents) > 1 else ''} "
+                    f"{names}, and {NEVER_ADMIN}: take {which} out of the group first",
+                    {"role": f"this group holds an agent: {NEVER_ADMIN}"},
+                    depends_on=[Existing("user", one.hid, one.username) for one in agents],
+                )
     existing = db.scalar(
         select(RoleGrant).where(
             RoleGrant.role == role,
@@ -1145,7 +1410,7 @@ def revoke_grant(db: Session, context: AuditContext, hid: str) -> None:
 
 
 def list_service_tokens(db: Session, user_hid: str) -> list[ServiceToken]:
-    """Return the tokens of a service account, newest first."""
+    """Return the tokens of a service account or an agent, newest first."""
     get_user(db, user_hid)
     return list(
         db.scalars(
@@ -1164,10 +1429,12 @@ def create_service_token(
     name: str,
     expires_at: datetime | None = None,
 ) -> tuple[ServiceToken, str]:
-    """Create a token for a service account. Return it with the secret, shown this once."""
+    """Create a token for a service account or an agent (P-316). Return it with the
+    secret, shown this once. One is made for an account that holds no role, and for an
+    agent whose person holds none: it is refused until they do (P-299)."""
     user = get_user(db, user_hid)
-    if not user.is_service_account:
-        raise Conflict("tokens belong to service accounts, not to people")
+    if is_person(user):
+        raise Conflict("tokens belong to service accounts and agents, not to people")
     if is_retired(user):
         raise _retired(user, None, "is given no token")
     name = name.strip()
@@ -1238,7 +1505,7 @@ def sign_in(
     accepted = codes.verify(user.access_code_hash if user else None, access_code)
     # A retired account is refused as an unknown one is, and in the same time: its
     # code is erased, so what is typed is checked against the hash that no code has.
-    if user is None or not accepted or user.disabled or user.is_service_account or is_retired(user):
+    if user is None or not accepted or user.disabled or not is_person(user) or is_retired(user):
         throttle.failure(*keys)
         audit.record(db, context, "sign_in_failed", "user", user.hid if user else None, attempted)
         db.commit()
@@ -1297,15 +1564,40 @@ def _authenticate_service(db: Session, token: str) -> Principal:
     ):
         raise NotSignedIn("the token is not valid")
     user = db.get(User, record.user_hid)
-    if user is None or user.disabled or is_retired(user) or not user.is_service_account:
+    if user is None or user.disabled or is_retired(user) or is_person(user):
         raise NotSignedIn("the token is not valid")
-    role = effective_role(db, user)
-    if role is None:
-        raise NotSignedIn("the token is not accepted: its service account holds no role")
+    for_hid = None
+    if is_agent(user):
+        # The role in force of an agent is the lower of its own and its person's, read
+        # now, so that the person's role caps it as it changes; nothing of the agent is
+        # changed where the person cannot answer for it (P-316).
+        held = in_force(db, [user])[user.hid]
+        if held.role is None and held.capped_by is None:
+            raise NotSignedIn(f"the token is not accepted: the agent {user.username} holds no role")
+        if held.role is None:
+            person = db.get(User, user.answerable_hid) if user.answerable_hid else None
+            raise NotSignedIn(_not_answered_for(user, person, held.capped_by))
+        role, for_hid = held.role, user.answerable_hid
+    else:
+        role = effective_role(db, user)
+        if role is None:
+            raise NotSignedIn("the token is not accepted: its service account holds no role")
     last = record.last_used_at
     if last is None or (now - last).total_seconds() > LAST_USED_GRANULARITY_SECONDS:
         _used(db, record, now)
-    return Principal(user=user, role=role, kind="service")
+    return Principal(user=user, role=role, kind="service", for_hid=for_hid)
+
+
+def _not_answered_for(agent: User, person: User | None, why: str | None) -> str:
+    """Say why the token of an agent is refused, where its person cannot answer for it."""
+    whom = person.username if person is not None else "nobody"
+    what = {
+        PERSON_DISABLED: "is disabled",
+        PERSON_NO_ROLE: "holds no role",
+    }.get(why or "", "is retired")
+    return (
+        f"the token is not accepted: the agent {agent.username} is answerable to {whom}, who {what}"
+    )
 
 
 def _used(db: Session, record: ServiceToken, now: datetime) -> None:

@@ -28,6 +28,7 @@ import {
   usersAddress,
   usersGapOf,
   usersGapQuery,
+  usersKindOf,
 } from "./onboarding";
 import { NO_NEW_PERSON, personChoice } from "./people";
 
@@ -120,7 +121,8 @@ describe("Make an operator labels it by the person (P-284)", () => {
 
 const PERSON: NewUserForm = {
   username: " ex-ops ",
-  service: false,
+  kind: "person",
+  answerableHid: "",
   alsoContact: true,
   person: { ...personChoice("new"), person: { ...NO_NEW_PERSON, name: "Example Person" } },
   alsoOperator: true,
@@ -138,7 +140,7 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
       ok: true,
       body: {
         username: "ex-ops",
-        is_service_account: false,
+        kind: "person",
         contact: { name: "Example Person" },
         operator: { label: "ex-ops", colour: "#1f6feb" },
         role: "inventory",
@@ -191,17 +193,45 @@ describe("one Create sends what a new person needs (P-281 to P-283)", () => {
   });
 
   it("sends a service account with neither, nor an access code", () => {
-    const read = newUserBody({ ...PERSON, service: true, accessCode: "kept-out" });
+    const read = newUserBody({ ...PERSON, kind: "service", accessCode: "kept-out" });
     expect(read).toEqual({
       ok: true,
       body: {
         username: "ex-ops",
-        is_service_account: true,
+        kind: "service",
         role: "inventory",
         group_hids: ["G1", "G2"],
         notes: "For the network team.",
       },
     });
+  });
+
+  it("sends an agent with the person answerable for it, and none of a person's (P-316)", () => {
+    const read = newUserBody({
+      ...PERSON,
+      kind: "agent",
+      answerableHid: "U9",
+      accessCode: "kept-out",
+    });
+    expect(read).toEqual({
+      ok: true,
+      body: {
+        username: "ex-ops",
+        kind: "agent",
+        answerable_hid: "U9",
+        role: "inventory",
+        group_hids: ["G1", "G2"],
+        notes: "For the network team.",
+      },
+    });
+    // A person answerable is chosen before anything is sent; nobody else names one.
+    expect(newUserBody({ ...PERSON, kind: "agent" })).toEqual({
+      ok: false,
+      field: "answerable_hid",
+      error: "Choose the person answerable for the agent.",
+    });
+    const service = newUserBody({ ...PERSON, kind: "service", answerableHid: "U9" });
+    expect(service.ok && "answerable_hid" in service.body).toBe(false);
   });
 
   it("leaves out no group, no role, blank notes, and sends an access code given", () => {
@@ -292,6 +322,23 @@ describe("who is what, on the lists of people (P-280)", () => {
       "?q=ex+ops&operator=none&offset=50",
     );
     expect(queryOf(usersAddress("", "", 0))).toBe("");
+  });
+
+  it("keeps the kind the users are narrowed to in the address (P-316)", () => {
+    expect(queryOf(usersAddress("ex", "", 50, "agent"))).toBe("?q=ex&kind=agent&offset=50");
+    expect(queryOf(usersAddress("", "retired", 0, "service"))).toBe("?retired=only&kind=service");
+    expect(usersKindOf(new URLSearchParams("kind=agent&q=ex"))).toBe("agent");
+    expect(usersKindOf(new URLSearchParams("kind=robot"))).toBe("");
+    expect(usersKindOf(new URLSearchParams(""))).toBe("");
+  });
+
+  it("names the list of every account that is not retired Active users (P-314)", () => {
+    expect(USERS_GAPS.map((gap) => gap.label)).toEqual([
+      "Active users",
+      "Users with no contact",
+      "Users with no operator",
+      "Retired users",
+    ]);
   });
 
   it("keeps the retired accounts, asked for by themselves, in the address (P-292)", () => {

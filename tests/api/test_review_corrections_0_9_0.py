@@ -78,7 +78,7 @@ def test_an_upload_with_a_service_token_holds_no_writer_while_its_body_arrives(
     created = client.post(
         f"{API}/users",
         headers=admin,
-        json={"username": "svc-scanner", "is_service_account": True, "role": "inventory"},
+        json={"username": "svc-scanner", "kind": "service", "role": "inventory"},
     ).json()
     made = client.post(
         f"{API}/users/{created['user']['hid']}/service-tokens", headers=admin, json={"name": "x"}

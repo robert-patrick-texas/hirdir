@@ -140,10 +140,10 @@ def test_an_account_with_no_contact_and_a_service_account_have_none(
     assert (me["contact"], me["contact_hid"], me["operators"]) == (None, None, [])
 
     desk = Maker(client, admin)
-    probe = desk.post("/users", {"username": "probe", "is_service_account": True, "role": "viewer"})
+    probe = desk.post("/users", {"username": "probe", "kind": "service", "role": "viewer"})
     secret = desk.post(f"/users/{probe['user']['hid']}/service-tokens", {"name": "probe"})["secret"]
     me = _me(client, {"Authorization": f"Bearer {secret}"})
-    assert (me["contact"], me["operators"], me["is_service_account"]) == (None, [], True)
+    assert (me["contact"], me["operators"], me["kind"]) == (None, [], "service")
 
 
 def test_a_retired_contact_is_shown_retired_and_stands_behind_no_operator(
@@ -487,7 +487,7 @@ def _writes(operator_hid: str = "no-such-hid") -> list[tuple[str, str, dict[str,
 
 def test_a_service_token_has_no_profile(client: TestClient, admin: dict) -> None:
     desk = Maker(client, admin)
-    probe = desk.post("/users", {"username": "probe", "is_service_account": True, "role": "admin"})
+    probe = desk.post("/users", {"username": "probe", "kind": "service", "role": "admin"})
     secret = desk.post(f"/users/{probe['user']['hid']}/service-tokens", {"name": "probe"})["secret"]
     token = {"Authorization": f"Bearer {secret}"}
     for method, path, body in _writes():

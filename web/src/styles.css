@@ -3704,3 +3704,21 @@ dialog.person-dialog {
     justify-self: start;
   }
 }
+
+/* 0.9.17: where a role comes from (P-307), under the role on the list of users and on
+   a user's page; and what holds an agent's role lower (P-316). */
+.user-role-from,
+.user-role-capped {
+  display: block;
+  font-size: 0.875em;
+}
+
+.role-sources,
+.group-grants {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.role-source {
+  margin: 0.15rem 0;
+}

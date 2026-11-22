@@ -676,7 +676,13 @@ def _context(db: Session, hid: str) -> AuditContext:
     ).first()
     if event is None:
         return AuditContext(actor_hid=None, via="system")
-    return AuditContext(actor_hid=event.actor_hid, via=event.via, request_id=event.request_id)
+    # An agent's apply is for the person it was answerable to when it asked (P-316).
+    return AuditContext(
+        actor_hid=event.actor_hid,
+        via=event.via,
+        request_id=event.request_id,
+        for_hid=event.for_hid,
+    )
 
 
 APPLY_BEGINS = ("apply_started", "apply_resumed")
@@ -1113,11 +1119,12 @@ def _complete(db: Session, hid: str, context: AuditContext) -> None:
 
 
 def _role(db: Session, context: AuditContext) -> Role | None:
-    """Return the role that the person who asked for an apply holds now."""
+    """Return the role that the person who asked for an apply holds now: of an agent, the
+    role its person holds it to now (P-316)."""
     user = db.get(User, context.actor_hid) if context.actor_hid else None
     if user is None or user.disabled:
         return None
-    return accounts.effective_role(db, user)
+    return accounts.in_force(db, [user])[user.hid].role
 
 
 def _take(db: Session, hid: str) -> ImportJob | None:
