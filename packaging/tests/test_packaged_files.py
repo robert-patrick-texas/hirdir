@@ -877,7 +877,7 @@ def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_
     trail = re.findall(r'events\.create_index\("(\w+)", \["(\w+)"\], unique=False\)', source)
     assert sorted(trail) == sorted(
         (index.name, column.name)
-        for index in AuditEvent.__table__.indexes
+        for index in AuditEvent.metadata.tables[AuditEvent.__tablename__].indexes
         for column in index.columns
         if column.name in ("actor_hid", "for_hid")
     )
