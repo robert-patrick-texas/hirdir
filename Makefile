@@ -67,7 +67,7 @@ e2e:            ## package-test, with the browser scenarios run against the fres
 deb: web docs   ## build dist/hirdir_<version>_amd64.deb in a clean container, with the web UI and the documentation of this tree
 	packaging/build-deb.sh
 
-package-test:   ## install the package in systemd containers and exercise it through nginx: upgraded from the previous release, with a migration that fails, and fresh
+package-test:   ## install the package in systemd containers and exercise it through nginx: upgraded from the previous release, with a migration that fails, fresh, and the short browser check
 	packaging/package-test.sh
 
 docs:           ## render every .md file into html/

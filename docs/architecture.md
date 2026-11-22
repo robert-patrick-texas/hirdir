@@ -872,7 +872,7 @@ volume.
 | `make browser` | the browser scenarios on the host, against a fresh scratch inventory, with one list of every scenario that failed; `ARGS="--last-failed"`, `ARGS="--since <commit>"` or spec files, see "The browser scenarios on the host" below |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
-| `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
+| `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, fresh, and fresh again for the short browser check through nginx |
 | `make fixture` | fills a database with 50,000 fictional items for timing |
 | `make time-filters` | times the filters and sorts of the item list on that database; see "Timing at scale" below |
 
@@ -886,7 +886,7 @@ itself is done once.
   at the least. The build host is shared, so before a run starts a busy host is waited
   for, ten minutes at the most, and the tests are then run all the same with fewer at
   once. `make check`, `make test`, `make test-changed` and `make acceptance` ask it,
-  and so does `make package-test` for its three passes. `HIRDIR_TEST_WORKERS` sets the
+  and so does `make package-test` for the three passes it runs side by side. `HIRDIR_TEST_WORKERS` sets the
   number outright and `HIRDIR_TEST_WAIT` the longest wait in seconds.
 - **One migrated database, copied.** The database of a test is a copy of one that was
   migrated once for each worker. The migrations themselves are tested on databases of
@@ -1056,8 +1056,32 @@ small change the spec files it reaches (P-305): the host run is for the files th
 changed, where a failure is quickest to see and to rerun. Every browser scenario is run
 again against the fresh install, by `make e2e`, only for a release that changes the
 packaging, `hirdir-setup`, nginx, the prefix or the frame of the page, and for 1.0.0;
-otherwise the package is checked through nginx by its other passes, and, once it is
-built, by a short browser check of what only the package can get wrong.
+otherwise the package is checked through nginx by its other passes, and by the short
+browser check of what only the package can get wrong, `--browser-check` below.
+
+**The short browser check through nginx** (P-305, P-309) is one spec file,
+`web/e2e/browser-check.spec.ts`, which the package test's pass `--browser-check` runs
+by itself against a fresh install behind nginx under `/hirdir/`, with the browser as
+`--e2e` has it. What only the package can get wrong is what the page and the browser
+make of the prefix, which no request of curl sees: its four scenarios build on one
+another. Signing in under the prefix: the page names the prefix as its base, and every
+address it asks for, its scripts, its stylesheet, its icon and the API, is under it,
+with no cookie set. A list: two items of the file's own, made through the API, in the
+grid filtered down to them. A download: that list exported as CSV, asked for under the
+prefix and saved under the name the server gives it, a header row and the two items by
+their HIDs. A page reached by its address: an item's page opened from the grid,
+reloaded, so that the address is asked of the server through nginx and every part of
+the page is fetched from under the prefix and not from under `items/`, and opened
+afresh by its address in a browser with no session, where the sign-in page is shown
+and signing in shows the item at that address. Each scenario is a line of its own in
+the pass, read from Playwright's report of the run. The file keeps the rules of
+`support.ts`, so `--e2e` and `make browser` run it beside the others, at the root of a
+development server too. Measured on the four-core build host at 0.9.17, with the host
+busy: the pass in 69 to 121 seconds, the browser and its four scenarios in about half a
+minute of it, against about fifty minutes for `--e2e`. Seen to fail: with nginx made to
+add a policy that lets no script run, every request of curl passed and the first
+scenario failed; with the addresses of the items' pages under the prefix answered `404`
+by nginx, the first three passed and the fourth failed.
 
 Measured against a development server on the four-core build host, the browser in
 Playwright's container: one file after another, which is how they ran before 0.5.0, the
@@ -1066,16 +1090,21 @@ they took 85 seconds while other work held one of the four cores. One file at a 
 they now take somewhat longer than before, because each of the three files loads for
 itself what one file loaded once.
 
-`make package-test` runs `packaging/package-test.sh`, which makes three passes, side by
-side when the host has cores and memory free for it and one after another when it has
-not. Each pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
+`make package-test` runs `packaging/package-test.sh`, which makes four passes: the first
+three side by side when the host has cores and memory free for it and one after another
+when it has not, and `--browser-check` by itself once they have ended, since a container
+that starts while a browser drives a page changes the host's network under it and the
+browser stops with `net::ERR_NETWORK_CHANGED`. With `--e2e`, whose browser scenarios in
+the fresh pass hold the short check's, that pass is not run again by itself. A release
+runs the passes one after another, each named ([release-process.md](release-process.md#steps)). Each pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
 Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
 | `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx; and, where the new version has the unit of the background work, both units are enabled and running once the upgrade is done, also from a release that had no such unit; and, where the upgrade runs migration `0015`, that a copy of the upgrade's backup, migrated where no service runs, holds `kept_answers` empty and every other table row for row as the backup has it, that the second process then fills the table, and that the four long reports answer as the previous release answered them. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below. An upgrade that stops leaves both units stopped, and going back to a release that has no unit of the background work leaves no process, no unit and no link of it |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; the long reports worked out ahead (P-275, P-276): the four listed as `ahead` before anybody has asked, a check that finds none differing, each worked out again after a change no sooner than `reports_ahead_after_seconds` says and within half a minute more, by the moments of the server's own events, none with the setting at 0, the server answering a report alone with `hirdir-worker` stopped, the four back when it starts, the rows as they were after a restart of the service, a reset that empties `kept_answers`, counted with both units stopped once the four were waited for, and a restore that brings its rows back with nothing worked out again; a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; the long reports worked out ahead (P-275, P-276): the four listed as `ahead` before anybody has asked, a check that finds none differing, each worked out again after a change no sooner than `reports_ahead_after_seconds` says and within half a minute more, by the moments of the server's own events, none with the setting at 0, the server answering a report alone with `hirdir-worker` stopped, the four back when it starts, the rows as they were after a restart of the service, a reset that empties `kept_answers`, counted with both units stopped once the four were waited for, and a restore that brings its rows back with nothing worked out again; the kind of each account, an agent answerable to a person, held to that person's role, never Admin, in the audit trail for that person and handed over when that person is retired, each role of a user with where it comes from, and `hirdir admin create-user` refusing a person with no role unless `--no-role` (S61, S62); a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
+| `--browser-check` | The short browser check through nginx (P-305, P-309), about two minutes. Installs on a system that never had `hirdir` and sets it up as the fresh pass does, `hirdir-setup --self-signed --prefix /hirdir`, the health probe, the first Admin and signing in through nginx, the page and one of its scripts under the prefix; then the four browser scenarios of `web/e2e/browser-check.spec.ts`, described above, each a line of its own, as an Admin made for them, `e2e-admin`; and that no response set a cookie. A package with no web UI, or a tree with no such spec file, is a `SKIP` line. It makes no purge: the container is removed |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
@@ -1593,6 +1622,44 @@ offered, and a kind of 27 characters given to a system. What is made is retired 
 back. Further on in the pass, `hirdir admin reset` must keep the contact that each user
 is, as it was and with its history, and clear the others.
 
+`migration-0018.sh` is the one that 0.9.17 brought, and what it looks for is what
+[install.md](install.md#from-0916-to-0917) tells an operator of that upgrade, and P-316
+of [decisions.md](decisions.md). Under P-306 the upgrade to 0.9.17 is tested from 0.9.16
+alone, so the file talks to that release in its own API, where an account is a service
+account or not by `is_service_account`, and asks nothing of an older one. The migration
+makes `users` anew with `kind`, `service` where the account was a service account and
+`person` for every other, and `answerable_hid`, empty, with its foreign key to `users`
+and its index, drops `is_service_account`, and adds `for_hid` to `audit_events`, empty,
+with two indexes of the trail, by `actor_hid` and by `for_hid`; it creates no table and
+writes no event. With the previous release the file makes,
+beside the accounts of the pass, a user of each kind and state that the migration
+could take for another: a person with a role of their own, a person who holds
+View-only through a group alone, a disabled person and a retired one, a service account
+that holds Inventory, one that holds no role, and one that `hirdir admin create-user
+--service-account` makes, each service account with a token; and sees that each person
+signs in but the disabled and the retired one, that each token is taken but the one of
+the account with no role, and that the previous release refuses a kind and an agent.
+The file names `users`, `user_groups`, `user_group_members`, `role_grants` and
+`service_tokens` as tables beside the inventory, the column the migration drops from
+`users` and the two columns, the foreign key and the index it adds, and the column it
+adds to `audit_events`, which the check that the upgrade wrote no event leaves out of
+what it compares, and the two indexes it adds there, beside those the trail had, which
+the file reads before the upgrade; and of the users as the API gives them, `is_service_account` of each,
+which the new version answers as `kind`. The lists of users, before and after, are
+asked with `retired=yes`, so that the retired one is among them.
+
+After the upgrade the backup holds `is_service_account` and no kind; every account has
+the kind it had in another word, none is an agent and none is answerable to anybody;
+no event is for anybody; each user from before is as it was, field for field, with the
+role it held as its role in force and each grant with the group it comes through; each
+signs in, or is refused, and each token is taken or refused, as before. Last, a service
+account from before is not made an agent; an agent is made answerable to the person from
+before who holds Inventory, and its change is in the audit trail as the agent's, for
+that person; `hirdir admin create-user --kind agent --for` the disabled person from
+before makes an agent whose token is refused, and refuses the retired one and a service
+account as the person; and the person from before is retired with the agent handed to
+the one who holds View-only through the group, to whose role it is then held.
+
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
@@ -1624,6 +1691,10 @@ made anew and a list loaded: the pass looks for `users`, `contacts` and
 comes when migration `0013` has made `item_replacements` anew with its new uniqueness
 and indexes, and migration `0014` has made `items` and `import_jobs` anew with their
 columns: the pass looks for the three with the columns, the keys and the rows they had.
+For migration `0018` it comes when `users` has been made anew, `kind` written from
+`is_service_account` and that column dropped, and `for_hid` added to `audit_events`:
+the pass looks for `users` and the tables that name a user with the columns, the keys
+and the rows they had.
 The
 trigger disturbs nothing else: the previous release serves with it in place, and the
 backup that the upgrade takes holds it. The file of a migration may ask for the trigger
