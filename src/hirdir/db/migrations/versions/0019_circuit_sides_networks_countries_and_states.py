@@ -21,8 +21,10 @@ location has its country turned into its code where it is a listed code or name,
 without regard to case and to spaces before or after, or `USA`, `U.S.`, `U.S.A.` or
 `United States of America`, and its state into its code where it is a code or a name of
 the country in force, a blank country being read as the United States. Anything else
-is kept as it was typed, to be chosen by a person. Each place changed has an audit event
-by `system` with the values before and after.
+is kept as it was typed, to be chosen by a person; a country of spaces alone is made
+blank. Each place changed has an audit event by `system` with the values before and
+after. The downgrade keeps the codes, and gives a Z side that named a network the
+network's name as its note, where it had none.
 """
 
 import json
@@ -171,13 +173,16 @@ def _addresses(
         ).all()
         for row in rows:
             values = dict(zip(columns, row[1:], strict=True))
-            changed: dict[str, str] = {}
+            changed: dict[str, str | None] = {}
             for prefix in sets:
                 country = values[f"{prefix}country"]
                 state = values[f"{prefix}state"]
                 code = found_country.get(_key(country)) if country and country.strip() else None
                 if code is not None and code != country:
                     changed[f"{prefix}country"] = code
+                elif country is not None and not country.strip():
+                    # A country of spaces alone is blank, and is held so, as it is read.
+                    changed[f"{prefix}country"] = None
                 # A blank country is read as the United States, and is not written so.
                 in_force = (
                     code if code is not None else (US if not (country or "").strip() else None)
@@ -238,6 +243,23 @@ def downgrade() -> None:
     op.drop_index("ix_states_country", table_name="states")
     op.drop_table("states")
     op.drop_table("countries")
+    # A Z side that named a network keeps its name as its note, which a side with no
+    # location needs in 0.9.17.
+    groups = sa.table("circuit_groups", sa.column("hid", sa.String), sa.column("name", sa.String))
+    held = sa.table(
+        "circuits",
+        sa.column("z_group_hid", sa.String),
+        sa.column("z_note", sa.String),
+    )
+    op.execute(
+        held.update()
+        .where(held.c.z_group_hid.is_not(None), held.c.z_note.is_(None))
+        .values(
+            z_note=sa.select(groups.c.name)
+            .where(groups.c.hid == held.c.z_group_hid)
+            .scalar_subquery()
+        )
+    )
     with op.batch_alter_table("circuits") as circuits:
         circuits.drop_constraint("circuits_z_location_or_group", type_="check")
         circuits.drop_index("ix_circuits_z_group_hid")
