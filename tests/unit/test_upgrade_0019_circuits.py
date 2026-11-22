@@ -165,5 +165,10 @@ def test_the_upgrade_to_0019_keeps_every_circuits_dates_and_service(tmp_path: Pa
             ("c-3", "carrier network"),
             ("c-4", "g-1"),
         ]
+        # And it is in the network by a membership, beside the one added by hand.
+        members = connection.execute(
+            text("SELECT group_hid, circuit_hid FROM circuit_group_members ORDER BY circuit_hid")
+        ).all()
+        assert [tuple(row) for row in members] == [("g-1", "c-2"), ("g-1", "c-4")]
         names = {column["name"] for column in inspect(connection).get_columns("circuit_groups")}
         assert not names & {"kind", "carrier_hid"}
