@@ -4,7 +4,7 @@ hid,group,item,role,position,joined_on,left_on,observed_master,master_observed_a
 ,site2-rtr-wan,AT-000141,active,,2020-02-10,,false,
 ,site2-rtr-wan,AT-000142,standby,,2020-02-10,,false,
 ,site2-sw-core,AT-000121,master,1,2023-09-04,,false,
-,site2-sw-core,AT-000122,member,2,2023-09-04,,true,2026-11-02T15:00:00+00:00
+,site2-sw-core,AT-000122,member,2,2023-09-04,,true,2026-11-02T15:00:00Z
 ,site2-sw-floor,AT-000131,master,1,2021-06-14,,false,
 ,site2-sw-floor,AT-000132,member,2,2021-06-14,,false,
 ,site2-sw-floor,AT-000133,member,3,2021-06-14,2026-06-30,false,
