@@ -2476,7 +2476,7 @@ CIRCUITS = Listing(
         ),
         **_columns(Circuit, "choice", "circuit_type", "cost_side", "record_status"),
         **_columns(Circuit, "number", "port_mbps", "down_mbps", "up_mbps", "support_weight"),
-        **_columns(Circuit, "date", "installed_on", "activated_on", "disconnected_on"),
+        **_columns(Circuit, "date", "a_installed_on", "a_activated_on", "a_disconnected_on"),
         "production": Field("boolean", Circuit.production),
         **_columns(
             Circuit, "reference", "a_location_hid", "z_location_hid", "carrier_hid", "owner_hid"

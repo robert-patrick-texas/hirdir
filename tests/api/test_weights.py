@@ -319,8 +319,8 @@ def test_places_and_circuits_are_demand_beside_the_items_and_in_their_regions(
     yesterday = TODAY - timedelta(days=1)
     circuit(db, "Site-2 internet", room, support_weight=3)
     circuit(db, "Berlin internet", None, berlin, record_status="draft", support_weight=5)
-    circuit(db, "Old line", room, support_weight=7, disconnected_on=yesterday)
-    circuit(db, "Last day", room, support_weight=0.25, disconnected_on=TODAY)
+    circuit(db, "Old line", room, support_weight=7, a_disconnected_on=yesterday)
+    circuit(db, "Last day", room, support_weight=0.25, a_disconnected_on=TODAY)
     circuit(db, "Taken out", room, record_status="retired", support_weight=9)
     # Between two places, counted at its far end.
     circuit(db, "Site-2 to Berlin", room, berlin, cost_side="z", support_weight=10)

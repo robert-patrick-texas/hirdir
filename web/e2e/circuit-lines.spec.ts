@@ -93,8 +93,8 @@ test("S48: the monthly cost of a circuit is the sum of its lines, and the annual
       "z_note",
       "carrier",
       "record_status",
-      "activated_on",
-      "disconnected_on",
+      "a_activated_on",
+      "a_disconnected_on",
     ],
     [
       [

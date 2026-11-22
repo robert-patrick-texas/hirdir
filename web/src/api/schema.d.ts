@@ -10144,9 +10144,11 @@ export interface components {
      * one side is a location. `cost_side` left out is the setting's.
      */
     CircuitCreate: {
+      a_activated_on?: string | null;
+      a_disconnected_on?: string | null;
+      a_installed_on?: string | null;
       a_location_hid?: string | null;
       a_note?: string | null;
-      activated_on?: string | null;
       billing_account?: string | null;
       billing_contract?: string | null;
       carrier_circuit_number?: string | null;
@@ -10154,10 +10156,8 @@ export interface components {
       circuit_type?: string | null;
       cost_side?: "a" | "z" | null;
       description?: string | null;
-      disconnected_on?: string | null;
       down_mbps?: string | null;
       enterprise_circuit_id?: string | null;
-      installed_on?: string | null;
       name: string;
       notes?: string | null;
       owner_hid?: string | null;
@@ -10286,11 +10286,13 @@ export interface components {
      * unless `fields` names them; the record has them always.
      */
     CircuitOut: {
+      a_activated_on: string | null;
+      a_disconnected_on: string | null;
+      a_installed_on: string | null;
       a_location_hid: string | null;
       a_note: string | null;
       /** Null for a side with no location. */
       a_side: components["schemas"]["CircuitSide"] | null;
-      activated_on: string | null;
       /** Twelve times the monthly cost. */
       annual_cost: string;
       billing_account: string | null;
@@ -10316,7 +10318,6 @@ export interface components {
       description: string | null;
       /** The devices it connects. */
       devices: components["schemas"]["CircuitDeviceOut"][] | null;
-      disconnected_on: string | null;
       /** Its own rate down. Blank is the port's. */
       down_mbps: string | null;
       effective: components["schemas"]["CircuitEffective"];
@@ -10326,7 +10327,6 @@ export interface components {
       hid: string;
       /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
       in_service: boolean;
-      installed_on: string | null;
       /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
       name: string;
@@ -10356,9 +10356,11 @@ export interface components {
     };
     /** Fields of a circuit to change, and the version they were read at. */
     CircuitPatch: {
+      a_activated_on?: string | null;
+      a_disconnected_on?: string | null;
+      a_installed_on?: string | null;
       a_location_hid?: string | null;
       a_note?: string | null;
-      activated_on?: string | null;
       billing_account?: string | null;
       billing_contract?: string | null;
       carrier_circuit_number?: string | null;
@@ -10366,10 +10368,8 @@ export interface components {
       circuit_type?: string | null;
       cost_side?: "a" | "z" | null;
       description?: string | null;
-      disconnected_on?: string | null;
       down_mbps?: string | null;
       enterprise_circuit_id?: string | null;
-      installed_on?: string | null;
       name?: string | null;
       notes?: string | null;
       owner_hid?: string | null;

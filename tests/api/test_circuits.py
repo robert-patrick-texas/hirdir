@@ -154,24 +154,24 @@ def test_what_a_circuit_refuses(desk: Desk, places: dict[str, dict[str, Any]]) -
         desk.circuit("Stopped", 422, a_location_hid=room, z_note="x", port_mbps="0")
     )
     # No activation before the installation, no disconnection before the activation.
-    assert "activated_on" in errors(
+    assert "a_activated_on" in errors(
         desk.circuit(
             "Early",
             422,
             a_location_hid=room,
             z_note="x",
-            installed_on="2027-04-10",
-            activated_on="2027-04-01",
+            a_installed_on="2027-04-10",
+            a_activated_on="2027-04-01",
         )
     )
-    assert "disconnected_on" in errors(
+    assert "a_disconnected_on" in errors(
         desk.circuit(
             "Gone early",
             422,
             a_location_hid=room,
             z_note="x",
-            activated_on="2027-04-10",
-            disconnected_on="2027-04-09",
+            a_activated_on="2027-04-10",
+            a_disconnected_on="2027-04-09",
         )
     )
     # A carrier's number needs its carrier.

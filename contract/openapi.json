@@ -6396,6 +6396,42 @@
         "additionalProperties": false,
         "description": "A new circuit. A side with no location has a note of where it ends, and at least\none side is a location. `cost_side` left out is the setting's.",
         "properties": {
+          "a_activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Activated On"
+          },
+          "a_disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Disconnected On"
+          },
+          "a_installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Installed On"
+          },
           "a_location_hid": {
             "anyOf": [
               {
@@ -6419,18 +6455,6 @@
               }
             ],
             "title": "A Note"
-          },
-          "activated_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activated On"
           },
           "billing_account": {
             "anyOf": [
@@ -6519,18 +6543,6 @@
             ],
             "title": "Description"
           },
-          "disconnected_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Disconnected On"
-          },
           "down_mbps": {
             "anyOf": [
               {
@@ -6557,18 +6569,6 @@
               }
             ],
             "title": "Enterprise Circuit Id"
-          },
-          "installed_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Installed On"
           },
           "name": {
             "maxLength": 200,
@@ -7388,6 +7388,42 @@
         "additionalProperties": false,
         "description": "A telecommunication circuit, with what is worked out when it is read.\n\nA list leaves `carriers`, `costs`, `devices` and `groups` out of each row, as null,\nunless `fields` names them; the record has them always.",
         "properties": {
+          "a_activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Activated On"
+          },
+          "a_disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Disconnected On"
+          },
+          "a_installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Installed On"
+          },
           "a_location_hid": {
             "anyOf": [
               {
@@ -7420,18 +7456,6 @@
               }
             ],
             "description": "Null for a side with no location."
-          },
-          "activated_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activated On"
           },
           "annual_cost": {
             "description": "Twelve times the monthly cost.",
@@ -7627,18 +7651,6 @@
             "description": "The devices it connects.",
             "title": "Devices"
           },
-          "disconnected_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Disconnected On"
-          },
           "down_mbps": {
             "anyOf": [
               {
@@ -7692,18 +7704,6 @@
             "description": "It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection.",
             "title": "In Service",
             "type": "boolean"
-          },
-          "installed_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Installed On"
           },
           "monthly_cost": {
             "description": "The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself.",
@@ -7924,9 +7924,9 @@
           "carrier_circuit_number",
           "billing_account",
           "billing_contract",
-          "installed_on",
-          "activated_on",
-          "disconnected_on",
+          "a_installed_on",
+          "a_activated_on",
+          "a_disconnected_on",
           "production",
           "support_weight",
           "owner_hid",
@@ -7956,6 +7956,42 @@
         "additionalProperties": false,
         "description": "Fields of a circuit to change, and the version they were read at.",
         "properties": {
+          "a_activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Activated On"
+          },
+          "a_disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Disconnected On"
+          },
+          "a_installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Installed On"
+          },
           "a_location_hid": {
             "anyOf": [
               {
@@ -7979,18 +8015,6 @@
               }
             ],
             "title": "A Note"
-          },
-          "activated_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activated On"
           },
           "billing_account": {
             "anyOf": [
@@ -8079,18 +8103,6 @@
             ],
             "title": "Description"
           },
-          "disconnected_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Disconnected On"
-          },
           "down_mbps": {
             "anyOf": [
               {
@@ -8117,18 +8129,6 @@
               }
             ],
             "title": "Enterprise Circuit Id"
-          },
-          "installed_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Installed On"
           },
           "name": {
             "anyOf": [

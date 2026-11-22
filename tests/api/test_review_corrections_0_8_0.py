@@ -41,17 +41,17 @@ def test_each_rows_filter_lists_the_circuits_the_row_counted(
 ) -> None:
     room = places["hub_room"]["hid"]
     for name, more in (
-        ("Since 2020", {"activated_on": date(2020, 1, 1)}),
-        ("From 2028", {"activated_on": date(2028, 3, 1)}),
+        ("Since 2020", {"a_activated_on": date(2020, 1, 1)}),
+        ("From 2028", {"a_activated_on": date(2028, 3, 1)}),
         (
             "Ended in 2027",
             {
-                "activated_on": date(2020, 1, 1),
-                "disconnected_on": date(2027, 6, 30),
+                "a_activated_on": date(2020, 1, 1),
+                "a_disconnected_on": date(2027, 6, 30),
                 "record_status": "retired",
             },
         ),
-        ("Ended in 2026", {"disconnected_on": date(2026, 6, 30)}),
+        ("Ended in 2026", {"a_disconnected_on": date(2026, 6, 30)}),
     ):
         _line(db, _circuit(db, name, a_location_hid=room, **more), "Port", "100")
     db.commit()
@@ -137,8 +137,8 @@ def test_a_disconnected_circuit_costs_nothing_today(
         db,
         "Gone",
         a_location_hid=places["hub_room"]["hid"],
-        activated_on=date(2019, 1, 1),
-        disconnected_on=date(2021, 1, 31),
+        a_activated_on=date(2019, 1, 1),
+        a_disconnected_on=date(2021, 1, 31),
     )
     db.add(
         CircuitCost(

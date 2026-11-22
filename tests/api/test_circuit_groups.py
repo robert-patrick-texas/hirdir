@@ -30,7 +30,7 @@ def three(desk: Desk) -> dict[str, dict[str, Any]]:
             "Site-3 internet",
             a_location_hid=places["annex"]["hid"],
             z_note="carrier network",
-            activated_on="2999-01-01",
+            a_activated_on="2999-01-01",
         ),
     }
     for name, cost in (("internet", "1000.00"), ("cloud", "250.50"), ("later", "400.00")):

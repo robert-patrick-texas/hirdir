@@ -62,13 +62,13 @@ def in_service_on(circuit: Circuit, day: date, include_drafts: bool = False) -> 
     with none was taken out, and is in service on no day.
     """
     if circuit.record_status == "retired":
-        if circuit.disconnected_on is None:
+        if circuit.a_disconnected_on is None:
             return False
     elif circuit.record_status not in counted_status(include_drafts):
         return False
-    if circuit.activated_on is not None and day < circuit.activated_on:
+    if circuit.a_activated_on is not None and day < circuit.a_activated_on:
         return False
-    return not (circuit.disconnected_on is not None and day > circuit.disconnected_on)
+    return not (circuit.a_disconnected_on is not None and day > circuit.a_disconnected_on)
 
 
 def carries_weight_column(today: date, include_drafts: bool = False) -> ColumnElement[bool]:
@@ -80,5 +80,5 @@ def carries_weight_column(today: date, include_drafts: bool = False) -> ColumnEl
     """
     return and_(
         Circuit.record_status.in_(counted_status(include_drafts)),
-        or_(Circuit.disconnected_on.is_(None), Circuit.disconnected_on >= today),
+        or_(Circuit.a_disconnected_on.is_(None), Circuit.a_disconnected_on >= today),
     )

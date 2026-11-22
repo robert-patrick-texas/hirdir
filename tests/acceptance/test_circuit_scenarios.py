@@ -195,7 +195,7 @@ def test_s50_circuits_go_to_an_empty_inventory_in_files_and_a_second_load_change
         carrier_hid=telecom["hid"],
         carrier_circuit_number="EXT/12345/000/EXTL",
         billing_account="BA-100200",
-        activated_on="2026-04-10",
+        a_activated_on="2026-04-10",
     )
     desk.part(
         internet,
@@ -279,7 +279,7 @@ def test_s50_circuits_go_to_an_empty_inventory_in_files_and_a_second_load_change
             "Example Telecom",
             "EXT/12345/000/EXTL",
         )
-        assert (whole["billing_account"], whole["activated_on"]) == ("BA-100200", "2026-04-10")
+        assert (whole["billing_account"], whole["a_activated_on"]) == ("BA-100200", "2026-04-10")
         counted = empty.names(filter="cost_location:within:Americas > Central > Site-3")
         assert counted == ["Site-2 to Site-3"]
 

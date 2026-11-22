@@ -270,9 +270,9 @@ class CircuitOut(Model):
     carrier_circuit_number: str | None
     billing_account: str | None
     billing_contract: str | None
-    installed_on: date | None
-    activated_on: date | None
-    disconnected_on: date | None
+    a_installed_on: date | None
+    a_activated_on: date | None
+    a_disconnected_on: date | None
     production: bool
     support_weight: Weight | None
     owner_hid: str | None
@@ -329,9 +329,9 @@ class CircuitCreate(Model):
     carrier_circuit_number: ShortText | None = None
     billing_account: ShortText | None = None
     billing_contract: Name | None = None
-    installed_on: date | None = None
-    activated_on: date | None = None
-    disconnected_on: date | None = None
+    a_installed_on: date | None = None
+    a_activated_on: date | None = None
+    a_disconnected_on: date | None = None
     production: bool = True
     support_weight: Weight | None = None
     owner_hid: Hid | None = None
@@ -360,9 +360,9 @@ class CircuitPatch(Model):
     carrier_circuit_number: ShortText | None = None
     billing_account: ShortText | None = None
     billing_contract: Name | None = None
-    installed_on: date | None = None
-    activated_on: date | None = None
-    disconnected_on: date | None = None
+    a_installed_on: date | None = None
+    a_activated_on: date | None = None
+    a_disconnected_on: date | None = None
     production: bool | None = None
     support_weight: Weight | None = None
     owner_hid: Hid | None = None

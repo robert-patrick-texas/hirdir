@@ -839,8 +839,8 @@ def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_
     from hirdir.io import users_file
 
     versions = ROOT / "src/hirdir/db/migrations/versions"
-    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
-    assert revision == "0018"
+    # 0018 was the newest when 0.9.17 was made; 0019 of 0.9.18 follows it.
+    revision = "0018"
     (migration,) = versions.glob(f"{revision}_*.py")
     source = migration.read_text(encoding="utf-8")
     assert 'down_revision = "0017"' in source

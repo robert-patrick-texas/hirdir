@@ -26,11 +26,11 @@ import type { GridColumn } from "./columns";
 type Choice = Schemas["ChoiceOut"];
 
 const DAYS: ReadonlyArray<
-  [field: "installed_on" | "activated_on" | "disconnected_on", header: string]
+  [field: "a_installed_on" | "a_activated_on" | "a_disconnected_on", header: string]
 > = [
-  ["installed_on", "Installed"],
-  ["activated_on", "Activated"],
-  ["disconnected_on", "Disconnected"],
+  ["a_installed_on", "Installed"],
+  ["a_activated_on", "Activated"],
+  ["a_disconnected_on", "Disconnected"],
 ];
 
 /** What the cost of a circuit that is not in service today says on hover. */

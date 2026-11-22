@@ -979,6 +979,9 @@ class Circuit(Bookkeeping, Base):
         CheckConstraint(
             "a_location_hid IS NOT NULL OR z_location_hid IS NOT NULL", name="circuits_one_side"
         ),
+        CheckConstraint(
+            "z_location_hid IS NULL OR z_group_hid IS NULL", name="circuits_z_location_or_group"
+        ),
     )
 
     hid: Mapped[str] = _hid()
@@ -1002,6 +1005,10 @@ class Circuit(Bookkeeping, Base):
         ForeignKey("locations.hid"), default=None, index=True
     )
     z_note: Mapped[str | None] = mapped_column(String(200), default=None)
+    # The network the Z side reaches: a circuit group of the kind `network` (P-319).
+    z_group_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("circuit_groups.hid"), default=None, index=True
+    )
     # The side whose site its cost and weight count at: given once, when it is made.
     cost_side: Mapped[str] = mapped_column(String(1), default="a")
     # The primary carrier, or the other party that provides it, and its number.
@@ -1012,9 +1019,13 @@ class Circuit(Bookkeeping, Base):
     carrier_number_key: Mapped[str | None] = mapped_column(String(100), default=None, index=True)
     billing_account: Mapped[str | None] = mapped_column(String(100), default=None)
     billing_contract: Mapped[str | None] = mapped_column(String(200), default=None)
-    installed_on: Mapped[date | None] = mapped_column(Date, default=None)
-    activated_on: Mapped[date | None] = mapped_column(Date, default=None)
-    disconnected_on: Mapped[date | None] = mapped_column(Date, default=None)
+    # The dates of each side (P-317): a blank one of the Z side is read as the A side's.
+    a_installed_on: Mapped[date | None] = mapped_column(Date, default=None)
+    a_activated_on: Mapped[date | None] = mapped_column(Date, default=None)
+    a_disconnected_on: Mapped[date | None] = mapped_column(Date, default=None)
+    z_installed_on: Mapped[date | None] = mapped_column(Date, default=None)
+    z_activated_on: Mapped[date | None] = mapped_column(Date, default=None)
+    z_disconnected_on: Mapped[date | None] = mapped_column(Date, default=None)
     production: Mapped[bool] = mapped_column(Boolean, default=True)
     support_weight: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
     owner_hid: Mapped[str | None] = mapped_column(
@@ -1120,7 +1131,11 @@ class CircuitContact(Bookkeeping, Base):
 
 
 class CircuitGroup(Bookkeeping, Base):
-    """Circuits looked at and costed together, which may land at different sites."""
+    """Circuits looked at and costed together, which may land at different sites.
+
+    A group is a `network`, a carrier's network or the internet that a circuit's Z side
+    reaches, or a `collection` of circuits for the enterprise's own purpose (P-319).
+    """
 
     __tablename__ = "circuit_groups"
     __table_args__ = (UniqueConstraint("name_key", name="circuit_groups_name"),)
@@ -1128,6 +1143,11 @@ class CircuitGroup(Bookkeeping, Base):
     hid: Mapped[str] = _hid()
     name: Mapped[str] = mapped_column(String(200))
     name_key: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20), default="collection")
+    # A network's carrier, a vendor; a collection has none.
+    carrier_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("vendors.hid"), default=None, index=True
+    )
     description: Mapped[str | None] = mapped_column(Text, default=None)
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
@@ -1268,6 +1288,38 @@ class Choice(Bookkeeping, Base):
     label: Mapped[str] = mapped_column(String(100))
     sort: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Country(Bookkeeping, Base):
+    """A country an address may be in: its ISO 3166-1 code and its name (P-318)."""
+
+    __tablename__ = "countries"
+    __table_args__ = (
+        UniqueConstraint("code", name="countries_code"),
+        UniqueConstraint("name_key", name="countries_name"),
+    )
+
+    hid: Mapped[str] = _hid()
+    code: Mapped[str] = mapped_column(String(2))
+    name: Mapped[str] = mapped_column(String(100))
+    name_key: Mapped[str] = mapped_column(String(100))
+
+
+class State(Bookkeeping, Base):
+    """A subdivision of a country, as ISO 3166-2 has it: the part of its code after the
+    hyphen, its name and its country (P-318)."""
+
+    __tablename__ = "states"
+    __table_args__ = (
+        UniqueConstraint("country", "code", name="states_code"),
+        UniqueConstraint("country", "name_key", name="states_name"),
+    )
+
+    hid: Mapped[str] = _hid()
+    country: Mapped[str] = mapped_column(String(2), index=True)
+    code: Mapped[str] = mapped_column(String(3))
+    name: Mapped[str] = mapped_column(String(100))
+    name_key: Mapped[str] = mapped_column(String(100))
 
 
 class Setting(Bookkeeping, Base):

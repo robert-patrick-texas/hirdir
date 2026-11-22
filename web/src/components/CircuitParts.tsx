@@ -140,9 +140,9 @@ export function CircuitFacts({ circuit, choices }: CircuitFactsProps) {
           {yes(circuit.in_service)}
         </Fact>
         <Fact label="Carries production">{yes(circuit.production)}</Fact>
-        <Fact label="Installed on">{circuit.installed_on}</Fact>
-        <Fact label="Activated on">{circuit.activated_on}</Fact>
-        <Fact label="Disconnected on">{circuit.disconnected_on}</Fact>
+        <Fact label="Installed on">{circuit.a_installed_on}</Fact>
+        <Fact label="Activated on">{circuit.a_activated_on}</Fact>
+        <Fact label="Disconnected on">{circuit.a_disconnected_on}</Fact>
         <Fact label="Billing account">{circuit.billing_account}</Fact>
         <Fact label="Billing contract">{circuit.billing_contract}</Fact>
         <Fact label="Owner" testId="owner">

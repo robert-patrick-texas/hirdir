@@ -1444,7 +1444,7 @@ items and device groups (D-157, D-158, P-145 to P-154).
 | `carrier_circuit_number` | text | the number the primary carrier gives the circuit. Optional, and needs `carrier_hid` |
 | `billing_account` | text | the billing account number |
 | `billing_contract` | text | the reference of the billing contract |
-| `installed_on`, `activated_on`, `disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation |
+| `a_installed_on`, `a_activated_on`, `a_disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation |
 | `production` | boolean | whether it carries the enterprise's production work. True unless said. It changes nothing of what the circuit costs |
 | `support_weight` | decimal | the work the circuit adds, blank unless given |
 | `owner_hid` | reference | the person or team responsible for the circuit, its primary stakeholder, who need not be the one who asked for it |
@@ -1467,9 +1467,9 @@ internet or an MPLS circuit is in the carrier's network: that side has no locati
 a note. A side is not given a location that is retired (P-147).
 
 **In service.** A circuit is in service on a day that is not before its
-`activated_on` and not after its `disconnected_on`, a blank being open, while it is
+`a_activated_on` and not after its `a_disconnected_on`, a blank being open, while it is
 active, or a draft in a view that includes drafts. A retired circuit that has a
-`disconnected_on` was in service until then; one retired with none was taken out, and
+`a_disconnected_on` was in service until then; one retired with none was taken out, and
 is in service on no day.
 
 **Where it counts.** The cost and the support weight of a circuit count at one site:

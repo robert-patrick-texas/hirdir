@@ -92,12 +92,12 @@ def service_in(
     range, or nothing: its activation and disconnection bound it, and a retired circuit
     with no disconnection was taken out (P-145)."""
     if circuit.record_status == "retired":
-        if circuit.disconnected_on is None:
+        if circuit.a_disconnected_on is None:
             return None
     elif circuit.record_status not in rules.counted_status(include_drafts):
         return None
-    start = max(first, circuit.activated_on) if circuit.activated_on else first
-    end = min(last, circuit.disconnected_on) if circuit.disconnected_on else last
+    start = max(first, circuit.a_activated_on) if circuit.a_activated_on else first
+    end = min(last, circuit.a_disconnected_on) if circuit.a_disconnected_on else last
     return (start, end) if start <= end else None
 
 
@@ -177,20 +177,20 @@ def _window(first: date, last: date) -> dict[str, Any]:
         "and": [
             {
                 "or": [
-                    {"field": "activated_on", "op": "empty", "value": True},
-                    {"field": "activated_on", "op": "lte", "value": last.isoformat()},
+                    {"field": "a_activated_on", "op": "empty", "value": True},
+                    {"field": "a_activated_on", "op": "lte", "value": last.isoformat()},
                 ]
             },
             {
                 "or": [
-                    {"field": "disconnected_on", "op": "empty", "value": True},
-                    {"field": "disconnected_on", "op": "gte", "value": first.isoformat()},
+                    {"field": "a_disconnected_on", "op": "empty", "value": True},
+                    {"field": "a_disconnected_on", "op": "gte", "value": first.isoformat()},
                 ]
             },
             {
                 "or": [
                     {"field": "record_status", "op": "ne", "value": "retired"},
-                    {"field": "disconnected_on", "op": "empty", "value": False},
+                    {"field": "a_disconnected_on", "op": "empty", "value": False},
                 ]
             },
         ]

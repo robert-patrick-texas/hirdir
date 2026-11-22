@@ -133,9 +133,9 @@ export const GRID_FIELDS: readonly string[] = [
   "carriers",
   "billing_account",
   "billing_contract",
-  "installed_on",
-  "activated_on",
-  "disconnected_on",
+  "a_installed_on",
+  "a_activated_on",
+  "a_disconnected_on",
   "production",
   "support_weight",
   "owner_hid",
@@ -365,17 +365,17 @@ export function readMoney(typed: string): { value: string | null } | { error: st
  * circuit in service. `day` is today, as the application's time zone has it.
  */
 export function notInServiceText(
-  circuit: Pick<Circuit, "in_service" | "record_status" | "activated_on" | "disconnected_on">,
+  circuit: Pick<Circuit, "in_service" | "record_status" | "a_activated_on" | "a_disconnected_on">,
   day: string,
 ): string {
   if (circuit.in_service) return "";
   const then =
     "Its lines keep their amounts, and its monthly and annual cost are 0.00 while it is not in service.";
-  if (circuit.activated_on && circuit.activated_on > day) {
-    return `It is not in service until it is activated on ${circuit.activated_on}. ${then}`;
+  if (circuit.a_activated_on && circuit.a_activated_on > day) {
+    return `It is not in service until it is activated on ${circuit.a_activated_on}. ${then}`;
   }
-  if (circuit.disconnected_on && circuit.disconnected_on < day) {
-    return `It was disconnected on ${circuit.disconnected_on}. ${then}`;
+  if (circuit.a_disconnected_on && circuit.a_disconnected_on < day) {
+    return `It was disconnected on ${circuit.a_disconnected_on}. ${then}`;
   }
   if (circuit.record_status === "retired") {
     return `It was retired with no day it was disconnected: taken out, it is in service on no day. ${then}`;

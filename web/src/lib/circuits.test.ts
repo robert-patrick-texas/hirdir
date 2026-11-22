@@ -30,8 +30,8 @@ describe("a circuit that is not in service", () => {
   const base = {
     in_service: false,
     record_status: "active" as const,
-    activated_on: null,
-    disconnected_on: null,
+    a_activated_on: null,
+    a_disconnected_on: null,
   };
   const day = "2027-04-10";
 
@@ -41,15 +41,15 @@ describe("a circuit that is not in service", () => {
     // answers it, unless it is to be activated later.
     expect(notInServiceText({ ...base, in_service: true, record_status: "draft" }, day)).toBe("");
     expect(
-      notInServiceText({ ...base, record_status: "draft", activated_on: "2027-05-01" }, day),
+      notInServiceText({ ...base, record_status: "draft", a_activated_on: "2027-05-01" }, day),
     ).toMatch(/^It is not in service until it is activated on 2027-05-01\. Its lines keep/);
-    expect(notInServiceText({ ...base, disconnected_on: "2027-03-31" }, day)).toMatch(
+    expect(notInServiceText({ ...base, a_disconnected_on: "2027-03-31" }, day)).toMatch(
       /^It was disconnected on 2027-03-31\./,
     );
     expect(notInServiceText({ ...base, record_status: "retired" }, day)).toMatch(
       /^It was retired with no day it was disconnected/,
     );
-    expect(notInServiceText({ ...base, disconnected_on: "2027-03-31" }, day)).toContain("0.00");
+    expect(notInServiceText({ ...base, a_disconnected_on: "2027-03-31" }, day)).toContain("0.00");
   });
 });
 

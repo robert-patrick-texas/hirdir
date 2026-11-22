@@ -102,8 +102,8 @@ describe("a row of the report", () => {
         { field: "billed_by", op: "eq", value: CARRIER },
         {
           or: [
-            { field: "activated_on", op: "empty", value: true },
-            { field: "activated_on", op: "lte", value: "2025-12-31" },
+            { field: "a_activated_on", op: "empty", value: true },
+            { field: "a_activated_on", op: "lte", value: "2025-12-31" },
           ],
         },
       ],

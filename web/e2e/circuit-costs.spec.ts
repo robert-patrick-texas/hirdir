@@ -100,7 +100,7 @@ test("what circuits cost in a year, by carrier and by site, each row leading to 
     a_location_hid: eastRoom.hid,
     z_note: "carrier network",
     carrier_hid: telecom.hid,
-    activated_on: `${YEAR}-04-10`,
+    a_activated_on: `${YEAR}-04-10`,
     port_mbps: "1000",
   });
   await make(request, headers, `/circuits/${one.hid}/costs`, {
@@ -112,7 +112,7 @@ test("what circuits cost in a year, by carrier and by site, each row leading to 
     a_location_hid: westRoom.hid,
     z_note: "carrier network",
     carrier_hid: telecom.hid,
-    activated_on: `${YEAR - 1}-06-01`,
+    a_activated_on: `${YEAR - 1}-06-01`,
     port_mbps: "500",
   });
   // The second carrier provides the last mile, and bills it.

@@ -103,7 +103,7 @@ def test_the_rows_by_carrier_site_region_and_group(places: dict[str, Any], db: S
         a_location_hid=places["hub_room"]["hid"],
         z_location_hid=places["branch_room"]["hid"],
         carrier_hid=carrier,
-        activated_on=date(2020, 1, 1),
+        a_activated_on=date(2020, 1, 1),
     )
     db.add(CircuitCarrier(circuit_hid=wan.hid, vendor_hid=lec, role="local_exchange", priority=1))
     _line(db, wan, "Port", "800")
@@ -166,14 +166,14 @@ def test_a_year_counts_the_days_in_service_and_the_figure_of_its_day(
     places: dict[str, Any], db: Session
 ) -> None:
     room = places["hub_room"]["hid"]
-    april = _circuit(db, "From April", a_location_hid=room, activated_on=date(2027, 4, 10))
+    april = _circuit(db, "From April", a_location_hid=room, a_activated_on=date(2027, 4, 10))
     _line(db, april, "Port", "1000")
     ended = _circuit(
         db,
         "Ended in September",
         a_location_hid=room,
-        activated_on=date(2026, 1, 1),
-        disconnected_on=date(2027, 9, 20),
+        a_activated_on=date(2026, 1, 1),
+        a_disconnected_on=date(2027, 9, 20),
         record_status="retired",
     )
     _line(db, ended, "Port", "1000")

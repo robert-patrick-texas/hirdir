@@ -903,8 +903,8 @@ CIRCUITS: tuple[tuple[Any, ...], ...] = (
             "carrier_circuit_number": "EXT/10001/000/EXTL",
             "billing_account": "BA-100200",
             "billing_contract": "MSA-2025-07",
-            "installed_on": "2025-03-03",
-            "activated_on": "2025-03-10",
+            "a_installed_on": "2025-03-03",
+            "a_activated_on": "2025-03-10",
             "owner": "Network Engineering",
             "tags": ["critical"],
         },
@@ -928,7 +928,7 @@ CIRCUITS: tuple[tuple[Any, ...], ...] = (
             "carrier": "Example Telecom",
             "carrier_circuit_number": "EXT/10002/000/EXTL",
             "billing_account": "BA-100200",
-            "activated_on": "2024-11-01",
+            "a_activated_on": "2024-11-01",
             "owner": "Network Engineering",
         },
         (("Example Local Exchange", "local_exchange", "LEC-778-0001"),),
@@ -1569,7 +1569,7 @@ def build(db: Session) -> None:
     its_circuits = {}
     for name, given, carriers, lines, devices in CIRCUITS:
         fields = dict(given)
-        for day in ("installed_on", "activated_on", "disconnected_on"):
+        for day in ("a_installed_on", "a_activated_on", "a_disconnected_on"):
             if day in fields:
                 fields[day] = date.fromisoformat(fields[day])
         for side in ("a", "z"):

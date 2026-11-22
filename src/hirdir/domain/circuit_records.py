@@ -47,7 +47,7 @@ ROLE_LIST = "carrier_role"
 SIDES = circuits.SIDES
 RATES = ("down_mbps", "up_mbps")
 SPEEDS = ("port_mbps", *RATES)
-DATES = ("installed_on", "activated_on", "disconnected_on")
+DATES = ("a_installed_on", "a_activated_on", "a_disconnected_on")
 TEXTS = ("description", "notes", "a_note", "z_note", "billing_account", "billing_contract")
 FIELDS = (
     "name",
@@ -281,10 +281,10 @@ def in_service_column(
     return and_(
         or_(
             model.record_status.in_(circuits.counted_status(include_drafts)),
-            and_(model.record_status == "retired", model.disconnected_on.is_not(None)),
+            and_(model.record_status == "retired", model.a_disconnected_on.is_not(None)),
         ),
-        or_(model.activated_on.is_(None), model.activated_on <= when),
-        or_(model.disconnected_on.is_(None), model.disconnected_on >= when),
+        or_(model.a_activated_on.is_(None), model.a_activated_on <= when),
+        or_(model.a_disconnected_on.is_(None), model.a_disconnected_on >= when),
     )
 
 
@@ -605,13 +605,13 @@ def _check_whole(db: Session, values: dict[str, Any], circuit: Circuit | None, f
     if installed is not None and activated is not None and activated < installed:
         raise Invalid(
             "the dates are not acceptable",
-            {"activated_on": "must not be before the day it was installed"},
+            {"a_activated_on": "must not be before the day it was installed"},
         )
     began = activated if activated is not None else installed
     if began is not None and disconnected is not None and disconnected < began:
         raise Invalid(
             "the dates are not acceptable",
-            {"disconnected_on": "must not be before the day it was activated, or installed"},
+            {"a_disconnected_on": "must not be before the day it was activated, or installed"},
         )
     carrier = final("carrier_hid")
     if final("carrier_circuit_number") is not None and carrier is None:

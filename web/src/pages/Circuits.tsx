@@ -210,15 +210,15 @@ function circuitSpecs(lists: Lists, record: Circuit | null, settingSide: string)
     },
     { name: "billing_account", label: "Billing account", kind: "text", maxLength: 200 },
     { name: "billing_contract", label: "Billing contract", kind: "text", maxLength: 200 },
-    { name: "installed_on", label: "Installed on", kind: "date", heading: "Dates" },
+    { name: "a_installed_on", label: "Installed on", kind: "date", heading: "Dates" },
     {
-      name: "activated_on",
+      name: "a_activated_on",
       label: "Activated on",
       kind: "date",
       hint: "The carrier bills it from this day.",
     },
     {
-      name: "disconnected_on",
+      name: "a_disconnected_on",
       label: "Disconnected on",
       kind: "date",
       hint: "The last day it was in service.",
@@ -463,8 +463,8 @@ export function CircuitDetail() {
               retired={record.record_status === "retired"}
               about="A retired circuit is left out of lists and of what circuits cost, unless they are asked for it. Its carriers, cost lines, devices and contacts stay on record, and it stays listed in its groups."
               retiredAbout={
-                record.disconnected_on
-                  ? `This circuit is retired. It was in service until ${record.disconnected_on}, and counts for that time in what circuits cost.`
+                record.a_disconnected_on
+                  ? `This circuit is retired. It was in service until ${record.a_disconnected_on}, and counts for that time in what circuits cost.`
                   : "This circuit is retired, with no day it was disconnected: it was taken out, and is in service on no day."
               }
               retire={() =>

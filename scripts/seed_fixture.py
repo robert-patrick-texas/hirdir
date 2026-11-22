@@ -1476,8 +1476,8 @@ def _span(dice: Dice, number: int, today: date) -> dict[str, Any]:
     on order, some disconnected, and some to be disconnected soon."""
     activated = today - timedelta(days=dice.between(10, 2600, "activated", number))
     fields: dict[str, Any] = {
-        "installed_on": activated - timedelta(days=dice.between(2, 30, "installed", number)),
-        "activated_on": activated,
+        "a_installed_on": activated - timedelta(days=dice.between(2, 30, "installed", number)),
+        "a_activated_on": activated,
         "record_status": "active",
     }
     # The second, the third and the fourth of every fixture are on order, disconnected
@@ -1485,23 +1485,23 @@ def _span(dice: Dice, number: int, today: date) -> dict[str, Any]:
     roll = RARE_CIRCUITS.get(number, dice.share("circuit status", number))
     if roll < 0.03:
         # On order: a draft, to be installed and activated in the weeks to come.
-        fields["activated_on"] = today + timedelta(days=dice.between(10, 120, "due", number))
-        fields["installed_on"] = (
-            fields["activated_on"] - timedelta(days=7)
+        fields["a_activated_on"] = today + timedelta(days=dice.between(10, 120, "due", number))
+        fields["a_installed_on"] = (
+            fields["a_activated_on"] - timedelta(days=7)
             if dice.chance(0.5, "installed first", number)
             else None
         )
         fields["record_status"] = "draft"
     elif roll < 0.09:
         # Disconnected some time ago.
-        fields["disconnected_on"] = today - timedelta(days=dice.between(1, 500, "gone", number))
+        fields["a_disconnected_on"] = today - timedelta(days=dice.between(1, 500, "gone", number))
     elif roll < 0.11:
         # To be disconnected soon.
-        fields["disconnected_on"] = today + timedelta(days=dice.between(5, 120, "going", number))
-    gone = fields.get("disconnected_on")
-    if gone is not None and gone < fields["activated_on"]:
-        fields["activated_on"] = gone - timedelta(days=dice.between(200, 1500, "ran", number))
-        fields["installed_on"] = fields["activated_on"] - timedelta(days=10)
+        fields["a_disconnected_on"] = today + timedelta(days=dice.between(5, 120, "going", number))
+    gone = fields.get("a_disconnected_on")
+    if gone is not None and gone < fields["a_activated_on"]:
+        fields["a_activated_on"] = gone - timedelta(days=dice.between(200, 1500, "ran", number))
+        fields["a_installed_on"] = fields["a_activated_on"] - timedelta(days=10)
     return fields
 
 
@@ -1639,7 +1639,7 @@ def plan_circuits(
             )
             circuit.part = (vendors[vendor], role, description)
         circuit.lines = _lines(dice, number, kind, port, circuit.part)
-        gone = fields.get("disconnected_on")
+        gone = fields.get("a_disconnected_on")
         circuit.retire = (
             gone is not None
             and gone < today

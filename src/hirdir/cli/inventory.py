@@ -3590,9 +3590,9 @@ CIRCUIT_FIELDS = (
     "carrier_circuit_number",
     "billing_account",
     "billing_contract",
-    "installed_on",
-    "activated_on",
-    "disconnected_on",
+    "a_installed_on",
+    "a_activated_on",
+    "a_disconnected_on",
     "production",
     "support_weight",
     "notes",
@@ -3713,7 +3713,10 @@ def show_circuit(
     lines += [
         ("billing_account", found["billing_account"]),
         ("billing_contract", found["billing_contract"]),
-        *((name, found[name]) for name in ("installed_on", "activated_on", "disconnected_on")),
+        *(
+            (name, found[name])
+            for name in ("a_installed_on", "a_activated_on", "a_disconnected_on")
+        ),
         ("production", found["production"]),
         ("in_service", found["in_service"]),
         ("support_weight", weight["value"]),
