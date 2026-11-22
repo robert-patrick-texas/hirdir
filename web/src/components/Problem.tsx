@@ -59,8 +59,13 @@ export function Problem(props: ProblemProps) {
       ? visible.title
       : "";
   // 0.9.6: the record that has the value already, as a link to it (P-207).
-  const existing = visible && !visible.stale ? visible.existing : null;
-  const existingTo = existing ? existingPath(existing) : null;
+  const named = visible && !visible.stale ? visible.existing : null;
+  const existingTo = named ? existingPath(named) : null;
+  // 0.9.18: a record with no page that the message names already is not named again
+  // beneath it, as "The code CA is taken by Canada." is not followed by "The country that
+  // has it: Canada" (review of the web, finding 12).
+  const existing =
+    named && (existingTo !== null || !visible?.message.includes(named.label)) ? named : null;
   return (
     <div className="live" aria-live="assertive" aria-atomic="true">
       {visible && (

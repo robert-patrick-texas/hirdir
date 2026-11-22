@@ -127,7 +127,7 @@ test("the countries are listed with the United States first, and an Admin adds o
   // The United States is not removed, and its code is shown in its form, not offered.
   await expect(countryRow(page, "US").getByRole("button", { name: /^Remove/ })).toHaveCount(0);
   await expect(countryRow(page, "US").getByTestId("us-stays")).toHaveText(
-    "Always first, and not removed",
+    "Not removed: the United States is always first in the list",
   );
   await countryRow(page, "US").getByRole("button", { name: "Edit United States" }).click();
   const usForm = page.getByTestId("country-form");
@@ -136,21 +136,24 @@ test("the countries are listed with the United States first, and an Admin adds o
   await usForm.getByRole("button", { name: "Close" }).click();
   await expect(page.getByTestId("country-form")).toHaveCount(0);
 
-  // A country of the file's own, its code given in lower case.
+  // A country of the file's own, its code given in lower case, sent with Enter.
   await page.getByRole("button", { name: "New country" }).click();
   const form = region(page, "New country");
   await form.getByLabel("Code (required)").fill(code.toLowerCase());
   await form.getByLabel("Name (required)").fill(land);
   const made = answer(page, "POST", "/countries");
-  await form.getByRole("button", { name: "Add country" }).click();
+  await form.getByLabel("Name (required)").press("Enter");
   expect((await made).status()).toBe(201);
   await expect(page.getByText(`${land} was added, as ${code}.`)).toBeVisible();
   await expect(countryRow(page, code)).toContainText(land);
+  // The form is gone and the keyboard is on the new row, not lost to the page (finding 10).
+  await expect(countryRow(page, code).getByRole("button", { name: `Edit ${land}` })).toBeFocused();
   await expect(
     countryRow(page, code).getByRole("link", { name: `The states of ${land}: none` }),
   ).toBeVisible();
 
-  // Its code again is refused in the server's words, with the country that has it.
+  // Its code again is refused in the server's words, which name the country that has it
+  // once: it has no page to link to, and is not named again beneath (finding 12).
   await page.getByRole("button", { name: "New country" }).click();
   const again = region(page, "New country");
   await again.getByLabel("Code (required)").fill(code);
@@ -159,9 +162,23 @@ test("the countries are listed with the United States first, and an Admin adds o
   await again.getByRole("button", { name: "Add country" }).click();
   expect((await refused).status()).toBe(409);
   await expect(again.getByLabel("Code (required)")).toHaveAttribute("aria-invalid", "true");
-  await expect(again).toContainText("another country has it");
-  await expect(again).toContainText(`The country that has it: ${land}`);
+  await expect(again.locator(".field-error")).toHaveText("another country has it");
+  const alert = again.locator('.alert-error[data-status="409"]');
+  await expect(alert).toContainText(`The code ${code} is taken by ${land}.`);
+  await expect(alert).not.toContainText("that has it");
+  await expect(alert).not.toContainText("another country has it");
   await again.getByRole("button", { name: "Cancel" }).click();
+
+  // On a window 360 pixels wide, the Remove of every row is in view within the table's
+  // box without scrolling it: the United States' word widens no column (finding 15).
+  await page.setViewportSize({ width: 360, height: 740 });
+  const box = page.getByTestId("countries").locator("xpath=..");
+  const mexico = countryRow(page, "MX").getByRole("button", { name: /^Remove Mexico/ });
+  await mexico.scrollIntoViewIfNeeded();
+  const [inside, button] = await Promise.all([box.boundingBox(), mexico.boundingBox()]);
+  expect(inside && button && button.x + button.width <= inside.x + inside.width + 1).toBe(true);
+  expect(await box.evaluate((element) => element.scrollLeft)).toBe(0);
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // Both lists are exported, as Geography exports its tables.
   const line = page.getByTestId("countries-export");
@@ -195,6 +212,16 @@ test("an address in a country with no states takes its state as text, and a stat
   await form.getByLabel("Name (required)").fill(depot.split(" > ").at(-1) ?? "");
   await form.getByLabel("Address line 1", { exact: true }).fill("1 Example Way");
   await form.getByLabel("City", { exact: true }).fill("Exampleton");
+  // The country is asked for before the state, whose list it gives (finding 9), in the
+  // street address and in the shipping address.
+  const labels = (await form.locator("label").allTextContents()).map((one) => one.trim());
+  for (const [before, after] of [
+    ["Country", "State or province"],
+    ["Shipping country", "Shipping state or province"],
+  ] as const) {
+    expect(labels.indexOf(before), before).toBeGreaterThanOrEqual(0);
+    expect(labels.indexOf(before), `${before} before ${after}`).toBeLessThan(labels.indexOf(after));
+  }
   // The country is a list by name, the United States shown chosen while none is.
   const country = form.getByLabel("Country", { exact: true });
   await expect(chosen(country)).toHaveText("United States");
@@ -244,6 +271,10 @@ test("an address in a country with no states takes its state as text, and a stat
   await expect(unlisted).toContainText("Street address");
   await expect(unlisted).toContainText("State or province");
   await expect(unlisted.getByTestId("unlisted-value")).toHaveText(typed);
+  // The list says how such a value comes to be in it (finding 16).
+  await expect(page.getByTestId("unlisted-addresses")).toContainText(
+    "or a state typed for a country with no states listed, once an Admin adds the first state of that country",
+  );
 
   // The Import page leads to them, as a file that holds such a value is refused at its
   // field where it is loaded into another inventory: the link brings the window to them,
@@ -269,6 +300,24 @@ test("an address in a country with no states takes its state as text, and a stat
   await expect(details).toContainText(
     `${typed} is not in the list of the states of ${land}: choose the one it is.`,
   );
+  // Another country chosen and then this one again brings it back, as typed, and a save
+  // of something else sends nothing of it: it stays to be chosen (finding 2).
+  const countryHeld = details.getByLabel("Country", { exact: true });
+  await countryHeld.selectOption({ label: "United States" });
+  await expect(held).toHaveValue("");
+  await countryHeld.selectOption({ label: land });
+  await expect(chosen(held)).toHaveText(`${typed} (not in the list)`);
+  await details.getByLabel("Notes", { exact: true }).fill(`Dock B ${id}`);
+  const noted = page.waitForRequest(
+    (request) => request.method() === "PATCH" && request.url().includes(`/api/v1/sites/${hid}`),
+  );
+  await details.getByRole("button", { name: "Save" }).click();
+  const kept = (await noted).postDataJSON() as Record<string, unknown>;
+  expect(kept).toMatchObject({ notes: `Dock B ${id}` });
+  expect(kept).not.toHaveProperty("state");
+  expect(kept).not.toHaveProperty("country");
+  await expect(page.getByText("The site was saved.")).toBeVisible();
+  await expect(chosen(held)).toHaveText(`${typed} (not in the list)`);
   await held.selectOption({ label: northern });
   const patched = page.waitForRequest(
     (request) => request.method() === "PATCH" && request.url().includes(`/api/v1/sites/${hid}`),
@@ -340,9 +389,11 @@ test("a blank country is the United States, sent beside an address and not alone
   await expect(follows).toHaveValue("");
   await expect(follows.locator("option", { hasText: "Ontario" })).toHaveCount(1);
   await expect(follows.locator("option", { hasText: "Texas" })).toHaveCount(0);
+  // Back to the country it holds, the state it holds comes back with it, and nothing is
+  // left to save (finding 2).
   await again.getByLabel("Country", { exact: true }).selectOption({ label: "United States" });
-  await again.getByRole("button", { name: "Undo changes" }).click();
-  await expect(chosen(again.getByLabel("State or province", { exact: true }))).toHaveText("Texas");
+  await expect(chosen(follows)).toHaveText("Texas");
+  await expect(again.getByRole("button", { name: "Save" })).toBeDisabled();
   await expectClean(page, seen);
 });
 
@@ -366,7 +417,9 @@ test("a country an address holds is not removed; once none does, it is removed w
   expect((await refused).status()).toBe(409);
   const alert = page.locator('.alert-error[data-status="409"]');
   await expect(alert).toContainText(`${land} is not removed: an address holds it`);
-  await expect(alert).toContainText("give each another first");
+  // What to change first is named, for the one address that holds it.
+  await expect(alert).toContainText(`Held by the site ${depot.split(" > ").at(-1)}`);
+  await expect(alert).toContainText("give it another country first");
   await expect(countryRow(page, code)).toHaveCount(1);
 
   // The depot is given the United States: its state follows, and Texas is chosen.

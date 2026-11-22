@@ -822,6 +822,37 @@ table.narrow {
 }
 
 /*
+ * 0.9.18: a word in place of a button of a row, as the United States' Not removed, wraps
+ * within the width of the button it stands for, so that it widens no column (review of
+ * the web, finding 15).
+ */
+.row-actions .row-note {
+  display: inline-block;
+  max-width: 6em;
+  white-space: normal;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+
+/*
+ * 0.9.18: the lists of countries and states on a window 480 pixels wide or less: the
+ * buttons of a row stand one above the other and the cells are closer, so that every
+ * row's Remove is in view at 360 pixels without the table being scrolled (finding 15).
+ */
+@media (max-width: 480px) {
+  table.country-list th,
+  table.country-list td {
+    padding: 0.3rem 0.4rem;
+  }
+
+  table.country-list .row-actions button,
+  table.country-list .row-actions .row-note {
+    display: block;
+    margin: 0 0 0.3rem;
+  }
+}
+
+/*
  * 0.9.3: the table of settings fits a window 1280 pixels wide (P-171): the two buttons of
  * a row stand one above the other in their cell, and a header may take two lines. A
  * narrower window scrolls the table sideways, as any.
