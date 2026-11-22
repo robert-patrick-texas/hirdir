@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+// The one list of cases the server and the page are held to (P-322 (7)).
+import contract from "../../../contract/formats.json" with { type: "json" };
 import {
   DEFAULT_FORMATS,
-  emailText,
+  type Formats,
   formatsInUse,
   formatsOf,
   OFFERED_PATTERNS,
@@ -9,74 +11,78 @@ import {
   patternSample,
   phoneText,
   setFormats,
+  type TextFormat,
   tidied,
   tidier,
   titleCase,
 } from "./formats";
+import { withPattern } from "./settings";
 
 const US = "+1 (###) ###-####";
 const PLAIN = "###-###-####";
 
+interface Case {
+  format: string;
+  setting: unknown;
+  typed: string;
+  kept: string;
+  note?: string;
+}
+
+/** The format of a box, and the formats in force, as a case of the contract names them. */
+const AS_BOX: Readonly<Record<string, TextFormat>> = {
+  phone_formats: "phone",
+  email_lower_case: "email",
+  title_case_names: "person_name",
+};
+
+function formatsFor(one: Case): Formats {
+  const settings = [{ key: one.format, value: one.setting }];
+  return formatsOf(settings);
+}
+
 afterEach(() => setFormats(DEFAULT_FORMATS));
 
-describe("phoneText", () => {
-  it("writes the digits in the pattern whose # are as many", () => {
-    expect(phoneText("5550100123", [US])).toBe("+1 (555) 010-0123");
-    expect(phoneText("555.010.0123", [PLAIN])).toBe("555-010-0123");
+describe("the cases of contract/formats.json", () => {
+  const cases = contract.cases as Case[];
+
+  it("has cases of each of the three formats", () => {
+    for (const format of Object.keys(AS_BOX)) {
+      expect(cases.some((one) => one.format === format)).toBe(true);
+    }
   });
 
-  it("writes the leading digits of a pattern once, where the number has them", () => {
-    expect(phoneText("1 555 010 0123", [US])).toBe("+1 (555) 010-0123");
-    expect(phoneText("+1 555-010-0123", [US])).toBe("+1 (555) 010-0123");
-    expect(phoneText("+1 (555) 010-0123", [US])).toBe("+1 (555) 010-0123");
-  });
+  for (const one of cases) {
+    it(`${one.format} ${JSON.stringify(one.setting)}: ${JSON.stringify(one.typed)} is kept as ${JSON.stringify(one.kept)}`, () => {
+      const format = AS_BOX[one.format];
+      if (format === undefined) throw new Error(`no format ${one.format}`);
+      const formats = formatsFor(one);
+      // The setting is read as it is listed, and nothing else of the defaults is taken.
+      if (one.format === "phone_formats") expect(formats.phoneFormats).toEqual(one.setting);
+      expect(tidied(format, one.typed, formats), one.note).toBe(one.kept);
+    });
+  }
 
-  it("takes the first pattern that fits, in the order given", () => {
-    expect(phoneText("5550100123", [PLAIN, US])).toBe("555-010-0123");
-    expect(phoneText("5550100123", [US, PLAIN])).toBe("+1 (555) 010-0123");
-    expect(phoneText("15550100123", [PLAIN, US])).toBe("+1 (555) 010-0123");
-  });
-
-  it("keeps as typed a number with a letter, one that fits no pattern, and any with no pattern", () => {
-    expect(phoneText("555 0100 x12", [US])).toBe("555 0100 x12");
-    expect(phoneText("555 010 0123 ext. 4", [US])).toBe("555 010 0123 ext. 4");
-    expect(phoneText("555 0100", [US])).toBe("555 0100");
-    expect(phoneText("25550100123", [US])).toBe("25550100123");
-    expect(phoneText("15550100123", [PLAIN])).toBe("15550100123");
-    expect(phoneText("5550100123", [])).toBe("5550100123");
-    expect(phoneText("", [US])).toBe("");
-  });
-
-  it("keeps as typed a number with a sign that is no separator", () => {
-    expect(phoneText("555 010 0123 #12", [US])).toBe("555 010 0123 #12");
-    expect(phoneText("*555 010 0123", [US])).toBe("*555 010 0123");
-  });
+  for (const one of contract.patterns as Array<{ pattern: string; kept: string | null }>) {
+    it(`the pattern ${JSON.stringify(one.pattern)} is ${one.kept === null ? "refused" : "taken"}`, () => {
+      const added = withPattern([], one.pattern);
+      expect(added.ok ? added.list : null).toEqual(one.kept === null ? null : [one.kept]);
+    });
+  }
 });
 
-describe("emailText and titleCase", () => {
-  it("keeps an email address in lower case, whatever its host", () => {
-    expect(emailText("John.Smith@Example.COM")).toBe("john.smith@example.com");
-    expect(emailText("Ops@LOCALHOST")).toBe("ops@localhost");
-  });
-
-  it("raises the first letter of each word, after a space, a hyphen or an apostrophe", () => {
-    expect(titleCase("ada example")).toBe("Ada Example");
-    expect(titleCase("kim o'lee-roe")).toBe("Kim O'Lee-Roe");
-    expect(titleCase("sam o’roe")).toBe("Sam O’Roe");
-    expect(titleCase("  rex  example ")).toBe("  Rex  Example ");
-  });
-
-  it("never lowers a letter typed as a capital", () => {
-    expect(titleCase("McDonald")).toBe("McDonald");
-    expect(titleCase("IT desk")).toBe("IT Desk");
-    expect(titleCase("NOC")).toBe("NOC");
-    expect(titleCase("ada mcDonald")).toBe("Ada McDonald");
+describe("phoneText and titleCase beyond the contract", () => {
+  it("keeps as typed a number with a tab or a sign that is no separator", () => {
+    expect(phoneText("555\t010\t0123", [US])).toBe("555\t010\t0123");
+    expect(phoneText("*555 010 0123", [US])).toBe("*555 010 0123");
+    expect(phoneText("", [US])).toBe("");
   });
 
   it("leaves what is not a letter, and a letter whose capital is two", () => {
     expect(titleCase("3rd shift")).toBe("3rd Shift");
     expect(titleCase("straße")).toBe("Straße");
     expect(titleCase("ßa")).toBe("ßa");
+    expect(titleCase("ada mcDonald")).toBe("Ada McDonald");
   });
 });
 

@@ -4168,7 +4168,7 @@ What 0.9.18 adds of what is typed or pasted, the input formats (P-293, P-322 (7)
   `title_case_names` are Yes or No, as every setting that is true or false.
 - **The Import page's preview.** A change whose value a format wrote again, a change
   with `as_in_file`, is shown with the file's value beside the one that will be saved:
-  `phone: (blank) → +1 (555) 010-0124 (formatted; the file has 1 555 010 0124)`.
+  `phone: (blank) → +1 (555) 010-0124 (in the file: 1 555 010 0124)`.
 
 ### The grid
 

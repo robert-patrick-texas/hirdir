@@ -510,6 +510,10 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
         {input === "patterns" && (
           <PatternList
             name={setting.key}
+            // The patterns the server offers, those of P-293.
+            offered={
+              setting.options && setting.options.length > 0 ? setting.options : OFFERED_PATTERNS
+            }
             list={patterns}
             onChange={setPatterns}
             disabled={action.busy}
@@ -675,6 +679,8 @@ function ExtensionList({ name, list, onChange, disabled, hint, error }: Extensio
 
 interface PatternListProps {
   name: string;
+  /** The patterns added with one press each. */
+  offered: readonly string[];
   list: readonly string[];
   onChange: (list: string[]) => void;
   disabled: boolean;
@@ -689,7 +695,8 @@ interface PatternListProps {
  * An empty list formats no number. What a pattern may be is the server's to say, and the
  * form shows its refusal as it comes.
  */
-function PatternList({ name, list, onChange, disabled, hint, error }: PatternListProps) {
+function PatternList(props: PatternListProps) {
+  const { name, offered, list, onChange, disabled, hint, error } = props;
   const [typed, setTyped] = useState("");
   const [wrong, setWrong] = useState("");
 
@@ -748,7 +755,7 @@ function PatternList({ name, list, onChange, disabled, hint, error }: PatternLis
         </ol>
       )}
       <p className="actions">
-        {OFFERED_PATTERNS.map((pattern) => (
+        {offered.map((pattern) => (
           <button
             key={pattern}
             type="button"

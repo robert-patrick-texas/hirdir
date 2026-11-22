@@ -79,22 +79,27 @@ export type TextFormat =
   | "person_name";
 
 /** The characters a telephone number may hold besides its digits and still be formatted. */
-const SEPARATORS = /^[\d\s+\-()./]*$/;
+const SEPARATORS = /^[0-9 +\-()./]*$/;
 
 /**
- * A number's digits written in one pattern, or null where the pattern does not fit them:
- * a pattern fits digits as many as its `#`, or its leading digits, the code of a country,
- * followed by as many as its `#`, which are written once (P-322 (3)).
+ * A number's digits written in one pattern, or null where the pattern does not fit them
+ * (P-322 (3)): its leading digits, the code of a country, followed by as many as its `#`,
+ * the leading digits written once; or digits as many as its `#`. A number typed with a
+ * `+` has a code of its own, which no pattern puts another in place of: it fits by the
+ * pattern's leading digits, or by its `#` alone where the pattern writes a `+` of its own
+ * and no leading digits, as `+## ### ### ####` does.
  */
-function written(pattern: string, digits: string): string | null {
+function written(pattern: string, digits: string, plus: boolean): string | null {
   const first = pattern.indexOf("#");
   if (first < 0) return null;
-  const lead = pattern.slice(0, first).replace(/\D/g, "");
+  const before = pattern.slice(0, first);
+  const lead = before.replace(/\D/g, "");
   const count = pattern.split("#").length - 1;
   let fill: string | null = null;
-  if (digits.length === count) fill = digits;
-  else if (lead !== "" && digits.length === lead.length + count && digits.startsWith(lead)) {
+  if (lead !== "" && digits.length === lead.length + count && digits.startsWith(lead)) {
     fill = digits.slice(lead.length);
+  } else if (digits.length === count && (!plus || (lead === "" && before.includes("+")))) {
+    fill = digits;
   }
   if (fill === null) return null;
   const given = fill;
@@ -104,16 +109,17 @@ function written(pattern: string, digits: string): string | null {
 
 /**
  * A telephone number as the patterns write it: in the first that fits its digits. A
- * number with anything in it but digits, spaces and `+ - ( ) . /`, a letter as of an
- * extension above all, and one that no pattern fits, are kept as typed: a format never
- * refuses a value (P-322 (3)).
+ * number with anything in it but the digits 0 to 9, spaces and `+ - ( ) . /`, a letter
+ * as of an extension above all, and one that no pattern fits, are kept as typed: a
+ * format never refuses a value (P-322 (3)).
  */
 export function phoneText(value: string, patterns: readonly string[]): string {
   if (patterns.length === 0 || !SEPARATORS.test(value)) return value;
-  const digits = value.replace(/\D/g, "");
+  const digits = value.replace(/[^0-9]/g, "");
   if (digits === "") return value;
+  const plus = value.trimStart().startsWith("+");
   for (const pattern of patterns) {
-    const number = written(pattern, digits);
+    const number = written(pattern, digits, plus);
     if (number !== null) return number;
   }
   return value;
@@ -195,5 +201,5 @@ export function patternProblem(pattern: string): string | null {
 export function patternSample(pattern: string): string {
   const count = pattern.split("#").length - 1;
   const digits = "5550100123456789012345678901234567890".slice(0, count);
-  return written(pattern, digits) ?? pattern;
+  return written(pattern, digits, false) ?? pattern;
 }
