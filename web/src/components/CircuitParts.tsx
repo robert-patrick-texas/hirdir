@@ -18,6 +18,7 @@ import {
   devicePath,
   devicesBody,
   groupKindLabel,
+  inServiceBy,
   lineCarrier,
   mbpsText,
   moneyText,
@@ -33,6 +34,7 @@ import {
   type SideDate,
   sideLabel,
   sideOf,
+  switchServiceText,
   vendorPath,
   weightHint,
 } from "../lib/circuits";
@@ -197,7 +199,8 @@ export function CircuitFacts({ circuit, choices }: CircuitFactsProps) {
  */
 function SideDateShown({ circuit, side, name }: { circuit: Circuit; side: Side; name: SideDate }) {
   const date = dateInForce(circuit, side, name);
-  if (date.value === null) return null;
+  // A blank date is shown as every blank fact is (review of 0.9.18).
+  if (date.value === null) return <Dash />;
   if (date.source !== "a_side") return <span data-source={date.source}>{date.value}</span>;
   return (
     <span data-source="a_side" className="inherited">
@@ -247,7 +250,7 @@ export function CircuitSides({ circuit }: { circuit: Circuit }) {
                     </>
                   ) : network ? (
                     <>
-                      <span className="muted">The network </span>
+                      <span className="muted">The carrier network </span>
                       <Link to={circuitGroupPath(network.hid)} data-testid="z-network">
                         {network.name}
                       </Link>
@@ -267,9 +270,14 @@ export function CircuitSides({ circuit }: { circuit: Circuit }) {
                     </span>
                   )}
                   {counting === side && (
-                    <span className="badge badge-plain mark" data-testid={`counts-${side}`}>
-                      Its cost counts here
-                    </span>
+                    <>
+                      {" "}
+                      <span className="badge badge-plain mark" data-testid={`counts-${side}`}>
+                        {counting === circuit.cost_side
+                          ? "Its cost counts here"
+                          : "Its cost and weight count at this site"}
+                      </span>
+                    </>
                   )}
                 </span>
               </Fact>
@@ -279,10 +287,13 @@ export function CircuitSides({ circuit }: { circuit: Circuit }) {
                 </Fact>
               ))}
             </dl>
+            {/* 0.9.18: the side cost_side names, whose dates decide in service, and the
+                site its cost counts at are said apart (review of 0.9.18, finding 5). */}
             {deciding === side && (
               <p className="hint" data-testid={`dates-decide-${side}`}>
-                Its cost counts at the {sideLabel(side)}: these dates say whether it is in service,
-                and the months its cost counts.
+                {counting === side
+                  ? `Its cost counts at the ${sideLabel(side)}: these dates say whether it is in service, and the months its cost counts.`
+                  : `Its cost is set to count at the ${sideLabel(side)}: these dates say whether it is in service, and the months its cost counts. The ${sideLabel(side)} has no location, so its cost and its weight count at the site of the ${sideLabel(counting)}.`}
               </p>
             )}
           </div>
@@ -312,6 +323,12 @@ export function WhereItCounts(props: ChangeProps & { onReload: () => void }) {
   const counting = countingSide(circuit);
   const other = otherSide(named);
   const otherAt = sideOf(circuit, other).at;
+  // 0.9.18: the dates of the side named decide whether it is in service, the months its
+  // cost counts and its weight, wherever its cost counts (P-320 (4), review finding 4).
+  const day = today();
+  const service = switchServiceText(circuit, day);
+  const changesToday = inServiceBy(circuit, other, day) !== circuit.in_service;
+  const switchLabel = `Count it at the ${sideLabel(other)}`;
 
   async function switchSide() {
     const result = await action.run(() =>
@@ -323,6 +340,9 @@ export function WhereItCounts(props: ChangeProps & { onReload: () => void }) {
     if (result.ok) onChanged(`The cost of ${circuit.name} now counts at its ${sideLabel(other)}.`);
   }
 
+  const where = otherAt
+    ? `Its cost and its weight then count at ${otherAt.site_path}.`
+    : `The ${sideLabel(other)} has no location: its cost and its weight would still count at the site of the ${sideLabel(named)}.`;
   return (
     <section aria-labelledby="counts">
       <h2 id="counts">Where it counts</h2>
@@ -330,7 +350,7 @@ export function WhereItCounts(props: ChangeProps & { onReload: () => void }) {
       <p data-testid="counts-at" data-side={named} data-counting={counting}>
         Its cost and its support weight count at its <strong>{sideLabel(named)}</strong>
         {counting !== named && (
-          <>, which has no location: they count at the {sideLabel(counting)}</>
+          <>, which has no location: they count at the site of the {sideLabel(counting)}</>
         )}
         {circuit.cost_site_path ? (
           <>
@@ -342,19 +362,32 @@ export function WhereItCounts(props: ChangeProps & { onReload: () => void }) {
           </>
         ) : (
           "."
-        )}
+        )}{" "}
+        The dates of the {sideLabel(named)} say whether it is in service, and the months its cost
+        counts.
       </p>
       {mayEdit && (
-        <p className="actions">
-          <button type="button" disabled={action.busy} onClick={switchSide}>
-            Count it at the {sideLabel(other)}
-          </button>
-          <span className="hint">
-            {otherAt
-              ? ` Its cost and its weight then count at ${otherAt.site_path}.`
-              : ` The ${sideLabel(other)} has no location: it would count at the ${sideLabel(named)} still, until it has one.`}
-          </span>
-        </p>
+        <div className="actions" data-testid="switch-side">
+          {changesToday ? (
+            <ConfirmButton
+              label={switchLabel}
+              title={`${switchLabel}?`}
+              confirmLabel={switchLabel}
+              onConfirm={switchSide}
+              disabled={action.busy}
+            >
+              <p>{service}</p>
+              <p>{where}</p>
+            </ConfirmButton>
+          ) : (
+            <button type="button" disabled={action.busy} onClick={switchSide}>
+              {switchLabel}
+            </button>
+          )}
+          <p className="hint" data-testid="switch-side-words">
+            {[where, service].filter(Boolean).join(" ")}
+          </p>
+        </div>
       )}
     </section>
   );
@@ -1407,7 +1440,7 @@ export function CircuitGroupsOf({ circuit }: { circuit: Circuit }) {
       <p className="hint">
         A circuit may be in any number of groups. It is put into a group, and taken out of one, on
         the page of the group, under <Link to="/circuit-groups">Circuit groups</Link>; it is in the
-        network its Z side names for as long as its Z side names it.
+        carrier network its Z side names for as long as its Z side names it.
       </p>
       {groups.length === 0 ? (
         <p className="muted">It is in no group.</p>

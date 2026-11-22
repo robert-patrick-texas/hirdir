@@ -25,6 +25,7 @@ import {
   CIRCUIT_TYPE_LIST,
   type Circuit,
   circuitPath,
+  letsGoOf,
   mbpsText,
   networkOption,
   networksOnly,
@@ -32,6 +33,7 @@ import {
   SIDE_DATES,
   SIDES,
   type Side,
+  type SideDate,
   sideLabel,
   switchesOf,
   zDateHint,
@@ -49,7 +51,7 @@ import {
 } from "../lib/lists";
 import { choiceOptions, optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
-import type { FieldSpec, FormValue, FormValues, Option } from "../lib/patch";
+import type { FieldSpec, FormValues, Option } from "../lib/patch";
 import { allows } from "../lib/roles";
 
 type Choice = Schemas["ChoiceOut"];
@@ -131,23 +133,48 @@ interface Lists {
 
 const NOTE_HINT =
   "Where it ends: carrier network, cloud on-ramp, demarc in the basement. Needed where the side has no location.";
+// 0.9.18: a Z side names a location, a carrier network, or neither (P-320 (6)).
+const Z_NOTE_HINT =
+  "Where it ends: a hand-off at the carrier, a cloud on-ramp, demarc in the basement. Needed where the Z side names neither a location nor a carrier network.";
+
+/**
+ * 0.9.18: what is said beneath a date of a side, by whether that side's dates decide
+ * whether the circuit is in service and the months its cost counts, as `cost_side` says
+ * (P-320 (4)).
+ */
+function dateHint(name: SideDate, deciding: boolean): string | undefined {
+  if (name === "activated_on") {
+    return deciding
+      ? "The carrier bills it from this day: the dates of this side say whether it is in service."
+      : "The day this side was activated. The other side's dates say whether it is in service and when it is billed.";
+  }
+  if (name === "disconnected_on") {
+    return deciding
+      ? "The last day it was in service."
+      : "The last day this side was in service. The other side's dates say whether the circuit is.";
+  }
+  return undefined;
+}
 
 /**
  * 0.9.18: the three dates of a side, beneath its location (P-317, P-320). A blank date of
- * the Z side says what it is read as: the A side's, as the form holds it now.
+ * the Z side says what it is read as: the A side's, as the form holds it now. What a
+ * date means follows the side whose dates decide, as the form holds it now.
  */
-function dateSpecs(side: Side): FieldSpec[] {
-  return SIDE_DATES.map(({ name, label, hint }) => ({
+function dateSpecs(side: Side, deciding: (values: FormValues) => Side): FieldSpec[] {
+  return SIDE_DATES.map(({ name, label }) => ({
     name: `${side}_${name}`,
     label: `${sideLabel(side)}: ${label.toLowerCase()}`,
     kind: "date",
-    ...(hint ? { hint } : {}),
-    ...(side === "z"
-      ? {
-          hintFrom: (values: FormValues) =>
-            zDateHint(String(values[`z_${name}`] ?? ""), String(values[`a_${name}`] ?? "")),
-        }
-      : {}),
+    hintFrom: (values: FormValues) => {
+      const said = [
+        dateHint(name, deciding(values) === side),
+        side === "z"
+          ? zDateHint(String(values[`z_${name}`] ?? ""), String(values[`a_${name}`] ?? ""))
+          : undefined,
+      ].filter(Boolean);
+      return said.length > 0 ? said.join(" ") : undefined;
+    },
   }));
 }
 
@@ -160,17 +187,26 @@ function dateSpecs(side: Side): FieldSpec[] {
  */
 function circuitSpecs(lists: Lists, record: Circuit | null, settingSide: string): FieldSpec[] {
   const making = record === null;
-  // 0.9.18: the network a Z side reaches, offered beside its location; choosing one lets
-  // go of the other, a Z side naming a location, a network or neither (P-320 (6)).
+  // 0.9.18: the carrier network a Z side reaches, offered beside its location; choosing
+  // one lets go of the other, which comes back as the choice is undone, a Z side naming a
+  // location, a carrier network or neither (P-320 (6)).
   const network = record?.z_group ? networkOption(record.z_group) : null;
   const networkSpec: FieldSpec = {
     name: "z_group_hid",
-    label: "Z side: network",
+    label: "Z side: carrier network",
     kind: "choice",
-    blank: "No network",
+    blank: "No carrier network",
     options: withCurrent(lists.networks, network),
-    hint: "The carrier's network it reaches, in place of a location: a circuit group of the kind Network.",
-    fills: (value): FormValues => (value === "" ? {} : { z_location_hid: "" }),
+    hint: "The carrier's network it reaches, in place of a location: a circuit group of the kind Network, under its carrier.",
+    fills: letsGoOf("z_location_hid"),
+  };
+  // The side whose dates decide, as the form holds it now: the one chosen for a new
+  // circuit, or the setting's; the record's for one there is.
+  const deciding = (values: FormValues): Side => {
+    if (record) return record.cost_side === "z" ? "z" : "a";
+    const chosen =
+      values.cost_side === "" || values.cost_side === undefined ? settingSide : values.cost_side;
+    return chosen === "z" ? "z" : "a";
   };
   const sideFields = SIDES.flatMap(({ value: side, label }): FieldSpec[] => {
     const at = record ? (side === "a" ? record.a_side : record.z_side) : null;
@@ -181,13 +217,11 @@ function circuitSpecs(lists: Lists, record: Circuit | null, settingSide: string)
         kind: "location",
         blank:
           side === "z"
-            ? "No location: it ends outside the network, or in the network below"
+            ? "No location: it ends outside the network, or at a carrier network below"
             : "No location: it ends outside the network",
         options: at ? [{ value: at.location_hid, label: at.path }] : [],
         heading: label,
-        ...(side === "z"
-          ? { fills: (value: FormValue): FormValues => (value === "" ? {} : { z_group_hid: "" }) }
-          : {}),
+        ...(side === "z" ? { fills: letsGoOf("z_group_hid") } : {}),
       },
       ...(side === "z" ? [networkSpec] : []),
       {
@@ -195,9 +229,9 @@ function circuitSpecs(lists: Lists, record: Circuit | null, settingSide: string)
         label: `${label}: note`,
         kind: "text",
         maxLength: 200,
-        hint: NOTE_HINT,
+        hint: side === "z" ? Z_NOTE_HINT : NOTE_HINT,
       },
-      ...dateSpecs(side),
+      ...dateSpecs(side, deciding),
     ];
   });
   const owner = record?.owner
@@ -525,6 +559,9 @@ export function CircuitDetail() {
               about="A retired circuit is left out of lists and of what circuits cost, unless they are asked for it. Its carriers, cost lines, devices and contacts stay on record, and it stays listed in its groups."
               // 0.9.18: by the dates of the side its cost counts at (P-320 (4)).
               retiredAbout={retiredText(record)}
+              // A refusal to bring it back, of a place or a carrier network that is
+              // retired, is of the record as a whole.
+              labels={{ record_status: "" }}
               retire={() =>
                 api.request("post", "/api/v1/circuits/{hid}/retire", {
                   path: { hid: record.hid },

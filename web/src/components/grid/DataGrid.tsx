@@ -154,6 +154,12 @@ export interface GridAction<T> {
    * than it takes, as Retire and Delete take 1,000 at most; null where it takes them.
    */
   tooMany?: (ticked: number) => string | null;
+  /**
+   * 0.9.18: what is said, with the button not to be pressed, where nothing of the rows
+   * ticked can be acted on, as a circuit a carrier network has by its Z side is not taken
+   * out of it there; null where some can (review of 0.9.18).
+   */
+  refuses?: (rows: T[]) => string | null;
   /** `rows` holds what the grid read of the rows chosen: none of them for "all that match". */
   run: (chosen: Chosen, view: GridView, rows: T[]) => void;
 }
@@ -1001,12 +1007,16 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // How many rows each button acts on, as it says (P-233).
   const chosenCount = { ticked: selected, allMatching, total };
   // What the buttons that take fewer rows than are ticked say of it, each once.
+  // 0.9.18: what each button that can do nothing with the rows ticked says of it.
+  const ticked = !allMatching && selected > 0 && grid ? rowsOf(grid) : [];
+  const refusal = (action: GridAction<T>) =>
+    ticked.length > 0 ? (action.refuses?.(ticked) ?? null) : null;
   const tooMany = allMatching
     ? []
     : [
         ...new Set(
           actions
-            .map((action) => action.tooMany?.(selected) ?? null)
+            .map((action) => action.tooMany?.(selected) ?? refusal(action))
             .filter((text): text is string => text !== null),
         ),
       ];
@@ -1198,7 +1208,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
                 !some ||
                 busy ||
                 (action.rowsOnly === true && allMatching) ||
-                (!allMatching && (action.tooMany?.(selected) ?? null) !== null)
+                (!allMatching && (action.tooMany?.(selected) ?? null) !== null) ||
+                refusal(action) !== null
               }
               title={
                 action.rowsOnly && allMatching

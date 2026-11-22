@@ -115,16 +115,23 @@ test("P-322: Admin → Settings changes the patterns of a telephone number as a 
   await page.goto("./admin/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
   const row = page.getByTestId("settings").locator('tr[data-setting="phone_formats"]');
-  await expect(page.getByTestId("default-phone_formats")).toHaveText("—");
+  await expect(page.getByTestId("default-phone_formats")).toHaveText(
+    "no pattern: no number is formatted",
+  );
   await row.getByRole("button", { name: "Change phone_formats" }).click();
   const form = page.getByTestId("setting-form");
+  await expect(form).toContainText("The default is no pattern: no number is formatted.");
   await expect(form.getByTestId("no-patterns")).toHaveText(
     "No pattern: every number is kept as typed.",
   );
 
-  // The two patterns of P-293, each with one press; once in the list, not again.
+  // The two patterns of P-293, each with one press; once in the list, not again. The
+  // focus goes on from the button that is disabled (review of 0.9.18, finding 10).
+  const own = form.getByLabel("Add a pattern of your own");
   await form.getByRole("button", { name: `Add ${PLAIN}` }).click();
+  await expect(form.getByRole("button", { name: `Add ${US}` })).toBeFocused();
   await form.getByRole("button", { name: `Add ${US}` }).click();
+  await expect(own).toBeFocused();
   await expect(form.getByRole("button", { name: `Add ${PLAIN}` })).toBeDisabled();
   const patterns = form.getByTestId("patterns").getByRole("listitem");
   await expect(patterns).toHaveCount(2);
@@ -132,7 +139,6 @@ test("P-322: Admin → Settings changes the patterns of a telephone number as a 
   await expect(patterns.nth(1)).toContainText(`${US} writes +1 (555) 010-0123`);
 
   // One of the Admin's own: said wrong before it is sent, then taken, then removed.
-  const own = form.getByLabel("Add a pattern of your own");
   await own.fill("# # #");
   await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect(own).toHaveAttribute("aria-invalid", "true");
@@ -141,12 +147,30 @@ test("P-322: Admin → Settings changes the patterns of a telephone number as a 
   await own.press("Enter");
   await expect(patterns).toHaveCount(3);
   await expect(patterns.nth(2)).toContainText("+44 #### ###### writes +44 5550 100123");
+  // A sample has the pattern's own count of digits, kept whole.
+  await own.fill("##.##.##.##");
+  await own.press("Enter");
+  await expect(patterns.nth(3)).toContainText("##.##.##.## writes 12.34.56.78");
+  await expect(patterns.nth(3).locator(".nowrap")).toHaveText("12.34.56.78");
+  await form.getByRole("button", { name: "Remove ##.##.##.##" }).click();
+  await expect(form.getByRole("button", { name: "Remove +44 #### ######" })).toBeFocused();
   await form.getByRole("button", { name: "Remove +44 #### ######" }).click();
   await expect(patterns).toHaveCount(2);
+  await expect(form.getByRole("button", { name: `Remove ${US}` })).toBeFocused();
 
-  // The order is the order they are tried: the US pattern first.
+  // The order is the order they are tried: the US pattern first, its Remove then taking
+  // the focus from the Move up it no longer has.
   await form.getByRole("button", { name: `Move ${US} up` }).click();
   await expect(patterns.nth(0)).toContainText(US);
+  await expect(form.getByRole("button", { name: `Remove ${US}` })).toBeFocused();
+
+  // On a window 360 pixels wide, Add stands at the foot of its box.
+  await page.setViewportSize({ width: 360, height: 800 });
+  const boxAt = await own.boundingBox();
+  const addAt = await form.getByRole("button", { name: "Add", exact: true }).boundingBox();
+  if (!boxAt || !addAt) throw new Error("the box and its Add are not on show");
+  expect(Math.abs(boxAt.y + boxAt.height - (addAt.y + addAt.height))).toBeLessThan(4);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await form.getByRole("button", { name: "Set", exact: true }).click();
   await expect(page.getByText(`phone_formats was set to ${US}, ${PLAIN}.`)).toBeVisible();
   await expect(page.getByTestId("value-phone_formats")).toHaveText(`${US}, ${PLAIN}`);

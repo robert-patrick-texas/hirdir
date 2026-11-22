@@ -155,8 +155,12 @@ describe("patternProblem and patternSample", () => {
     expect(patternProblem("###\t###-####")).toMatch(/only spaces/);
   });
 
-  it("shows a number written in a pattern", () => {
+  it("shows a number written in a pattern, of the pattern's own count of digits", () => {
     expect(patternSample(PLAIN)).toBe("555-010-0123");
     expect(patternSample(US)).toBe("+1 (555) 010-0123");
+    // Review of 0.9.18: no sample looks like a number cut short.
+    expect(patternSample("##.##.##.##")).toBe("12.34.56.78");
+    expect(patternSample("###-####")).toBe("123-4567");
+    expect(patternSample("#".repeat(40))).toBe("1234567890".repeat(4));
   });
 });

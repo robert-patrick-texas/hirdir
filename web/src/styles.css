@@ -897,6 +897,11 @@ table.wrap-heads thead th {
   flex: 1 1 12rem;
 }
 
+/* 0.9.18: a button beside a box, at the foot of the box rather than beside its label. */
+.cell-form-end {
+  align-items: flex-end;
+}
+
 /* In a table, the heading of the column is the visible label of the input. */
 td:where(:not(.row-form > td)) .field label {
   position: absolute;

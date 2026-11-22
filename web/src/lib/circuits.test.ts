@@ -14,9 +14,12 @@ import {
   dateInForce,
   devicePath,
   devicesBody,
+  inServiceBy,
+  letsGoOf,
   lineCarrier,
   mbpsText,
   moneyText,
+  networkOption,
   notInServiceText,
   rateText,
   readMoney,
@@ -27,9 +30,12 @@ import {
   sidesWithin,
   siteSourceText,
   switchesOf,
+  switchServiceText,
+  takenOutText,
   weightHint,
   zDateHint,
 } from "./circuits";
+import { buildPatch, changedValues, type FieldSpec, formOf } from "./patch";
 
 /** The Z side's dates in force, as the server answers them: its own, or the A side's. */
 function zInForce(
@@ -110,10 +116,10 @@ describe("the dates of each side (P-320)", () => {
       effective: zInForce({ disconnected_on: "2027-04-30" }),
     };
     expect(retiredText({ ...zOwn, cost_side: "z" })).toMatch(
-      /until 2027-04-30, when its Z side, where its cost counts, was disconnected,/,
+      /until 2027-04-30, when its Z side, whose dates decide, was disconnected,/,
     );
     expect(retiredText({ ...NO_DATES, cost_side: "z" })).toMatch(
-      /^This circuit is retired, with no day its Z side, where its cost counts, was disconnected:/,
+      /^This circuit is retired, with no day its Z side, whose dates decide, was disconnected:/,
     );
   });
 });
@@ -401,5 +407,132 @@ describe("finding circuits", () => {
       "Site-2 internet (EC-0042)",
     );
     expect(circuitLabel({ name: "Dark fiber", enterprise_circuit_id: null })).toBe("Dark fiber");
+  });
+});
+
+// Review of 0.9.18, finding 1: looking through the carrier networks loses no location.
+describe("a Z side's location and carrier network, each letting go of the other", () => {
+  const specs: FieldSpec[] = [
+    {
+      name: "z_location_hid",
+      label: "Z side: location",
+      kind: "location",
+      fills: letsGoOf("z_group_hid"),
+    },
+    {
+      name: "z_group_hid",
+      label: "Z side: carrier network",
+      kind: "choice",
+      fills: letsGoOf("z_location_hid"),
+    },
+    { name: "description", label: "Description", kind: "longtext" },
+  ];
+  const record = {
+    row_version: 3,
+    z_location_hid: "loc-1",
+    z_group_hid: null,
+    description: null,
+  };
+
+  it("brings the location back when the network chosen is undone, and sends only what changed", () => {
+    let values = formOf(specs, record);
+    values = changedValues(specs, values, "z_group_hid", "net-1");
+    expect(values.z_location_hid).toBe("");
+    values = changedValues(specs, values, "z_group_hid", "net-2");
+    expect(values.z_location_hid).toBe("");
+    values = changedValues(specs, values, "z_group_hid", "");
+    expect(values.z_location_hid).toBe("loc-1");
+    values = changedValues(specs, values, "description", "Moved to a new rack");
+    expect(buildPatch(specs, record, values).body).toEqual({
+      row_version: 3,
+      description: "Moved to a new rack",
+    });
+  });
+
+  it("brings the network back when the location chosen is undone", () => {
+    const toNetwork = { ...record, z_location_hid: null, z_group_hid: "net-1" };
+    let values = formOf(specs, toNetwork);
+    values = changedValues(specs, values, "z_location_hid", "loc-2");
+    expect(values.z_group_hid).toBe("");
+    values = changedValues(specs, values, "z_location_hid", "");
+    expect(values.z_group_hid).toBe("net-1");
+    expect(buildPatch(specs, toNetwork, values).changed).toEqual([]);
+  });
+
+  it("sends the choice that stands, and the other let go of", () => {
+    let values = formOf(specs, record);
+    values = changedValues(specs, values, "z_group_hid", "net-1");
+    expect(buildPatch(specs, record, values).body).toEqual({
+      row_version: 3,
+      z_location_hid: null,
+      z_group_hid: "net-1",
+    });
+  });
+});
+
+describe("whether a circuit is in service by the dates of one side (P-320 (4))", () => {
+  const circuit = {
+    ...NO_DATES,
+    record_status: "active" as const,
+    a_activated_on: "2027-01-10",
+    z_activated_on: "2027-06-01",
+    effective: zInForce({ activated_on: "2027-06-01" }, { activated_on: "2027-01-10" }),
+  };
+
+  it("reads each side's activation and disconnection, the Z side's in force", () => {
+    expect(inServiceBy(circuit, "a", "2027-04-10")).toBe(true);
+    expect(inServiceBy(circuit, "z", "2027-04-10")).toBe(false);
+    expect(inServiceBy(circuit, "z", "2027-06-01")).toBe(true);
+    expect(inServiceBy({ ...circuit, record_status: "retired" }, "a", "2027-04-10")).toBe(false);
+  });
+
+  // Review of 0.9.18, finding 4: one press can take it out of service today.
+  it("says what switching the side whose dates decide does to whether it is in service", () => {
+    const atA = { ...circuit, cost_side: "a" as const, in_service: true };
+    expect(switchServiceText(atA, "2027-04-10")).toBe(
+      "The Z side's dates then decide whether it is in service, and the months its cost counts: it would not be in service today, which it is now, and would cost nothing today.",
+    );
+    const atZ = { ...circuit, cost_side: "z" as const, in_service: false };
+    expect(switchServiceText(atZ, "2027-04-10")).toMatch(
+      /it would be in service today, which it is not now\.$/,
+    );
+    expect(switchServiceText(atA, "2027-07-01")).toMatch(/it is in service today either way\.$/);
+    const same = {
+      ...NO_DATES,
+      record_status: "active" as const,
+      cost_side: "a" as const,
+      in_service: true,
+    };
+    expect(switchServiceText(same, "2027-04-10")).toBe("");
+  });
+});
+
+describe("a carrier network offered for a Z side", () => {
+  it("is named alone, a draft said to be one, under its carrier", () => {
+    expect(
+      networkOption({
+        hid: "n",
+        name: "Example MPLS",
+        record_status: "draft",
+        carrier: { name: "Example Telecom" },
+      }),
+    ).toEqual({ value: "n", label: "Example MPLS (draft)", group: "Example Telecom" });
+    expect(networkOption({ hid: "n", name: "Example MPLS", record_status: "active" })).toEqual({
+      value: "n",
+      label: "Example MPLS",
+    });
+  });
+});
+
+// Review of 0.9.18, finding 7: only what leaves is counted, and who stays is named.
+describe("what the take-out of circuits from a carrier network says", () => {
+  it("counts those that left, and names those that stay by their Z side", () => {
+    expect(takenOutText("Example MPLS", 1, ["Site-1 MPLS"])).toBe(
+      "1 circuit was taken out of Example MPLS. Site-1 MPLS stays in it by its Z side: a circuit leaves a carrier network by a change of its Z side.",
+    );
+    expect(takenOutText("Example MPLS", 2, [])).toBe("2 circuits were taken out of Example MPLS.");
+    expect(takenOutText("Example MPLS", 0, ["A", "B"])).toBe(
+      "No circuit was taken out of Example MPLS. A, B stay in it by their Z side: a circuit leaves a carrier network by a change of its Z side.",
+    );
   });
 });

@@ -4378,64 +4378,95 @@ What 0.9.18 adds of what is typed or pasted, the input formats (P-293, P-322 (7)
   says `At most 200 characters: this has 215.`, and the form sends nothing until it is
   shortened. Typing stops at the most, as before.
 - **Admin → Settings.** `phone_formats` is changed as a list, in the order the patterns
-  are tried: each pattern with a number written in it (`###-###-####` writes
-  `555-010-0123`), moved up or removed; `Add ###-###-####` and `Add +1 (###) ###-####`
-  add the two patterns of P-293 with one press each, disabled while the list has them;
-  and Add a pattern of your own takes one typed, said wrong before it is sent where it is
+  are tried: each pattern with a number of its own count of digits written in it, kept
+  whole on a narrow window (`###-###-####` writes `555-010-0123`, a pattern of another
+  count digits counted up from 1, `##.##.##.##` writes `12.34.56.78`), moved up or
+  removed, the focus going to the next pattern's Remove, or the box of a pattern of one's
+  own where none is left, and to a pattern's Remove where Move up brought it to the top; `Add ###-###-####` and `Add +1 (###) ###-####`
+  add the two patterns of P-293 with one press each, disabled while the list has them,
+  the focus going on to the next of them or the box; and Add a pattern of your own, its
+  Add beside the box, takes one typed, said wrong before it is sent where it is
   not 4 to 40 characters of `#`, four at least, the digits of a country's code before
   the first `#` and spaces and `+ - ( ) . /` between them, or is in the list already. An
-  empty list says `No pattern: every number is kept as typed.` `email_lower_case` and
+  empty list says `No pattern: every number is kept as typed.`, and the default of
+  `phone_formats` is said as `no pattern: no number is formatted`. `email_lower_case` and
   `title_case_names` are Yes or No, as every setting that is true or false.
 - **The Import page's preview.** A change whose value a format wrote again, a change
   with `as_in_file`, is shown with the file's value beside the one that will be saved:
   `phone: (blank) → +1 (555) 010-0124 (in the file: 1 555 010 0124)`.
 
-What 0.9.18 adds of a circuit's two sides and the network a Z side reaches (P-320):
+What 0.9.18 adds of a circuit's two sides and the carrier network a Z side reaches (P-320):
 
 - **A circuit's page.** Its two sides has a part for each side: where it ends, and
-  beneath it its three dates, Installed on, Activated on and Disconnected on. The A
-  side's are its own; the Z side's are its own or, where one is blank, the A side's in
-  force, in the lighter style of a value from elsewhere and said so, `2026-01-05 · the
-  A side's, read where the Z side has none`, as `effective.z_*_on` answers it with the
-  source `a_side`. A Z side ends at its location, or at the network it reaches, `The
-  network Example MPLS`, a link to the network's page, or at neither, with its note in
-  each case. Beneath the side its cost counts at, the page says that its dates are the
-  ones that say whether it is in service. The dates are no longer among the facts of
-  the circuit. The words of a circuit that is not in service follow the dates of the
+  beneath it its three dates, Installed on, Activated on and Disconnected on, a blank one
+  `—` as every blank fact. The A side's are its own; the Z side's are its own or, where
+  one is blank, the A side's in force, in the lighter style of a value from elsewhere and
+  said so, `2026-01-05 · the A side's, read where the Z side has none`, as
+  `effective.z_*_on` answers it with the source `a_side`. A Z side ends at its location,
+  or at the carrier network it reaches, `The carrier network Example MPLS`, a link to the
+  network's page, or at neither, with its note in each case. The side `cost_side` names
+  and the site its cost counts at are said apart: beneath the side named, that its dates
+  say whether it is in service and the months its cost counts, and, where that side has
+  no location, that its cost and its weight count at the site of the other side, which
+  is marked `Its cost and weight count at this site`; where the side named has a
+  location it is marked `Its cost counts here`. The dates are no longer among the facts
+  of the circuit. The words of a circuit that is not in service follow the dates of the
   side `cost_side` names, the Z side's in force where it is `z`: `It is not in service
   until its Z side is activated on 2026-04-01.`, `Its Z side was disconnected on
-  2026-03-31.`; so do those of a retired circuit.
+  2026-03-31.`; so do those of a retired circuit, `with no day its Z side, whose dates
+  decide, was disconnected`. A refusal to bring a circuit back, of a place or a carrier
+  network that is retired, is shown as a refusal of the record as a whole.
+- **Where it counts.** It says beside the site that the dates of the side named say
+  whether it is in service. Count it at the Z side, and Count it at the A side, say what
+  the switch does: where its cost and its weight would count, and, where the two sides'
+  activation or disconnection differ, that the other side's dates then decide whether it
+  is in service and the months its cost counts, and whether it is in service today
+  either way or would stop or start being; where it would, the button asks first, in a
+  dialog that says so.
 - **The form of a circuit.** The A side's dates, `A side: installed on` and the others,
   are under the A side, and the Z side's under the Z side; beneath a blank Z date the
   form says what it is read as, from what the form holds now: `Blank: the A side's,
-  2026-01-05, is read in its place.` The Z side has `Z side: network` beside its
-  location, which offers the circuit groups of the kind Network alone that are not
-  retired, by name with their carrier, `Example MPLS (Example Carrier)`, and the one the
-  circuit names; choosing a network lets go of the location, and a location the network.
-  A refusal of a date that the server finds out of order is shown at the field it
-  names, a Z side's date among them where a change of the A side's would put it out of
-  order.
+  2026-01-05, is read in its place.` Beneath an activation and a disconnection the form
+  says whether that side's dates decide, by the side its cost counts at as the form holds
+  it: only the side that decides says that the carrier bills it from its activation. The
+  Z side has `Z side: carrier network` beside its location, which offers the circuit
+  groups of the kind Network alone that are not retired, each by its name under its
+  carrier, a draft marked `(draft)`, and the one the circuit names. Choosing a carrier
+  network lets go of the location, and a location the carrier network; what was let go
+  of comes back when that choice is undone, as when the list is gone through with the
+  keyboard, so that nothing of a field the person did not in the end change is sent.
+  `Z side: note` is needed where the Z side names neither a location nor a carrier
+  network. A refusal of a date that the server finds out of order is shown at the field
+  it names, a Z side's date among them where a change of the A side's would put it out
+  of order.
 - **The grid of circuits.** The column chooser has the six dates, A installed, A
-  activated, A disconnected, Z installed, Z activated and Z disconnected, and Z network,
-  a link to the network; each is filtered, sorted and exported by the server. A Z date
-  is the one in force, `effective.z_*_on`, a blank one showing the A side's lighter with
-  `Inherited from the A side` on hover, and is filtered and sorted so; an export writes
-  the Z side's own, `z_*_on`. A Z side that names a network shows the network in
-  the column Z side, a link to it, with `The network <name>` and its note on hover.
+  activated, A disconnected, Z installed, Z activated and Z disconnected, and Z carrier
+  network, a link to the network; each is filtered, sorted and exported by the server. A
+  Z date is the one in force, `effective.z_*_on`, a blank one showing the A side's
+  lighter with `Inherited from the A side` on hover, and is filtered and sorted so; an
+  export writes it as a file of circuits does, in force, with `z_*_on_source` beside it,
+  `own` or `a_side`, so that a reader tells the Z side's own from the A side's. A Z side
+  that names a carrier network shows it in the column Z side, a link to it, with `The
+  carrier network <name>` and its note on hover.
 - **Circuit groups.** The list has the columns Kind, Network or Collection, and Carrier,
-  a network's, a link to the vendor; a group's page says its Kind, and a network's
-  Carrier. New circuit group and Details ask the Kind, Collection unless chosen, and the
-  Carrier while the Kind is Network; a network made a collection lets go of its carrier.
-  A circuit's page lists among its groups the network its Z side names, with In it `By
-  its Z side`, the others `Put in it`. A network's page lists its circuits, those put
-  into it and those whose Z side names it, each once, with a column In it, `By its Z
-  side` or `Put in it`; Take out of the group takes out what was put in, and says of
-  each its Z side brings that it stays: `1 circuit was taken out of Example MPLS. Ordered
-  link stays in it by its Z side: a circuit leaves a network by a change of its Z side.`
-  Retire of a network says beforehand that a network is not retired while a circuit
-  that is not retired names it, and shows the server's refusal.
-- **A vendor's page.** Networks, under its circuits: the circuit groups of the kind
-  Network whose carrier it is, as the list of circuit groups shows them, each a link.
+  a carrier network's, a link to the vendor; a group's page says its Kind, and a carrier
+  network's Carrier. New circuit group and Details ask the Kind, Collection unless chosen,
+  its help saying that Network is a carrier network and not the address ranges under
+  Networks, and the Carrier while the Kind is Network; a network made a collection lets
+  go of its carrier. A circuit's page lists among its groups the carrier network its Z
+  side names, with In it `By its Z side`, the others `Put in it`. A carrier network's page
+  lists its circuits, those put into it and those whose Z side names it, each once, with
+  a column In it, `By its Z side` or `Put in it`. Take out of the group takes out those
+  put in that are not there by their Z side, counts only those that leave, names those
+  that stay, and changes nothing of them: `1 circuit was taken out of Example MPLS.
+  Ordered link stays in it by its Z side: a circuit leaves a carrier network by a change
+  of its Z side.`; where all those ticked are there by their Z side, the button is not to
+  be pressed, and says why. Retire of a carrier network says beforehand that it is not
+  retired while a circuit that is not retired names it, and shows the server's refusal,
+  with the circuits that reach it as links.
+- **A vendor's page.** Carrier networks, under its circuits: the circuit groups of the
+  kind Network whose carrier it is, as the list of circuit groups shows them, each a
+  link.
 
 ### The grid
 
