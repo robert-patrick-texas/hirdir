@@ -325,7 +325,7 @@ def test_items_are_matched_by_hid_then_serial_then_asset_tag_then_name(
         ",,,,AT-2,tagged-again,by tag\n"
         ",,,,,twin,ambiguous\n"
         ",,,,,brand-new,new\n"
-        "01900000-0000-7000-8000-000000000000,,,,,nobody,no such hid\n"
+        "01900000-0000-7000-8000-000000000000,,,,,nobody,an hid that no item has\n"
     )
     rows = files.preview("items", text)["rows"]
     assert [row["outcome"] for row in rows] == [
@@ -334,14 +334,14 @@ def test_items_are_matched_by_hid_then_serial_then_asset_tag_then_name(
         "update",
         "rejected",
         "create",
-        "rejected",
+        # Since 0.9.17 a row whose HID no record has makes the record with it (P-311).
+        "create",
     ]
     assert rows[0]["record_hid"] == by_name["hid"]
     assert rows[1]["reasons"][0]["field"] == "asset_tag"
     assert rows[2]["record_hid"] == by_tag["hid"]
     assert changes(rows[2])["name"] == ("tagged", "tagged-again")
     assert "more than one" in rows[3]["reasons"][0]["message"]
-    assert rows[5]["reasons"][0]["field"] == "hid"
     # The row that was refused still says which item it matched.
     assert rows[1]["record_hid"] == by_serial["hid"]
 
