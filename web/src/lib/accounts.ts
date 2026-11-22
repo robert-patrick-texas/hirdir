@@ -150,6 +150,8 @@ export interface Holder {
   /** A person signs in; a service account and an agent hold tokens. */
   kind: string;
   grants: readonly Source[];
+  /** Of a person, the agents answerable to them: their tokens go with the person's role. */
+  agents?: readonly Schemas["AccountRef"][];
 }
 
 function listed(parts: readonly string[]): string {
@@ -171,12 +173,29 @@ export function leftWithNone<T extends Holder>(holders: readonly T[], change: Ro
 export function noRoleWords(holders: readonly Holder[], change: RoleChange): string | null {
   const left = leftWithNone(holders, change);
   if (left.length === 0) return null;
-  const people = left.filter((holder) => holder.kind === "person").map((one) => one.username);
-  const tokens = left.filter((holder) => holder.kind !== "person").map((one) => one.username);
+  const leftPeople = left.filter((holder) => holder.kind === "person");
+  const people = leftPeople.map((one) => one.username);
+  // 0.9.17: the tokens of a person's agents are refused while the person holds no role
+  // (P-316), each named once, the retired left out.
+  const theirs = [
+    ...new Set(
+      leftPeople.flatMap((person) =>
+        (person.agents ?? [])
+          .filter((agent) => agent.record_status !== "retired")
+          .map((agent) => agent.username),
+      ),
+    ),
+  ];
+  const tokens = left
+    .filter((holder) => holder.kind !== "person" && !theirs.includes(holder.username))
+    .map((one) => one.username);
   const sentences: string[] = [];
   if (people.length > 0) {
+    const signedOut = `${listed(people)} will ${people.length === 1 ? "" : "each "}hold no role and be signed out`;
     sentences.push(
-      `${listed(people)} will ${people.length === 1 ? "" : "each "}hold no role and be signed out`,
+      theirs.length > 0
+        ? `${signedOut}, and the tokens of ${listed(theirs)} will be refused`
+        : signedOut,
     );
   }
   if (tokens.length > 0) {

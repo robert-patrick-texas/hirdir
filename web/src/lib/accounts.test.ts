@@ -157,6 +157,34 @@ describe("what a confirmation says of whom a change leaves with no role (P-314)"
     );
   });
 
+  it("names the agents of a person so left, whose tokens are refused with them (P-316)", () => {
+    const active = { hid: "A1", name: "agent-reconcile", record_status: "active" as const };
+    const withAgents: Holder = {
+      ...sroe,
+      agents: [
+        { ...active, username: "agent-reconcile" },
+        { ...active, hid: "A2", username: "agent-sync" },
+        { ...active, hid: "A3", username: "agent-old", record_status: "retired" },
+      ],
+    };
+    expect(noRoleWords([withAgents], { kind: "leave", groupHid: "G1" })).toBe(
+      "sroe will hold no role and be signed out, and the tokens of agent-reconcile and agent-sync will be refused.",
+    );
+    // Of two people, each agent once, an agent left with no role itself among them.
+    const kleeToo: Holder = { ...klee, agents: [{ ...active, hid: "A4", username: "agent-tidy" }] };
+    const reconcile: Holder = { ...agent, grants: [TEAM] };
+    expect(noRoleWords([withAgents, kleeToo, reconcile], { kind: "leave", groupHid: "G1" })).toBe(
+      "sroe and klee will each hold no role and be signed out, and the tokens of agent-reconcile, agent-sync and agent-tidy will be refused.",
+    );
+    // A person who keeps a role says nothing of their agents.
+    expect(
+      noRoleWords([{ ...rex, agents: [{ ...active, username: "agent-x" }] }], {
+        kind: "leave",
+        groupHid: "G1",
+      }),
+    ).toBeNull();
+  });
+
   it("names each member so left, and nobody who keeps a role", () => {
     expect(leftWithNone([klee, sroe, rex], { kind: "leave", groupHid: "G1" })).toEqual([
       klee,

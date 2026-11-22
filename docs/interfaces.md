@@ -3992,8 +3992,10 @@ P-314, P-316):
   page by Remove, revokes a grant of a group, on the group's page or under Roles, or
   deletes a group, the confirmation says whom the change leaves with no role, from the
   roles each holds and where they come from: `klee will hold no role and be signed
-  out.`; for a group, each member so left, named; of a service account or an agent,
-  that its tokens will be refused. A change that leaves everybody a role says nothing
+  out.`; for a group, each member so left, named; of a person who has agents, that
+  their tokens will be refused too, `sroe will hold no role and be signed out, and the
+  tokens of agent-reconcile and agent-sync will be refused.`; of a service account or
+  an agent, that its tokens will be refused. A change that leaves everybody a role says nothing
   of it, and a box that leaves the account a role changes it at once, as before.
 - **Users, by kind.** The column Kind writes `Person`, `Service` or `Agent`, from
   `kind`, and Kind beside the search narrows the list to one, `kind=` in the address,
