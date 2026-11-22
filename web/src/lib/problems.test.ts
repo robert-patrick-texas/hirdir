@@ -38,6 +38,19 @@ describe("what a refusal says of a field that has no input", () => {
     expect(sentence("Reload it.")).toBe("Reload it.");
     expect(sentence("")).toBe("");
   });
+
+  it("leaves a username or a label at its start as it is written (review 5)", () => {
+    // Written as a username is, with a hyphen, a dot, an underscore or a digit.
+    expect(sentence("agent-sync is an agent, and an agent is never Admin")).toBe(
+      "agent-sync is an agent, and an agent is never Admin.",
+    );
+    expect(sentence("svc_backup2 holds no role")).toBe("svc_backup2 holds no role.");
+    // One the refusal names, however it is written.
+    expect(sentence("klee is an agent", ["klee"])).toBe("klee is an agent.");
+    expect(sentence("kl is taken", ["klee"])).toBe("Kl is taken.");
+    // A word is still a word.
+    expect(sentence("the agent is never Admin")).toBe("The agent is never Admin.");
+  });
 });
 
 const stale = new ApiError({

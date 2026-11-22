@@ -72,11 +72,22 @@ export function fieldErrors(error: ApiError | null, known: readonly string[]): F
   return { shown, rest };
 }
 
-/** A sentence as it is shown: a capital first letter and a full stop. */
-export function sentence(text: string): string {
+/**
+ * A sentence as it is shown: a capital first letter and a full stop. 0.9.17: a sentence
+ * that begins with a username or a label begins as that is written (review 5): one of
+ * `names`, the records the refusal names, or a first word written as only a name is,
+ * with a hyphen, a dot, an underscore or a digit in it, as `agent-sync`.
+ */
+export function sentence(text: string, names: readonly string[] = []): string {
   const trimmed = text.trim();
   if (trimmed === "") return "";
-  const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  const first = trimmed.split(/[\s,:;]/, 1)[0] ?? "";
+  const named = names.some(
+    (name) =>
+      name !== "" && trimmed.startsWith(name) && /^($|[\s,:;.])/.test(trimmed.slice(name.length)),
+  );
+  const asWritten = named || /[-_.\d]/.test(first.replace(/\.$/, ""));
+  const capital = asWritten ? trimmed : trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return /[.!?]$/.test(capital) ? capital : `${capital}.`;
 }
 
