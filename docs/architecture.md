@@ -1077,7 +1077,7 @@ and signing in shows the item at that address. Each scenario is a line of its ow
 the pass, read from Playwright's report of the run. The file keeps the rules of
 `support.ts`, so `--e2e` and `make browser` run it beside the others, at the root of a
 development server too. Measured on the four-core build host at 0.9.17, with the host
-busy: the pass in 75 to 113 seconds, the browser and its four scenarios in under half a
+busy: the pass in 75 to 121 seconds, the browser and its four scenarios in about half a
 minute of it, against about fifty minutes for `--e2e`. Seen to fail: with nginx made to
 add a policy that lets no script run, every request of curl passed and the first
 scenario failed; with the addresses of the items' pages under the prefix answered `404`
@@ -1629,8 +1629,9 @@ alone, so the file talks to that release in its own API, where an account is a s
 account or not by `is_service_account`, and asks nothing of an older one. The migration
 makes `users` anew with `kind`, `service` where the account was a service account and
 `person` for every other, and `answerable_hid`, empty, with its foreign key to `users`
-and its index, drops `is_service_account`, and adds `for_hid` to `audit_events`, empty;
-it creates no table and writes no event. With the previous release the file makes,
+and its index, drops `is_service_account`, and adds `for_hid` to `audit_events`, empty,
+with two indexes of the trail, by `actor_hid` and by `for_hid`; it creates no table and
+writes no event. With the previous release the file makes,
 beside the accounts of the pass, a user of each kind and state that the migration
 could take for another: a person with a role of their own, a person who holds
 View-only through a group alone, a disabled person and a retired one, a service account
@@ -1642,7 +1643,8 @@ The file names `users`, `user_groups`, `user_group_members`, `role_grants` and
 `service_tokens` as tables beside the inventory, the column the migration drops from
 `users` and the two columns, the foreign key and the index it adds, and the column it
 adds to `audit_events`, which the check that the upgrade wrote no event leaves out of
-what it compares; and of the users as the API gives them, `is_service_account` of each,
+what it compares, and the two indexes it adds there, beside those the trail had, which
+the file reads before the upgrade; and of the users as the API gives them, `is_service_account` of each,
 which the new version answers as `kind`. The lists of users, before and after, are
 asked with `retired=yes`, so that the retired one is among them.
 

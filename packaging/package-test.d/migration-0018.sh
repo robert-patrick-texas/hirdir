@@ -17,8 +17,9 @@
 # The migration makes the table of the users anew: it adds kind, service for each
 # account that was a service account and person for every other, and answerable_hid,
 # empty for each, with its foreign key to users and its index, and drops
-# is_service_account. It adds for_hid to the audit trail, empty for every event. It
-# creates no table and writes no audit event, so the pass whose migration fails puts the
+# is_service_account. It adds for_hid to the audit trail, empty for every event, and two
+# indexes of the trail, by actor_hid and by for_hid. It creates no table and writes no
+# audit event, so the pass whose migration fails puts the
 # trigger on alembic_version in its way, and all of it has to be undone. Nothing else of
 # a row is changed: every account is what it was, in another word, signs in or is
 # refused as it was, and keeps its tokens, its role, its groups and its row_version.
@@ -48,8 +49,13 @@ gone_columns[users]="${gone_columns[users]:+${gone_columns[users]} }is_service_a
 also new_keys users 'foreign key answerable_hid to users.hid
 index ix_users_answerable_hid on answerable_hid unique=0 origin=c partial=0'
 # The column of the audit trail, which the check that the upgrade wrote no event leaves
-# out of what it compares, and which changed_0018 looks at by itself.
+# out of what it compares, and which changed_0018 looks at by itself, with the two
+# indexes that the migration adds beside those the trail had, as table_read keys prints
+# them, which before_0018 reads.
 also new_columns audit_events 'for_hid VARCHAR(36) NULL -'
+audit_keys_new_0018='index audit_events_actor on actor_hid unique=0 origin=c partial=0
+index audit_events_for on for_hid unique=0 origin=c partial=0'
+audit_keys_0018=""
 
 # Set by before_0018 where the previous release holds what this file makes.
 noted_0018=""
@@ -122,6 +128,7 @@ before_0018() {
     local admin=$token made="" wanted="" kind body hid
     previous_at 0017 || return 0
     noted_0018=yes
+    audit_keys_0018=$(table_read audit_events keys)
 
     # The accounts of the pass, made before this file made any. Their rows are let be by
     # the comparison of the rows of users, as an account of the pass signs in again
@@ -242,6 +249,9 @@ print("same" if then == kinds else "differ", sorted(counted), answerable, defaul
     expect "pkg $when the audit trail has the column for_hid after its others, and it is empty in every event: no agent made any" \
         "$(table_read audit_events columns | tail -n 1) $(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM audit_events WHERE for_hid IS NOT NULL')" \
         "for_hid VARCHAR(36) NULL - 0"
+    expect "pkg $when the audit trail has every index it had, and two more, by actor_hid and by for_hid" \
+        "$(table_read audit_events keys)" \
+        "$(printf '%s\n%s\n' "$audit_keys_0018" "$audit_keys_new_0018" | sed '/^$/d' | LC_ALL=C sort)"
 
     # Each user from before, by the API: every field it had, as it was, but
     # is_service_account, which is its kind now.

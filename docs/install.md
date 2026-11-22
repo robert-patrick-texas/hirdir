@@ -2303,7 +2303,8 @@ sudo apt install --allow-downgrades ./hirdir_0.9.15_amd64.deb
 The schema goes from revision `0017` to `0018`. The table of the users is made anew:
 `kind` takes the place of `is_service_account`, `service` for every service account and
 `person` for every other account, and `answerable_hid` is added, empty for each; the
-audit trail gains `for_hid`, empty for every event. No table is added, nothing else that
+audit trail gains `for_hid`, empty for every event, and two indexes, by who acted and by
+whom an agent acted for. No table is added, nothing else that
 is held is changed, there is no agent until an Admin makes one, and the upgrade writes
 no audit event. It takes its backup and stops and starts the service as every upgrade
 does. `/etc/hirdir/config.toml` gains no setting, so the upgrade says nothing of it.

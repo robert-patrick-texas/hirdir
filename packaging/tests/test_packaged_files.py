@@ -873,6 +873,17 @@ def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_
     assert key
     assert f"index {index} on answerable_hid unique=0 origin=c partial=0'" in hook
     assert "foreign key answerable_hid to users.hid\n" in hook
+    # And the indexes of the audit trail, as the model declares them.
+    trail = re.findall(r'events\.create_index\("(\w+)", \["(\w+)"\], unique=False\)', source)
+    assert sorted(trail) == sorted(
+        (index.name, column.name)
+        for index in AuditEvent.__table__.indexes
+        for column in index.columns
+        if column.name in ("actor_hid", "for_hid")
+    )
+    assert len(trail) == 2
+    for name, column in trail:
+        assert f"index {name} on {column} unique=0 origin=c partial=0" in hook
     assert f'*) more_tables="${{more_tables:+$more_tables }}{users}" ;;' in hook
 
     # The notes.
