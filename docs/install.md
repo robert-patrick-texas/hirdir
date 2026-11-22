@@ -2455,10 +2455,13 @@ What an Admin sees changed:
   as it was typed, marked not in the list, and kept until the country or the state of
   that address is changed; anything else of the place may be changed meanwhile.
   `GET /places/unlisted-addresses` lists each such value, with the place and the field
-  that holds it. A file that gives a country or a state that no list holds has that row
-  refused at its column until a person chooses the value, so Export everything loads
-  whole into an empty inventory only once every address is in the lists: choose each
-  value that `GET /places/unlisted-addresses` lists before you count on it.
+  that holds it. A row of a file that makes a region, a site or a location with a
+  country or a state that no list holds is rejected at that column until a person
+  chooses the value, and so is one that changes an address to such a value; a row that
+  gives back what a place holds changes nothing, so an export loaded back into the
+  inventory it came from is still nothing to change. Export everything loads whole into
+  an empty inventory only once every address is in the lists: choose each value that
+  `GET /places/unlisted-addresses` lists before an inventory is moved.
 - **The Z side of a circuit has dates of its own** and may name a network, a circuit
   group of the kind Network, in the place of a location. The dates of the side that
   `cost_side` names decide whether a circuit is in service and the months its cost
