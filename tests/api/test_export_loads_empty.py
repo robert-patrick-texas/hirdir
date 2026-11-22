@@ -182,9 +182,19 @@ def test_a_row_whose_hid_no_record_has_is_refused_where_it_would_bring_back_or_d
 
     # A record that was deleted is not brought back by a file.
     assert "deleted" in refused("items", f"hid,name\n{item['hid']},ex-gone\n")
-    # A row whose key finds another record does not make a second of it.
+    # A row whose key finds another record does not make a second of it: a tag by its
+    # label, an item by its serial number with its model, or by its asset tag.
     said = refused("tags", f"hid,label\n{new_hid()},example-kept\n")
     assert kept["hid"] in said
+    vendor = make.post("/vendors", {"name": "Example Vendor"})
+    model = make.post("/catalog-entries", {"vendor_hid": vendor["hid"], "pid": "EX-1"})
+    known = make.item(catalog_entry_hid=model["hid"], serial_number="EXSN1", asset_tag="EX-AT-1")
+    said = refused(
+        "items", f"hid,vendor,pid,serial_number\n{new_hid()},Example Vendor,EX-1,EXSN1\n"
+    )
+    assert known["hid"] in said
+    said = refused("items", f"hid,asset_tag,name\n{new_hid()},EX-AT-1,ex-other\n")
+    assert known["hid"] in said
     # Text that is no HID names nothing.
     assert "no HID" in refused("tags", "hid,label\nnot-an-hid,example-other\n")
     # A bulk edit changes records that exist, and names none that is not.
