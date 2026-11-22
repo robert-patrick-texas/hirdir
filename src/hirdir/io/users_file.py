@@ -60,7 +60,9 @@ def rows(db: Session, retired: str = "no") -> list[dict[str, Any]]:
         db.scalars(accounts.retired_or_not(select(User), retired).order_by(User.username_key))
     )
     contacts = accounts.contacts_of(db, users)
-    groups, roles = accounts.groups_of_users(db, users), accounts.roles_of(db, users)
+    # The role in force, what the account can do: of an agent, the lower of its own and
+    # its person's, and none where its person cannot answer for it (P-316).
+    groups, roles = accounts.groups_of_users(db, users), accounts.in_force(db, users)
     persons = accounts.answerable_of(db, users)
     operators = accounts.operators_of(db, users)
     written: list[dict[str, Any]] = []
@@ -73,7 +75,7 @@ def rows(db: Session, retired: str = "no") -> list[dict[str, Any]]:
                 "email": contact.email if contact else None,
                 "phone": contact.phone if contact else None,
                 "phone2": contact.phone2 if contact else None,
-                "role": role.value if (role := roles[user.hid]) else None,
+                "role": role.value if (role := roles[user.hid].role) else None,
                 "groups": [group.name for group in groups[user.hid]],
                 # Those that are not retired: a retired label stands for nothing.
                 "operators": [

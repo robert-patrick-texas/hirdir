@@ -661,8 +661,8 @@ describe("the button that goes ahead names each record it changes (review 9, P-3
     let asked = startChoices(ON_CONTACT, three, true);
     asked = choose(choose(asked, "O1", "hand_over", "C9"), "O2", "hand_over", "C9");
     asked = choose(asked, "O4", "hand_over", "C7");
-    expect(goWords(ON_CONTACT, three, asked, true, { ...NAMES, C7: "Jane Doe" })).toBe(
-      "Retire contact Kim Lee, hand KL and KM to Sam Roe, and hand KN to Jane Doe",
+    expect(goWords(ON_CONTACT, three, asked, true, { ...NAMES, C7: "Ada Example" })).toBe(
+      "Retire contact Kim Lee, hand KL and KM to Sam Roe, and hand KN to Ada Example",
     );
   });
 

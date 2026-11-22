@@ -1789,8 +1789,11 @@ Append-only. `at`, `actor_hid`, `for_hid` (where the actor is an agent, the pers
 was answerable to when the event was made, P-316, migration `0018`), `via` (`web`, `api`, `cli`, `import`, `system`),
 `request_id`, `action` (`create`, `update`, `retire`, `transition`, `sign_in`,
 `sign_in_failed`, `sign_in_no_role`, `preview`, `apply`, and so on), `record_type`, `record_hid`, and
-`changes`, a list of `{field, old, new}`. One import or bulk edit shares one
-`request_id`. A record changed by an import has `via` of `import`; one changed by a
+`changes`, a list of `{field, old, new}`. It is indexed by `at`, by `record_type` and
+`record_hid`, and, from migration `0018`, by `actor_hid` and by `for_hid`, so that the
+events of one account, of the accounts of one kind and those made for one person by
+agents are found without reading the whole trail (P-316). One import or bulk edit
+shares one `request_id`. A record changed by an import has `via` of `import`; one changed by a
 bulk edit has the door the edit came through. A change of an item, or the removal of
 one of its addresses, made by its joining a device group holds among its `changes` the
 entry `joining_group` with the group's HID as `new`, and one made by its leaving a
