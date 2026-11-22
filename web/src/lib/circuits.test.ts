@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Schemas } from "../api/client";
 import {
   type CircuitSide,
   carrierSourceText,
@@ -10,6 +11,7 @@ import {
   connectedHids,
   contactSourcePath,
   countingSide,
+  dateInForce,
   devicePath,
   devicesBody,
   lineCarrier,
@@ -18,22 +20,138 @@ import {
   notInServiceText,
   rateText,
   readMoney,
+  retiredText,
+  type SideDate,
   sideCell,
   sideHint,
   sidesWithin,
   siteSourceText,
   switchesOf,
   weightHint,
+  zDateHint,
 } from "./circuits";
+
+/** The Z side's dates in force, as the server answers them: its own, or the A side's. */
+function zInForce(
+  own: Partial<Record<SideDate, string>>,
+  a: Partial<Record<SideDate, string>> = {},
+) {
+  const one = (name: SideDate): Schemas["EffectiveValue"] => ({
+    value: own[name] ?? a[name] ?? null,
+    source: own[name] ? "own" : a[name] ? "a_side" : "none",
+    source_hid: null,
+  });
+  return {
+    z_installed_on: one("installed_on"),
+    z_activated_on: one("activated_on"),
+    z_disconnected_on: one("disconnected_on"),
+  };
+}
+
+const NO_DATES = {
+  a_installed_on: null,
+  a_activated_on: null,
+  a_disconnected_on: null,
+  z_installed_on: null,
+  z_activated_on: null,
+  z_disconnected_on: null,
+  effective: zInForce({}),
+};
+
+describe("the dates of each side (P-320)", () => {
+  const circuit = {
+    ...NO_DATES,
+    a_installed_on: "2027-01-05",
+    a_activated_on: "2027-01-10",
+    z_activated_on: "2027-02-01",
+    effective: zInForce(
+      { activated_on: "2027-02-01" },
+      { installed_on: "2027-01-05", activated_on: "2027-01-10" },
+    ),
+  };
+
+  it("reads the A side's as its own, and the Z side's own or the A side's in force", () => {
+    expect(dateInForce(circuit, "a", "installed_on")).toEqual({
+      value: "2027-01-05",
+      source: "own",
+    });
+    expect(dateInForce(circuit, "a", "disconnected_on")).toEqual({ value: null, source: "none" });
+    expect(dateInForce(circuit, "z", "installed_on")).toEqual({
+      value: "2027-01-05",
+      source: "a_side",
+    });
+    expect(dateInForce(circuit, "z", "activated_on")).toEqual({
+      value: "2027-02-01",
+      source: "own",
+    });
+    expect(dateInForce(circuit, "z", "disconnected_on")).toEqual({ value: null, source: "none" });
+  });
+
+  it("says beneath a blank Z date what it is read as, from what the form holds", () => {
+    expect(zDateHint("", "2027-01-10")).toBe(
+      "Blank: the A side's, 2027-01-10, is read in its place.",
+    );
+    expect(zDateHint("", "")).toBe("Blank: the A side's is read in its place, and it has none.");
+    expect(zDateHint("2027-02-01", "2027-01-10")).toBeUndefined();
+  });
+
+  it("says of a retired circuit the day the side its cost counts at was disconnected", () => {
+    const retired = {
+      ...NO_DATES,
+      a_disconnected_on: "2027-03-31",
+      effective: zInForce({}, { disconnected_on: "2027-03-31" }),
+    };
+    expect(retiredText({ ...retired, cost_side: "a" })).toBe(
+      "This circuit is retired. It was in service until 2027-03-31, and counts for that time in what circuits cost.",
+    );
+    const zOwn = {
+      ...retired,
+      z_disconnected_on: "2027-04-30",
+      effective: zInForce({ disconnected_on: "2027-04-30" }),
+    };
+    expect(retiredText({ ...zOwn, cost_side: "z" })).toMatch(
+      /until 2027-04-30, when its Z side, where its cost counts, was disconnected,/,
+    );
+    expect(retiredText({ ...NO_DATES, cost_side: "z" })).toMatch(
+      /^This circuit is retired, with no day its Z side, where its cost counts, was disconnected:/,
+    );
+  });
+});
 
 describe("a circuit that is not in service", () => {
   const base = {
+    ...NO_DATES,
     in_service: false,
     record_status: "active" as const,
-    a_activated_on: null,
-    a_disconnected_on: null,
+    cost_side: "a" as const,
   };
   const day = "2027-04-10";
+
+  // 0.9.18: the dates of the side its cost counts at decide, the Z side's in force (P-320 (4)).
+  it("says so by the Z side's dates in force where its cost counts at the Z side", () => {
+    const z = { ...base, cost_side: "z" as const };
+    expect(
+      notInServiceText(
+        { ...z, z_activated_on: "2027-05-01", effective: zInForce({ activated_on: "2027-05-01" }) },
+        day,
+      ),
+    ).toMatch(/^It is not in service until its Z side is activated on 2027-05-01\./);
+    // A blank Z date is read as the A side's.
+    expect(
+      notInServiceText(
+        {
+          ...z,
+          a_disconnected_on: "2027-03-31",
+          effective: zInForce({}, { disconnected_on: "2027-03-31" }),
+        },
+        day,
+      ),
+    ).toMatch(/^Its Z side was disconnected on 2027-03-31\./);
+    // The A side's dates do not decide where the cost counts at the Z side.
+    expect(notInServiceText({ ...z, a_activated_on: "2027-05-01" }, day)).toMatch(
+      /^It is not in service today\./,
+    );
+  });
 
   it("says why it costs nothing today, though its lines keep their amounts", () => {
     expect(notInServiceText({ ...base, in_service: true }, day)).toBe("");

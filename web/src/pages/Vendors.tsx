@@ -4,15 +4,22 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { VendorContacts } from "../components/CircuitContacts";
 import { CircuitsGrid } from "../components/CircuitsGrid";
+import { CIRCUIT_GROUP_COLUMNS } from "../components/grid/circuitColumns";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { VendorPortfolio } from "../components/Portfolio";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
-import { circuitsOfCarrier } from "../lib/circuits";
+import {
+  type CircuitGroup,
+  circuitGroupPath,
+  circuitIsDimmed,
+  circuitsOfCarrier,
+  networksOfCarrier,
+} from "../lib/circuits";
 import { formatTime } from "../lib/format";
-import { queryParams } from "../lib/gridQuery";
+import { queryBody, queryParams } from "../lib/gridQuery";
 import { useLoad, useTitle } from "../lib/hooks";
 import { optionLabel, REVIEW_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
@@ -202,6 +209,31 @@ export function VendorDetail() {
               id="vendor-circuits"
               within={{ filter: circuitsOfCarrier(record.hid) }}
               switches
+            />
+          </section>
+          {/* 0.9.18: the networks it is the carrier of, which a Z side may name (P-320). */}
+          <section aria-labelledby="vendor-networks">
+            <h2 id="vendor-networks">Networks</h2>
+            <p className="hint">
+              The circuit groups of the kind Network whose carrier {record.name} is: what the Z side
+              of a circuit may name as the network it reaches.
+            </p>
+            <DataGrid<CircuitGroup>
+              id="vendor-networks"
+              noun={["network", "networks"]}
+              entity="circuit_groups"
+              columns={CIRCUIT_GROUP_COLUMNS}
+              within={{ filter: networksOfCarrier(record.hid) }}
+              load={(request, signal) =>
+                api.request("post", "/api/v1/circuit-groups/query", {
+                  body: queryBody(request),
+                  signal,
+                })
+              }
+              rowId={(group) => group.hid}
+              rowLink={(group) => circuitGroupPath(group.hid)}
+              dimmed={circuitIsDimmed}
+              switches={{ archived: "Include archived" }}
             />
           </section>
           {allows(user.role, "inventory") && (

@@ -9,7 +9,7 @@ import { type Circuit, circuitIsDimmed, circuitPath, GRID_FIELDS } from "../lib/
 import { type ListRequest, queryBody } from "../lib/gridQuery";
 import { useChoices } from "../lib/lists";
 import { circuitColumns } from "./grid/circuitColumns";
-import { broughtForward } from "./grid/columns";
+import { broughtForward, type GridColumn } from "./grid/columns";
 import { DataGrid, type GridAction, type GridWithin } from "./grid/DataGrid";
 import { Problem } from "./Problem";
 
@@ -28,6 +28,11 @@ interface CircuitsGridProps {
   within?: GridWithin;
   /** Columns the grid is about, shown from the start right after the name. */
   shown?: readonly string[];
+  /**
+   * 0.9.18: columns of the page's own beside those of every circuit grid, as how each
+   * circuit is in a network (P-320 (7)). Named in `shown` to stand after the name.
+   */
+  more?: readonly GridColumn<Circuit>[];
   /** Offer the filter box, with this example under it. */
   shortFilter?: string;
   /** The fields words in the filter box are looked for in (P-187). */
@@ -45,12 +50,12 @@ interface CircuitsGridProps {
 /** The circuit grid, of the circuits a page names. */
 export function CircuitsGrid(props: CircuitsGridProps) {
   const { id, within, shown = [], shortFilter, startFilter, startSwitches, switches } = props;
-  const { reloadKey, actions, children, quickFields } = props;
+  const { reloadKey, actions, children, quickFields, more } = props;
   const choices = useChoices();
   const wanted = shown.join(" ");
   const columns = useMemo(
-    () => broughtForward(circuitColumns(choices.data), wanted.split(" ")),
-    [choices.data, wanted],
+    () => broughtForward([...circuitColumns(choices.data), ...(more ?? [])], wanted.split(" ")),
+    [choices.data, wanted, more],
   );
 
   return (
