@@ -78,6 +78,13 @@ describe("phoneText and titleCase beyond the contract", () => {
     expect(phoneText("", [US])).toBe("");
   });
 
+  it("trims a number before it formats it, as the server does, so that what is shown is saved", () => {
+    const both = ["(###) ###-####", "###.###.####"];
+    expect(phoneText(" 555.010.0123", both)).toBe("555.010.0123");
+    expect(phoneText("5550100123\t", [US])).toBe("+1 (555) 010-0123");
+    expect(phoneText("  555 0100 x12  ", [US])).toBe("555 0100 x12");
+  });
+
   it("leaves what is not a letter, and a letter whose capital is two", () => {
     expect(titleCase("3rd shift")).toBe("3rd Shift");
     expect(titleCase("straße")).toBe("Straße");

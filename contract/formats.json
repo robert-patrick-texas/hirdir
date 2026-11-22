@@ -44,6 +44,8 @@
     { "format": "phone_formats", "setting": ["1-###-###-####"], "typed": "1-555-010-0123", "kept": "1-555-010-0123" },
     { "format": "phone_formats", "setting": [], "typed": "5550100123", "kept": "5550100123", "note": "no pattern, as from the start: no number is formatted" },
     { "format": "phone_formats", "setting": [], "typed": "555 0100 x12", "kept": "555 0100 x12" },
+    { "format": "phone_formats", "setting": ["###-###-####", "+1 (###) ###-####"], "typed": "(+49) 30 123456", "kept": "(+49) 30 123456", "note": "a + before the first digit, after a mark too, is a code of the number's own: no pattern takes it but one with a + of its own and no leading digits, or one whose leading digits it begins with" },
+    { "format": "phone_formats", "setting": ["+1 ###-###-####"], "typed": "(+44) 20 7946 0018", "kept": "(+44) 20 7946 0018", "note": "another country's code is never replaced by the pattern's" },
     { "format": "email_lower_case", "setting": true, "typed": "John.Smith@Example.COM", "kept": "john.smith@example.com" },
     { "format": "email_lower_case", "setting": true, "typed": "KIM.LEE@EXAMPLE.NET", "kept": "kim.lee@example.net" },
     { "format": "email_lower_case", "setting": true, "typed": "john.smith@localhost", "kept": "john.smith@localhost", "note": "any host is taken" },

@@ -130,16 +130,22 @@ function inFormOf(pattern: string, value: string): boolean {
  * pattern writes is written the same again, as the server has it.
  */
 export function phoneText(value: string, patterns: readonly string[]): string {
-  if (patterns.length === 0 || !SEPARATORS.test(value)) return value;
-  if (patterns.some((pattern) => inFormOf(pattern, value))) return value;
-  const digits = value.replace(/[^0-9]/g, "");
-  if (digits === "") return value;
-  const plus = value.trimStart().startsWith("+");
+  // The server takes a value trimmed before it is formatted, and so does the page, so
+  // that what is shown is what is saved.
+  const text = value.trim();
+  if (patterns.length === 0 || !SEPARATORS.test(text)) return text;
+  if (patterns.some((pattern) => inFormOf(pattern, text))) return text;
+  const digits = text.replace(/[^0-9]/g, "");
+  if (digits === "") return text;
+  // A `+` anywhere before the first digit gives the number a code of its own, as in
+  // `(+49) 30 123456`, as the server reads it.
+  const first = text.search(/[0-9]/);
+  const plus = text.slice(0, first < 0 ? text.length : first).includes("+");
   for (const pattern of patterns) {
     const number = written(pattern, digits, plus);
     if (number !== null) return number;
   }
-  return value;
+  return text;
 }
 
 /** An email address as `email_lower_case` keeps it: in lower case (P-322 (4)). */
