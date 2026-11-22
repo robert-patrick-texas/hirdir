@@ -90,12 +90,12 @@ def _reasons(which: Entity, error: Exception) -> list[dict[str, str]]:
 DELETED_KINDS = {"item": "item", "device_group": "device group"}
 
 
-def _no_record(db: Session, which: Entity, hid: str) -> str:
+def _no_record(db: Session, record_type: str, hid: str) -> str:
     """Say that a row's HID names no record: or, where an Admin deleted it, when and by
     whom, as its 404 says."""
-    what = DELETED_KINDS.get(which.record_type)
+    what = DELETED_KINDS.get(record_type)
     if what is not None:
-        gone = deleted.missing(db, which.record_type, hid, what)
+        gone = deleted.missing(db, record_type, hid, what)
         if isinstance(gone, Deleted):
             return str(gone)
     return f"there is no record {hid}"
@@ -106,22 +106,32 @@ def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     its table has (P-311), so that the file of every table loads into an empty inventory
     with each record as it was, and a reference by HID finds what an earlier file made.
 
-    It is refused where the text is no HID; where the record of that HID was deleted or
-    removed, which the audit trail says, since a file brings nothing back; where the
-    row's own key finds another record, which it names, so that a file of another
-    inventory makes no second of what this one has; and in a bulk edit, which changes
-    records that exist.
+    It is refused where the text is no HID as the server makes one, a UUID of version
+    7; where a record of any table has that HID, or had it and was deleted or removed,
+    which the audit trail says, since an HID is one record's for good and a file brings
+    nothing back; where the row's own key finds another record, which it names, so that
+    a file of another inventory makes no second of what this one has; and in a bulk
+    edit, which changes records that exist.
     """
     db = run.db
     if run.mode == "update":
         raise Invalid("there is no such record", {"hid": "a bulk edit changes records that exist"})
-    if not ids.is_hid(hid):
+    if not ids.is_made_hid(hid):
         raise Invalid(
             "there is no such record",
-            {"hid": f"there is no record {hid}, and it is no HID, which an export writes"},
+            {"hid": f"there is no record {hid}, and it is no HID, a UUID of version 7"},
         )
-    if deleted.deletion(db, which.record_type, hid) is not None:
-        raise Invalid("there is no such record", {"hid": _no_record(db, which, hid)})
+    if run.trail_kinds is None:
+        run.trail_kinds = deleted.kinds_in_trail(db)
+    held = deleted.holder_of(db, hid, run.trail_kinds)
+    if held is not None and held.action == deleted.ACTION:
+        raise Invalid("there is no such record", {"hid": _no_record(db, held.record_type, hid)})
+    if held is not None:
+        kind = held.record_type.replace("_", " ")
+        raise Conflict(
+            f"the HID {hid} is another record's, of a {kind}",
+            {"hid": f"{hid} is the HID of a {kind}: an HID is one record's, for good"},
+        )
     try:
         other = which.find(run, {name: value for name, value in values.items() if name != "hid"})
     except Invalid:

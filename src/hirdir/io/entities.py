@@ -180,6 +180,9 @@ class Run:
         self.seen: dict[str, int] = {}
         # Records this run made because a row referred to them and they were not there.
         self.stubs: set[str] = set()
+        # The kinds of record the audit trail names, read once for the HIDs a file gives
+        # its new records (P-311).
+        self.trail_kinds: tuple[str, ...] | None = None
         self.notes: list[str] = []
         self._undo: list[Callable[[], None]] = []
         self._vendors: dict[str, str] = {}

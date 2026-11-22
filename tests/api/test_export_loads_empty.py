@@ -16,6 +16,7 @@ import csv
 import io
 import json
 import shutil
+import uuid
 import zipfile
 from collections.abc import Callable
 from dataclasses import replace
@@ -365,7 +366,19 @@ def test_a_row_whose_hid_no_record_has_is_refused_where_it_would_bring_back_or_d
     assert known["hid"] in said
     said = refused("items", f"hid,asset_tag,name\n{new_hid()},EX-AT-1,ex-other\n")
     assert known["hid"] in said
-    # Text that is no HID names nothing.
+    # Text that is no HID names nothing, nor does a UUID of another version than 7.
     assert "no HID" in refused("tags", "hid,label\nnot-an-hid,example-other\n")
+    for other in (
+        str(uuid.uuid4()),
+        "00000000-0000-0000-0000-000000000000",
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    ):
+        assert "no HID" in refused("tags", f"hid,label\n{other},example-other\n"), other
+    # An HID that a record of another table has, or had, is that record's for good.
+    contact = make.post("/contacts", {"name": "Kim Lee", "email": "kim.lee@example.com"})
+    said = refused("items", f"hid,name\n{contact['hid']},ex-taken\n")
+    assert "contact" in said
+    said = refused("device_groups", f"hid,name,type\n{item['hid']},ex-gone-group,custom\n")
+    assert "deleted" in said
     # A bulk edit changes records that exist, and names none that is not.
     make.post("/items/bulk-update", {"hids": [new_hid()], "set": {"comments": "x"}}, 422)
