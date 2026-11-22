@@ -24,6 +24,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir.auth.roles import Role
+from hirdir.db import dialect
 from hirdir.db.models import ADDRESS_FIELDS, Country, Location, Region, Site, State
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
@@ -66,6 +67,14 @@ def _admins(role: Role | None) -> None:
         raise NotAllowed(
             "an Admin changes the lists of countries and states: this needs the admin role"
         )
+
+
+def _writing(db: Session) -> None:
+    """Take the one writer's place before a change looks at what the addresses hold, as
+    a change of a place takes it before it looks at the lists: of a site saved with a
+    country and an Admin removing that country at the same moment, the second waits for
+    the first to be stored and then sees it."""
+    dialect.hold_other_writers(db)
 
 
 def _first() -> Any:
@@ -279,6 +288,9 @@ def create_country(
 ) -> Country:
     """Add a country to the list. An Admin's."""
     _admins(role)
+    # A country made while its code is given to another, or a state made while its
+    # country is removed, waits for the other change, and then sees it.
+    _writing(db)
     values = _checked_country(db, {"code": None, "name": None, **fields}, None)
     country = Country(**values)
     records.created(db, context, "country", country, COUNTRY_FIELDS)
@@ -296,6 +308,7 @@ def update_country(
     """Rename a country, or give it another code where no address holds the one it has,
     its states then being of the new code. An Admin's; a change that changes nothing is
     nobody's to refuse."""
+    _writing(db)
     country = get_country(db, hid)
     values = _checked_country(db, fields, country)
     if records.differences(country, values):
@@ -314,6 +327,7 @@ def delete_country(db: Session, context: AuditContext, hid: str, role: Role | No
     holds either, in one change; each removal is audited, and the country's event names
     the states removed with it. The United States is not removed."""
     _admins(role)
+    _writing(db)
     country = get_country(db, hid)
     if country.code == US:
         raise Conflict(
@@ -422,6 +436,7 @@ def create_state(
 ) -> State:
     """Add a state to a country of the list. An Admin's."""
     _admins(role)
+    _writing(db)
     values = _checked_state(db, {"country": None, "code": None, "name": None, **fields}, None)
     state = State(**values)
     records.created(db, context, "state", state, STATE_FIELDS)
@@ -439,6 +454,7 @@ def update_state(
     """Rename a state, or give it another code where no address holds the one it has.
     Its country is not changed. An Admin's; a change that changes nothing is nobody's to
     refuse."""
+    _writing(db)
     state = get_state(db, hid)
     values = _checked_state(db, fields, state)
     if records.differences(state, values):
@@ -466,6 +482,7 @@ def _delete_state(db: Session, context: AuditContext, state: State) -> None:
 def delete_state(db: Session, context: AuditContext, hid: str, role: Role | None) -> None:
     """Remove a state that no address holds. An Admin's, audited."""
     _admins(role)
+    _writing(db)
     state = get_state(db, hid)
     held = state_held(db, state)
     if held[0]:
@@ -476,32 +493,51 @@ def delete_state(db: Session, context: AuditContext, hid: str, role: Role | None
 # --- an address ----------------------------------------------------------------------
 
 
+def country_in_force(values: Mapping[str, Any], prefix: str = "") -> str | None:
+    """Return the country in force of one set of an address: its own, or the United
+    States where it names none and any other field of the set is filled."""
+    country = values.get(f"{prefix}country")
+    if country:
+        return country
+    others = (values.get(f"{prefix}{name}") for name in ADDRESS_FIELDS if name != "country")
+    return US if any(others) else None
+
+
 def checked_address(
     db: Session, fields: Mapping[str, Any], values: dict[str, Any], record: Any, prefix: str = ""
 ) -> None:
     """Hold the country and the state of one set of an address to the lists (P-321).
 
-    `values` holds what the change gives, as the place's own rules took it. Where it
-    changes the country or the state of the set, both are checked: the country is a
-    listed one, found by its code or its name, and kept as its code, or blank, which is
-    read as the United States and not written so; the state, where the country in force
-    has states listed, one of them, kept as its code, or blank, and where it has none, text
-    as typed. A value held from before that no list holds is kept until then, so that a
-    change of anything else of the place goes through.
+    `values` holds what the change gives, as the place's own rules took it. A country
+    given is the code it resolves to, and is stored as given; the country is changed only
+    where the country in force is another, a blank one being the United States where the
+    set has any other field. Where the change changes the country in force or the state
+    of the set, both are checked: the country is a listed one, found by its code or its
+    name, and kept as its code, or blank, which is read as the United States and not
+    written so; the state, where the country in force has states listed, one of them,
+    kept as its code, or blank, and where it has none, text as typed. A value held from
+    before that no list holds is kept until then, so that a change of anything else of
+    the place goes through.
     """
     country_field, state_field = f"{prefix}country", f"{prefix}state"
+    names = [f"{prefix}{name}" for name in ADDRESS_FIELDS]
 
     def held(name: str) -> Any:
         return getattr(record, name) if record is not None else None
 
-    changed = [
-        name
-        for name in (country_field, state_field)
-        if name in fields and values.get(name) != held(name)
-    ]
-    if not changed:
-        return
     country = values.get(country_field, held(country_field))
+    if country_field in fields and country is not None and country != held(country_field):
+        # A country given by its name, or by its code in another case, is the code it
+        # resolves to: that it is spelled otherwise than the one held changes nothing.
+        country = values[country_field] = the_country(db, country, country_field).code
+    before = country_in_force({name: held(name) for name in names}, prefix)
+    after = country_in_force(
+        {**{name: values.get(name, held(name)) for name in names}, country_field: country},
+        prefix,
+    )
+    state_changed = state_field in fields and values.get(state_field) != held(state_field)
+    if not state_changed and after == before:
+        return
     state = values.get(state_field, held(state_field))
     code = US
     if country is not None:
@@ -540,13 +576,8 @@ class Lists:
         return cls(countries, states, frozenset(country for country, _ in states))
 
     def in_force(self, values: Mapping[str, Any], prefix: str = "") -> str | None:
-        """Return the country in force of one set of an address: its own, or the United
-        States where it names none and any other field of the set is filled."""
-        country = values.get(f"{prefix}country")
-        if country:
-            return country
-        others = (values.get(f"{prefix}{name}") for name in ADDRESS_FIELDS if name != "country")
-        return US if any(others) else None
+        """Return the country in force of one set of an address, as `country_in_force`."""
+        return country_in_force(values, prefix)
 
     def names(self, values: Mapping[str, Any], prefix: str = "") -> dict[str, str | None]:
         """Return `country_name` and `state_name` of one set of an address, with the

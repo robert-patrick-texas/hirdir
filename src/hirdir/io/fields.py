@@ -2611,47 +2611,48 @@ CIRCUITS = Listing(
 _MEMBER_CIRCUIT: Any = aliased(Circuit, name="member_circuit")
 _GROUP_OWNER: Any = aliased(Owner, name="circuit_group_owner")
 _GROUP_CARRIER: Any = aliased(Vendor, name="circuit_group_carrier")
-# The circuits of a group, each once: those added to it, and those whose Z side names
-# it (P-320).
-_OF_GROUP = (
-    or_(
+
+
+def _of_group(total: Any, *where: ColumnElement[bool], lines: bool = False) -> ColumnElement[Any]:
+    """Return, as SQL, `total` of the circuits of a group, each once (P-320): those added
+    to it, found by the index of the memberships, and beside them those whose Z side
+    names it and that were not added to it, found by the index of `z_group_hid`, so that
+    neither part reads every circuit. `lines` joins the cost lines of each."""
+
+    def part(query: Any, *its: ColumnElement[bool]) -> ColumnElement[Any]:
+        if lines:
+            query = query.join(CircuitCost, CircuitCost.circuit_hid == _MEMBER_CIRCUIT.hid)
+        return query.where(*its, *where).correlate(CircuitGroup).scalar_subquery()
+
+    added = part(
+        select(total)
+        .select_from(CircuitGroupMember)
+        .join(_MEMBER_CIRCUIT, _MEMBER_CIRCUIT.hid == CircuitGroupMember.circuit_hid),
+        CircuitGroupMember.group_hid == CircuitGroup.hid,
+    )
+    reaching = part(
+        select(total).select_from(_MEMBER_CIRCUIT),
         _MEMBER_CIRCUIT.z_group_hid == CircuitGroup.hid,
-        select(CircuitGroupMember.hid)
+        ~select(CircuitGroupMember.hid)
         .where(
             CircuitGroupMember.group_hid == CircuitGroup.hid,
             CircuitGroupMember.circuit_hid == _MEMBER_CIRCUIT.hid,
         )
         .correlate(CircuitGroup, _MEMBER_CIRCUIT)
         .exists(),
-    ),
-)
+    )
+    return added + reaching
+
+
 # How many circuits a group has, how many of them are in service today, and what those
 # in service cost today, each circuit once.
-_GROUP_CIRCUITS: ColumnElement[Any] = (
-    select(func.count())
-    .select_from(_MEMBER_CIRCUIT)
-    .where(*_OF_GROUP)
-    .correlate(CircuitGroup)
-    .scalar_subquery()
-)
-_GROUP_IN_SERVICE: ColumnElement[Any] = (
-    select(func.count())
-    .select_from(_MEMBER_CIRCUIT)
-    .where(*_OF_GROUP, circuit_records.in_service_column(_MEMBER_CIRCUIT))
-    .correlate(CircuitGroup)
-    .scalar_subquery()
-)
-_GROUP_MONTHLY: ColumnElement[Any] = (
-    select(circuit_records.hundredths_of_lines())
-    .select_from(_MEMBER_CIRCUIT)
-    .join(CircuitCost, CircuitCost.circuit_hid == _MEMBER_CIRCUIT.hid)
-    .where(
-        *_OF_GROUP,
-        circuit_records.in_service_column(_MEMBER_CIRCUIT),
-        circuit_records.line_in_date_column(),
-    )
-    .correlate(CircuitGroup)
-    .scalar_subquery()
+_GROUP_CIRCUITS = _of_group(func.count())
+_GROUP_IN_SERVICE = _of_group(func.count(), circuit_records.in_service_column(_MEMBER_CIRCUIT))
+_GROUP_MONTHLY = _of_group(
+    circuit_records.hundredths_of_lines(),
+    circuit_records.in_service_column(_MEMBER_CIRCUIT),
+    circuit_records.line_in_date_column(),
+    lines=True,
 )
 
 CIRCUIT_GROUPS = Listing(

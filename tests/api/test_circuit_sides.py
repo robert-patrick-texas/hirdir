@@ -4,6 +4,8 @@ side's where blank and held to their order on what is in force; the dates of the
 a Z side reaches, a circuit group of the kind network, which lists the circuits whose Z
 side names it."""
 
+import csv
+import io
 import json
 from datetime import date, timedelta
 from typing import Any
@@ -54,6 +56,15 @@ def _members(desk: Desk, group: dict[str, Any]) -> list[tuple[str, bool, bool]]:
 def _retire(desk: Desk, path: str, record: dict[str, Any], expect: int = 200) -> Any:
     now = desk.get(f"{path}/{record['hid']}")
     return desk.post(f"{path}/{record['hid']}/retire", {"row_version": now["row_version"]}, expect)
+
+
+def _csv(row: dict[str, str]) -> str:
+    """Return one row of a file, with its header, as an export writes it."""
+    written = io.StringIO()
+    writer = csv.DictWriter(written, fieldnames=list(row))
+    writer.writeheader()
+    writer.writerow(row)
+    return written.getvalue()
 
 
 # --- the Z side's dates --------------------------------------------------------------
@@ -539,3 +550,60 @@ def test_files_carry_the_z_sides_dates_in_force_and_its_network_and_load_back_un
     # !clear takes the network away, and the Z side then says where it ends.
     files.load("circuits", "enterprise_circuit_id,z_group,z_note\nEC-0051,!clear,carrier network\n")
     assert desk.get("/circuits", fields="z_group")["items"][0]["z_group"] is None
+
+
+def test_an_export_of_dates_in_force_whose_a_side_is_changed_copies_no_z_date_down(
+    desk: Desk, files: Files, places: dict[str, dict[str, Any]]
+) -> None:
+    """A row that changes the A side's dates and still holds the Z side's in force, the A
+    side's before it, leaves the Z side reading the A side's (D-65, review of 0.9.18)."""
+    made = desk.circuit(
+        "Site-2 to Site-3",
+        enterprise_circuit_id="EC-0052",
+        a_location_hid=places["room"]["hid"],
+        z_location_hid=places["annex"]["hid"],
+        cost_side="z",
+        a_installed_on="2026-01-05",
+        a_activated_on="2026-01-10",
+        a_disconnected_on="2026-12-31",
+    )
+    (row,) = table(files.export("circuits"))
+    assert (row["z_installed_on"], row["z_activated_on"], row["z_disconnected_on"]) == (
+        "2026-01-05",
+        "2026-01-10",
+        "2026-12-31",
+    )
+    moved = {"a_installed_on": "2026-02-20", "a_activated_on": "2026-03-01"}
+    moved["a_disconnected_on"] = "2027-06-30"
+    edited = {**row, **moved}
+    text = _csv(edited)
+    preview = files.preview("circuits", text)
+    (only,) = preview["rows"]
+    assert not {change["field"] for change in only["changes"]} & {
+        "z_installed_on",
+        "z_activated_on",
+        "z_disconnected_on",
+    }
+    files.apply(preview)
+    shown = desk.again(made)
+    assert (shown["z_installed_on"], shown["z_activated_on"], shown["z_disconnected_on"]) == (
+        None,
+        None,
+        None,
+    )
+    assert {
+        name: (shown["effective"][name]["value"], shown["effective"][name]["source"])
+        for name in ("z_installed_on", "z_activated_on", "z_disconnected_on")
+    } == {
+        "z_installed_on": ("2026-02-20", "a_side"),
+        "z_activated_on": ("2026-03-01", "a_side"),
+        "z_disconnected_on": ("2027-06-30", "a_side"),
+    }
+    # A Z date of the row that is neither the A side's before it nor after it is its own.
+    (row,) = table(files.export("circuits"))
+    files.load("circuits", _csv({**row, "z_activated_on": "2026-03-04"}))
+    assert desk.again(made)["effective"]["z_activated_on"] == {
+        "value": "2026-03-04",
+        "source": "own",
+        "source_hid": None,
+    }

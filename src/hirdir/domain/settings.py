@@ -499,8 +499,9 @@ SPECS: dict[str, Spec] = {
     ),
     "help_phone": Spec(
         None,
-        "the number to call for help with this installation, shown as it is saved: in "
-        "the first pattern of phone_formats that fits it, and otherwise as it is typed",
+        "the number to call for help with this installation, shown as it is saved: as "
+        "it is where it is in the form of a pattern of phone_formats, in the first of "
+        "them that fits it otherwise, and as it is typed where none fits",
         Check(
             f"a number of at most {product.MOST_PHONE} characters: digits, spaces, letters "
             "and + - ( ) . , # * /",
@@ -580,8 +581,9 @@ SPECS: dict[str, Spec] = {
     PHONE_FORMATS: Spec(
         [],
         "the patterns a telephone number is written in, tried in their order: a contact's "
-        "numbers, wherever they come in, and help_phone. A number is written in the first "
-        "that fits its digits; one with a letter in it, such as an extension, or that no "
+        "numbers, wherever they come in, and help_phone. A number in the form of one of "
+        "them already is kept as it is; another is written in the first that fits its "
+        "digits; one with a letter in it, such as an extension, or that no "
         "pattern fits, is kept as typed. None: no number is formatted. A change of it "
         "writes no number that is held again",
         _patterns(),

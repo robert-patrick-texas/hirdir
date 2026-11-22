@@ -67,7 +67,8 @@
 #                      create-user refusing a person with no role unless --no-role, the
 #                      kind of each account and an agent answerable to a person, held to
 #                      that person's role, never Admin and handed over when that person is
-#                      retired, and each role of a user with where it comes from, reference files
+#                      retired, and each role of a user with where it comes from, the
+#                      lists of countries and states as the package loads them, reference files
 #                      uploaded and downloaded through nginx and a backup of them restored
 #                      on a second, clean host, then the inventory made by hand, and the
 #                      capacity balance of the worked example; and, where the package has
@@ -123,7 +124,9 @@
 # registrations, drafts and archived items, S39 and S40 for the capacity balance, S56
 # to S58 for a person's own profile, a retired account and a person retired together, S59
 # and S60 for an account with no role and the access codes that are made, S61 and S62 for
-# agents, the kind of an account and where a role comes from. The others, marked pkg, are about the package alone, or about a record that has no
+# agents, the kind of an account and where a role comes from, and S63 to S65 for the two
+# sides of a circuit and the network it reaches, the lists of countries and states, and
+# the input formats. The others, marked pkg, are about the package alone, or about a record that has no
 # scenario of its own yet, such as the condition of an item and the health of a stack.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
@@ -1353,6 +1356,12 @@ install_previous() {
 #   gone_columns[TABLE]  the names of the columns that it drops from a table, with a
 #                        space between them: they must be gone, and the rows are
 #                        compared in the columns that are left
+#   renamed_columns[TABLE]
+#                        the columns that it renames, each as its name before and its
+#                        name after with a space between them, one on a line: each
+#                        must be in its place under its new name, declared as it was,
+#                        and the rows are compared with what each held under its old
+#                        one
 #   new_keys[TABLE]      the indexes and foreign keys that it adds, as table_read keys
 #                        prints them, one on a line
 #   gone_keys[TABLE]     the indexes, uniquenesses and foreign keys that it drops, as
@@ -1379,6 +1388,12 @@ install_previous() {
 #   fail_by=trigger      make the migration fail by the trigger on alembic_version
 #                        though it creates a table: for a migration that creates its
 #                        tables before it changes those that hold a site's records
+#   tidied[FILE]=N       for a release whose input formats write what an earlier one
+#                        held in another form: N records of that table, exported by the
+#                        new version and loaded back, are each an update of the fields
+#                        that a format writes otherwise, each change with as_in_file,
+#                        where every other row is unchanged. The file looks at them by
+#                        itself, and unsets this once it has tidied them
 #
 # The tables that a migration creates are read from the package and are not named. A
 # file may also set, as it is read, what the inventory is to expect of the previous
@@ -1396,7 +1411,7 @@ particulars_dir=packaging/package-test.d
 particulars=()
 particular_files=()
 unwritten=""
-declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() gone_columns=() new_keys=() gone_keys=() rest_of=() rest_before=()
+declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() gone_columns=() renamed_columns=() new_keys=() gone_keys=() rest_of=() rest_before=() tidied=()
 more_tables=""
 counted_view=""
 writes_no_event=""
@@ -1406,9 +1421,9 @@ fail_by=""
 upgrade_days=""
 
 # also NAME TABLE LINES: put LINES after what the files of the earlier migrations of the
-# upgrade have said of a table in new_columns, altered_columns, new_keys or gone_keys,
-# which NAME is, so that an upgrade that runs two migrations, each with its file, is told
-# of both:
+# upgrade have said of a table in new_columns, altered_columns, renamed_columns, new_keys
+# or gone_keys, which NAME is, so that an upgrade that runs two migrations, each with its
+# file, is told of both:
 #   also new_columns items 'do_not_renew BOOLEAN NULL -'
 also() {
     local -n said=$1
@@ -1473,6 +1488,10 @@ pair_said() {
 # each part of it that a release before some revision could not store, or would have
 # refused, is made only where this says that the previous release has it.
 previous_at() { [[ ! $previous_head < $1 ]]; }
+
+# package_at REVISION: whether the schema of the package under test, $head, is at that
+# revision or at a later one, for what the fresh pass asks of a release from then on.
+package_at() { [[ ! $head < $1 ]]; }
 
 # tables_there "NAME ...": those of the tables named that the database has, in order.
 tables_there() {
@@ -2994,7 +3013,10 @@ witness_circuits() {
         "vendor-contacts /vendors/$telecom/contacts?limit=1000"
         "circuit-groups /circuit-groups?include_drafts=true&include_archived=true&limit=1000"
         "circuit-group-members /circuit-groups/$group/members?limit=1000")
-    witness_answers+=('costs-by-carrier|/reports/circuit-costs?by=carrier|[d["fiscal_year"], d["totals"], sorted([r["label"] or "", r["circuits"], r["cost"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])]|GET /reports/circuit-costs counts by the carrier that bills each line what it counted: how many circuits, what the year costs, and what a month and a year cost'
+    # The totals name the list of the circuits behind them by a filter of their fields,
+    # which is left out here: the fields are named anew by migration 0019, whose file
+    # looks at that filter by itself.
+    witness_answers+=('costs-by-carrier|/reports/circuit-costs?by=carrier|[d["fiscal_year"], {k: v for k, v in d["totals"].items() if k != "filter"}, sorted([r["label"] or "", r["circuits"], r["cost"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])]|GET /reports/circuit-costs counts by the carrier that bills each line what it counted: how many circuits, what the year costs, and what a month and a year cost'
         'costs-by-site|/reports/circuit-costs?by=site|sorted([r["label"] or "", r["circuits"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])|and by the site that each circuit counts at, its A side or the Z side it was switched to'
         'costs-by-group|/reports/circuit-costs?by=group|sorted([r["label"] or "", r["circuits"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])|and by the group of the circuits'
         'weights|/reports/capacity|[[d[v][k] for k in ("support_weight", "items_weight", "places_weight", "circuits_weight", "defaulted", "raised")] + [sorted([r["path"] or "", r["support_weight"]] for r in d[v]["demand_by_region"])] for v in ("active", "with_drafts")]|GET /reports/capacity counts the support weight in its parts as it did, the items, the places and the circuits, with what counted at a default and what was raised to a minimum, and the demand of each region'
@@ -3345,17 +3367,35 @@ columns_left() {
 
 # columns_meant TABLE: the columns that a table is to have after the migrations of the
 # upgrade, as table_read columns prints them: those it had and that the files do not
-# say are dropped, in their places, each as the files say that it is declared now where
-# they say it is declared otherwise, and after them those that the files say are added.
+# say are dropped, in their places, each under its new name where the files say that it
+# is renamed, and as the files say that it is declared now where they say it is
+# declared otherwise, and after them those that the files say are added.
 columns_meant() {
     python3 -c '
 import sys
-before, altered, added = (text.splitlines() for text in sys.argv[1:4])
-gone = set(sys.argv[4].split())
+before, altered, added, renamed = (text.splitlines() for text in sys.argv[1:5])
+gone = set(sys.argv[5].split())
+named = dict(line.split() for line in renamed if line)
 now = {line.split(" ", 1)[0]: line for line in altered if line}
-kept = [line for line in before if line.split(" ", 1)[0] not in gone]
+
+def under(line):
+    name, _, rest = line.partition(" ")
+    return f"{named.get(name, name)} {rest}"
+
+kept = [under(line) for line in before if line.split(" ", 1)[0] not in gone]
 print("\n".join([now.get(line.split(" ", 1)[0], line) for line in kept] + [line for line in added if line]))' \
-        "${columns_before[$1]}" "${altered_columns[$1]:-}" "${new_columns[$1]:-}" "${gone_columns[$1]:-}"
+        "${columns_before[$1]}" "${altered_columns[$1]:-}" "${new_columns[$1]:-}" "${renamed_columns[$1]:-}" "${gone_columns[$1]:-}"
+}
+
+# columns_now TABLE "COLUMN ...": the names of those columns of a table as the migrations
+# of the upgrade leave it, on one line and in their order: each that the files say is
+# renamed by its new name, and the others as they are. The rows of the table after the
+# upgrade are read in these, to be compared with what they held in the columns named.
+columns_now() {
+    python3 -c '
+import sys
+named = dict(line.split() for line in sys.argv[1].splitlines() if line)
+print(" ".join(named.get(name, name) for name in sys.argv[2].split()))' "${renamed_columns[$1]:-}" "$2"
 }
 
 # keys_meant TABLE: the indexes, uniquenesses and foreign keys that the table is to have
@@ -3392,9 +3432,10 @@ sys.exit(0 if set(sys.argv[1].splitlines()) <= set(sys.argv[2].splitlines()) els
 # that is held, and where the previous release serves again.
 #
 # With "migrated", each has every column it had, as it was, but for those that the files
-# of the migrations say are dropped, and after them those that the files say are added,
-# and no other; the indexes, uniquenesses and foreign keys likewise, those that the files
-# say are dropped gone and those they say are added there; and every row holds
+# of the migrations say are dropped, each that they say is renamed under its new name,
+# and after them those that the files say are added, and no other; the indexes,
+# uniquenesses and foreign keys likewise, those that the files say are dropped gone and
+# those they say are added there; and every row holds
 # what it held in the columns it had and keeps, but for the rows that a file says are
 # meant to change. While a migration of the upgrade
 # has no file, nobody has said what is added: what a table had must then still be
@@ -3422,10 +3463,13 @@ tables_carried() {
             every_line_in "${keys_before[$table]}" "$keys" || differing="${differing}keys. "
             added=", and whatever migration ${unwritten// /, }, which has no file yet, adds to them"
         else
-            if [ -n "${new_columns[$table]:-}${altered_columns[$table]:-}${gone_columns[$table]:-}" ]; then
+            if [ -n "${new_columns[$table]:-}${altered_columns[$table]:-}${gone_columns[$table]:-}${renamed_columns[$table]:-}" ]; then
                 [ "$columns" = "$(columns_meant "$table")" ] || differing="${differing}columns. "
                 if [ -n "${gone_columns[$table]:-}" ]; then
                     added=", but for $(echo "${gone_columns[$table]}" | xargs | sed 's/ /, /g'), which the migration drops"
+                fi
+                if [ -n "${renamed_columns[$table]:-}" ]; then
+                    added="$added, but for $(printf '%s\n' "${renamed_columns[$table]}" | sed '/^$/d; s/ / as /' | paste -sd, - | sed 's/,/, /g'), which the migration renames, each in its place and holding what it held"
                 fi
                 if [ -n "${altered_columns[$table]:-}" ]; then
                     added="$added, but for $(printf '%s\n' "${altered_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g'), which the migration declares as it says"
@@ -3449,7 +3493,7 @@ tables_carried() {
             fi
         fi
         if [ -n "${rest_of[$table]+kept}" ]; then
-            [ "$(table_rows "$table" "$(columns_left "$table")" "${rest_of[$table]}")" = "${rest_before[$table]}" ] || differing="${differing}rows. "
+            [ "$(table_rows "$table" "$(columns_now "$table" "$(columns_left "$table")")" "${rest_of[$table]}")" = "${rest_before[$table]}" ] || differing="${differing}rows. "
             if [ -n "${rows_apart[$table]:-}" ]; then
                 added="$added; the rows that are meant to change are left out, and looked at by themselves"
             fi
@@ -3459,7 +3503,7 @@ tables_carried() {
                 differing="${differing}rows added or gone. "
             fi
         else
-            [ "$(table_rows "$table" "$(columns_then "$table")")" = "${rows_before[$table]}" ] || differing="${differing}rows. "
+            [ "$(table_rows "$table" "$(columns_now "$table" "$(columns_then "$table")")")" = "${rows_before[$table]}" ] || differing="${differing}rows. "
         fi
         expect "pkg $when the $table table has the columns and the indexes, uniquenesses and foreign keys it had, each as it was, and every row of it holds what it held in those columns (${rows_before[$table]%% *} rows)$added" \
             "$differing" ""
@@ -3646,7 +3690,13 @@ previous_release() {
     engineer_code=$(json 'd["access_code"]')
     api PUT "/user-groups/$group_hid/members/$engineer_hid"
     expect "pkg the second user is put in the group" "$status" 204
-    api POST /users '{"username": "upgrade-robot", "is_service_account": true, "role": "viewer"}'
+    # From 0.9.17 an account is made of a kind, where it was a service account or not
+    # (P-316), and is_service_account is refused as a field the API does not know.
+    if dpkg --compare-versions "$previous_version" ge 0.9.17; then
+        api POST /users '{"username": "upgrade-robot", "kind": "service", "role": "viewer"}'
+    else
+        api POST /users '{"username": "upgrade-robot", "is_service_account": true, "role": "viewer"}'
+    fi
     expect "pkg a service account is created with the View-only role" "$status" 201
     robot_hid=$(json 'd["user"]["hid"]')
     api POST "/users/$robot_hid/service-tokens" '{"name": "nightly export"}'
@@ -4121,7 +4171,15 @@ through_nginx() {
 # and of "Load order" in docs/interfaces.md. A record names the ones it refers to: an
 # item its network, a group its items, and an address either of the two.
 load_order=(countries states tags vendors catalog-entries contacts vendor-contacts operators regions sites locations contact-assignments owners owner-members networks external-systems agreements contracts contract-contacts purchase-requests purchase-lines device-groups items device-group-members item-replacements addresses contract-coverage registrations capacity-lines circuit-groups circuits circuit-carriers circuit-costs circuit-contacts circuit-devices)
+# The files of examples/ whose rows every inventory holds from its install, the lists of
+# countries and states that migration 0019 loads (P-321): imported, each of their rows
+# finds its record unchanged, a reset keeps them, and hirdir admin load-examples leaves
+# them out.
+held_lists=(countries states)
 large_rows=150
+
+# held_list NAME: whether the file of examples/ of that name is one of $held_lists.
+held_list() { case " ${held_lists[*]} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # large_file PATH VENDOR PID: write a CSV file of items of that model which is larger
 # than the megabyte nginx takes when it is left to itself. Every name in it is invented.
@@ -4302,17 +4360,20 @@ else:
     print(len(rows), "rows, and the zip has", len(held[1]), "of which", len(set(held[1]) ^ set(rows)), "differ")' "$1" "$2" "$3"
 }
 
-# rows_changed: where the preview in the last response finds a row that is not
+# rows_changed [tidied]: where the preview in the last response finds a row that is not
 # unchanged, the first three such rows, each with how it names its record, what it would
-# change or why it is rejected; nothing where every row is unchanged.
+# change or why it is rejected; nothing where every row is unchanged. With "tidied", an
+# update whose every change is a value that an input format writes in another form, and
+# so has as_in_file, is passed over as well.
 rows_changed() {
-    local hid
+    local hid found
     if [ "$(json '(lambda j: j["unchanged"] == j["row_count"] and not j["rejected"])(d["job"])')" = true ]; then
         return 0
     fi
     hid=$(json 'd["job"]["hid"]')
     api GET "/imports/$hid/rows?limit=500"
-    printf ' %s' "$(json '[[r["row"], r["outcome"], r["key"], r["changes"], r["reasons"]] for r in d["items"] if r["outcome"] != "unchanged"][:3]')"
+    found="$(json '[[r["row"], r["outcome"], r["key"], r["changes"], r["reasons"]] for r in d["items"] if r["outcome"] != "unchanged" and not ("'"${1:-}"'" == "tidied" and r["outcome"] == "update" and all(c.get("as_in_file") is not None for c in r["changes"]))][:3]')"
+    [ "$found" = "[]" ] || printf ' %s' "$found"
 }
 
 # count_of TABLES ENTITY: how many records GET /exports/tables, kept in the file TABLES,
@@ -4330,10 +4391,11 @@ print({t["entity"]: t["count"] for t in json.load(open(sys.argv[1], encoding="ut
 # records it holds more than it did then. With "wanted" for BEFORE, what that is to be
 # once every row of the examples is loaded, each a record of its own table: every table
 # in the order of load_order, named by its file, the header its columns, and as many
-# records more as the file has rows.
+# records more as the file has rows, and none more for the lists of $held_lists, which
+# it held already.
 tables_listed() {
-    python3 -c '
-import csv, json, sys
+    HELD="${held_lists[*]}" python3 -c '
+import csv, json, os, sys
 
 def header(name):
     with open(f"examples/{name}.csv", encoding="utf-8", newline="") as source:
@@ -4344,7 +4406,8 @@ def rows(name):
         return len(list(csv.DictReader(source)))
 
 if sys.argv[1] == "wanted":
-    print(json.dumps([[name.replace("-", "_"), name, True, rows(name)] for name in sys.argv[3:]]))
+    held = os.environ["HELD"].split()
+    print(json.dumps([[name.replace("-", "_"), name, True, 0 if name in held else rows(name)] for name in sys.argv[3:]]))
     sys.exit()
 try:
     before = {t["entity"]: t["count"] for t in json.load(open(sys.argv[1], encoding="utf-8"))}
@@ -4385,8 +4448,11 @@ print(open(sys.argv[2], encoding="utf-8", newline="").read() == ",".join(columns
 # every table does, and previewed as an import into this installation, the one it came
 # from, changes nothing: every row unchanged and none rejected (P-286). WHEN begins its
 # lines. It changes no record: each preview is kept as a job, and each zip is audited.
+# Where the file of a release says that its input formats write records of a table
+# otherwise than they are held, in $tidied, those are each an update of what a format
+# writes, and nothing else (P-322).
 loads_back() {
-    local when=$1 name entity format count file got wanted
+    local when=$1 name entity format count file got wanted tidy said
     api GET /exports/tables
     [ "$status" = 200 ] || return 0
     cp "$work/body" "$work/tables-whole.json"
@@ -4395,6 +4461,11 @@ loads_back() {
     for name in "${load_order[@]}"; do
         entity=${name//-/_}
         count=$(count_of "$work/tables-whole.json" "$entity")
+        tidy=${tidied[$name]:-0}
+        said="changes nothing: every row is unchanged, none rejected"
+        if [ "$tidy" -gt 0 ]; then
+            said="changes nothing but the $tidy that an input format of $version writes otherwise than $previous_version held it, each an update of that alone: every other row is unchanged, none rejected"
+        fi
         got=""
         wanted=""
         for format in csv json; do
@@ -4407,10 +4478,10 @@ loads_back() {
             else
                 send "/imports/preview?file_name=$name.json" "$file" application/json
             fi
-            got="$got, previewed $status $(job_counts)$(rows_changed); "
-            wanted="$wanted$format: 200 $count rows, as in the zip, previewed 201 [\"previewed\", $count, 0, 0, $count, 0]; "
+            got="$got, previewed $status $(job_counts)$(rows_changed "$([ "$tidy" -gt 0 ] && echo tidied)"); "
+            wanted="$wanted$format: 200 $count rows, as in the zip, previewed 201 [\"previewed\", $count, 0, $tidy, $((count - tidy)), 0]; "
         done
-        expect "pkg $when the $name table, exported whole as CSV and as JSON in the form that loads back, holds the $count records that GET /exports/tables counts, as the zip of every table does, and previewed back into this installation changes nothing: every row is unchanged, none rejected" \
+        expect "pkg $when the $name table, exported whole as CSV and as JSON in the form that loads back, holds the $count records that GET /exports/tables counts, as the zip of every table does, and previewed back into this installation $said" \
             "$got" "$wanted"
     done
 }
@@ -4461,6 +4532,16 @@ files() {
         entity=${name//-/_}
         rows=$(table 'len(rows)' "examples/$name.csv")
         send "/imports/preview?entity=$entity&file_name=$name.csv" "examples/$name.csv"
+        if held_list "$name"; then
+            # A list that every inventory has from its install, as the examples write it.
+            expect "S12 POST $prefix/api/v1/imports/preview with examples/$name.csv as its body: each of its $rows rows finds its record unchanged, since every inventory holds the list from its install" \
+                "$status $(job_counts)$(rows_changed)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+            hid=$(json 'd["job"]["hid"]')
+            apply_job "/imports/$hid/apply"
+            expect "S12 POST $prefix/api/v1/imports/{hid}/apply changes none of the $rows" \
+                "$status $(job_counts)" "202 [\"applied\", $rows, 0, 0, $rows, 0]"
+            continue
+        fi
         expect "S12 POST $prefix/api/v1/imports/preview with examples/$name.csv as its body: each of its $rows rows is to be created" \
             "$status $(job_counts)" "201 [\"previewed\", $rows, $rows, 0, 0, 0]"
         hid=$(json 'd["job"]["hid"]')
@@ -4469,7 +4550,7 @@ files() {
             "$status $(job_counts)" "202 [\"applied\", $rows, $rows, 0, 0, 0]"
     done
     api GET /exports/tables
-    expect "pkg GET $prefix/api/v1/exports/tables lists every table that a file is taken for, in the order of loading, each by the name of its file in examples/ and with the header of that file as its columns, and counts in each, beside the records it held before, the rows of its file: each row of the examples is a record of its own table" \
+    expect "pkg GET $prefix/api/v1/exports/tables lists every table that a file is taken for, in the order of loading, each by the name of its file in examples/ and with the header of that file as its columns, and counts in each, beside the records it held before, the rows of its file: each row of the examples is a record of its own table, but those of the lists of ${held_lists[*]}, which it held already" \
         "$status $(tables_listed "$work/tables-before.json")" "200 $(tables_listed wanted)"
     item_rows=$(table 'len(rows)' examples/items.csv)
     api GET '/items?include_archived=true&include_drafts=true&limit=1'
@@ -4703,12 +4784,20 @@ files() {
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
     expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0, and the references and what they are on of 0.9.0 too, and the long reports that the second process of 0.9.11 keeps, which are no record" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
-    local people
+    local people lists=""
     people=$(people_kept)
+    if [ -n "$(tables_there countries)" ]; then
+        lists="$(table_rows countries "$(table_columns countries)") | $(table_rows states "$(table_columns states)")"
+    fi
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, what was kept of the long reports with it, and keeps the accounts" \
         "$code $(inventory_left)" "0 users"
+    # From 0.9.18 the lists of countries and states, as the choices are (P-321).
+    if [ -n "$lists" ]; then
+        expect "pkg and keeps the lists of countries and states, every row as it was" \
+            "$(table_rows countries "$(table_columns countries)") | $(table_rows states "$(table_columns states)")" "$lists"
+    fi
     expect "pkg and keeps the contact that each user is, as it was, with its history: ${people%% contacts*} contacts, and nothing else of the contacts" \
         "$(people_kept) $(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM contacts')" "$people ${people%% contacts*}"
     expect "pkg it erases the content of the file from the store, says so, and its backup holds it beside it" \
@@ -4720,13 +4809,21 @@ files() {
     # hirdir admin load-examples loads the examples into the empty inventory that the
     # reset left, from the copy inside the application, which a host whose dpkg leaves
     # out /usr/share/doc has too, and a reset takes them again (P-166).
-    local example_files
+    local example_files loaded_files name left_out=""
     example_files=$(inside bash -c 'ls /usr/share/doc/hirdir/examples/*.csv | wc -l')
+    loaded_files=$example_files
+    # From 0.9.18 it leaves out the lists that a reset keeps (P-321).
+    for name in "${held_lists[@]}"; do
+        if inside test -f "/usr/share/doc/hirdir/examples/$name.csv"; then
+            loaded_files=$((loaded_files - 1))
+            left_out="$left_out $name.csv"
+        fi
+    done
     code=0
     inside hirdir admin load-examples >"$work/load-examples.out" 2>&1 || code=$?
-    expect "pkg hirdir admin load-examples loads each of the $example_files files of the examples, from inside the application, into the inventory that the reset emptied" \
-        "$code $(grep -c '^loading the examples from /opt/hirdir/.*/hirdir/examples:$' "$work/load-examples.out") $(grep -cE '^ +[0-9,]+  [a-z-]+[.]csv$' "$work/load-examples.out") $(grep -c '^loaded [0-9,]* records of the examples$' "$work/load-examples.out")" \
-        "0 1 $example_files 1"
+    expect "pkg hirdir admin load-examples loads each of the $loaded_files files of the examples${left_out:+ but${left_out}, the lists that every inventory has and a reset keeps}, from inside the application, into the inventory that the reset emptied" \
+        "$code $(grep -c '^loading the examples from /opt/hirdir/.*/hirdir/examples:$' "$work/load-examples.out") $(grep -cE '^ +[0-9,]+  [a-z-]+[.]csv$' "$work/load-examples.out") $(grep -cE "^ +[0-9,]+  (${held_lists[*]// /|})[.]csv$" "$work/load-examples.out") $(grep -c '^loaded [0-9,]* records of the examples$' "$work/load-examples.out")" \
+        "0 1 $loaded_files 0 1"
     expect "pkg the examples inside the application are those in /usr/share/doc/hirdir/examples" \
         "$(inside bash -c 'cd /usr/share/doc/hirdir/examples && for f in *.csv; do cmp -s "$f" /opt/hirdir/venv/lib/python*/site-packages/hirdir/examples/"$f" || echo "$f"; done; echo same')" same
     code=0
@@ -7024,9 +7121,9 @@ geography() {
     api PATCH "/locations/$room" "{\"row_version\": $(json_field row_version), \"ship_instructions\": \"Hand to the room keeper\"}"
     made="$made $status"
     api GET "/locations/$room/effective"
-    expect "S26 the building is given two lines of a shipping address, and the room instructions of its own: the room has the address of the building whole, with nothing of the site's in the lines the building left out, and its own instructions" \
+    expect "S26 the building is given two lines of a shipping address, and the room instructions of its own: the room has the address of the building whole, with nothing of the site's in the lines the building left out, its blank country read as the United States, and its own instructions" \
         "$made $status $(json '[d["ship_address"]["source"], d["ship_address"]["source_path"], d["ship_address"]["value"], d["ship_instructions"]["source"], d["ship_instructions"]["value"]]')" \
-        "200 200 200 [\"location\", \"$here > Building 9\", {\"address1\": \"9 Sample Square\", \"address2\": null, \"city\": \"Riverton\", \"country\": null, \"postal_code\": null, \"state\": null}, \"own\", \"Hand to the room keeper\"]"
+        "200 200 200 [\"location\", \"$here > Building 9\", {\"address1\": \"9 Sample Square\", \"address2\": null, \"city\": \"Riverton\", \"country\": null, \"country_name\": \"United States\", \"postal_code\": null, \"state\": null, \"state_name\": null}, \"own\", \"Hand to the room keeper\"]"
 
     # S27: a site is moved to another region.
     api POST /contact-assignments "{\"contact_hid\": \"$desk\", \"role\": \"operational\", \"region_hid\": \"$central\"}"
@@ -7231,9 +7328,9 @@ client_places() {
     expect "S24 hirdir geography tree --root --no-locations --include-drafts starts from one region and stops at its sites, the draft among them" \
         "$code $(sed -n '2,4p' "$work/cli.tree" | awk '{print $1 ":" $2}' | xargs)" "0 Central:region Site-2:site Site-3:site"
     cli_run "$work/cli.place" locations show "$room"
-    expect "S25 hirdir locations show takes a location by its path and prints what it has in force, each with the level it came from: the technical contact of the building, the shipping contact of the site, the shipping address, which is the street address of the site, and the instructions of the site" \
+    expect "S25 hirdir locations show takes a location by its path and prints what it has in force, each with the level it came from: the technical contact of the building, the shipping contact of the site, the shipping address, which is the street address of the site, its state and its country by their names in the lists, and the instructions of the site" \
         "$code | $(sed -n 's/^technical: *//p' "$work/cli.place") | $(sed -n 's/^shipping: *//p' "$work/cli.place") | $(sed -n 's/^ship_address: *//p' "$work/cli.place") | $(sed -n 's/^ship_instructions: *//p' "$work/cli.place")" \
-        "0 | Lee Marchetti lee.marchetti@example.net +1 555 0102 (from Americas > Central > Site-2 > Building 1) | Sam Okafor sam.okafor@example.net +1 555 0110 (from Americas > Central > Site-2) | 100 Example Way, Springfield, IL, 00000, US, its street address (from Americas > Central > Site-2) | Dock B, weekdays 08:00 to 15:00 (from Americas > Central > Site-2)"
+        "0 | Lee Marchetti lee.marchetti@example.net +1 555 0102 (from Americas > Central > Site-2 > Building 1) | Sam Okafor sam.okafor@example.net +1 555 0110 (from Americas > Central > Site-2) | 100 Example Way, Springfield, Illinois, 00000, United States, its street address (from Americas > Central > Site-2) | Dock B, weekdays 08:00 to 15:00 (from Americas > Central > Site-2)"
     cli_run "$work/cli.regions" regions list --sort name
     expect "pkg hirdir regions list is a table of the three regions of the examples, each with its path" \
         "$code $(head -n 1 "$work/cli.regions" | xargs) | $(tail -n +2 "$work/cli.regions" | sed -E 's/^[0-9a-f-]{36} +//; s/  +.*//' | paste -sd ';')" \
@@ -7663,9 +7760,9 @@ operators_and_plans() {
     api POST /locations "{\"name\": \"Bay 1\", \"site_hid\": \"$depot\", \"kind\": \"warehouse\"}"
     bay=$(json_field hid)
     api GET "/locations/$bay/effective"
-    expect "pkg a site with a street address says that deliveries go there: nothing is stored as its shipping address, and a location in it has the street address of the site as its shipping address, whole, and is told that this is the street address" \
+    expect "pkg a site with a street address says that deliveries go there: nothing is stored as its shipping address, and a location in it has the street address of the site as its shipping address, whole, with the names of its state and its country, and is told that this is the street address" \
         "$made $status $(json '[d["ship_address"]["source"], d["ship_address"]["same_as_address"], d["ship_address"]["value"]]')" \
-        '201 [true, null] 200 ["site", true, {"address1": "7 Sample Yard", "address2": null, "city": "Riverton", "country": "US", "postal_code": "00000", "state": "NY"}]'
+        '201 [true, null] 200 ["site", true, {"address1": "7 Sample Yard", "address2": null, "city": "Riverton", "country": "US", "country_name": "United States", "postal_code": "00000", "state": "NY", "state_name": "New York"}]'
     api POST /sites "{\"name\": \"Package Test Yard\", \"region_hid\": \"$east\", \"address1\": \"8 Sample Yard\", \"city\": \"Riverton\"}"
     made=$status
     yard=$(json_field hid)
@@ -8549,6 +8646,43 @@ first_file() {
         '200 [["pkgtest-stack-01", "PKG0000S001", "online", "good"], ["pkgtest-stack-04", "PKG0000S004", "unreachable", "failed"]]'
 }
 
+# ---- the lists of countries and states -------------------------------------------------------
+
+# countries_and_states: from 0.9.18, the lists that the address of a place takes its
+# country and its state from, as the migrations loaded them from the data file that the
+# package carries beside migration 0019 (P-318, P-321), read through nginx under the
+# prefix: every country of the Americas, the United States first and the rest by name,
+# and their states, each country's by name, the names that are not ASCII among them as
+# the data file writes them; and no address that no list holds, which a new
+# installation has none of, nor an upgrade once the files of its migrations have had
+# what was carried over chosen. It changes nothing.
+countries_and_states() {
+    local data=src/hirdir/db/migrations/versions/0019_iso3166_americas.json made wanted
+    package_at 0019 || return 0
+    expect "pkg the package carries the data file that migration 0019 reads, beside it, as the repository has it" \
+        "$(inside bash -c 'sha256sum /opt/hirdir/venv/lib/python3.*/site-packages/hirdir/db/migrations/versions/0019_iso3166_americas.json' 2>&1 | cut -d' ' -f1)" \
+        "$(sha256sum "$data" | cut -d' ' -f1)"
+    api GET /countries
+    made="$status $(json '(lambda c: [len(c), c[0]["code"], c[0]["name"], [x["name"].casefold() for x in c[1:]] == sorted(x["name"].casefold() for x in c[1:])])(d["items"] if isinstance(d, dict) else d)')"
+    expect "S64 GET $prefix/api/v1/countries lists the 55 countries of the Americas, the United States first and the rest by name" \
+        "$made" "200 [55, \"US\", \"United States\", true]"
+    expect "pkg and they are those of the data file that the package carries beside migration 0019, each its code and its name" \
+        "$(json 'sorted([c["code"], c["name"]] for c in (d["items"] if isinstance(d, dict) else d))')" \
+        "$(python3 -c 'import json, sys; print(json.dumps(sorted(json.load(open(sys.argv[1], encoding="utf-8"))["countries"])))' "$data")"
+    api GET /states
+    made="$status $(json 'len(d["items"] if isinstance(d, dict) else d)')"
+    api GET '/states?country=US'
+    made="$made $status $(json '(lambda s: [len(s), sorted({"DC", "PR", "GU", "VI", "AS", "MP"} - {x["code"] for x in s}), [x["name"].casefold() for x in s] == sorted(x["name"].casefold() for x in s)])(d["items"] if isinstance(d, dict) else d)')"
+    authorized GET "$prefix/api/v1/states" --get --data-urlencode 'country=mexico'
+    made="$made $status $(json '[[x["country"], x["code"], x["name"]] for x in (d["items"] if isinstance(d, dict) else d) if x["code"] == "NLE"]')"
+    wanted=$(python3 -c 'import json, sys; print(json.dumps([s for s in json.load(open(sys.argv[1], encoding="utf-8"))["states"] if s[:2] == ["MX", "NLE"]]))' "$data")
+    expect "S64 GET $prefix/api/v1/states lists their 633 states, and ?country=US the 56 of the United States by name, DC, PR, GU, VI, AS and MP among them; ?country= takes the name of a country too, and a name that is not ASCII comes through nginx as the data file writes it" \
+        "$made" "200 633 200 [56, [], true] 200 $wanted"
+    api GET /places/unlisted-addresses
+    expect "S64 GET $prefix/api/v1/places/unlisted-addresses lists no country and no state that no list holds" \
+        "$status $(json_field total)" "200 0"
+}
+
 # ---- the inventory ------------------------------------------------------------------------
 
 items_total=0
@@ -8584,6 +8718,7 @@ inventory() {
         "$status $(json '" ".join(r["state"] for r in d)')" \
         "200 Purchased Delivered Assigned Test Prod Down Pending-Removal Released Archived"
     keep rules
+    countries_and_states
 
     api POST /vendors '{"name": "Cisco"}'
     expect "S06 POST /hirdir/api/v1/vendors creates a vendor" "$status" 201

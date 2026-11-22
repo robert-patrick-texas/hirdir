@@ -23,8 +23,9 @@ without regard to case and to spaces before or after, or `USA`, `U.S.`, `U.S.A.`
 the country in force, a blank country being read as the United States. Anything else
 is kept as it was typed, to be chosen by a person; a country of spaces alone is made
 blank. Each place changed has an audit event by `system` with the values before and
-after. The downgrade keeps the codes, and gives a Z side that named a network the
-network's name as its note, where it had none.
+after. The downgrade keeps the codes, gives a Z side that named a network the
+network's name as its note, where it had none, and puts a circuit into the network its
+Z side named, where it was not in it by hand.
 """
 
 import json
@@ -260,6 +261,42 @@ def downgrade() -> None:
             .scalar_subquery()
         )
     )
+    # And it stays in the network, by a membership, where it was there by its Z side
+    # alone, so that 0.9.17 counts the group as 0.9.18 did.
+    bind = op.get_bind()
+    members = sa.table(
+        "circuit_group_members",
+        sa.column("hid", sa.String),
+        sa.column("group_hid", sa.String),
+        sa.column("circuit_hid", sa.String),
+        sa.column("created_at", sa.DateTime),
+        sa.column("updated_at", sa.DateTime),
+        sa.column("row_version", sa.Integer),
+    )
+    naming = sa.table("circuits", sa.column("hid", sa.String), sa.column("z_group_hid", sa.String))
+    there = {
+        (row.group_hid, row.circuit_hid)
+        for row in bind.execute(sa.select(members.c.group_hid, members.c.circuit_hid))
+    }
+    now = datetime.now(UTC).replace(tzinfo=None)
+    added = [
+        {
+            "hid": str(uuid.uuid7()),
+            "group_hid": group,
+            "circuit_hid": circuit,
+            "created_at": now,
+            "updated_at": now,
+            "row_version": 1,
+        }
+        for circuit, group in bind.execute(
+            sa.select(naming.c.hid, naming.c.z_group_hid)
+            .where(naming.c.z_group_hid.is_not(None))
+            .order_by(naming.c.hid)
+        )
+        if (group, circuit) not in there
+    ]
+    if added:
+        op.bulk_insert(members, added)
     with op.batch_alter_table("circuits") as circuits:
         circuits.drop_constraint("circuits_z_location_or_group", type_="check")
         circuits.drop_index("ix_circuits_z_group_hid")
