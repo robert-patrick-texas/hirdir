@@ -190,7 +190,7 @@ Admin, and marked in the audit trail (P-316). Its migration, `0018`, turns the y
 of a service account into the kind of an account and adds the person an agent is
 answerable to and the person an event of an agent's was made for; its scenarios are S61 and S62. 0.9.18 puts what is typed or pasted into one form, a
 telephone number, an email address, a name, by formats an Admin turns on and defines
-(P-293); gives each side of a circuit its dates (P-317); and has the country and the
+(P-293); gives each side of a circuit its dates (P-317) and a circuit's Z side the carrier network it reaches, a circuit group of the kind Network (P-319); and has the country and the
 state of every address chosen from lists of ISO 3166 codes and names that an Admin
 keeps, starting with North America, the United States first (P-318).
 
