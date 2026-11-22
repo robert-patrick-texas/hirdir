@@ -1,4 +1,5 @@
 hid,circuit,description,monthly_cost,vendor,starts_on,ends_on,notes
+,EC-0104,Port,600.00,,,,
 ,Site-1 to Site-2,Local loop,120.00,Example Local Exchange,,,
 ,Site-1 to Site-2,Port,400.00,,,,
 ,EC-0101,Access,150.00,,,,

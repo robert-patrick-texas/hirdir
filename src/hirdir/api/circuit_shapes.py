@@ -21,7 +21,6 @@ from hirdir.db.models import (
     CircuitCost,
     CircuitDevice,
     CircuitGroup,
-    CircuitGroupMember,
     DeviceGroup,
     Item,
     Owner,
@@ -71,6 +70,24 @@ def _mbps(value: Any) -> str | None:
 
 def _effective(found: Effective, text: str | None) -> r.EffectiveValue:
     return r.EffectiveValue(value=text, source=found.source, source_hid=found.source_hid)
+
+
+def _day(found: Effective) -> r.EffectiveValue:
+    """Return a date in force, as text, with where it came from."""
+    return _effective(found, found.value.isoformat() if found.value is not None else None)
+
+
+def group_ref(group: CircuitGroup, z_side: bool) -> c.CircuitGroupRef:
+    """Return a circuit group as a circuit lists it."""
+    return c.CircuitGroupRef.model_validate(
+        {
+            "hid": group.hid,
+            "name": group.name,
+            "kind": group.kind,
+            "z_side": z_side,
+            "record_status": group.record_status,
+        }
+    )
 
 
 def _side(atlas: geography.Atlas, hid: str | None) -> c.CircuitSide | None:
@@ -154,6 +171,7 @@ _SHAPED = (
     "speed",
     "a_side",
     "z_side",
+    "z_group",
     "cost_site_hid",
     "cost_site_path",
     "carrier",
@@ -191,7 +209,8 @@ def circuits_out(
     wanted = hids if parts else []
     carriers = circuit_records.carriers_of(db, wanted)
     devices = circuit_records.devices_of(db, wanted)
-    its_groups = circuit_groups.groups_of(db, wanted)
+    its_groups = circuit_groups.every_group_of(db, list(found) if parts else [])
+    networks = _by_hid(db, CircuitGroup, {circuit.z_group_hid for circuit in found})
     figures = weights.in_force(db)
     # The contacts named and in force (P-149), read together for the page.
     named = shapes.circuits_contacts(db, list(found)) if parts else {}
@@ -217,8 +236,10 @@ def circuits_out(
         serving = circuits.in_service_on(circuit, day, include_drafts)
         monthly = circuit_records.monthly_cost(lines[circuit.hid], day) if serving else ZERO
         rates = circuit_records.rates_in_force(circuit)
+        z_dates = circuits.z_dates_in_force(circuit)
         weight = weights.of_circuit(circuit, figures)
         carrier = vendors.get(circuit.carrier_hid or "")
+        network = networks.get(circuit.z_group_hid or "")
         out.append(
             c.CircuitOut(
                 **{
@@ -229,6 +250,7 @@ def circuits_out(
                 speed=circuit_records.speed(circuit),
                 a_side=_side(atlas, circuit.a_location_hid),
                 z_side=_side(atlas, circuit.z_location_hid),
+                z_group=group_ref(network, True) if network is not None else None,
                 cost_site_hid=place.site_hid if place is not None else None,
                 cost_site_path=(atlas.site_path(place.site_hid) or None) if place else None,
                 carrier=r.VendorRef(hid=carrier.hid, name=carrier.name) if carrier else None,
@@ -241,18 +263,16 @@ def circuits_out(
                 carriers=[carried[link.hid] for link in carriers[circuit.hid]] if parts else None,
                 costs=[costed[line.hid] for line in lines[circuit.hid]] if parts else None,
                 devices=[connected[link.hid] for link in devices[circuit.hid]] if parts else None,
-                groups=[
-                    c.CircuitGroupRef.model_validate(
-                        {"hid": group.hid, "name": group.name, "record_status": group.record_status}
-                    )
-                    for group in its_groups[circuit.hid]
-                ]
+                groups=[group_ref(one.group, one.z_side) for one in its_groups[circuit.hid]]
                 if parts
                 else None,
                 effective=c.CircuitEffective(
                     support_weight=r.EffectiveWeight(**weights.effective_entry(weight)),
                     down_mbps=_effective(rates["down_mbps"], _mbps(rates["down_mbps"].value)),
                     up_mbps=_effective(rates["up_mbps"], _mbps(rates["up_mbps"].value)),
+                    z_installed_on=_day(z_dates["z_installed_on"]),
+                    z_activated_on=_day(z_dates["z_activated_on"]),
+                    z_disconnected_on=_day(z_dates["z_disconnected_on"]),
                     account_managers=named[circuit.hid][1].account_managers if parts else None,
                     support_contacts=named[circuit.hid][1].support_contacts if parts else None,
                     site_contacts=named[circuit.hid][1].site_contacts if parts else None,
@@ -273,10 +293,26 @@ def circuit_out(db: Session, circuit: Circuit) -> c.CircuitOut:
 # --- circuit groups ------------------------------------------------------------------
 
 
+_GROUP_SHAPED = (
+    "owner",
+    "carrier",
+    "circuits",
+    "in_service",
+    "monthly_cost",
+    "annual_cost",
+    "tags",
+)
+
+
+def _vendor_ref(vendor: Vendor | None) -> r.VendorRef | None:
+    return r.VendorRef(hid=vendor.hid, name=vendor.name) if vendor is not None else None
+
+
 def groups_out(db: Session, found: Sequence[CircuitGroup]) -> list[c.CircuitGroupOut]:
     """Return circuit groups, each with how many circuits it has and what they cost."""
     hids = [group.hid for group in found]
     owners = _by_hid(db, Owner, {group.owner_hid for group in found})
+    carriers = _by_hid(db, Vendor, {group.carrier_hid for group in found})
     labels = tags.labels_of(db, circuit_groups.RECORD_TYPE, hids)
     summed = circuit_groups.summaries(db, hids, circuit_records.today(db))
     return [
@@ -284,10 +320,10 @@ def groups_out(db: Session, found: Sequence[CircuitGroup]) -> list[c.CircuitGrou
             **{
                 name: getattr(group, name)
                 for name in c.CircuitGroupOut.model_fields
-                if name
-                not in ("owner", "circuits", "in_service", "monthly_cost", "annual_cost", "tags")
+                if name not in _GROUP_SHAPED
             },
             owner=_owner_ref(owners.get(group.owner_hid or "")),
+            carrier=_vendor_ref(carriers.get(group.carrier_hid or "")),
             circuits=summed[group.hid].circuits,
             in_service=summed[group.hid].in_service,
             monthly_cost=summed[group.hid].monthly_cost,
@@ -304,17 +340,19 @@ def group_out(db: Session, group: CircuitGroup) -> c.CircuitGroupOut:
 
 
 def members_out(
-    db: Session, found: Sequence[tuple[CircuitGroupMember, Circuit]]
+    db: Session, group_hid: str, found: Sequence[circuit_groups.Listed]
 ) -> list[c.CircuitGroupMemberOut]:
-    """Return memberships of circuit groups, each with its circuit."""
+    """Return the circuits of a circuit group, each with its membership, where it was
+    added by hand, and whether its Z side names the group (P-320)."""
     day = circuit_records.today(db)
-    lines = circuit_records.lines_of(db, [circuit.hid for _, circuit in found])
+    lines = circuit_records.lines_of(db, [one.circuit.hid for one in found])
     return [
         c.CircuitGroupMemberOut(
-            hid=member.hid,
-            group_hid=member.group_hid,
-            circuit_hid=member.circuit_hid,
-            created_at=member.created_at,
+            hid=member.hid if member is not None else None,
+            group_hid=group_hid,
+            circuit_hid=circuit.hid,
+            z_side=z_side,
+            created_at=member.created_at if member is not None else None,
             circuit=c.CircuitRef.model_validate(
                 {
                     "hid": circuit.hid,
@@ -330,7 +368,7 @@ def members_out(
                 }
             ),
         )
-        for member, circuit in found
+        for member, circuit, z_side in ((one.member, one.circuit, one.z_side) for one in found)
     ]
 
 

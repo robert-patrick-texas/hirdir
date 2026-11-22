@@ -1,11 +1,13 @@
 """Circuits and their parts: the carriers beside the primary one, the lines of what a
 carrier bills each month, and the devices a circuit connects (P-145 to P-148, P-150).
 
-A circuit shares what the inventory holds: its sides are locations, its carriers
-vendors, its owner an owner, its devices items and device groups. Nothing of theirs is
-copied onto it, and what follows from them, the site a side has or the rate in force,
-is worked out when the circuit is read. The rules that every part reads, which side a
-circuit counts at and when it is in service, are in `hirdir.domain.circuits`.
+A circuit shares what the inventory holds: its sides are locations, the carrier network
+its Z side reaches a circuit group (P-319), its carriers vendors, its owner an owner, its
+devices items and device groups. Nothing of theirs is copied onto it, and what follows
+from them, the site a side has, the rate in force or the Z side's dates in force, is
+worked out when the circuit is read. The rules that every part reads, which side a
+circuit counts at, the dates of each side and when it is in service, are in
+`hirdir.domain.circuits`.
 
 A part, a carrier, a cost line or a device, has a version of its own and is removed
 outright when it was a mistake, the audit event of the removal holding what it was.
@@ -14,6 +16,7 @@ outright when it was a mistake, the audit event of the removal holding what it w
 from collections.abc import Collection, Sequence
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import BigInteger, ColumnElement, and_, func, or_, select, type_coerce
@@ -26,6 +29,7 @@ from hirdir.db.models import (
     CircuitCarrier,
     CircuitCost,
     CircuitDevice,
+    CircuitGroup,
     DeviceGroup,
     Item,
     Location,
@@ -47,7 +51,10 @@ ROLE_LIST = "carrier_role"
 SIDES = circuits.SIDES
 RATES = ("down_mbps", "up_mbps")
 SPEEDS = ("port_mbps", *RATES)
-DATES = ("a_installed_on", "a_activated_on", "a_disconnected_on")
+# The dates of each side, the A side's and the Z side's own (P-317, P-320).
+A_DATES = circuits.A_DATES
+Z_DATES = circuits.Z_DATES
+DATES = (*A_DATES, *Z_DATES)
 TEXTS = ("description", "notes", "a_note", "z_note", "billing_account", "billing_contract")
 FIELDS = (
     "name",
@@ -58,6 +65,7 @@ FIELDS = (
     "a_location_hid",
     "a_note",
     "z_location_hid",
+    "z_group_hid",
     "z_note",
     "cost_side",
     "carrier_hid",
@@ -86,6 +94,8 @@ DEVICE_HOLDERS: dict[str, tuple[Any, str]] = {
     "item_hid": (Item, "item"),
     "group_hid": (DeviceGroup, "device group"),
 }
+# How a refusal of the Z side's dates says which it read (P-320).
+IN_FORCE = ": its own date, or the A side's where it has none"
 MAX_PRIORITY = 1000
 # The fastest port and the dearest line taken: far beyond any circuit, and within what
 # a decimal of two places keeps exactly.
@@ -276,16 +286,10 @@ def in_service_column(
     model: Any = Circuit, include_drafts: bool = False, day: Any = None
 ) -> ColumnElement[bool]:
     """Return, as SQL, whether a circuit is in service on a day, today unless given, as
-    `hirdir.domain.circuits.in_service_on` says it."""
+    `hirdir.domain.circuits.in_service_on` says it: by the dates of the side its
+    `cost_side` names (P-320)."""
     when = dialect.today() if day is None else day
-    return and_(
-        or_(
-            model.record_status.in_(circuits.counted_status(include_drafts)),
-            and_(model.record_status == "retired", model.a_disconnected_on.is_not(None)),
-        ),
-        or_(model.a_activated_on.is_(None), model.a_activated_on <= when),
-        or_(model.a_disconnected_on.is_(None), model.a_disconnected_on >= when),
-    )
+    return circuits.in_service_column(model, include_drafts, when)
 
 
 def line_in_date_column(line: Any = CircuitCost, day: Any = None) -> ColumnElement[bool]:
@@ -518,6 +522,33 @@ def _lines_naming(db: Session, circuit_hid: str, vendor_hid: str) -> int:
     )
 
 
+def _network(db: Session, value: Any, circuit: Circuit | None) -> str | None:
+    """Return the carrier network a Z side is to name: a circuit group of the kind
+    `network`, not retired when it is named, and never a collection (P-320). One the
+    circuit names already is not looked at again."""
+    hid = value or None
+    if hid is None or (circuit is not None and circuit.z_group_hid == hid):
+        return hid
+    # Checked against the group, which is neither retired nor made a collection while a
+    # circuit names it: nobody may be changing it between the look and the write.
+    dialect.hold_other_writers(db)
+    group = db.get(CircuitGroup, hid) if isinstance(hid, str) else None
+    if group is None:
+        raise Invalid(
+            "there is no such network", {"z_group_hid": f"there is no circuit group {hid}"}
+        )
+    if group.kind != circuits.NETWORK:
+        raise Invalid(
+            f"{group.name} is a collection of circuits, not a network",
+            {"z_group_hid": "a Z side names a circuit group of the kind network"},
+        )
+    if records.refuses_retired(group, "network"):
+        raise Invalid(
+            f"the network {group.name} is retired", {"z_group_hid": "this network is retired"}
+        )
+    return hid
+
+
 def _checked(db: Session, fields: dict[str, Any], circuit: Circuit | None) -> dict[str, Any]:
     """Return the values to store for fields, checked against the circuit as it will be."""
     values: dict[str, Any] = {}
@@ -549,6 +580,8 @@ def _checked(db: Session, fields: dict[str, Any], circuit: Circuit | None) -> di
                 # has a side there: nobody may be retiring it between the look and the write.
                 dialect.hold_other_writers(db)
             values[field] = records.linked(db, Location, field, fields[field], circuit, "location")
+    if "z_group_hid" in fields:
+        values["z_group_hid"] = _network(db, fields["z_group_hid"], circuit)
     if "cost_side" in fields:
         values["cost_side"] = records.checked_choice(fields["cost_side"], SIDES, "cost_side")
     if "carrier_hid" in fields:
@@ -588,11 +621,18 @@ def _check_whole(db: Session, values: dict[str, Any], circuit: Circuit | None, f
     if final("a_location_hid") is None and final("z_location_hid") is None:
         why = "at least one side of a circuit is a location"
         raise Invalid(why, {"a_location_hid": why, "z_location_hid": why})
+    if final("z_location_hid") is not None and final("z_group_hid") is not None:
+        why = "a Z side names a location or a network, not both"
+        raise Invalid(why, {"z_location_hid": why, "z_group_hid": why})
     for side in SIDES:
-        if final(f"{side}_location_hid") is None and final(f"{side}_note") is None:
+        # A Z side that names a network says where it ends by that (P-320).
+        reached = final("z_group_hid") if side == "z" else None
+        ends = final(f"{side}_location_hid") or reached or final(f"{side}_note")
+        if ends is None:
+            what = "location" if side == "a" else "location and no network"
             raise Invalid(
                 f"the {side.upper()} side says where it ends",
-                {f"{side}_note": "a side with no location has a note of where it ends"},
+                {f"{side}_note": f"a side with no {what} has a note of where it ends"},
             )
     port = final("port_mbps")
     for rate in RATES:
@@ -601,18 +641,7 @@ def _check_whole(db: Session, values: dict[str, Any], circuit: Circuit | None, f
             raise Invalid(f"{rate} needs the port speed", {rate: "a rate needs port_mbps"})
         if given is not None and given > port:
             raise Invalid(f"{rate} is above the port speed", {rate: "not more than port_mbps"})
-    installed, activated, disconnected = (final(name) for name in DATES)
-    if installed is not None and activated is not None and activated < installed:
-        raise Invalid(
-            "the dates are not acceptable",
-            {"a_activated_on": "must not be before the day it was installed"},
-        )
-    began = activated if activated is not None else installed
-    if began is not None and disconnected is not None and disconnected < began:
-        raise Invalid(
-            "the dates are not acceptable",
-            {"a_disconnected_on": "must not be before the day it was activated, or installed"},
-        )
+    _check_dates(final)
     carrier = final("carrier_hid")
     if final("carrier_circuit_number") is not None and carrier is None:
         raise Invalid(
@@ -658,6 +687,41 @@ def _check_whole(db: Session, values: dict[str, Any], circuit: Circuit | None, f
                     f"{location.name}, where the {side.upper()} side is, is retired",
                     {"record_status": "give that side another location, or none, with the change"},
                 )
+        network = db.get(CircuitGroup, final("z_group_hid") or "")
+        if network is not None and network.record_status == "retired":
+            raise Invalid(
+                f"{network.name}, the network the Z side reaches, is retired",
+                {"record_status": "give the Z side another network, or none, with the change"},
+            )
+
+
+def _check_dates(final: Any) -> None:
+    """Hold each side's dates to their order, on what is in force (P-320): no activation
+    before the installation, no disconnection before the activation or, where it has
+    none, before the installation. A blank date of the Z side is the A side's, so a
+    change of an A side's date may be refused at the Z side's field it puts out of order.
+    """
+    dated = SimpleNamespace(**{name: final(name) for name in DATES})
+    for side in SIDES:
+        installed, activated, disconnected = circuits.side_dates(dated, side)
+        subject, whose = ("it", "") if side == "a" else ("the Z side", IN_FORCE)
+        if installed is not None and activated is not None and activated < installed:
+            raise Invalid(
+                "the dates are not acceptable",
+                {
+                    f"{side}_activated_on": f"must not be before the day {subject} was "
+                    f"installed{whose}"
+                },
+            )
+        began = activated if activated is not None else installed
+        if began is not None and disconnected is not None and disconnected < began:
+            raise Invalid(
+                "the dates are not acceptable",
+                {
+                    f"{side}_disconnected_on": f"must not be before the day {subject} was "
+                    f"activated, or installed{whose}"
+                },
+            )
 
 
 # --- changing a circuit --------------------------------------------------------------
