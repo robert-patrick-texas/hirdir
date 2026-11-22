@@ -1,2 +1,3 @@
-hid,name,description,owner,notes,record_status,tags
-,Inter-site links,The circuits between the sites,Network Engineering,,active,
+hid,name,kind,carrier,description,owner,notes,record_status,tags
+,Example Telecom MPLS,network,Example Telecom,The carrier's private network that the sites reach,Network Engineering,,active,
+,Inter-site links,collection,,The circuits between the sites,Network Engineering,,active,

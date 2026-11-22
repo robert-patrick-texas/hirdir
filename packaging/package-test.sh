@@ -4120,7 +4120,7 @@ through_nginx() {
 # The files of examples/ in the order they load in, which is the order of examples/README.md
 # and of "Load order" in docs/interfaces.md. A record names the ones it refers to: an
 # item its network, a group its items, and an address either of the two.
-load_order=(tags vendors catalog-entries contacts vendor-contacts operators regions sites locations contact-assignments owners owner-members networks external-systems agreements contracts contract-contacts purchase-requests purchase-lines device-groups items device-group-members item-replacements addresses contract-coverage registrations capacity-lines circuit-groups circuits circuit-carriers circuit-costs circuit-contacts circuit-devices)
+load_order=(countries states tags vendors catalog-entries contacts vendor-contacts operators regions sites locations contact-assignments owners owner-members networks external-systems agreements contracts contract-contacts purchase-requests purchase-lines device-groups items device-group-members item-replacements addresses contract-coverage registrations capacity-lines circuit-groups circuits circuit-carriers circuit-costs circuit-contacts circuit-devices)
 large_rows=150
 
 # large_file PATH VENDOR PID: write a CSV file of items of that model which is larger

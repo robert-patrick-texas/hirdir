@@ -1556,7 +1556,11 @@ export interface paths {
         };
       };
     };
-    /** Create a circuit group: circuits to be looked at and costed together. */
+    /**
+     * Create a circuit group: circuits to be looked at and costed together. Its `kind`
+     * is `network`, a carrier's network that a circuit's Z side may name, with its carrier,
+     * or `collection`, as it is unless said; a collection has no carrier (P-320).
+     */
     post: {
       parameters: {
         query?: never;
@@ -1673,7 +1677,11 @@ export interface paths {
     };
   };
   "/api/v1/circuit-groups/{hid}/members": {
-    /** List the circuits of a group, by name, retired ones too, which say so. */
+    /**
+     * List the circuits of a group, by name, retired ones too, which say so: those added
+     * to it, and those whose Z side names it, `z_side` true, each once. A circuit there by
+     * its Z side alone has no membership, and `hid` null (P-320).
+     */
     get: {
       parameters: {
         query?: {
@@ -1703,7 +1711,8 @@ export interface paths {
     };
     /**
      * Put circuits into a group, all together, each once. A retired group takes none,
-     * and a retired circuit is added to none.
+     * and a retired circuit is added to none. A circuit whose Z side names the group is
+     * added and kept, so that it stays when its Z side is changed (P-320).
      */
     post: {
       parameters: {
@@ -1764,7 +1773,11 @@ export interface paths {
     };
   };
   "/api/v1/circuit-groups/{hid}/retire": {
-    /** Retire a circuit group. Its circuits stay listed in it, and it takes no new one. */
+    /**
+     * Retire a circuit group. Its circuits stay listed in it, and it takes no new one.
+     * A network that a circuit that is not retired names on its Z side is refused, with
+     * those circuits in `depends_on` (P-320).
+     */
     post: {
       parameters: {
         query?: never;
@@ -1786,6 +1799,12 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["CircuitGroupOut"];
+          };
+        };
+        /** Circuits that are not retired name it on their Z side: each is in `depends_on`, to be given another network or retired first. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
           };
         };
         /** Validation Error */
@@ -3491,6 +3510,122 @@ export interface paths {
       };
     };
   };
+  "/api/v1/countries": {
+    /**
+     * List the countries an address may be in, as a form offers them: the United States
+     * first, however it is named, then the rest by name.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CountryOut"][];
+          };
+        };
+      };
+    };
+    /**
+     * Add a country: its ISO 3166-1 code, given in any case and kept in capitals, and
+     * its name, each unique without regard to case.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CountryCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CountryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/countries/{hid}": {
+    /**
+     * Remove a country that no address holds, with its states, none of which any
+     * address holds either, in one change; each removal is audited, and the country's
+     * event names the states removed with it. The United States is not removed.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Rename a country, or give it another code where no address holds the one it has:
+     * its states go with it. The United States keeps `US`.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CountryPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CountryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/device-groups": {
     /**
      * List device groups, by name unless a sort says otherwise.
@@ -4329,7 +4464,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices" | null;
+          entity?: "countries" | "states" | "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -4347,7 +4482,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
+            entity: "countries" | "states" | "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -6237,6 +6372,39 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/places/unlisted-addresses": {
+    /**
+     * List each country and state of the street address or the shipping set of a
+     * region, a site or a location that no list holds, a row to each, by the path of the
+     * place: what the upgrade to 0.9.18 kept as it was typed, for a person to choose. The
+     * retired and the drafts are among them.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_UnlistedAddress_"];
           };
         };
         /** Validation Error */
@@ -8176,6 +8344,124 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["SiteOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/states": {
+    /** List the states of a country by name, or of every country. */
+    get: {
+      parameters: {
+        query?: {
+          /** One country's states, the country by its code or its name. Left out, the states of every country, each country's together in the order of `GET /countries`. */
+          country?: string;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["StateOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Add a state to a country of the list: the part of its ISO 3166-2 code after the
+     * hyphen, kept in capitals, and its name, each unique within the country.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["StateCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["StateOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/states/{hid}": {
+    /** Remove a state that no address holds. Audited. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Rename a state, or give it another code where no address holds the one it has.
+     * Its country is not changed.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["StatePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["StateOut"];
           };
         };
         /** Validation Error */
@@ -10167,6 +10453,10 @@ export interface components {
       support_weight?: string | null;
       tags?: string[];
       up_mbps?: string | null;
+      z_activated_on?: string | null;
+      z_disconnected_on?: string | null;
+      z_group_hid?: string | null;
+      z_installed_on?: string | null;
       z_location_hid?: string | null;
       z_note?: string | null;
     };
@@ -10217,33 +10507,56 @@ export interface components {
       support_weight: components["schemas"]["EffectiveWeight"];
       /** The rate in force up: its own, or the full rate of the port, `port`. */
       up_mbps: components["schemas"]["EffectiveValue"];
+      /** The Z side's activation in force, as `z_installed_on`. */
+      z_activated_on: components["schemas"]["EffectiveValue"];
+      /** The Z side's disconnection in force, as `z_installed_on`. */
+      z_disconnected_on: components["schemas"]["EffectiveValue"];
+      /** The Z side's installation in force (P-320): its own, `own`, or the A side's, `a_side`, or none. */
+      z_installed_on: components["schemas"]["EffectiveValue"];
     };
     /** A new circuit group. */
     CircuitGroupCreate: {
+      /** A network's carrier, a vendor. */
+      carrier_hid?: string | null;
       description?: string | null;
+      kind?: "network" | "collection";
       name: string;
       notes?: string | null;
       owner_hid?: string | null;
       record_status?: "draft" | "active";
       tags?: string[];
     };
-    /** One circuit in one group. */
+    /**
+     * One circuit in one group: added to it, or there because its Z side names it, or
+     * both, listed once (P-320).
+     */
     CircuitGroupMemberOut: {
       circuit: components["schemas"]["CircuitRef"];
       circuit_hid: string;
-      created_at: string;
+      /** When it was added; null for a circuit there by its Z side alone. */
+      created_at: string | null;
       group_hid: string;
-      hid: string;
+      /** The membership; null for a circuit that is there by its Z side alone. */
+      hid: string | null;
+      /** The circuit names the group on its Z side. */
+      z_side: boolean;
     };
     /** Circuits to put into a group, all together, each once. */
     CircuitGroupMembersAdd: {
       circuit_hids: string[];
     };
-    /** Circuits that may land at different sites, looked at and costed together. */
+    /**
+     * Circuits that may land at different sites, looked at and costed together: a
+     * carrier's network, which a Z side may name, or a collection (P-319).
+     */
     CircuitGroupOut: {
       /** Twelve times the monthly cost. */
       annual_cost: string;
-      /** How many circuits it has. */
+      /** That vendor. */
+      carrier: components["schemas"]["VendorRef"] | null;
+      /** A network's carrier, a vendor. */
+      carrier_hid: string | null;
+      /** How many circuits it has, each once: those added to it and those whose Z side names it (P-320). */
       circuits: number;
       created_at: string;
       created_by: string | null;
@@ -10251,6 +10564,8 @@ export interface components {
       hid: string;
       /** How many of them are in service today. */
       in_service: number;
+      /** network, a carrier's network or the internet that a circuit's Z side may reach, or collection, circuits put together for the enterprise's own purpose. */
+      kind: "network" | "collection";
       /** What those in service cost a month today, each circuit once. */
       monthly_cost: string;
       name: string;
@@ -10265,7 +10580,10 @@ export interface components {
     };
     /** Fields of a circuit group to change, and the version they were read at. */
     CircuitGroupPatch: {
+      carrier_hid?: string | null;
       description?: string | null;
+      /** Not made collection while a circuit, retired or not, names it on its Z side (P-320). */
+      kind?: "network" | "collection" | null;
       name?: string | null;
       notes?: string | null;
       owner_hid?: string | null;
@@ -10276,8 +10594,12 @@ export interface components {
     /** A circuit group, as a circuit lists it. */
     CircuitGroupRef: {
       hid: string;
+      /** A network, which a Z side may name, or a collection. */
+      kind: "network" | "collection";
       name: string;
       record_status: "draft" | "active" | "retired";
+      /** The circuit names this group on its Z side, as the network it reaches (P-320); false for a group it was added to alone. */
+      z_side?: boolean;
     };
     /**
      * A telecommunication circuit, with what is worked out when it is read.
@@ -10286,8 +10608,11 @@ export interface components {
      * unless `fields` names them; the record has them always.
      */
     CircuitOut: {
+      /** The day the A side was activated, from which the carrier bills it. */
       a_activated_on: string | null;
+      /** The last day the A side was in service. */
       a_disconnected_on: string | null;
+      /** The day the A side was installed. */
       a_installed_on: string | null;
       a_location_hid: string | null;
       a_note: string | null;
@@ -10322,10 +10647,10 @@ export interface components {
       down_mbps: string | null;
       effective: components["schemas"]["CircuitEffective"];
       enterprise_circuit_id: string | null;
-      /** The groups it is in, by name. */
+      /** The groups it is in, by name, each once: those it was added to, and the network its Z side names, with z_side true. */
       groups: components["schemas"]["CircuitGroupRef"][] | null;
       hid: string;
-      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
+      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection, those of the side cost_side names, the Z side's in force where it is z (P-320). */
       in_service: boolean;
       /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
@@ -10349,6 +10674,16 @@ export interface components {
       up_mbps: string | null;
       updated_at: string;
       updated_by: string | null;
+      /** The Z side's own; blank is the A side's (P-320). */
+      z_activated_on: string | null;
+      /** The Z side's own; blank is the A side's (P-320). */
+      z_disconnected_on: string | null;
+      /** That network, with z_side true. */
+      z_group: components["schemas"]["CircuitGroupRef"] | null;
+      /** The carrier network the Z side reaches: a circuit group of the kind network (P-319). Never beside z_location_hid. */
+      z_group_hid: string | null;
+      /** The Z side's own; blank is the A side's (P-320). */
+      z_installed_on: string | null;
       z_location_hid: string | null;
       z_note: string | null;
       /** Null for a side with no location. */
@@ -10381,6 +10716,10 @@ export interface components {
       support_weight?: string | null;
       tags?: string[] | null;
       up_mbps?: string | null;
+      z_activated_on?: string | null;
+      z_disconnected_on?: string | null;
+      z_group_hid?: string | null;
+      z_installed_on?: string | null;
       z_location_hid?: string | null;
       z_note?: string | null;
     };
@@ -10389,7 +10728,7 @@ export interface components {
       circuit_type: string | null;
       enterprise_circuit_id: string | null;
       hid: string;
-      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
+      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection, those of the side cost_side names, the Z side's in force where it is z (P-320). */
       in_service: boolean;
       /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
@@ -10586,7 +10925,7 @@ export interface components {
       from_agreement_label: string | null;
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -10598,7 +10937,7 @@ export interface components {
     ContractEffectiveValue: {
       /** What the agreement gives for this field today, whether the contract overrides it or not. Blank for a contract in no agreement, and where the agreement has nothing. */
       from_agreement: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -10840,6 +11179,30 @@ export interface components {
       items: number;
       key: string | null;
       label: string | null;
+    };
+    /** A new country of the list. Its code is given in any case and kept in capitals. */
+    CountryCreate: {
+      code: string;
+      name: string;
+    };
+    /** A country an address may be in. */
+    CountryOut: {
+      /** Its ISO 3166-1 alpha-2 code, two capital letters. */
+      code: string;
+      created_at: string;
+      hid: string;
+      name: string;
+      row_version: number;
+      updated_at: string;
+    };
+    /**
+     * Fields of a country to change, and the version they were read at. A code that an
+     * address holds is not changed, and the United States keeps `US`.
+     */
+    CountryPatch: {
+      code?: string | null;
+      name?: string | null;
+      row_version: number;
     };
     /** Items to put under a contract together: all of them, or none. */
     CoverageAdd: {
@@ -11167,7 +11530,7 @@ export interface components {
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label: string | null;
@@ -11186,7 +11549,7 @@ export interface components {
       label: string | null;
       /** internal where its contact is a user's, external where not; none if nobody. */
       scope?: "internal" | "external" | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or group, or the path of the place, it came from. */
       source_label: string | null;
@@ -11197,7 +11560,7 @@ export interface components {
     EffectiveOwner: {
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label?: string | null;
@@ -11231,7 +11594,7 @@ export interface components {
      * A decimal and a date are text, and a truth value is true or false.
      */
     EffectiveValue: {
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -11243,7 +11606,7 @@ export interface components {
       /** The weight before it was raised to the minimum of its kind. Blank where it was not raised. */
       raised_from: string | null;
       /** `setting` where it is the default of its kind. */
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The weight in force, as text. Blank: none. */
       value: string | null;
@@ -11274,7 +11637,7 @@ export interface components {
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
+      entity: "countries" | "states" | "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -11301,7 +11664,7 @@ export interface components {
       /** How many records it holds, the retired and the drafts among them. */
       count: number;
       /** The name an import and an export know it by. */
-      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
+      entity: "countries" | "states" | "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
       /** The name its file has in `examples/` and in the zip of every table, without the extension. */
       file: string;
       /** What it is called for people. */
@@ -12382,7 +12745,10 @@ export interface components {
       address2: string | null;
       city: string | null;
       code: string | null;
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
       country: string | null;
+      /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
+      country_name: string | null;
       created_at: string;
       /** 0 for a location directly in its site. */
       depth: number;
@@ -12416,15 +12782,24 @@ export interface components {
       ship_address1: string | null;
       ship_address2: string | null;
       ship_city: string | null;
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
       ship_country: string | null;
+      /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
+      ship_country_name: string | null;
       ship_instructions: string | null;
       ship_postal_code: string | null;
       /** Deliveries go to the street address: the shipping address is read from it. */
       ship_same_as_address: boolean;
+      /** Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed. */
       ship_state: string | null;
+      /** The name of its state, read from the list; null where it is blank or in no list. */
+      ship_state_name: string | null;
       site: components["schemas"]["PlaceRef"];
       site_hid: string;
+      /** Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed. */
       state: string | null;
+      /** The name of its state, read from the list; null where it is blank or in no list. */
+      state_name: string | null;
       /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
       support_weight: string | null;
       tags: string[];
@@ -13280,6 +13655,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_UnlistedAddress_: {
+      items: components["schemas"]["UnlistedAddress"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_UserOut_: {
       items: components["schemas"]["UserOut"][];
       limit: number;
@@ -13776,10 +14157,15 @@ export interface components {
       ship_address1: string | null;
       ship_address2: string | null;
       ship_city: string | null;
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
       ship_country: string | null;
+      /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
+      ship_country_name: string | null;
       ship_instructions: string | null;
       ship_postal_code: string | null;
       ship_state: string | null;
+      /** The name of its state, read from the list; null where it is blank or in no list. */
+      ship_state_name: string | null;
       /** How many sites are directly in it, retired ones aside. */
       sites: number;
       /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
@@ -14233,14 +14619,20 @@ export interface components {
       row_version: number;
       value?: unknown;
     };
-    /** A shipping address, taken whole. */
+    /** A shipping address, taken whole, with the names of its country and its state. */
     ShipAddress: {
       address1: string | null;
       address2: string | null;
       city: string | null;
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
       country: string | null;
+      /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
+      country_name: string | null;
       postal_code: string | null;
+      /** Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed. */
       state: string | null;
+      /** The name of its state, read from the list; null where it is blank or in no list. */
+      state_name: string | null;
     };
     /** A username and access code. */
     SignIn: {
@@ -14296,7 +14688,10 @@ export interface components {
       address2: string | null;
       city: string | null;
       code: string | null;
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
       country: string | null;
+      /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
+      country_name: string | null;
       created_at: string;
       effective: components["schemas"]["SiteEffective"];
       hid: string;
@@ -14322,13 +14717,22 @@ export interface components {
       ship_address1: string | null;
       ship_address2: string | null;
       ship_city: string | null;
+      /** The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed. */
       ship_country: string | null;
+      /** The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list. */
+      ship_country_name: string | null;
       ship_instructions: string | null;
       ship_postal_code: string | null;
       /** Deliveries go to the street address: the shipping address is read from it. */
       ship_same_as_address: boolean;
+      /** Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed. */
       ship_state: string | null;
+      /** The name of its state, read from the list; null where it is blank or in no list. */
+      ship_state_name: string | null;
+      /** Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed. */
       state: string | null;
+      /** The name of its state, read from the list; null where it is blank or in no list. */
+      state_name: string | null;
       /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
       support_weight: string | null;
       tags: string[];
@@ -14422,6 +14826,33 @@ export interface components {
       change?: components["schemas"]["StaffChange"][];
       /** Staff lines that are there, by HID. */
       leave_out?: string[];
+    };
+    /** A new state of a country of the list, the country by its code or its name. */
+    StateCreate: {
+      code: string;
+      country: string;
+      name: string;
+    };
+    /** A state of a country: a subdivision as ISO 3166-2 has it. */
+    StateOut: {
+      /** The part of its ISO 3166-2 code after the hyphen: `TX` of `US-TX`. */
+      code: string;
+      /** The code of its country. */
+      country: string;
+      created_at: string;
+      hid: string;
+      name: string;
+      row_version: number;
+      updated_at: string;
+    };
+    /**
+     * Fields of a state to change, and the version they were read at. A code that an
+     * address holds is not changed, nor is a state's country.
+     */
+    StatePatch: {
+      code?: string | null;
+      name?: string | null;
+      row_version: number;
     };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
@@ -14530,6 +14961,21 @@ export interface components {
       row_version: number;
       /** The state to move to. Null returns a minor item to the standing of the item it is in. */
       to: string | null;
+    };
+    /** A country or a state of an address of a place that no list holds. */
+    UnlistedAddress: {
+      /** The field of the place that holds the value. */
+      field: "country" | "state" | "ship_country" | "ship_state";
+      hid: string;
+      /** The place is a region, a site or a location. */
+      level: "region" | "site" | "location";
+      name: string;
+      path: string;
+      record_status: "draft" | "active" | "retired";
+      /** The street address, or the shipping set. */
+      set: "street" | "shipping";
+      /** What it holds, as it was typed. */
+      value: string;
     };
     /**
      * The user a contact is: who it signs in as. A retired account is shown still,

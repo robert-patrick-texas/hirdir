@@ -322,7 +322,9 @@ export function addressOf(
   place: Readonly<Record<string, unknown>>,
   prefix: "" | "ship_" = "",
 ): ShipAddress {
-  const read = (field: (typeof ADDRESS_FIELDS)[number]): string | null => {
+  const read = (
+    field: (typeof ADDRESS_FIELDS)[number] | "country_name" | "state_name",
+  ): string | null => {
     const value = place[`${prefix}${field}`];
     return typeof value === "string" && value !== "" ? value : null;
   };
@@ -333,6 +335,8 @@ export function addressOf(
     state: read("state"),
     postal_code: read("postal_code"),
     country: read("country"),
+    country_name: read("country_name"),
+    state_name: read("state_name"),
   };
 }
 

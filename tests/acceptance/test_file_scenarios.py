@@ -22,6 +22,8 @@ from tests.acceptance.conftest import ADMIN, HIRDIR, Server, configured, started
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
 LOAD_ORDER = (
+    "countries",
+    "states",
     "tags",
     "vendors",
     "catalog_entries",
@@ -56,6 +58,10 @@ LOAD_ORDER = (
     "circuit_contacts",
     "circuit_devices",
 )
+# The lists of countries and states: every inventory has them from its install, a reset
+# keeps them, and `hirdir admin load-examples` leaves them out (P-321).
+LISTS = ("countries", "states")
+LOADED = tuple(entity for entity in LOAD_ORDER if entity not in LISTS)
 ROUTES = {
     "tags": "/tags",
     "vendors": "/vendors",
@@ -162,8 +168,8 @@ class Desk:
             time.sleep(0.05)
 
     def total(self, entity: str) -> int:
-        if entity == "tags":
-            return len(self.get("/tags"))
+        if entity in ("tags", *LISTS):
+            return len(self.get(f"/{entity}"))
         if entity == "owner_members":
             owners = self.get("/owners", include_archived=True, include_drafts=True)
             return sum(len(owner["members"]) for owner in owners["items"])
@@ -226,12 +232,9 @@ def test_s12_the_examples_load_into_an_empty_database_in_load_order(desk: Desk) 
     for entity in LOAD_ORDER:
         job = jobs[entity]
         assert job["status"] == "applied", entity
-        assert (job["created"], job["updated"], job["unchanged"], job["rejected"]) == (
-            seed[entity],
-            0,
-            0,
-            0,
-        ), entity
+        # The lists an empty inventory has already come as they are.
+        made = (0, 0, seed[entity], 0) if entity in LISTS else (seed[entity], 0, 0, 0)
+        assert (job["created"], job["updated"], job["unchanged"], job["rejected"]) == made, entity
         assert desk.total(entity) == seed[entity], entity
     # Nothing had to be made up for a reference: the catalog came from its own file.
     assert desk.get("/catalog-entries", filter="review_status:eq:unreviewed")["total"] == 0
@@ -246,14 +249,14 @@ def test_s12_by_hirdir_admin_load_examples_and_a_reset_takes_them_again(tmp_path
     stopped = configured(tmp_path)
     said = stopped.admin("load-examples")
     seed = seed_counts()
-    assert f"loaded {sum(seed.values()):,} records of the examples" in said
+    assert f"loaded {sum(seed[entity] for entity in LOADED):,} records of the examples" in said
     with started(tmp_path, first_admin=False) as running:
         desk = Desk(running.sign_in(*ADMIN))
         for entity in LOAD_ORDER:
             assert desk.total(entity) == seed[entity], entity
         jobs = desk.get("/imports", limit=100)["items"]
         assert sorted(job["file_name"] for job in jobs) == sorted(
-            example(entity, "csv").name for entity in LOAD_ORDER
+            example(entity, "csv").name for entity in LOADED
         )
         assert {job["status"] for job in jobs} == {"applied"}
     again = subprocess.run(  # noqa: S603 - our own command with fixed arguments
@@ -264,7 +267,11 @@ def test_s12_by_hirdir_admin_load_examples_and_a_reset_takes_them_again(tmp_path
     assert "backup" in stopped.admin("reset", "--yes")
     with started(tmp_path, first_admin=False) as running:
         desk = Desk(running.sign_in(*ADMIN))
-        assert {entity: desk.total(entity) for entity in LOAD_ORDER} == dict.fromkeys(LOAD_ORDER, 0)
+        assert {entity: desk.total(entity) for entity in LOADED} == dict.fromkeys(LOADED, 0)
+        # The lists stay, as a new inventory has them.
+        assert {entity: desk.total(entity) for entity in LISTS} == {
+            entity: seed[entity] for entity in LISTS
+        }
         assert desk.get("/imports", limit=1)["total"] == 0
 
 
@@ -488,7 +495,9 @@ def test_s55_every_table_is_exported_as_its_template_or_whole_and_loads_back(des
     and taking everything out is in the audit trail, once."""
     tables = desk.get("/exports/tables")
     assert [table["entity"] for table in tables] == list(LOAD_ORDER)
-    assert {table["count"] for table in tables} == {0}
+    # Every table is empty but the lists of countries and states, which it starts with.
+    assert {table["count"] for table in tables if table["entity"] in LOADED} == {0}
+    assert [table["count"] for table in tables if table["entity"] in LISTS] == [55, 633]
 
     def whole(entity: str, format_: str) -> str:
         body = {
@@ -502,7 +511,7 @@ def test_s55_every_table_is_exported_as_its_template_or_whole_and_loads_back(des
         assert response.status_code == 200, response.text
         return response.text
 
-    for table in tables:
+    for table in (table for table in tables if table["entity"] in LOADED):
         template = whole(table["entity"], "csv")
         assert next(csv.reader(io.StringIO(template))) == table["columns"], table["entity"]
         assert len(template.splitlines()) == 1, table["entity"]

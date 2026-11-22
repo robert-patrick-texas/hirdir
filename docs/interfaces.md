@@ -28,7 +28,7 @@ and CLI's types are generated from it.
 | A busy server | A server refuses where there is load to shed, by how long its reads take: nothing while they are good or slow; what is long by nature, the reports, the exports and the previews, while they are very slow; and every other read of the API as well while they are past the ceiling, with twenty-one reads or more in the measure. What it refuses it answers `503` with the title `Busy`, `Retry-After` and the member `busy`, at once and with nothing of the request done. A change that is stored, a sign-in, the health routes and About are never so answered, and no read is refused because a change was slow. It is told from the `503` of a change that waited for another to be stored by `busy`, which only it has (P-265). See [The server's own measures](#the-servers-own-measures) |
 | Health | Every answer of the API carries `X-Hirdir-Health`, the health of the server in a word and what it refuses, as they are when the answer begins, the request's own time counted: `good`, `slow`, `very_slow` or `busy`, then `; refusing=` and `nothing`, `long` or `reads`, as in `busy; refusing=nothing`. An answer that was slow says so itself. The health is the 95th percentile of how long requests take against the thirds of `busy_response_ms`, under 1, 2 and 3 seconds unless set, for a mark that is green, yellow, orange or red. A request that is refused carries what it was refused by. The page's own files carry none. See [The server's own measures](#the-servers-own-measures) |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere; `POST /users/export`, whose file holds neither, is one of them and refuses it as they do |
+| Idempotency | A `POST` that changes an inventory record, a tag, a choice, a country or a state, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere; `POST /users/export`, whose file holds neither, is one of them and refuses it as they do |
 
 ### Routes
 
@@ -40,7 +40,7 @@ and CLI's types are generated from it.
 | Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/hosted`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`, `POST /items/{hid}/make-stack`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once; for an Admin, `POST /item-replacements/{hid}/remove` |
 | Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/hosted`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}`; `POST /device-groups/retire` and, for an Admin, `POST /device-groups/delete`, of several at once |
 | Addresses | `/networks`, `/addresses` |
-| Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening` |
+| Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening`; `GET /countries` and `GET /states`, and for an Admin `POST`, and `PATCH` and `DELETE /{hid}`, of each; `GET /places/unlisted-addresses` (P-321) |
 | People | `/contacts`, `POST /contacts/{hid}/retire`, `GET /contacts/{hid}/uses`, `/operators`, `GET /operators/{hid}/assignments`, `POST /operators/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
 | Contracts | `/agreements`, `POST /agreements/{hid}/renew`, `POST /agreements/{hid}/retire`, `GET /agreements/{hid}/terms`, `/contracts`, `POST /contracts/{hid}/retire`, `POST /contracts/{hid}/renew`, `GET /contracts/{hid}/terms`, `GET` and `POST /contracts/{hid}/coverage`, `PATCH` and `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `GET /contract-coverage`; `GET` and `POST /agreements/{hid}/contacts`, `PATCH` and `DELETE /agreements/{hid}/contacts/{link_hid}`, and the same under `/contracts/{hid}` |
 | Purchases | `/purchase-requests`, `GET` and `POST /purchase-requests/{hid}/lines`, `GET /purchase-lines`, `GET` and `PATCH /purchase-lines/{hid}`, `POST /purchase-lines/{hid}/receive` |
@@ -68,6 +68,7 @@ and CLI's types are generated from it.
 | Create, change, retire, import, bulk-update inventory records, and retire several at once | | yes | yes |
 | Delete an item or a device group that was a mistake (P-227), and remove a replacement that was one (P-238) | | | yes |
 | Edit choices, tags | | yes | yes |
+| Edit the lists of countries and states, by the API or by a file (P-321); every role reads them | | | yes |
 | Edit settings and lifecycle rules, force a lifecycle move, and so the kinds of file a reference may be | | | yes |
 | List and check the kept answers of the long reports | | | yes |
 | Users, groups, role grants, access codes, the tokens of service accounts and agents | | | yes |
@@ -1585,16 +1586,25 @@ location, and takes `within` with a region, a site or a location, `a_location.na
 `z_location.name` are the names of its two sides, `a_site.name` and `z_site.name` the
 names of their sites, `cost_site_hid` is the site it counts at, `cost_site.name` its
 name, and `cost_location` the location it counts at, which takes `within` as `location`
-does, `groups.name` and `groups.hid` find it by any of its groups, `owner.label` and `owner_exception` go
+does, `groups.name` and `groups.hid` find it by any of its groups, those it was added
+to and the network its Z side names, `z_group_hid` is that network and
+`z_group.name` its name, `owner.label` and `owner_exception` go
 by its owner, `effective.support_weight` is its weight in force,
 `effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
-it gives none, `billed_by` finds it by its primary carrier or a carrier that bills one of
+it gives none, `a_installed_on`, `a_activated_on` and `a_disconnected_on` are the A
+side's dates and `z_installed_on`, `z_activated_on` and `z_disconnected_on` the Z
+side's own, `effective.z_installed_on`, `effective.z_activated_on` and
+`effective.z_disconnected_on` the Z side's in force, its own or the A side's (P-320),
+`billed_by` finds it by its primary carrier or a carrier that bills one of
 its lines,
 `monthly_cost` and `annual_cost` what it costs today, nothing on a day it is not in
-service, and `in_service` is true where it is in service today, a draft in a view that
+service, and `in_service` is true where it is in service today, by the dates of the
+side `cost_side` names, a draft in a view that
 includes drafts. The record of a draft, read by itself, answers both as a view of drafts
-does: what it will cost. The list of circuit groups has `owner.label` and
-`circuits`, how many it has, and `in_service`, `monthly_cost` and `annual_cost` as its
+does: what it will cost. The list of circuit groups has `kind`, `carrier_hid` and
+`carrier.name`, a network's carrier, `owner.label` and
+`circuits`, how many it has, those added to it and those whose Z side names it, each
+once, and `in_service`, `monthly_cost` and `annual_cost` as its
 record has them. The lists of regions, sites and locations have
 `support_weight`, the place's own, and the list of sites `effective.support_weight`, the
 weight a site counts at: its own or `default_site_weight`, raised to
@@ -1767,10 +1777,13 @@ systems and registrations, capacity lines and replacements, 0.7.0 the contacts o
 agreements and contracts, the flag not to renew on catalog entries and items, the links
 of regions, sites, locations and catalog entries, and the lines that multiply, and 0.8.0
 the circuits with their carriers, cost lines, contacts and devices, circuit groups, the
-contacts of vendors, and the support weight of a place.
+contacts of vendors, and the support weight of a place; 0.9.18 adds the lists of
+countries and states (P-321).
 
 | Entity | Columns that can be set | Further columns an export can write |
 |---|---|---|
+| `countries` | `code`, `name` | |
+| `states` | `country`, `code`, `name` | |
 | `tags` | `label`, `colour`, `description` | |
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
@@ -1798,8 +1811,8 @@ contacts of vendors, and the support weight of a place.
 | `purchase_requests` | `reference`, `requested_on`, `status`, `notes` | |
 | `purchase_lines` | `request`, `line`, `vendor`, `pid`, `part_number`, `description`, `quantity`, `destination_site`, `expected_on`, `notes` | `tracked`, `received_quantity`, `pending_quantity`, `mismatched_items` |
 | `capacity_lines` | `side`, `category`, `name`, `effect`, `quantity`, `units_each`, `factor`, `share`, `applies_to`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
-| `circuit_groups` | `name`, `description`, `owner`, `notes`, `record_status`, `tags` | `circuits`, `monthly_cost`, `annual_cost` |
-| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `a_installed_on`, `a_activated_on`, `a_disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `owner_exception_reason`, `in_service`, `support_weight_source` |
+| `circuit_groups` | `name`, `kind`, `carrier`, `description`, `owner`, `notes`, `record_status`, `tags` | `circuits`, `monthly_cost`, `annual_cost` |
+| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_group`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `a_installed_on`, `a_activated_on`, `a_disconnected_on`, `z_installed_on`, `z_activated_on`, `z_disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `owner_exception_reason`, `in_service`, `support_weight_source`, `z_installed_on_source`, `z_activated_on_source`, `z_disconnected_on_source` |
 | `circuit_carriers` | `circuit`, `vendor`, `role`, `circuit_number`, `priority`, `notes` | |
 | `circuit_costs` | `circuit`, `description`, `monthly_cost`, `vendor`, `starts_on`, `ends_on`, `notes` | |
 | `circuit_contacts` | `circuit`, `side`, `role`, `contact`, `priority` | |
@@ -1808,7 +1821,19 @@ contacts of vendors, and the support weight of a place.
 The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
 `country`, and the shipping set is the same six with `ship_` before them, and
 `ship_instructions`. For a site and a location the shipping set has
-`ship_same_as_address` as well, true or false.
+`ship_same_as_address` as well, true or false. Since 0.9.18 a row gives `country` and
+`state`, and `ship_country` and `ship_state`, as the API takes them: a country by its
+code or its name, without regard to case, or as `USA`, `U.S.`, `U.S.A.` or `United
+States of America`; a state by its code or its name within the country in force, a
+blank country being the United States; and an export writes the codes the place holds,
+which load back as nothing to change. A value that no list holds is rejected at its
+column, and one held from before is kept until the row changes the country or the state
+of that set (P-321): see [Countries and states](#countries-and-states).
+
+A row of `countries` gives `code`, the ISO 3166-1 alpha-2 code in any case, and `name`;
+a row of `states` gives `country`, its country by its code or its name, `code`, the part
+of its ISO 3166-2 code after the hyphen, and `name`. Both are written in the order the
+lists are shown, the United States first.
 
 Every entity has `hid` as its first column, and an export can also write `row_version`,
 `created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
@@ -1824,10 +1849,10 @@ that names no zone is in the application's time zone, as before.
 
 | Subject | Rule |
 |---|---|
-| Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations. Tags are among them. Choices, settings, lifecycle rules and the access records are not carried by files |
+| Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations. Tags are among them. Choices, settings, lifecycle rules and the access records are not carried by files; the lists of countries and states are, since 0.9.18, though they are kept under Choices (P-321) |
 | Sending a file | The file is the body of `POST /imports/preview`, as `text/csv` or `application/json`, with `entity`, `mode` and `file_name` beside it in the URL. A JSON file names its entity and mode in its envelope, and the URL may leave them out; the two must not disagree |
 | Modes | `create` refuses a row that matches an existing record. `upsert` creates or updates. There is no mode that deletes |
-| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, an operator's label, a network's label, a device group's name. A region is found by its path, which is `parent` and `name`; a site by `region` and `name`; a location by `site`, `parent` and `name`. A contact is found by its email address, and a row with none by a name that one contact alone has, retired or not; of several of one name, such a row is the one that has no email address. An assignment is found by its place, its role and its contact, or as the one that stops inheritance for its place and role; a member of an owner by the owner and the contact. An agreement is found by its name. A contract is found by its number, with `vendor` where two vendors use one number; a contact of an agreement or of a contract by that record, its role and its contact; a coverage by its contract, its item and `starts_on`, or with no `starts_on` the one that is not ended; a purchase request by its reference and a line by its request and `line`; an external system by its name; a registration by its system and its item or group; a capacity line by its side and its name; a replacement by the item that left. A
+| Matching | By `hid` when given, otherwise by the entity's key: a country's code, a state's code within its country, a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, an operator's label, a network's label, a device group's name. A region is found by its path, which is `parent` and `name`; a site by `region` and `name`; a location by `site`, `parent` and `name`. A contact is found by its email address, and a row with none by a name that one contact alone has, retired or not; of several of one name, such a row is the one that has no email address. An assignment is found by its place, its role and its contact, or as the one that stops inheritance for its place and role; a member of an owner by the owner and the contact. An agreement is found by its name. A contract is found by its number, with `vendor` where two vendors use one number; a contact of an agreement or of a contract by that record, its role and its contact; a coverage by its contract, its item and `starts_on`, or with no `starts_on` the one that is not ended; a purchase request by its reference and a line by its request and `line`; an external system by its name; a registration by its system and its item or group; a capacity line by its side and its name; a replacement by the item that left. A
 contact of a vendor is found by its vendor, its role and its contact; a circuit group by
 its name; a circuit by the rules under "Circuits" below; a carrier of a circuit by its
 circuit and its vendor, a cost line by its circuit and its description, a device of a
@@ -1839,6 +1864,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Management address | An item and a device group have a primary management address of each family. `mgmt_ipv4` and `mgmt_ipv6` set them, and `mgmt_address` takes an address of either family and files it under its own. A value changes the one there is or adds one; `!clear` removes it, and in `mgmt_address` removes both. `mgmt_network` is the label of the network the addresses of the row are under. It is optional: with no such column the network stays as it is, and a new address is in the unlabelled address space. An export writes it where both addresses are under one network, and leaves it blank where they are under two, so that a file loaded back moves neither. A row that names `mgmt_network` and no address is rejected. Every address of a record, these among them, is in the `addresses` entity, so an export writes these columns only when they are asked for by name |
 | A first file | A file of host names, with or without addresses, loads as it is: `hostname` alone makes an item, and loading it again finds each item by its host name and changes nothing. The spellings such a file is likely to use are read as the columns they mean: `ip_address`, `ip` and `mgmt_ip` as `mgmt_address`, `ipv4_address` and `ipv4` as `mgmt_ipv4`, `ipv6_address` and `ipv6` as `mgmt_ipv6` |
 | Places | `location` on an item and on a device group is the path of a location, or its HID, and so is `planned_location` on an item and on a device group, which takes a location that is not in use yet. `parent` of a region is the path of the region it is in, `region` of a site the path of its region, and `site` of a location the path of its site. `parent` of a location is the path of the location it is in, whole or from the site down: `Building 1 > Floor 2`. A row of a location that names its parent whole need not name the site. The regions of one file are worked a region before the regions within it, and the locations likewise, wherever they stand. A row that would move a location to another site is rejected. A step of any of these paths may be the code of its place, and a path may begin at the code of a region or of a site, as the [data model](data-model.md#regions-sites-locations) page says: `S2 > R102` (P-235); the name a row gives a place of its own, in `name`, finds a place by its name alone. A row of an item says where the item is and is going in force, with `location_source` and `planned_location_source`; loaded back, a value that the item has anyway from the item above it or from its group gives the item nothing of its own. |
+| Countries and states | A row of `countries` or of `states` that makes or changes one is an Admin's to apply: for any other role it is rejected in the preview, saying that it needs the admin role, and the apply of a preview that makes or changes one is refused, `403`, to anybody but an Admin, whoever made it. A row that changes nothing is nobody's to refuse, so that a file of every table loads back into the inventory it came from, and an empty inventory, which has the lists from its install, takes the rows of the lists as unchanged. `hirdir admin reset` keeps the lists, as it keeps the choices, and `hirdir admin load-examples` leaves their files out. A row that would change a code an address holds, give the United States another code, or give a state another country is rejected as the API refuses it; a file does not remove. A row is found by its HID, or else by its code, within its country for a state: a row whose HID no record has is the country or the state of its code where the list has one, since every inventory starts with the lists, each with HIDs of its own, so that a file of another inventory finds what this one has, and makes its record with that HID only where none has the code (P-321) |
 | Contacts of a place | A row of `contact_assignments` names one place, in `region`, `site` or `location`, with a `role` and a `contact`. A row with `stop_inheritance` true and no contact is the one that stops inheritance for that place and role. An import does not remove an assignment. In a file of `owner_members` the rows that name a primary are worked first, wherever they stand, so that the first member of an owner is its primary and a change of primary comes out right |
 | Contacts of contracts | A row of `contract_contacts` names one record: an `agreement` by its name, or a `contract` by its number, with `vendor` beside it where two vendors use one number. It names a `role`, `account_manager` or `support_contact`, and a `contact` as any column names one. A row with no `priority` is listed after the others of its record and role. An import does not remove one, and a row does not move one to another record |
 | Not to be renewed | `do_not_renew` of a catalog entry is `true` or `false`, and `!clear` makes it `false`. `do_not_renew` of an item is its own word, and `!clear` gives it its model's again; a row that holds the very flag the item has from its model leaves it inheriting, as for every value of the catalog. An export of items in force writes the flag in force with `do_not_renew_source`, and one with `own_values` the item's own. A bulk edit sets it as a file does |
@@ -1849,7 +1875,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list. `'!clear` is the text `!clear`, which is how an export writes a value that is that text (see Export) |
-| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155) |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155). It is so as well for the dates of a circuit's Z side and those of its A side (P-320) |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire a record that is there. A row that would change `record_status` of a record that is there to `retired`, from `active` or `draft`, is rejected. Since 0.9.17 a row that makes a record, with the HID it gives as every export writes one, may make it retired, in `create` and in `upsert`, for every table whose records have a status (P-311); a row with no HID that says `retired` is rejected as before, since the keys of a file pass over the retired and it would make a retired twin at each load: it is made so, in its one `create` event, which holds `record_status` `retired`, with no `retire` event and no day of its retirement, and the preview shows the row as a `create` of a retired record: its notes say `makes the record retired`, and the page writes its change `made retired, as the file says: record_status: (blank) → retired`. It keeps every link of its own that a retired record keeps in the app, to records that are retired too: a label its contact, a place the place it is in and its operator, an item its location, its parent, its model, its owner, its operator and the item or the group it runs on, retired with it or gone from the team's hands, a group its parent, its owner, its location and its operator, a circuit its places and its owner, and a capacity line the lines it applies to. What stands on a retired record, which the order of loading puts after it, is taken as the app keeps it on one, where a file made that record retired and it is so still: its addresses, which no other door gives a retired item or group, and memberships of the item that have ended, entered with `left_on`; a record retired in the app is given neither by a file (after the review of 0.9.17). The creation of such an address holds `holder_retired`, true, so that a sync reads it as nothing to add. A retired group takes a membership that has ended by any door, as before. A record that is not retired is linked to a retired one by a row of a file that makes it, where the app keeps such a link once the other is retired (the owner's answer at the review of 0.9.17); a row that changes a record that is there, and a bulk edit, are held to the API's rules, and a new link to a retired record is refused to them, a value the record has already being no new link: an item or a purchase line to its retired model, an item, a group, a circuit or a circuit group to its retired owner, an item, a group or a place to its retired operator, a minor item to a retired major one, a group to a retired group it is within, a person of an owner to the retired owner or contact, an assignment to a retired place or contact, a contact of an agreement, a contract, a vendor or a circuit to a retired contact or record, a part of a circuit, a device of a circuit or a member of a circuit group to a retired circuit, item, group or circuit group, a registration to a retired system or holder, a coverage to a retired contract and, where it has ended, to a retired item, a replacement to a retired item, and a capacity line to a retired place or line. The row says each in its notes, `links to the retired owner Ex Old Team`, which the preview shows. What the app does not keep stays refused: a living item, group, circuit or place in a retired place, a living label on a retired contact, a living item on a retired host, an open membership of a retired item or in a retired group, a living contract in a retired agreement. The API refuses a new link to a retired record, as before. What the app gives no retired record is refused in a file the same way: a label that is not retired on a retired contact, a place or an item that is not retired in a retired place, a membership with no end of a retired item or in a retired group, and an assignment of a retired contact to a place. So the zip of Export everything, its retired records among them, loads whole into an empty inventory. A row may bring a retired record back with `active` or `draft`. A row that brings a retired contact or operator back is rejected for anybody but an Admin, and one that brings an operator back onto a contact that is retired is rejected for an Admin too, unless the row takes the contact off, in the preview and in the apply (P-298) |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
@@ -1866,8 +1892,8 @@ its side, its role and its contact. For items, the order on the data model page.
 | Links | `links` of a region, a site, a location and a catalog entry holds the links of the record in their order, each written `text <url>`, or `<url>` where it has no text, and joined with `;`: `Data sheet <https://www.example.com/c9300.pdf>; <https://www.example.com/c9300-install.html>`. The text of a link runs to its `<`, so it may hold a `;`, and each link ends with its `>`. A JSON file holds the same text. The cell is the whole list: a row that names it changes the links whole, and `!clear` leaves the record none. An export writes them so, and a file carries them out and back unchanged. A link that is not written so, or whose address is not a web address, rejects the row, naming the link |
 | Capacity lines | `effect` is `add`, as it is when left blank, or `multiply`. `applies_to` of a line that multiplies names the staff lines it works on, each by its name, joined with `;`: a line whose name holds a `;` cannot be named there, and is named on its own page or through the API instead. A line that multiplies leaves `quantity` and `units_each` blank, and is worked after the lines of the same file it may apply to, wherever it stands |
 | Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. It is matched by its `hid`, or else by its two items and its `replaced_on` (P-241). A row that gives no `replaced_on` is the one replacement of those two items where there is one, and a new one, of today, where there is none; where there are several it is rejected, and asks for the day. A row that matches one changes its `reason` and `reference` alone, and one that would give it another item or another day is rejected. An export writes `replaced_on` on every row, so that a file exported loads back and changes nothing, an item replaced twice and two items that swapped places and back among them. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
-| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the primary carrier and the number it gives the circuit, which are the primary carrier's columns, so that a number a carrier gives as another of a circuit's carriers finds nothing here, and the row is refused for the number another circuit has; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. The first of these that the row gives decides, as for items: a row with an enterprise circuit ID that no circuit has is a new circuit. More than one answer is an error on the row, never a guess. So two circuits of one name with neither an enterprise circuit ID nor a primary carrier's number cannot be told apart by a file loaded without their HIDs, as two items of one name with neither a serial number nor an asset tag cannot: loaded into an empty inventory, the second row is rejected as naming the record of the first, and such circuits are given an enterprise circuit ID to travel. `down_mbps` and `up_mbps` are the circuit's own, blank being the full rate of the port, and a row that gives the port's rate to a circuit that has none of its own leaves it so. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `groups` names the circuit's groups, joined with `;`, and is the whole list, as `tags` is. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
-| Load order | tags, vendors, catalog entries, contacts, vendor contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, device groups, items (parents before children), members, replacements, addresses, coverage, registrations, capacity lines, circuit groups, circuits, circuit carriers, circuit costs, circuit contacts, circuit devices. Addresses come after the groups, because a group has addresses too, and the devices of circuits after the items and the groups they name. The groups come before the items since 0.9.17, so that an item that runs on a stack or a cluster finds its host group in a file of every table (P-311): a group names no item |
+| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the primary carrier and the number it gives the circuit, which are the primary carrier's columns, so that a number a carrier gives as another of a circuit's carriers finds nothing here, and the row is refused for the number another circuit has; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. The first of these that the row gives decides, as for items: a row with an enterprise circuit ID that no circuit has is a new circuit. More than one answer is an error on the row, never a guess. So two circuits of one name with neither an enterprise circuit ID nor a primary carrier's number cannot be told apart by a file loaded without their HIDs, as two items of one name with neither a serial number nor an asset tag cannot: loaded into an empty inventory, the second row is rejected as naming the record of the first, and such circuits are given an enterprise circuit ID to travel. `down_mbps` and `up_mbps` are the circuit's own, blank being the full rate of the port, and a row that gives the port's rate to a circuit that has none of its own leaves it so. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `z_group` is the carrier network the Z side reaches, a circuit group of the kind `network`, by its name or its HID, and `!clear` takes it away; a row that gives the Z side a location and a network is rejected. The A side's dates are `a_installed_on`, `a_activated_on` and `a_disconnected_on`, and the Z side's `z_installed_on`, `z_activated_on` and `z_disconnected_on`, the names of before 0.9.18 being columns no more (P-320). An export writes the Z side's dates in force, with `_source` `own` or `a_side` where sources are asked for, and with `own_values` its own; a row that gives the Z side the very date it has from the A side, on a circuit with none of its own, leaves it reading the A side's, as the A side's stands after the row. `groups` names the groups the circuit was added to, joined with `;`, and is the whole list, as `tags` is: the network its Z side names is not among them, so that an export loaded back makes no membership of a Z side. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. A row of `circuit_groups` gives `kind`, `network` or `collection`, `collection` where a new group's row gives none, and `carrier`, a network's carrier, named as a circuit's carrier is, a carrier that is no vendor yet made one; circuit groups load before circuits, so that a circuit's `z_group` finds its network in a file of every table. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
+| Load order | countries, states, tags, vendors, catalog entries, contacts, vendor contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, device groups, items (parents before children), members, replacements, addresses, coverage, registrations, capacity lines, circuit groups, circuits, circuit carriers, circuit costs, circuit contacts, circuit devices. Addresses come after the groups, because a group has addresses too, and the devices of circuits after the items and the groups they name. The groups come before the items since 0.9.17, so that an item that runs on a stack or a cluster finds its host group in a file of every table (P-311): a group names no item. The lists of countries and states come first, before the places whose addresses take them (P-321) |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply, in whichever batch they were made; after a resume, the request ID of the resume. The preview is an event on the job, and so are `apply_started`, `apply_resumed` and `apply_stopped`, the last made by the server, and `apply` at the end, with the counts of what the apply did |
 
 ### Export
@@ -1927,7 +1953,7 @@ which is the template of its import, and the envelope with no rows as JSON.
 
 `POST /exports/all`, for every role, takes `format`, `csv` or `json`, and answers one
 zip, `Example-Inventory-all-csv-20261120T101500-0500.zip`, named as any download is: a
-file to each table, named as `examples/` names it, `tags.csv` to `circuit-devices.csv`,
+file to each table, named as `examples/` names it, `countries.csv` to `circuit-devices.csv`,
 in the order of loading, each the export of the whole table in the form that loads
 back, the stored values and the retired and the drafts included, the items by depth so
 that an item stands before the minor items in it. Each file is written as it is read,
@@ -2675,12 +2701,15 @@ half up. By `carrier` a line counts under the vendor that bills it, its own or t
 circuit's primary carrier, and a circuit is in the row of each carrier that bills any of
 it in the year: a line billed on no day of the year's service puts no carrier in a row,
 and a circuit with no such line is in the row of its primary carrier; by `site` it is in the row of the site it counts at; by `region` in that of each
-region at or above that site; by `group` in the row of each group it is in, a retired
+region at or above that site; by `group` in the row of each group it is in, those it
+was added to and the network its Z side names, once, a retired
 group among them, since retiring a group ends no membership, and by `tag`
 of each tag; by `circuit_type` and `owner` in one row. The blank row is what has none,
 and the totals count each circuit once. A row's `filter` lists its circuits on `GET
 /circuits`, with the report's filter, the year's window of service (activated by its last
-day, not disconnected before its first, and, retired, with a disconnection) and the
+day, not disconnected before its first, and, retired, with a disconnection, each by the
+dates of the side `cost_side` names: `a_activated_on` and `a_disconnected_on` for the
+A side, `effective.z_activated_on` and `effective.z_disconnected_on` for the Z side) and the
 row's own condition: by `billed_by`, the circuits that carrier provides or bills a line
 of, whatever the dates of the line, so that it may list a circuit more than the row
 counts where the carrier's only line on it was billed before or after the year, and by
@@ -2828,7 +2857,8 @@ a region:
       "source_path": null, "stopped": false, "contacts": [] }
   ],
   "ship_address": { "value": { "address1": "100 Example Way", "address2": null, "city": "Springfield",
-                               "state": "IL", "postal_code": "00000", "country": "US" },
+                               "state": "IL", "postal_code": "00000", "country": "US",
+                               "country_name": "United States", "state_name": "Illinois" },
                     "same_as_address": true,
                     "source": "site", "source_hid": "...", "source_path": "Americas > Central > Site-2",
                     "overrides_hid": "...", "overrides_path": "Americas > Central" },
@@ -2881,6 +2911,82 @@ where the setting is blank, as an installation with no access to the internet se
 or holds a value stored before its rule was what it is, which the rule now refuses.
 Nothing else of the place is in it. A region has no coordinates and no `map_url`.
 
+### Countries and states
+
+Since 0.9.18 the country and the state of every address, the street address of a site
+and of a location and the shipping set of a region, a site and a location, are chosen
+from two lists that an Admin keeps under Choices (P-318, P-321). A new inventory, by
+install or by the upgrade to 0.9.18, starts with every country of the Americas, 55, and
+their 633 subdivisions; Puerto Rico, Guam, the US Virgin Islands, American Samoa and the
+Northern Mariana Islands are states of the United States, beside its fifty and DC.
+
+`GET /countries` answers every country, `{hid, code, name, row_version, created_at,
+updated_at}`, the United States first however it is named, then the rest by name.
+`GET /states?country=MX` answers the states of one country by name, the country given
+by its code or its name, a `422` on `country` where no country is so named, and with no
+`country` the states of every country, each country's together in the order of the
+countries: `{hid, country, code, name, row_version, created_at, updated_at}`. Both are
+read by every role.
+
+`POST /countries` takes `code`, two letters kept in capitals, and `name`, up to 100
+characters, each unique without regard to case; `POST /states` takes `country`, by its
+code or its name, `code`, one to three letters and digits kept in capitals, the part of
+its ISO 3166-2 code after the hyphen, `TX` and not `US-TX`, and `name`, the code and the
+name unique within the country. `PATCH /countries/{hid}` and `PATCH /states/{hid}` take
+`name`, `code` and the `row_version`. Each is an Admin's, `403` for any other role, and
+audited. A code that an address holds is not changed, a `409` on `code` that names the
+first place that holds it and how many more do; a country's code that no address holds
+is changed, and its states go with it, each change audited. A state's country is not
+changed. The United States, `US`, is renamed and keeps its code, a `422` on `code`;
+`USA`, `U.S.`, `U.S.A.` and `United States of America` name it and no other country.
+`DELETE /countries/{hid}` removes a country that no address holds, with its states,
+none of which an address may hold, in one change: each state's removal is audited, and
+the country's event holds its `code`, its `name` and `states`, each as `TX Texas`. The
+United States is not removed, a `409`. `DELETE /states/{hid}` removes a state that no
+address holds. A state is held by an address whose `state` is its code and whose
+country in force is its country, a blank country being the United States.
+
+**An address.** `country` and `ship_country` hold the code of a listed country, or are
+blank. `POST` and `PATCH` of a region, a site and a location, a file and the CLI give a
+country by its code or its name, without regard to case or to the spaces around it, or
+as `USA`, `U.S.`, `U.S.A.` or `United States of America` for the United States, and it
+is kept as its code. A blank country is read as the United States wherever any other
+field of that set is filled, and is not written so. `state` and `ship_state` hold,
+where the country in force has states listed, the code of one of them, given by its code
+or its name and kept as its code, or are blank; where the country has none listed, text
+as typed, as before. A value that no list holds is a `422` at its field, which names
+the list: `GET /countries`, or `GET /states?country=MX` for the country in force. A
+country or a state held from before that no list holds, which the upgrade kept as it
+was typed, is kept until the country or the state of that set is changed, when both are
+checked; a change of anything else of the place goes through, and so does the value sent
+back as it is held.
+
+Beside its fields, the answer of a site and of a location holds `country_name`,
+`state_name`, `ship_country_name` and `ship_state_name`, and that of a region the two of
+the shipping set, read from the lists when it is read: the name of the code, the United
+States' for a blank country of a set that has any other field, and null where the value
+is blank or in no list. The shipping address in force of `GET .../{hid}/effective`
+answers `country_name` and `state_name` in its `value`, with its source as before.
+
+```json
+{ "city": "Monterrey", "state": "NLE", "country": "MX",
+  "country_name": "Mexico", "state_name": "Nuevo León",
+  "ship_state": null, "ship_country": null, "ship_country_name": null, "ship_state_name": null }
+```
+
+`GET /places/unlisted-addresses`, for every role, pages with `limit` and `offset` each
+country and state that the street address or the shipping set of a region, a site or a
+location holds and no list holds: what the upgrade left for a person to choose. A row
+is `{level, hid, name, path, record_status, set, field, value}`: `level` is `region`,
+`site` or `location`, `set` is `street` or `shipping`, `field` the field of the place
+that holds it, `country`, `state`, `ship_country` or `ship_state`, and `value` what it
+holds, as it was typed. The rows are by the path of the place, the street address first,
+the retired and the drafts among them. A country no list holds is listed; a state is
+listed where the country in force has states listed and the state is none of them, and
+the state of a country no list holds is judged once the country is chosen. A removal of
+a country or a state that an address holds is refused, so nothing an Admin does adds a
+row to it.
+
 ## Contacts of agreements and contracts
 
 `GET /agreements/{hid}/contacts` lists the contact records an agreement names, by role
@@ -2921,9 +3027,12 @@ model](data-model.md#circuits) page names them, and what is worked out when it i
   "circuit_type": "internet", "port_mbps": "1000.00", "down_mbps": "200.00", "up_mbps": "20.00",
   "speed": "1G / 200M / 20M",
   "a_location_hid": null, "a_note": "carrier network",
-  "z_location_hid": "0193a1f4-...", "z_note": null, "cost_side": "a",
+  "z_location_hid": "0193a1f4-...", "z_group_hid": null, "z_group": null, "z_note": null,
+  "cost_side": "a",
   "cost_site_hid": "0193a1f4-...", "cost_site_path": "Americas > Central > Site-2",
   "carrier_hid": "0193a1f4-...", "carrier_circuit_number": "EXT/12345/000/EXTL",
+  "a_installed_on": "2027-03-29", "a_activated_on": "2027-04-10", "a_disconnected_on": null,
+  "z_installed_on": "2027-04-02", "z_activated_on": null, "z_disconnected_on": null,
   "monthly_cost": "1000.00", "annual_cost": "12000.00", "in_service": true,
   "a_side": null,
   "z_side": { "location_hid": "0193a1f4-...", "name": "Building 1",
@@ -2936,25 +3045,43 @@ model](data-model.md#circuits) page names them, and what is worked out when it i
                "vendor": null, "starts_on": null, "ends_on": null, "in_date": true } ],
   "devices": [ { "hid": "...", "side": "z", "item_hid": "...", "group_hid": null,
                  "name": "site2-rtr-01", "record_status": "active" } ],
-  "groups": [ { "hid": "...", "name": "Internet access" } ],
+  "groups": [ { "hid": "...", "name": "Internet access", "kind": "collection",
+                "z_side": false, "record_status": "active" } ],
   "effective": {
     "support_weight": { "value": "2.00", "source": "setting", "source_hid": null },
     "down_mbps": { "value": "200.00", "source": "own", "source_hid": null },
     "up_mbps": { "value": "20.00", "source": "own", "source_hid": null },
+    "z_installed_on": { "value": "2027-04-02", "source": "own", "source_hid": null },
+    "z_activated_on": { "value": "2027-04-10", "source": "a_side", "source_hid": null },
+    "z_disconnected_on": { "value": null, "source": "none", "source_hid": null },
     "account_managers": { "value": [ "..." ], "source": "vendor", "source_hid": "0193a1f4-..." },
     "support_contacts": { "value": [ "..." ], "source": "vendor", "source_hid": "0193a1f4-..." },
     "site_contacts": { "a": [], "z": [ { "role": "technical", "value": [ "..." ],
                                          "source": "site", "source_hid": "0193a1f4-..." } ] } } }
 ```
 
-A side with no location is `null` in `a_side` or `z_side`. A list leaves `carriers`,
+A side with no location is `null` in `a_side` or `z_side`. `z_group_hid` is the carrier
+network the Z side reaches, a circuit group of the kind `network`, and `z_group` that
+group, its `hid`, `name`, `kind` and `record_status`, or `null`. `groups` is every
+group the circuit is in, by name, each once: those it was added to, with `z_side`
+false, and the network its Z side names, with `z_side` true, also where it was added
+to that one by hand. `effective.z_installed_on`, `effective.z_activated_on` and
+`effective.z_disconnected_on` are the Z side's dates in force, its own with the source
+`own`, or the A side's with `a_side`, or blank with `none` (P-320); `in_service`,
+`monthly_cost` and `annual_cost` follow the dates of the side `cost_side` names. A
+list leaves `carriers`,
 `costs`, `devices`, `groups` and the contacts out of each row, as `null`, which its own
 routes and the record answer; `fields` may ask for them. The record also answers
 `owner_exception` and `owner_exception_reason`, as an item does. A new circuit with no `cost_side` takes
 the setting `circuit_cost_side`. A request that leaves both sides with no location,
-gives a side with no location no note, gives a rate with no port speed or above it,
-puts an activation before the installation or a disconnection before the activation,
-or gives a carrier's number with no carrier, is a `422` that names the field; an
+gives a side with no location no note, or a Z side with no location and no network no
+note, gives a rate with no port speed or above it, puts an activation before the
+installation or a disconnection before the activation, on either side, the Z side's
+dates read as they are in force, so that a change of an A side's date may be refused
+at the Z side's field it puts out of order, gives the Z side a location and a network
+both, names on the Z side a group of the kind `collection`, a retired network or one
+there is not, brings a circuit back while its network is retired, or gives a carrier's
+number with no carrier, is a `422` that names the field; an
 enterprise circuit ID or a carrier's number that another circuit has is a `409` that
 names it.
 
@@ -3010,15 +3137,27 @@ each with its HID, name, enterprise circuit ID and side, the HID of the connecti
 circuits finds those with a side at a location, or at or beneath a site or a region, by
 `location:within:`, which a location's page asks for.
 
-**Circuit groups.** `GET /circuit-groups/{hid}` answers the group's fields, `circuits`,
+**Circuit groups.** `GET /circuit-groups/{hid}` answers the group's fields, its `kind`,
+`network` or `collection`, `collection` where a new group gives none, and a network's
+`carrier_hid` with `carrier`, the vendor's `hid` and `name`; `circuits`,
 how many it has, `in_service`, how many of them are in service today, and their
-`monthly_cost` and `annual_cost`, each circuit once. `GET /circuit-groups/{hid}/members`
-lists its circuits by name, paged, each with its `circuit`; `POST` adds circuits,
-`circuit_hids`, several at a time, each once, a circuit already in the group being a
-`409`, and
+`monthly_cost` and `annual_cost`, each circuit once. A network's circuits are those
+added to it and those whose Z side names it (P-320). `GET /circuit-groups/{hid}/members`
+lists its circuits by name, paged, each once, with its `circuit` and `z_side`, true
+where the circuit names the group on its Z side, and `hid` and `created_at`, the
+membership's, which are `null` for a circuit that is there by its Z side alone;
+`POST` adds circuits,
+`circuit_hids`, several at a time, each once, a circuit already added to the group being a
+`409`, and one that names the group on its Z side being added and kept, so that it
+stays when its Z side is changed; and
 `DELETE /circuit-groups/{hid}/members/{member_hid}` takes one out, the audit event
-holding what it was. A retired group takes no circuit, and a retired circuit is added
-to none.
+holding what it was, a circuit whose Z side names the group staying listed by it. A
+retired group takes no circuit, and a retired circuit is added
+to none. A `carrier_hid` on a collection, a retired vendor newly named, or a change of
+`kind` to `collection` while a circuit, retired or not, names the group on its Z side,
+is a `422` that names the field, the last saying how many circuits name it. The
+retirement of a network that a circuit that is not retired names on its Z side is a
+`409` that says how many, and names them.
 
 ## Reference files
 
@@ -3205,8 +3344,10 @@ hirdir report capacity --try default_item_weight=1 --try weight_per_resource_uni
 hirdir circuits list --filter 'circuit_type:eq:internet effective.down_mbps:lt:100'
 hirdir circuits show EC-0042                     # by HID, enterprise circuit ID or name
 hirdir circuits set EC-0042 cost_side=z          # count it at the far end
+hirdir circuits set EC-0051 z_group='Example MPLS East' z_activated_on=2027-04-17
 hirdir circuits add-contact EC-0042 noc@example.net --role support_contact
 hirdir circuit-groups show 'Internet access'     # its circuits, and what they cost
+hirdir circuit-groups show 'Example MPLS East'   # a network: its carrier, and each circuit's Z side
 hirdir circuit-groups add 'Internet access' EC-0042 EC-0043
 hirdir vendors add-contact 'Example Telecom' jordan.reyes@example.com --role account_manager
 hirdir report circuit-costs --year 2027 --by site
@@ -3253,7 +3394,7 @@ refused leaves the others as they went.
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | Every table | `hirdir export --all` writes the zip of every table, `POST /exports/all`, CSV unless `--format json` says otherwise, to `--output`, or where none is given to the name the server gives it, in the folder the command is run in; a zip is never written to the terminal. It takes no table, `--filter`, `--sort`, `--columns`, `--own-values`, `--include-sources`, `--place-codes`, `--include-archived` or `--include-drafts`, and refuses each with exit `2`, writing nothing: each table is whole, in the form that loads back, with its stored values and its retired and drafts (P-286). The users are not in it, and are exported by an Admin from the web UI or `POST /users/export` |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |
-| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
+| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. An address and the shipping address are written with the names of their state and their country, as the answer gives them from the lists, a blank country beside another field being the United States, and with the value as it is held where no list holds it (P-321). The CLI has no command of the choices, and so none of the lists of countries and states: they are read with `GET /countries` and `GET /states`, and a file of either is imported and exported as any other, `hirdir import countries.csv --entity countries`. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
 | Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. The table leaves out the filter of each row; `--format json` holds it, with the conditions of the counts, to give to `hirdir items list --filter` (P-206). `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |
 | The balance over time | `hirdir capacity record` records the balance as it is now, in place of this week's record, with `--note` to say why. `hirdir capacity records` lists the records, one week to a row, the oldest first, each with the demand, the supply, the balance and the coverage of both views, whether it was corrected, and its note; `--format csv` and `json` write all of them |
@@ -3262,8 +3403,8 @@ refused leaves the others as they went.
 | A purchase | `hirdir purchases show` takes the HID or the reference of a request, and prints each line with its model, or as not tracked, and the part number procurement gave it. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
 | A vendor | `hirdir vendors portfolio VENDOR` prints the totals, the kinds and the models. With `--format csv` or `json` and `--output` it writes the items of the vendor, one row each, with their coverage |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
-| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups. `hirdir circuits set CIRCUIT field=value` changes the fields of one circuit, each named as a column of its file names it (`carrier`, `owner`, `a_location`), as a change on its page does: a value given is the circuit's own, also one that is the default it has, and its groups are changed with `hirdir circuit-groups`. `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
-| Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
+| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups, the network its Z side names marked `(Z side)`; the dates of each side, the Z side's in force marked `(A side)` where they are the A side's. `hirdir circuits set CIRCUIT field=value` changes the fields of one circuit, each named as a column of its file names it (`carrier`, `owner`, `a_location`, `z_group`, `z_activated_on`), as a change on its page does: a value given is the circuit's own, also one that is the default it has or a Z side's date the same as the A side's, and its groups are changed with `hirdir circuit-groups`. `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
+| Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its kind, a network's carrier, and its circuits and their cost, each circuit whose Z side names it marked `z_side`; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line. A circuit that is in a network by its Z side alone is not taken out by `remove`, which says so and changes nothing: its Z side is changed with `hirdir circuits set` |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
 | Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. The contact and an operator are two changes, the contact first: where the change of the operator is refused, as for a label that another has, the change of the contact is kept, and the command says so on a line before the refusal, `your contact is changed (phone); your operator klee is not:`, and exits with the code of the refusal. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself; an account with no role is not signed in (P-299). `hirdir profile access-code --generate` asks for the code the person has alone, has the server make the new one by `GET /auth/new-access-code`, sets it as a typed one is set, and prints it once (P-300). Since 0.9.17, where a name saved by `hirdir profile set --name` is one that another contact has, which is saved as any other, the command says so on a line after the change, with how many and how to list them: `another contact is named Kim Lee: a file tells you apart by your email or your HID; hirdir contacts list --filter 'name:eq:Kim Lee' --include-archived --include-drafts lists them` (P-315), the filter written as the web writes it, as a tree in JSON where the name holds what the short form would read as a condition. `hirdir contacts` has no command that makes or changes a contact: a contact is made and changed on the web or by a file. `hirdir sign-in` of an account that holds no role prints the server's words and whom to ask, each that is set, keeps no session and exits `3`; the server refuses a service token (P-294, P-295) |
@@ -3356,8 +3497,9 @@ sites, locations, operators, contacts with their assignments, agreements and con
 their coverage and their contacts, purchase requests with their lines, external systems with their
 registrations, capacity lines and the records of the balance, tags and stored imports,
 and the audit events of those records, and writes one audit event that says so and
-names the backup. Accounts, groups, roles, service tokens, settings, choices and
-lifecycle rules stay, and so does the contact each user is, with its history (P-174). `--everything` removes those too and leaves the database as a
+names the backup. Accounts, groups, roles, service tokens, settings, choices, the
+lists of countries and states (P-321) and lifecycle rules stay, and so does the
+contact each user is, with its history (P-174). `--everything` removes those too and leaves the database as a
 fresh installation has it, with no account and an empty audit trail.
 
 `hirdir admin load-examples` loads the fictional inventory of `examples/`, which the
@@ -3400,7 +3542,7 @@ Accounts and settings are not touched.
 | Reports | Every table of a report has a rank by the column it is sorted by, and a bar beside each count (P-178, P-180). Scoreboard: the operators, each with its rank, the items, components, managed nodes and support weight it looks after and their health in one column, a bar in four parts with its numbers, the most first, each count with a bar beside it; beneath them, how each operator's items have it and how many groups and places are given it, a table of its own (P-181); with what nobody is assigned to and what is under an open label; the device groups, ranked in the same way, each with its type, members, nested groups and the items, components, managed nodes, support weight and health of what is under it (P-178); and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. In both, the name of a row of a record opens its page: a vendor, a model, an owner, an operator, a group, a site, a region and a contract (P-240); a row of a tag, which has no page, of a value or of what has none is its name alone. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements. Circuit costs: the year and the grouping to choose, by carrier unless another is chosen, each row with its circuits, the year's cost, and the monthly and annual figures, leading to its circuits |
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on. A file chosen before the page has read the kinds of file is given its first kind when they are read, a picture a photograph, unless the person has chosen one |
-| Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. While the form of a row is open, the row's buttons stand at the foot of the row, directly above the form, so that the button that opened it is in view with it however tall the row is, as the row of a setting with a long description is; closed, they are at the head of the row again (P-278). It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
+| Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. While the form of a row is open, the row's buttons stand at the foot of the row, directly above the form, so that the button that opened it is in view with it however tall the row is, as the row of a setting with a long description is; closed, they are at the head of the row again (P-278). It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only. Under Choices are the lists of countries and states, for all to read and for an Admin alone to change: the countries, the United States first, each with its code and its name, and the states of the country chosen; adding, renaming, giving another code and removing are refused as the API refuses them, with its words (P-321) |
 | About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin. Under it, for everyone signed in, the server's own measures, from `GET /about/load` (P-266, P-270 to P-273): its health in words, of speed where nothing is refused and of a busy server with what it does not answer where something is, with the measure it is read from, and, where answers are very slow or past the ceiling and nothing is refused, why not; the measures the health is read from, the 95th percentile of the time of a request with how many requests it is of, the same of the reads alone with how many they are, by which what is refused is decided, and the processor time, each with its ceiling or that it is not looked at; over the last ten minutes the lowest, the average and the highest time of an answer with its 50th, 95th and 99th percentile, and the lowest, the average and the highest processor time; the reads and changes counted by band of time, each band named from `bounds_ms` and marked with the shape and colour of its level; how many requests were answered well, not taken as asked, failed, and answered as busy; the requests in flight and how long the oldest has waited; one graph; when the server started; the memory of the server's process, the memory of the host used and free, the space free where the inventory is kept, the processors of the host and its load; whether the background work is being done, by a process of its own or by the server itself, and where it is not, that imports and bulk edits wait; the slowest requests, and those long by nature apart; and who is active. A value the host does not say is "not known", never 0. See [The server's measures on About](#the-servers-measures-on-about) |
 | Profile | A person's own page, `/profile`, for every role, reached from their name in the menu bar (P-289): their username, role and groups as text, and three forms, each with a button of its own, named for it: the details of the contact they are, the label and the colour of each operator they are behind, and their access code. What 0.9.14 adds, below, says each |
 | The mark of health | In the menu bar of every page, before the name of who is signed in, for everyone signed in (P-270, P-272): what the newest answer of the server said in `X-Hirdir-Health`, as a mark that is green, yellow, orange or red and a circle, a triangle, a diamond or a square, with its words as its name and where it is pointed at, and a link to About. It asks the server nothing. See [The mark of health](#the-mark-of-health) |

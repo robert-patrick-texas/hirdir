@@ -431,7 +431,8 @@ upload, by its extension and by its first bytes.
   what the server keeps of it, which an empty inventory may hold.
 - **The examples.** `hirdir admin load-examples` (`io/examples.py`) imports each CSV file
   of the examples in the load order into an empty inventory, with the service stopped,
-  so that a reset takes them again (P-166). It previews and applies each as any import
+  so that a reset takes them again (P-166), but the lists of countries and states, which
+  a reset keeps (P-321). It previews and applies each as any import
   is, applying in its own process the jobs it made, with the Inventory role that it
   gives `io/imports.py`, since no account asked for them. The wheel carries `examples/`
   inside the package, as `hirdir/examples/`, and a development checkout has them at
@@ -2072,7 +2073,11 @@ some have a credit for months of it; some 270 have another carrier for the local
 or a cross-connect, which bills a line of its own; most have a router at an end; a few
 are drafts on order, some were disconnected, some are to be disconnected soon, and
 about a hundred are retired. Some 300 have a weight of their own, a few name a contact
-of their own, and 37 groups hold them, one of them retired. Three regions, some 35
+of their own, and 37 groups hold them, one of them retired. Since 0.9.18 the MPLS
+circuits that end in the carrier's network name it on their Z side, the private network
+of each of their two carriers, a circuit group of the kind network, and a fifth of the
+circuits between two sites have the Z side installed some days after the A side (P-320).
+Three regions, some 35
 sites and some 20 main rooms have a support weight of their own, and a few models came
 in without theirs. The six weights of the settings are left at their defaults: the
 timing sets them in runs of their own. The fixture has an Admin account beside the

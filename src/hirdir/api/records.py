@@ -394,6 +394,26 @@ class SiteEffective(Model):
 # --- end of the support weight of a place ---
 
 
+# The country and the state of an address, and their names (P-321).
+COUNTRY = (
+    "The code of a country of `GET /countries`, given by its code or its name without "
+    "regard to case, or as USA, U.S., U.S.A. or United States of America for the United "
+    "States, and kept as its code. Blank is read as the United States where any other "
+    "field of the set is filled, and is not written so. A value held from before that "
+    "no list holds is kept until the country or the state of the set is changed."
+)
+STATE = (
+    "Where the country in force has states listed, the code of one of them, given by its "
+    "code or its name and kept as its code, `GET /states?country=`; where it has none, "
+    "text as typed."
+)
+COUNTRY_NAME = (
+    "The name of its country, read from the list: the United States' for a blank country "
+    "of a set that has any other field; null where it is blank or in no list."
+)
+STATE_NAME = "The name of its state, read from the list; null where it is blank or in no list."
+
+
 class RegionOut(Model):
     """A part of the world that sites are in."""
 
@@ -408,7 +428,9 @@ class RegionOut(Model):
     ship_city: str | None
     ship_state: str | None
     ship_postal_code: str | None
-    ship_country: str | None
+    ship_country: str | None = Field(description=COUNTRY)
+    ship_country_name: str | None = Field(description=COUNTRY_NAME)
+    ship_state_name: str | None = Field(description=STATE_NAME)
     ship_instructions: str | None
     operator_hid: str | None
     operator: OperatorRef | None = Field(description="Its own operator.")
@@ -489,15 +511,19 @@ class SiteOut(Model):
     address1: str | None
     address2: str | None
     city: str | None
-    state: str | None
+    state: str | None = Field(description=STATE)
     postal_code: str | None
-    country: str | None
+    country: str | None = Field(description=COUNTRY)
+    country_name: str | None = Field(description=COUNTRY_NAME)
+    state_name: str | None = Field(description=STATE_NAME)
     ship_address1: str | None
     ship_address2: str | None
     ship_city: str | None
-    ship_state: str | None
+    ship_state: str | None = Field(description=STATE)
     ship_postal_code: str | None
-    ship_country: str | None
+    ship_country: str | None = Field(description=COUNTRY)
+    ship_country_name: str | None = Field(description=COUNTRY_NAME)
+    ship_state_name: str | None = Field(description=STATE_NAME)
     ship_instructions: str | None
     ship_same_as_address: bool = Field(
         description="Deliveries go to the street address: the shipping address is read from it."
@@ -596,15 +622,19 @@ class LocationOut(Model):
     address1: str | None
     address2: str | None
     city: str | None
-    state: str | None
+    state: str | None = Field(description=STATE)
     postal_code: str | None
-    country: str | None
+    country: str | None = Field(description=COUNTRY)
+    country_name: str | None = Field(description=COUNTRY_NAME)
+    state_name: str | None = Field(description=STATE_NAME)
     ship_address1: str | None
     ship_address2: str | None
     ship_city: str | None
-    ship_state: str | None
+    ship_state: str | None = Field(description=STATE)
     ship_postal_code: str | None
-    ship_country: str | None
+    ship_country: str | None = Field(description=COUNTRY)
+    ship_country_name: str | None = Field(description=COUNTRY_NAME)
+    ship_state_name: str | None = Field(description=STATE_NAME)
     ship_instructions: str | None
     ship_same_as_address: bool = Field(
         description="Deliveries go to the street address: the shipping address is read from it."
@@ -1010,14 +1040,16 @@ class RoleContacts(Model):
 
 
 class ShipAddress(Model):
-    """A shipping address, taken whole."""
+    """A shipping address, taken whole, with the names of its country and its state."""
 
     address1: str | None
     address2: str | None
     city: str | None
-    state: str | None
+    state: str | None = Field(description=STATE)
     postal_code: str | None
-    country: str | None
+    country: str | None = Field(description=COUNTRY)
+    country_name: str | None = Field(description=COUNTRY_NAME)
+    state_name: str | None = Field(description=STATE_NAME)
 
 
 class EffectiveShipAddress(Model):
@@ -4511,6 +4543,89 @@ class ChoicePatch(Model):
     active: bool | None = None
 
 
+# --- the lists of countries and states (P-318, P-321) ---
+
+
+CountryCode = Annotated[str, Field(min_length=2, max_length=2)]
+StateCode = Annotated[str, Field(min_length=1, max_length=3)]
+ListedName = Annotated[str, Field(min_length=1, max_length=100)]
+
+
+class CountryOut(Model):
+    """A country an address may be in."""
+
+    hid: str
+    code: str = Field(description="Its ISO 3166-1 alpha-2 code, two capital letters.")
+    name: str
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CountryCreate(Model):
+    """A new country of the list. Its code is given in any case and kept in capitals."""
+
+    code: CountryCode
+    name: ListedName
+
+
+class CountryPatch(Model):
+    """Fields of a country to change, and the version they were read at. A code that an
+    address holds is not changed, and the United States keeps `US`."""
+
+    row_version: int
+    code: CountryCode | None = None
+    name: ListedName | None = None
+
+
+class StateOut(Model):
+    """A state of a country: a subdivision as ISO 3166-2 has it."""
+
+    hid: str
+    country: str = Field(description="The code of its country.")
+    code: str = Field(
+        description="The part of its ISO 3166-2 code after the hyphen: `TX` of `US-TX`."
+    )
+    name: str
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class StateCreate(Model):
+    """A new state of a country of the list, the country by its code or its name."""
+
+    country: ListedName
+    code: StateCode
+    name: ListedName
+
+
+class StatePatch(Model):
+    """Fields of a state to change, and the version they were read at. A code that an
+    address holds is not changed, nor is a state's country."""
+
+    row_version: int
+    code: StateCode | None = None
+    name: ListedName | None = None
+
+
+class UnlistedAddress(Model):
+    """A country or a state of an address of a place that no list holds."""
+
+    level: Level = Field(description="The place is a region, a site or a location.")
+    hid: str
+    name: str
+    path: str
+    record_status: RecordStatus
+    set: Literal["street", "shipping"] = Field(
+        description="The street address, or the shipping set."
+    )
+    field: Literal["country", "state", "ship_country", "ship_state"] = Field(
+        description="The field of the place that holds the value."
+    )
+    value: str = Field(description="What it holds, as it was typed.")
+
+
 class SettingOut(Model):
     """A setting: the value in force, its default, what it means and what it takes. Or
     a value that is fixed in the code, with `fixed` true: what it limits and why it is
@@ -4585,6 +4700,9 @@ class LifecycleRulePatch(Model):
 # --- files and bulk edits ------------------------------------------------------------
 
 EntityName = Literal[
+    # The lists of countries and states, an Admin's, loaded first (P-321).
+    "countries",
+    "states",
     "tags",
     "vendors",
     "catalog_entries",
