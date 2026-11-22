@@ -1905,6 +1905,7 @@ def release_operator(
     user: people.Fate = None,
     contact: people.Fate = None,
     other: people.Labels = None,
+    agent: people.Agents = None,
     dry_run: people.DryRun = False,
     url: Url = None,
     token: Token = None,
@@ -1912,7 +1913,8 @@ def release_operator(
     """Release what an operator is on: the label is retired and stands for nothing, and
     each thing it was on has the operator of the next level up, or none. Prints its
     contact, the user that contact is and the other operators of that contact, and
-    takes what becomes of each: --user, --contact and, for each other, --operator."""
+    takes what becomes of each: --user, --contact and, for each other, --operator, and
+    where the user is retired, --agent for each of its agents (P-316)."""
     target = client.load_target(url, token)
     found = find_operator(target, operator)
     people.retire(
@@ -1927,6 +1929,7 @@ def release_operator(
         dry_run=dry_run,
         find_contact=find_contact,
         done=f"{found['label']} is released; it was on {found['uses']} records of its own",
+        agents=agent,
     )
 
 
@@ -1935,13 +1938,15 @@ def retire_contact(
     contact: Annotated[str, typer.Argument(help="An email address, a name or an HID.")],
     user: people.Fate = None,
     operator: people.Labels = None,
+    agent: people.Agents = None,
     dry_run: people.DryRun = False,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Retire a contact. Prints the user it is and the operators it stands behind, and
-    takes what becomes of each: --user and, for each, --operator. A contact is not
-    retired while its account or a label stands on it."""
+    takes what becomes of each: --user and, for each, --operator, and where the user is
+    retired, --agent for each of its agents (P-316). A contact is not retired while its
+    account or a label stands on it."""
     target = client.load_target(url, token)
     found = find_contact(target, contact)
     people.retire(
@@ -1955,6 +1960,7 @@ def retire_contact(
         operators=operator,
         dry_run=dry_run,
         find_contact=find_contact,
+        agents=agent,
     )
 
 

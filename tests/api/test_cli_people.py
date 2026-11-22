@@ -283,3 +283,46 @@ def test_a_username_in_the_form_of_an_hid_is_a_username_first(
         back.splitlines()[-2]
         == f"{first['hid']} is active again, with the viewer role and no group"
     )
+
+
+def test_a_user_is_retired_with_what_becomes_of_each_agent(
+    run: Any, kim: Kim, desk: Maker, as_admin: tuple[str, str]
+) -> None:
+    """P-316: `--agent USERNAME=retire` or `USERNAME=hand_over:USER`, printed under the
+    user; an agent left unsaid is refused by the server, exit 5, with it named."""
+    sam = desk.post("/users", {"username": "sam", "role": "inventory"})["user"]
+    for name in ("agent-reconcile", "agent-scan"):
+        desk.post(
+            "/users",
+            {
+                "username": name,
+                "kind": "agent",
+                "answerable_hid": kim.user["hid"],
+                "role": "viewer",
+            },
+        )
+    listed = run("users", "list", "--kind", "agent", *as_admin).stdout.splitlines()
+    assert [line.split()[0] for line in listed[1:]] == ["agent-reconcile", "agent-scan"]
+    assert listed[1].endswith("for klee")
+    keep = ("--contact", "keep", "--operator", "KL=keep", "--operator", "LM=keep")
+    unsaid = run("users", "retire", "klee", *keep, *as_admin, expect=5)
+    assert "the agent agent-reconcile, the agent agent-scan" in unsaid.output
+    plan = ("--agent", "agent-reconcile=retire", "--agent", "AGENT-SCAN=hand_over:sam")
+    said = run("users", "retire", "klee", *keep, *plan, "--dry-run", *as_admin).stdout
+    assert _chain(said)[-2:] == [
+        ["agent", "agent-reconcile", "retire"],
+        ["agent", "agent-scan", "hand over to sam"],
+    ]
+    run("users", "retire", "klee", *keep, *plan, *as_admin)
+    agents = {
+        one["username"]: one for one in desk.get("/users", kind="agent", retired="yes")["items"]
+    }
+    assert agents["agent-reconcile"]["record_status"] == "retired"
+    assert agents["agent-scan"]["answerable_hid"] == sam["hid"]
+    wrong = run("users", "retire", "sam", "--agent", "agent-scan=keep", *as_admin, expect=2)
+    assert "USERNAME=retire or USERNAME=hand_over:USER" in wrong.output
+    # An agent whose person is retired is brought back answerable to another.
+    back = run("users", "bring-back", "agent-reconcile", "--for", "sam", *as_admin).stdout
+    assert "answerable to sam" in back
+    brought = desk.get(f"/users/{agents['agent-reconcile']['hid']}")
+    assert brought["answerable"]["username"] == "sam"

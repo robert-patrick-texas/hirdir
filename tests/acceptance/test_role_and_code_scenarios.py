@@ -42,8 +42,8 @@ def test_s59_an_account_with_no_role_does_not_sign_in(server: Server) -> None:
     _put(admin, "help_organization", "Example Network Tools")
     _put(admin, "help_email", "tools@example.net")
 
-    # Made with no role by `hirdir admin`, which makes the first Admin: refused, and told.
-    server.admin("create-user", "nrole", "--access-code", "no-role-code-01")
+    # Made with no role by `hirdir admin`, with --no-role (P-313): refused, and told.
+    server.admin("create-user", "nrole", "--no-role", "--access-code", "no-role-code-01")
     refused = _sign_in(server, "nrole", "no-role-code-01")
     assert refused.status_code == 403, refused.text
     problem = refused.json()
