@@ -202,6 +202,7 @@ def test_an_agent_is_made_for_a_person_and_never_admin(tmp_path: Path, monkeypat
         app, ["admin", "create-user", "--kind", "agent", "--for", "sam", "agent-two"]
     )
     assert bare.exit_code == 0, bare.output
+    assert bare.output.splitlines()[0] == "created agent-two, an agent answerable to sam"
     assert "agent-two holds no role, and its tokens are refused until an Admin gives it one" in (
         bare.output
     )

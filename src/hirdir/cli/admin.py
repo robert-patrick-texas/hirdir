@@ -305,11 +305,11 @@ def create_user(
             db.commit()
         except DomainError as error:
             raise _fail(str(error), 4) from error
-    typer.echo(
-        f"created {user.username}"
-        + (f", an agent answerable to {responsible.username}," if responsible is not None else "")
-        + (f" with the {role} role" if role else "")
-    )
+    # A person: `created ada with the admin role`; an agent: `created agent-reconcile, an
+    # agent answerable to sam, with the inventory role`, the role left out with none.
+    agent = f", an agent answerable to {responsible.username}" if responsible is not None else ""
+    with_role = f"{',' if agent else ''} with the {role} role" if role else ""
+    typer.echo(f"created {user.username}{agent}{with_role}")
     if groups:
         typer.echo(
             f"in the group{'s' if len(groups) > 1 else ''} " + ", ".join(g.name for g in groups)

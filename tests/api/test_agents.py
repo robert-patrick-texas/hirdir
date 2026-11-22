@@ -2,6 +2,8 @@
 agent, never Admin, the role in force capped by the person at each request, the mark
 of the audit trail, and an agent retired with its person or handed to another."""
 
+import csv
+import io
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -9,7 +11,7 @@ from sqlalchemy import event, select
 
 from hirdir.api import views
 from hirdir.auth.roles import Role
-from hirdir.db.models import AuditEvent, User
+from hirdir.db.models import AuditEvent, RoleGrant, User
 from hirdir.domain import accounts, audit
 from hirdir.io import imports
 from tests.api.inventory import API, Maker, errors
@@ -323,6 +325,53 @@ def test_the_token_is_refused_while_the_person_cannot_answer_for_it(
     )
 
 
+def test_an_agent_that_holds_admin_all_the_same_acts_as_inventory(
+    client: TestClient, admin: dict, db
+) -> None:
+    """No route gives an agent Admin; a database edited by hand, or restored from one,
+    may. Its role in force is held at Inventory where it is read, beside its person's
+    (the lead's reading of never Admin, P-316)."""
+    desk = _desk(client, admin)
+    sam = desk.person("sam", role="admin")
+    agent = desk.agent("agent-reconcile", sam)
+    robot = desk.token(agent)
+    db.add(RoleGrant(role="admin", user_hid=agent["hid"]))
+    db.commit()
+    record = desk.user(agent)
+    assert (record["role"], record["role_in_force"], record["role_capped_by"]) == (
+        "admin",
+        "inventory",
+        "never_admin",
+    )
+    assert client.get(f"{API}/users", headers=robot).status_code == 403
+    assert client.get(f"{API}/auth/me", headers=robot).json()["role_in_force"] == "inventory"
+    # A person below Inventory holds it lower still, and is why.
+    desk.revoke(desk.grants(sam)[0])
+    desk.post("/role-grants", {"role": "viewer", "user_hid": sam["hid"]})
+    record = desk.user(agent)
+    assert (record["role_in_force"], record["role_capped_by"]) == ("viewer", "person_role")
+
+
+def test_the_users_file_writes_the_role_in_force_of_an_agent(
+    client: TestClient, admin: dict
+) -> None:
+    """The column `role` is the role in force, what the account can do: of an agent, the
+    lower of its own and its person's, blank where its person cannot answer for it."""
+    desk = _desk(client, admin)
+    sam = desk.person("sam", role="viewer")
+    desk.agent("agent-reconcile", sam)
+    kim = desk.person("klee")
+    desk.agent("agent-scan", kim)
+    desk.patch(
+        f"/users/{kim['hid']}", {"row_version": desk.user(kim)["row_version"], "disabled": True}
+    )
+    answer = client.post(f"{API}/users/export", headers=admin)
+    assert answer.status_code == 200, answer.text
+    rows = {row["username"]: row for row in csv.DictReader(io.StringIO(answer.text))}
+    assert (rows["agent-reconcile"]["role"], rows["sam"]["role"]) == ("viewer", "viewer")
+    assert (rows["agent-scan"]["role"], rows["klee"]["role"]) == ("", "inventory")
+
+
 def test_an_agent_has_no_profile(client: TestClient, admin: dict) -> None:
     desk = _desk(client, admin)
     agent = desk.agent("agent-reconcile", desk.person("sam"))
@@ -368,6 +417,29 @@ def test_an_admin_hands_an_agent_to_another_person(client: TestClient, admin: di
 
 
 # --- the audit trail -----------------------------------------------------------------
+
+
+def test_a_sign_in_typed_for_an_agent_is_no_change_of_an_agent(
+    client: TestClient, admin: dict
+) -> None:
+    """An account that holds tokens cannot sign in: a sign-in typed with its username is
+    an event of that account, as the record, and by nobody, so that the changes of agents
+    together hold only what agents did (P-316); and so for a service account."""
+    desk = _desk(client, admin)
+    agent = desk.agent("agent-reconcile", desk.person("sam"))
+    tool = desk.post("/users", {"username": "ex-tool", "kind": "service"})["user"]
+    for name in ("agent-reconcile", "ex-tool"):
+        typed = client.post(
+            f"{API}/auth/sign-in", json={"username": name, "access_code": "not-a-code-01"}
+        )
+        assert typed.status_code == 401
+    failed = desk.get("/audit-events", action="sign_in_failed")["items"]
+    assert [(one["record_hid"], one["actor_hid"], one["actor_kind"]) for one in failed] == [
+        (tool["hid"], None, None),
+        (agent["hid"], None, None),
+    ]
+    assert desk.get("/audit-events", actor_kind="agent")["total"] == 0
+    assert desk.get("/audit-events", actor_kind="service")["total"] == 0
 
 
 def test_each_event_of_an_agent_is_kept_for_its_person(client: TestClient, admin: dict, db) -> None:
@@ -551,6 +623,25 @@ def test_an_agent_is_brought_back_answerable_to_a_person_who_is_not_retired(
         path, {"row_version": version, "role": "admin", "answerable_hid": kim["hid"]}, 422
     )
     assert errors(refused) == {"role": "an agent is never Admin"}
+    # Named again, the retired person is refused as a hand-over to them is, and nothing
+    # changes: the agent stays retired, and nobody lists it.
+    for retired in (sam, desk.person("pat")):
+        if retired is not sam:
+            desk.post(
+                f"/users/{retired['hid']}/retire",
+                {"row_version": desk.user(retired)["row_version"]},
+                200,
+            )
+        refused = desk.post(
+            path, {"row_version": version, "role": "viewer", "answerable_hid": retired["hid"]}, 422
+        )
+        assert errors(refused) == {"answerable_hid": "this account is retired"}
+        assert refused["detail"] == (
+            f"the account {retired['username']} is retired: an agent is answerable to a person "
+            "who is not"
+        )
+    assert desk.user(agent)["record_status"] == "retired"
+    assert desk.user(agent)["row_version"] == version
     back = desk.post(
         path, {"row_version": version, "role": "viewer", "answerable_hid": kim["hid"]}, 200
     )

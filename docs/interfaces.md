@@ -620,7 +620,11 @@ requests are held to now, which is `role` for a person and a service account and
 agent, the lower of `role` and its person's, null where its tokens are refused for the
 person; and `role_capped_by`, of an agent whose `role_in_force` is lower than `role`, why:
 `person_role`, the person's role is lower, `person_no_role`, `person_disabled` or
-`person_retired`; null where nothing holds it lower, and for the other kinds.
+`person_retired`; null where nothing holds it lower, and for the other kinds. An agent
+that holds Admin all the same, which no route gives it but a database edited by hand or
+restored from one may, is held at Inventory wherever its role is read, beside its
+person's: `role` says `admin`, `role_in_force` `inventory`, and `role_capped_by`
+`never_admin`, unless its person's role is lower still, `person_role`.
 `GET /auth/me`, and the user in the answer of signing in, answer each field of this
 section as a user does, `kind`, `answerable_hid`, `answerable`, `agents`, `grants`,
 `role_in_force` and `role_capped_by`, so that the token of an agent reads its kind, its
@@ -681,7 +685,9 @@ answerable to.
 An agent by itself is retired and brought back as a service account is, its tokens
 revoked when it is retired. `POST /users/{hid}/bring-back` takes `answerable_hid`, of an
 agent alone, a `422` for the other kinds: the person answerable for it from then on, as
-`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`. Left out,
+`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`, and held
+to the same rules before anything is changed: a retired person is a `422` on
+`answerable_hid`, the one the agent had among them. Left out,
 the agent stays its person's; where that person is retired it is a `409` on
 `answerable_hid` that names them as `existing`, and nothing changes. An agent may be
 brought back with no role, as a service account may.
@@ -696,7 +702,11 @@ history writes an agent's change as `agent-reconcile for sam`, the agent's usern
 then the person's. `GET /audit-events` takes `actor_kind`, which keeps the events of the
 accounts of one kind, `agent` the changes of agents together, and `for_hid`, those made
 for one person; and it sorts by `actor_kind` and `for_name` as by its other columns.
-Every account an answer names is read once for the whole page. The server's own
+Every account an answer names is read once for the whole page. A sign-in typed with
+the username of a service account or an agent, neither of which signs in, is an event of
+that account as its `record_hid` and by nobody, `actor_hid` null, as one typed for a
+username there is not is by nobody: so `actor_kind=agent` holds only what agents did,
+and `actor_kind=service` only what service accounts did. The server's own
 measures name an agent's requests with the kind `agent` (P-266).
 
 `POST /users/export` has a column `answerable` after `kind`, the username of the person
@@ -1883,8 +1893,10 @@ rejected, in both formats, for every table. A test holds it over all of them.
 `POST /users/export`, for an Admin, answers the users as CSV (P-288),
 `Example-Inventory-users-20261120T101500-0500.csv`: a row to each user, by username,
 with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a user
-with no contact, `role`, the role in force, granted to the user or to a group it is in,
-blank where it has none, `groups`, by name, `operators`, the labels of those behind
+with no contact, `role`, the role in force, what the account can do, granted to the
+user or to a group it is in, blank where it has none, and of an agent the lower of its
+own and its person's, as `role_in_force` of `GET /users` answers it, blank where its
+person cannot answer for it (P-316), `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person`, `service` or
 `agent`, `answerable`, the username of the person answerable for an agent and blank for
 the others (P-316), `state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the

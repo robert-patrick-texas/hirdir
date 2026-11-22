@@ -721,6 +721,10 @@ def test_going_back_from_0013_with_an_item_replaced_twice_is_refused_in_words(
         assert connection.execute(text("SELECT hid FROM item_replacements")).scalar() == "r-1"
 
 
+# The indexes of the audit trail that 0018 adds, by who acted and for whom (P-316).
+AUDIT_INDEXES = {"audit_events_actor", "audit_events_for"}
+
+
 def test_the_upgrade_to_0018_gives_each_account_its_kind_and_no_agent(tmp_path: Path) -> None:
     """P-316: a service account is `service`, every other account `person`, no account is
     answerable to another, and no event is for anybody; nothing else of a row changes,
@@ -764,6 +768,9 @@ def test_the_upgrade_to_0018_gives_each_account_its_kind_and_no_agent(tmp_path: 
         }
         events = connection.execute(text("SELECT hid, for_hid FROM audit_events")).all()
         assert [tuple(row) for row in events] == [("e-1", None)]
+        # The events of one account and those for one person are found by an index.
+        made = {index["name"] for index in inspect(connection).get_indexes("audit_events")}
+        assert made.issuperset(AUDIT_INDEXES)
         # An agent, as 0.9.17 makes one, to go back with.
         connection.execute(
             text(
@@ -781,3 +788,5 @@ def test_the_upgrade_to_0018_gives_each_account_its_kind_and_no_agent(tmp_path: 
             text("SELECT hid, is_service_account FROM users ORDER BY hid")
         ).all()
         assert [tuple(row) for row in rows] == [("u-1", 0), ("u-2", 1), ("u-3", 0), ("u-4", 1)]
+        kept = {index["name"] for index in inspect(connection).get_indexes("audit_events")}
+        assert not AUDIT_INDEXES & kept
