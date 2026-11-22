@@ -14,10 +14,10 @@ from hirdir.cli.main import app
 from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.db.models import AuditEvent, ImportJob, Item, Setting, Tag, User, Vendor
+from hirdir.db.models import AuditEvent, Country, ImportJob, Item, Setting, State, Tag, User, Vendor
 from hirdir.domain import accounts, audit, reset, settings, tags
 from hirdir.io import examples, imports
-from hirdir.io.entities import LOAD_ORDER
+from hirdir.io.entities import LISTS, LOAD_ORDER
 
 runner = CliRunner()
 
@@ -68,7 +68,9 @@ def test_the_examples_load_as_stored_imports_audited_as_the_system(installed: Co
         jobs = db.scalars(
             select(ImportJob).where(ImportJob.status == "applied").order_by(ImportJob.created_at)
         ).all()
-        assert [job.file_name for job in jobs] == [examples.file_name(e) for e in LOAD_ORDER]
+        # The lists of countries and states, which a reset keeps, are not loaded (P-321).
+        assert [job.file_name for job in jobs] == [examples.file_name(e) for e in examples.LOADED]
+        assert tuple(name for name in LOAD_ORDER if name not in LISTS) == examples.LOADED
         assert {(job.created_by, job.applied_by, job.rejected) for job in jobs} == {(None, None, 0)}
         made = db.scalars(select(AuditEvent).where(AuditEvent.record_type == "item")).all()
         assert made
@@ -85,6 +87,8 @@ def test_a_reset_takes_the_examples_and_leaves_the_inventory_empty(installed: Co
     assert runner.invoke(app, ["admin", "reset", "--yes"]).exit_code == 0
     assert inventory(installed) == {}
     assert held(installed, User) == 1
+    # The lists of countries and states are as the install made them (P-321).
+    assert (held(installed, Country), held(installed, State)) == (55, 633)
 
 
 def test_an_inventory_that_holds_a_record_is_refused(installed: Config) -> None:
@@ -162,7 +166,7 @@ def test_a_folder_that_lacks_a_file_loads_nothing(
     monkeypatch.setattr(examples, "folder", lambda: source)
     result = runner.invoke(app, ["admin", "load-examples"])
     assert result.exit_code == 1
-    assert f"lacks {len(LOAD_ORDER) - 1} of the {len(LOAD_ORDER)} files" in result.output
+    assert f"lacks {len(examples.LOADED) - 1} of the {len(examples.LOADED)} files" in result.output
     assert "the first vendors.csv" in result.output
     assert inventory(installed) == {}
 

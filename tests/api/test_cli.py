@@ -135,7 +135,7 @@ def test_export_all_writes_the_zip_of_every_table(
     named = run("export", "--all").stderr.removeprefix("wrote ").strip()
     assert named.startswith("hirdir-all-csv-")
     assert named.endswith(".zip")
-    assert zipfile.ZipFile(tmp_path / named).namelist()[0] == "tags.csv"
+    assert zipfile.ZipFile(tmp_path / named).namelist()[0] == "countries.csv"
     run("export", expect=2)
 
 
@@ -556,7 +556,12 @@ def test_the_geography_is_shown_as_a_tree_and_a_place_with_what_it_has_in_force(
     central = places["central"]
     make.patch(
         f"/regions/{central['hid']}",
-        {"row_version": central["row_version"], "ship_address1": "1 Depot Road"},
+        {
+            "row_version": central["row_version"],
+            "ship_address1": "1 Depot Road",
+            "ship_city": "Springfield",
+            "ship_state": "il",
+        },
     )
 
     tree = run("geography", "tree").stdout.splitlines()
@@ -594,13 +599,12 @@ def test_the_geography_is_shown_as_a_tree_and_a_place_with_what_it_has_in_force(
         in shown
     )
     assert f"{'shipping:':<21}nobody (from Americas > Central > Site-2)" in shown
-    assert f"{'ship_address:':<21}1 Depot Road (from Americas > Central)" in shown
+    # The state and the country by their names, a blank country the United States (P-321).
+    depot = "1 Depot Road, Springfield, Illinois, United States"
+    assert f"{'ship_address:':<21}{depot} (from Americas > Central)" in shown
     by_hid = json.loads(run("sites", "show", places["site"]["hid"], "--format", "json").stdout)
     assert by_hid["effective"]["contacts"][1]["source"] == "region"
-    assert (
-        f"{'ship_address:':<21}1 Depot Road\n"
-        in run("regions", "show", "Americas > Central").stdout
-    )
+    assert f"{'ship_address:':<21}{depot}\n" in run("regions", "show", "Americas > Central").stdout
     # A place of another level is said to be so, and nothing is shown.
     run("locations", "show", "Americas > Central", expect=4)
 

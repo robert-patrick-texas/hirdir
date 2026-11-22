@@ -47,6 +47,7 @@ from hirdir.db.models import (
     Contract,
     ContractContact,
     ContractCoverage,
+    Country,
     DeviceGroup,
     DeviceGroupMember,
     ExternalSystem,
@@ -63,6 +64,7 @@ from hirdir.db.models import (
     Registration,
     Scaled,
     Site,
+    State,
     Tag,
     TagLink,
     User,
@@ -2358,6 +2360,40 @@ REPLACEMENTS = Listing(
         _NEW_ITEM, _NEW_ITEM.hid == ItemReplacement.new_item_hid
     ),
     default_sort=("-replaced_on", "old.name"),
+    has_status=False,
+)
+
+# --- the lists of countries and states (P-321) ---
+
+# The countries as the list shows them: the United States first, then by name.
+_US_FIRST = case((Country.code == "US", 0), else_=1)
+COUNTRIES = Listing(
+    model=Country,
+    fields={
+        **_bookkeeping(Country),
+        **_columns(Country, "text", "code"),
+        "name": Field("text", Country.name, ordered_by=Country.name_key),
+        "us_first": Field("integer", ordered_by=_US_FIRST),
+    },
+    joined=lambda query: query,
+    default_sort=("us_first", "name", "code"),
+    has_status=False,
+)
+# A state's country, by its place in the list of countries.
+_STATE_COUNTRY = (
+    select(Country.name_key).where(Country.code == State.country).correlate(State).scalar_subquery()
+)
+STATES = Listing(
+    model=State,
+    fields={
+        **_bookkeeping(State),
+        **_columns(State, "text", "country", "code"),
+        "name": Field("text", State.name, ordered_by=State.name_key),
+        "us_first": Field("integer", ordered_by=case((State.country == "US", 0), else_=1)),
+        "country_name": Field("text", ordered_by=_STATE_COUNTRY),
+    },
+    joined=lambda query: query,
+    default_sort=("us_first", "country_name", "country", "name"),
     has_status=False,
 )
 

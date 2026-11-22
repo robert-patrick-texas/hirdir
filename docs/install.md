@@ -257,9 +257,11 @@ sudo systemctl start hirdir
 It refuses while the service is running, and refuses an inventory that holds any
 record, so that the examples are never mixed with your own: a reset afterwards takes
 the examples, and whatever was added beside them, and nothing else. Accounts and
-settings are not touched. Each file is loaded as an import, and the imports page lists
-it. A file that the site's set-up rejects a row of, a choice that was removed, say,
-stops it there and names the row; `sudo hirdir admin reset` clears what came before.
+settings are not touched, nor are the lists of countries and states, which every
+inventory has from its install and a reset keeps: their two files are not loaded. Each
+other file is loaded as an import, and the imports page lists it. A file that the
+site's set-up rejects a row of, a choice that was removed, say, stops it there and
+names the row; `sudo hirdir admin reset` clears what came before.
 
 To see what an import does, load the files one at a time instead.
 Sign in as a user who holds Inventory or Admin, then load them in this order, because a
@@ -267,6 +269,8 @@ record names the ones it refers to:
 
 ```bash
 cd /usr/share/doc/hirdir
+hirdir import examples/countries.csv --entity countries --apply
+hirdir import examples/states.csv --entity states --apply
 hirdir import examples/tags.csv --entity tags --apply
 hirdir import examples/vendors.csv --entity vendors --apply
 hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
@@ -303,7 +307,10 @@ hirdir import examples/circuit-devices.csv --entity circuit_devices --apply
 ```
 
 Without `--apply` a command shows what the file would do and changes nothing. Loaded a
-second time, every row is `unchanged`. Four of the files are new in 0.4.0: the networks,
+second time, every row is `unchanged`. The first two, new in 0.9.18, are the lists of
+countries and states as a new inventory has them: every row of them is `unchanged`
+the first time too, and a row that adds or changes a country or a state is an Admin's
+to apply (P-321). Four of the files are new in 0.4.0: the networks,
 the device groups, which are stacks, clusters and a controller domain, their members,
 and the addresses of items and of groups. So are the minor items among the items. From
 0.4.1 the same nine files also show the condition of an item and what is observed of
@@ -558,8 +565,8 @@ request with its lines, every external system with its registrations, every capa
 line, every circuit with its parts and groups, every reference with the content of its
 file, and every tag, the stored imports, and the history of those records. It keeps
 the accounts, groups, roles and service tokens, so people sign in as before, with the
-contact each user is and its history, and the settings, choices and lifecycle rules, so
-the site's set-up is as it was. The backup it
+contact each user is and its history, and the settings, choices, lists of countries
+and states and lifecycle rules, so the site's set-up is as it was. The backup it
 takes first is one of the 14 that are kept, and its path is printed: `hirdir admin
 restore` puts it back.
 

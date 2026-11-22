@@ -35,7 +35,7 @@ from hirdir.db.models import (
     Region,
     Site,
 )
-from hirdir.domain import addresses, choices, records, settings, tags
+from hirdir.domain import addresses, choices, countries, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -599,6 +599,16 @@ def _texts(fields: dict[str, Any], values: dict[str, Any], names: Sequence[str])
             values[name] = records.clean(fields[name])
 
 
+def _addresses(
+    db: Session, fields: dict[str, Any], values: dict[str, Any], record: Any, sets: Sequence[str]
+) -> None:
+    """Hold the country and the state of each set of a place's address to the lists of
+    countries and states, by their codes (P-321): the street address, and the shipping
+    set, whose fields begin `ship_`."""
+    for prefix in sets:
+        countries.checked_address(db, fields, values, record, prefix)
+
+
 def _coordinates(fields: dict[str, Any], values: dict[str, Any], record: Any | None) -> None:
     for name, limit in DEGREES.items():
         if name not in fields:
@@ -808,6 +818,7 @@ def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) 
     _name(fields, values)
     _code(fields, values)
     _texts(fields, values, (*SHIPPING, "notes"))
+    _addresses(db, fields, values, region, (countries.SHIPPING,))
     _operator(db, fields, values, region)
     _status(fields, values)
     _links(fields, values)
@@ -850,6 +861,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     _name(fields, values)
     _code(fields, values)
     _texts(fields, values, (*ADDRESS_FIELDS, *SHIPPING, "notes"))
+    _addresses(db, fields, values, site, (countries.STREET, countries.SHIPPING))
     _same_as_address(fields, values, site)
     _operator(db, fields, values, site)
     _coordinates(fields, values, site)
@@ -900,6 +912,7 @@ def _checked_location(
     _name(fields, values)
     _code(fields, values)
     _texts(fields, values, (*ADDRESS_FIELDS, *SHIPPING, "notes"))
+    _addresses(db, fields, values, location, (countries.STREET, countries.SHIPPING))
     _same_as_address(fields, values, location)
     _operator(db, fields, values, location)
     _coordinates(fields, values, location)
@@ -1158,6 +1171,80 @@ def retire_place(db: Session, context: AuditContext, level: str, hid: str, row_v
     known = addresses.standing_still(db, record, retired)
     records.apply(db, context, level, record, row_version, retired, known, action="retire")
     return record
+
+
+# --- the countries and states that no list holds (P-321) -----------------------------
+
+
+@dataclass(frozen=True)
+class Unlisted:
+    """A country or a state of an address of a place that no list holds: `set` is
+    `street` or `shipping`, and `field` the field of the place that holds the value."""
+
+    level: Level
+    hid: str
+    name: str
+    path: str
+    record_status: str
+    set: str
+    field: str
+    value: str
+
+
+def unlisted_addresses(db: Session) -> list[Unlisted]:
+    """Return each country and state that the street address or the shipping set of a
+    region, a site or a location holds and no list holds, by the path of the place, the
+    street address first: what the upgrade to `0019` kept as it was typed, for a person to
+    choose. The retired and the drafts are among them."""
+    lists = countries.Lists.read(db)
+    atlas = Atlas(db)
+    held: list[tuple[Level, str, str, str, str]] = []
+    for level in LEVELS:
+        model, prefixes = MODELS[level], countries.PREFIXES[level]
+        names = [f"{prefix}{name}" for prefix in prefixes for name in ADDRESS_FIELDS]
+        either = or_(
+            *(
+                getattr(model, f"{prefix}{name}").is_not(None)
+                for prefix in prefixes
+                for name in ("country", "state")
+            )
+        )
+        rows = db.execute(
+            select(model.hid, *(getattr(model, name) for name in names)).where(either)
+        )
+        for hid, *row in rows:
+            values = dict(zip(names, row, strict=True))
+            for prefix in prefixes:
+                which = "shipping" if prefix else "street"
+                held.extend(
+                    (level, hid, which, name, value)
+                    for name, value in lists.unlisted(values, prefix)
+                )
+    atlas.read_sites(hid for level, hid, *_ in held if level == SITE)
+    atlas.read_locations(hid for level, hid, *_ in held if level == LOCATION)
+    found = []
+    for level, hid, which, name, value in held:
+        record: Any = (
+            atlas.regions.get(hid)
+            if level == REGION
+            else atlas.site(hid)
+            if level == SITE
+            else atlas.location(hid)
+        )
+        found.append(
+            Unlisted(
+                level=level,
+                hid=hid,
+                name=record.name,
+                path=atlas.path(Place(level, record)),
+                record_status=record.record_status,
+                set=which,
+                field=name,
+                value=value,
+            )
+        )
+    found.sort(key=lambda one: (records.key(one.path), one.hid, one.set != "street", one.field))
+    return found
 
 
 # --- what a place has in force ---------------------------------------------------------

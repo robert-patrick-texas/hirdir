@@ -3,8 +3,9 @@
 `hirdir admin load-examples` loads every file of the examples, in the load order, into
 an inventory that holds nothing yet, so that a site can try `hirdir` and clear it again
 with `hirdir admin reset`, which then takes the examples and nothing of the site's own
-(P-166). Each file is previewed and applied as any import is, through the same
-functions, so that no rule is written twice. It is reached from that command on the
+(P-166). The lists of countries and states, which a reset keeps, are not loaded (P-321).
+Each file is previewed and applied as any import is, through the same functions, so
+that no rule is written twice. It is reached from that command on the
 server and from nowhere else: no route calls it.
 """
 
@@ -21,7 +22,7 @@ from hirdir.domain import audit, reset
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.ids import new_hid
 from hirdir.io import imports
-from hirdir.io.entities import LOAD_ORDER
+from hirdir.io.entities import LISTS, LOAD_ORDER
 
 # The examples are loaded from their CSV files; the JSON files hold the same records.
 FORMAT = "csv"
@@ -29,6 +30,11 @@ FORMAT = "csv"
 ROLE = Role.INVENTORY
 # How many rejected rows a refusal names before it says how many more there are.
 NAMED = 5
+# The files that are loaded, in the load order: what a reset clears. The lists of
+# countries and states are in the examples as an export writes them, and are not loaded:
+# a reset keeps them, as it keeps the choices, and every inventory has them from its
+# install, which the examples are never to change (P-321).
+LOADED = tuple(name for name in LOAD_ORDER if name not in LISTS)
 
 
 @dataclass(frozen=True)
@@ -138,14 +144,14 @@ def load(
     is told of every file as soon as it is applied.
     """
     check(db)
-    missing = [file_name(name) for name in LOAD_ORDER if not (source / file_name(name)).is_file()]
+    missing = [file_name(name) for name in LOADED if not (source / file_name(name)).is_file()]
     if missing:
         raise NotFound(
-            f"{source} lacks {len(missing)} of the {len(LOAD_ORDER)} files of the examples, "
+            f"{source} lacks {len(missing)} of the {len(LOADED)} files of the examples, "
             f"the first {missing[0]}"
         )
     loaded = []
-    for name in LOAD_ORDER:
+    for name in LOADED:
         file = file_name(name)
         # Each file is a request of its own, as an import through the API is: what it
         # made shares its request ID, and no other file's does.

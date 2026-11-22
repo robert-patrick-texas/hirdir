@@ -11056,6 +11056,114 @@
         "title": "Counted",
         "type": "object"
       },
+      "CountryCreate": {
+        "additionalProperties": false,
+        "description": "A new country of the list. Its code is given in any case and kept in capitals.",
+        "properties": {
+          "code": {
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "CountryCreate",
+        "type": "object"
+      },
+      "CountryOut": {
+        "additionalProperties": false,
+        "description": "A country an address may be in.",
+        "properties": {
+          "code": {
+            "description": "Its ISO 3166-1 alpha-2 code, two capital letters.",
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "code",
+          "name",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CountryOut",
+        "type": "object"
+      },
+      "CountryPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a country to change, and the version they were read at. A code that an\naddress holds is not changed, and the United States keeps `US`.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CountryPatch",
+        "type": "object"
+      },
       "CoverageAdd": {
         "additionalProperties": false,
         "description": "Items to put under a contract together: all of them, or none.",
@@ -13778,6 +13886,8 @@
           },
           "entity": {
             "enum": [
+              "countries",
+              "states",
               "tags",
               "vendors",
               "catalog_entries",
@@ -13927,6 +14037,8 @@
           "entity": {
             "description": "The name an import and an export know it by.",
             "enum": [
+              "countries",
+              "states",
               "tags",
               "vendors",
               "catalog_entries",
@@ -20178,7 +20290,20 @@
                 "type": "null"
               }
             ],
+            "description": "The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed.",
             "title": "Country"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list.",
+            "title": "Country Name"
           },
           "created_at": {
             "format": "date-time",
@@ -20403,7 +20528,20 @@
                 "type": "null"
               }
             ],
+            "description": "The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed.",
             "title": "Ship Country"
+          },
+          "ship_country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list.",
+            "title": "Ship Country Name"
           },
           "ship_instructions": {
             "anyOf": [
@@ -20441,7 +20579,20 @@
                 "type": "null"
               }
             ],
+            "description": "Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed.",
             "title": "Ship State"
+          },
+          "ship_state_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its state, read from the list; null where it is blank or in no list.",
+            "title": "Ship State Name"
           },
           "site": {
             "$ref": "#/components/schemas/PlaceRef"
@@ -20459,7 +20610,20 @@
                 "type": "null"
               }
             ],
+            "description": "Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed.",
             "title": "State"
+          },
+          "state_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its state, read from the list; null where it is blank or in no list.",
+            "title": "State Name"
           },
           "support_weight": {
             "anyOf": [
@@ -20507,12 +20671,16 @@
           "state",
           "postal_code",
           "country",
+          "country_name",
+          "state_name",
           "ship_address1",
           "ship_address2",
           "ship_city",
           "ship_state",
           "ship_postal_code",
           "ship_country",
+          "ship_country_name",
+          "ship_state_name",
           "ship_instructions",
           "ship_same_as_address",
           "operator_hid",
@@ -25303,6 +25471,38 @@
         "title": "Page[SiteOut]",
         "type": "object"
       },
+      "Page_UnlistedAddress_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnlistedAddress"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[UnlistedAddress]",
+        "type": "object"
+      },
       "Page_UserOut_": {
         "additionalProperties": false,
         "properties": {
@@ -28134,7 +28334,20 @@
                 "type": "null"
               }
             ],
+            "description": "The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed.",
             "title": "Ship Country"
+          },
+          "ship_country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list.",
+            "title": "Ship Country Name"
           },
           "ship_instructions": {
             "anyOf": [
@@ -28168,6 +28381,18 @@
               }
             ],
             "title": "Ship State"
+          },
+          "ship_state_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its state, read from the list; null where it is blank or in no list.",
+            "title": "Ship State Name"
           },
           "sites": {
             "description": "How many sites are directly in it, retired ones aside.",
@@ -28216,6 +28441,8 @@
           "ship_state",
           "ship_postal_code",
           "ship_country",
+          "ship_country_name",
+          "ship_state_name",
           "ship_instructions",
           "operator_hid",
           "operator",
@@ -30577,7 +30804,7 @@
       },
       "ShipAddress": {
         "additionalProperties": false,
-        "description": "A shipping address, taken whole.",
+        "description": "A shipping address, taken whole, with the names of its country and its state.",
         "properties": {
           "address1": {
             "anyOf": [
@@ -30621,7 +30848,20 @@
                 "type": "null"
               }
             ],
+            "description": "The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed.",
             "title": "Country"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list.",
+            "title": "Country Name"
           },
           "postal_code": {
             "anyOf": [
@@ -30643,7 +30883,20 @@
                 "type": "null"
               }
             ],
+            "description": "Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed.",
             "title": "State"
+          },
+          "state_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its state, read from the list; null where it is blank or in no list.",
+            "title": "State Name"
           }
         },
         "required": [
@@ -30652,7 +30905,9 @@
           "city",
           "state",
           "postal_code",
-          "country"
+          "country",
+          "country_name",
+          "state_name"
         ],
         "title": "ShipAddress",
         "type": "object"
@@ -31074,7 +31329,20 @@
                 "type": "null"
               }
             ],
+            "description": "The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed.",
             "title": "Country"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list.",
+            "title": "Country Name"
           },
           "created_at": {
             "format": "date-time",
@@ -31257,7 +31525,20 @@
                 "type": "null"
               }
             ],
+            "description": "The code of a country of `GET /countries`, given by its code or its name without regard to case, or as USA, U.S., U.S.A. or United States of America for the United States, and kept as its code. Blank is read as the United States where any other field of the set is filled, and is not written so. A value held from before that no list holds is kept until the country or the state of the set is changed.",
             "title": "Ship Country"
+          },
+          "ship_country_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its country, read from the list: the United States' for a blank country of a set that has any other field; null where it is blank or in no list.",
+            "title": "Ship Country Name"
           },
           "ship_instructions": {
             "anyOf": [
@@ -31295,7 +31576,20 @@
                 "type": "null"
               }
             ],
+            "description": "Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed.",
             "title": "Ship State"
+          },
+          "ship_state_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its state, read from the list; null where it is blank or in no list.",
+            "title": "Ship State Name"
           },
           "state": {
             "anyOf": [
@@ -31306,7 +31600,20 @@
                 "type": "null"
               }
             ],
+            "description": "Where the country in force has states listed, the code of one of them, given by its code or its name and kept as its code, `GET /states?country=`; where it has none, text as typed.",
             "title": "State"
+          },
+          "state_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its state, read from the list; null where it is blank or in no list.",
+            "title": "State Name"
           },
           "support_weight": {
             "anyOf": [
@@ -31350,12 +31657,16 @@
           "state",
           "postal_code",
           "country",
+          "country_name",
+          "state_name",
           "ship_address1",
           "ship_address2",
           "ship_city",
           "ship_state",
           "ship_postal_code",
           "ship_country",
+          "ship_country_name",
+          "ship_state_name",
           "ship_instructions",
           "ship_same_as_address",
           "operator_hid",
@@ -31982,6 +32293,127 @@
           }
         },
         "title": "StaffTry",
+        "type": "object"
+      },
+      "StateCreate": {
+        "additionalProperties": false,
+        "description": "A new state of a country of the list, the country by its code or its name.",
+        "properties": {
+          "code": {
+            "maxLength": 3,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "country": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Country",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "country",
+          "code",
+          "name"
+        ],
+        "title": "StateCreate",
+        "type": "object"
+      },
+      "StateOut": {
+        "additionalProperties": false,
+        "description": "A state of a country: a subdivision as ISO 3166-2 has it.",
+        "properties": {
+          "code": {
+            "description": "The part of its ISO 3166-2 code after the hyphen: `TX` of `US-TX`.",
+            "title": "Code",
+            "type": "string"
+          },
+          "country": {
+            "description": "The code of its country.",
+            "title": "Country",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "country",
+          "code",
+          "name",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "StateOut",
+        "type": "object"
+      },
+      "StatePatch": {
+        "additionalProperties": false,
+        "description": "Fields of a state to change, and the version they were read at. A code that an\naddress holds is not changed, nor is a state's country.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "StatePatch",
         "type": "object"
       },
       "SummaryOut": {
@@ -32613,6 +33045,80 @@
           "to"
         ],
         "title": "Transition",
+        "type": "object"
+      },
+      "UnlistedAddress": {
+        "additionalProperties": false,
+        "description": "A country or a state of an address of a place that no list holds.",
+        "properties": {
+          "field": {
+            "description": "The field of the place that holds the value.",
+            "enum": [
+              "country",
+              "state",
+              "ship_country",
+              "ship_state"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "level": {
+            "description": "The place is a region, a site or a location.",
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "set": {
+            "description": "The street address, or the shipping set.",
+            "enum": [
+              "street",
+              "shipping"
+            ],
+            "title": "Set",
+            "type": "string"
+          },
+          "value": {
+            "description": "What it holds, as it was typed.",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "hid",
+          "name",
+          "path",
+          "record_status",
+          "set",
+          "field",
+          "value"
+        ],
+        "title": "UnlistedAddress",
         "type": "object"
       },
       "UserBrief": {
@@ -40554,6 +41060,180 @@
         ]
       }
     },
+    "/api/v1/countries": {
+      "get": {
+        "description": "List the countries an address may be in, as a form offers them: the United States\nfirst, however it is named, then the rest by name.",
+        "operationId": "list_countries_api_v1_countries_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CountryOut"
+                  },
+                  "title": "Response List Countries Api V1 Countries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Countries",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "post": {
+        "description": "Add a country: its ISO 3166-1 code, given in any case and kept in capitals, and\nits name, each unique without regard to case.",
+        "operationId": "create_country_api_v1_countries_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Country",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/countries/{hid}": {
+      "delete": {
+        "description": "Remove a country that no address holds, with its states, none of which any\naddress holds either, in one change; each removal is audited, and the country's\nevent names the states removed with it. The United States is not removed.",
+        "operationId": "delete_country_api_v1_countries__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Country",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "patch": {
+        "description": "Rename a country, or give it another code where no address holds the one it has:\nits states go with it. The United States keeps `US`.",
+        "operationId": "update_country_api_v1_countries__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Country",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
     "/api/v1/device-groups": {
       "get": {
         "description": "List device groups, by name unless a sort says otherwise.\n\nDrafts and retired groups are left out unless asked for.",
@@ -42162,6 +42842,8 @@
               "anyOf": [
                 {
                   "enum": [
+                    "countries",
+                    "states",
                     "tags",
                     "vendors",
                     "catalog_entries",
@@ -42305,6 +42987,8 @@
                 "properties": {
                   "entity": {
                     "enum": [
+                      "countries",
+                      "states",
                       "tags",
                       "vendors",
                       "catalog_entries",
@@ -46150,6 +46834,64 @@
         "summary": "Retire Owner",
         "tags": [
           "People"
+        ]
+      }
+    },
+    "/api/v1/places/unlisted-addresses": {
+      "get": {
+        "description": "List each country and state of the street address or the shipping set of a\nregion, a site or a location that no list holds, a row to each, by the path of the\nplace: what the upgrade to 0.9.18 kept as it was typed, for a person to choose. The\nretired and the drafts are among them.",
+        "operationId": "unlisted_addresses_api_v1_places_unlisted_addresses_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_UnlistedAddress_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unlisted Addresses",
+        "tags": [
+          "Geography"
         ]
       }
     },
@@ -50352,6 +51094,205 @@
           }
         },
         "summary": "Retire Site",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/states": {
+      "get": {
+        "description": "List the states of a country by name, or of every country.",
+        "operationId": "list_states_api_v1_states_get",
+        "parameters": [
+          {
+            "description": "One country's states, the country by its code or its name. Left out, the states of every country, each country's together in the order of `GET /countries`.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "One country's states, the country by its code or its name. Left out, the states of every country, each country's together in the order of `GET /countries`.",
+              "maxLength": 100,
+              "title": "Country",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StateOut"
+                  },
+                  "title": "Response List States Api V1 States Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List States",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "post": {
+        "description": "Add a state to a country of the list: the part of its ISO 3166-2 code after the\nhyphen, kept in capitals, and its name, each unique within the country.",
+        "operationId": "create_state_api_v1_states_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create State",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/states/{hid}": {
+      "delete": {
+        "description": "Remove a state that no address holds. Audited.",
+        "operationId": "delete_state_api_v1_states__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete State",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "patch": {
+        "description": "Rename a state, or give it another code where no address holds the one it has.\nIts country is not changed.",
+        "operationId": "update_state_api_v1_states__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update State",
         "tags": [
           "Geography"
         ]
