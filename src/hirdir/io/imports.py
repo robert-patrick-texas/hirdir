@@ -103,6 +103,18 @@ def _no_record(db: Session, record_type: str, hid: str) -> str:
     return f"there is no record {hid}"
 
 
+def _one_of(table: str | None) -> str | None:
+    """Return what one record of a table is called, as the trail names a kind: `choice`
+    of `choices`, `address` of `addresses`."""
+    if table is None:
+        return None
+    if table.endswith("ies"):
+        return table[:-3] + "y"
+    if table.endswith(("sses", "xes")):
+        return table[:-2]
+    return table.removesuffix("s")
+
+
 def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     """Return the HID a row makes its record with: the one it gives, which no record of
     its table has (P-311), so that the file of every table loads into an empty inventory
@@ -128,8 +140,9 @@ def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     held = deleted.holder_of(db, hid, run.trail_kinds)
     if held is not None and held.action == deleted.ACTION:
         raise Invalid("there is no such record", {"hid": _no_record(db, held.record_type, hid)})
-    if held is not None:
-        kind = held.record_type.replace("_", " ")
+    held_by = held.record_type if held is not None else _one_of(deleted.table_holding(db, hid))
+    if held_by is not None:
+        kind = held_by.replace("_", " ")
         raise Conflict(
             f"the HID {hid} is another record's, of a {kind}",
             {"hid": f"{hid} is the HID of a {kind}: an HID is one record's, for good"},

@@ -415,6 +415,13 @@ def test_a_row_whose_hid_no_record_has_is_refused_where_it_would_bring_back_or_d
     assert "contact" in said
     said = refused("device_groups", f"hid,name,type\n{item['hid']},ex-gone-group,custom\n")
     assert "deleted" in said
+    # A record that is made with no event of the trail, as the choices of the lists that
+    # the migrations make are, holds its HID as well (second review, 5).
+    choice = make.get("/choices")
+    choices = choice["items"] if isinstance(choice, dict) else choice
+    taken = choices[0]["hid"]
+    said = refused("contacts", f"hid,name,email\n{taken},Ex Choice,ex.choice@example.net\n")
+    assert "choice" in said, said
     # A record removed outright, as an address is, is told so with when and by whom
     # (review 10).
     holder = make.item(name="ex-holder")
