@@ -343,10 +343,12 @@ def _check_host_item(db: Session, hid: str, item: Item | None) -> None:
         raise Invalid("there is no such item", {field: f"there is no item {hid}"})
     if item is not None and host.hid == item.hid:
         raise Invalid("an item does not run on itself", {field: "this is the item itself"})
-    if host.record_status == "retired":
+    # An item that a file makes retired keeps the host it ran on, retired or gone from
+    # the team's hands, as one retired with its host keeps it (P-311).
+    if records.refuses_retired(host):
         raise Invalid("the host is retired", {field: f"{shown_name(host)} is retired"})
     state = states_in_force(db, [host])[host.hid]
-    if state in OUT_OF_HANDS:
+    if state in OUT_OF_HANDS and not records.is_making_retired():
         raise Invalid(
             "the host has left the team's hands",
             {field: f"{shown_name(host)} is {state}, and hosts nothing"},
@@ -403,7 +405,7 @@ def _check_host_group(db: Session, hid: str, item: Item | None) -> None:
                 "cluster"
             },
         )
-    if group.record_status == "retired":
+    if records.refuses_retired(group):
         raise Invalid("the group is retired", {field: f"{group.name} is retired"})
     beneath = _height(db, item.hid) if item is not None else 0
     if 1 + 1 + beneath > MAX_LINE:

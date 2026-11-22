@@ -259,7 +259,9 @@ def _rejected(client: TestClient, headers: dict[str, str], job: dict[str, Any]) 
     return [row for row in changed_rows(client, headers, job) if row["outcome"] == "rejected"]
 
 
-@pytest.mark.parametrize("config", ["examples_db", "richer_db", "hosted_db"], indirect=True)
+@pytest.mark.parametrize(
+    "config", ["examples_db", "richer_db", "hosted_db", "retired_db"], indirect=True
+)
 @pytest.mark.parametrize("format_", FORMATS)
 def test_the_zip_of_every_table_loads_into_an_empty_inventory_as_it_was(
     client: TestClient, inventory: dict[str, str], format_: str

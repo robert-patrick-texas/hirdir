@@ -382,7 +382,8 @@ def _checked_parent(db: Session, value: Any, group: DeviceGroup | None) -> str |
     parent = db.get(DeviceGroup, hid)
     if parent is None:
         raise Invalid("there is no such group", {field: f"there is no device group {hid}"})
-    if parent.record_status == "retired":
+    # A group that a file makes retired keeps its links to retired records (P-311).
+    if records.refuses_retired(parent):
         raise Invalid("the group is retired", {field: "this group is retired"})
     above, seen = [parent], {parent.hid}
     while above[-1].parent_group_hid and above[-1].parent_group_hid not in seen:
@@ -445,7 +446,7 @@ def _checked(
             owner = db.get(Owner, hid)
             if owner is None:
                 raise Invalid("there is no such owner", {"owner_hid": f"there is no owner {hid}"})
-            if owner.record_status == "retired":
+            if records.refuses_retired(owner):
                 raise Invalid("the owner is retired", {"owner_hid": "this owner is retired"})
         values["owner_hid"] = hid
     if "location_hid" in fields:
@@ -456,7 +457,7 @@ def _checked(
                 raise Invalid(
                     "there is no such location", {"location_hid": f"there is no location {hid}"}
                 )
-            if location.record_status == "retired":
+            if records.refuses_retired(location):
                 raise Invalid(
                     "the location is retired", {"location_hid": "this location is retired"}
                 )
@@ -482,7 +483,7 @@ def _checked(
                 raise Invalid(
                     "there is no such operator", {"operator_hid": f"there is no operator {hid}"}
                 )
-            if operator.record_status == "retired":
+            if records.refuses_retired(operator):
                 raise Invalid(
                     "the operator is retired", {"operator_hid": "this operator is retired"}
                 )
