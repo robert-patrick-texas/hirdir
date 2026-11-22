@@ -525,18 +525,27 @@ OBSERVATION = (Column("observed_status", limit=12), Column("observed_at", "times
 
 
 def _status(values: Mapping[str, Any], record: Any) -> dict[str, Any]:
-    """Return the record status a row sets. An import does not retire."""
+    """Return the record status a row sets. An import does not retire a record that is
+    there; a row that makes a record may make it retired (P-311)."""
     if "record_status" not in values:
         return {}
     wanted = values["record_status"]
-    if wanted is not None and records.key(wanted) == "retired":
-        if record is not None and record.record_status == "retired":
+    if wanted is not None and records.key(wanted) == records.RETIRED:
+        if record is None:
+            return {"record_status": records.RETIRED}
+        if record.record_status == records.RETIRED:
             return {}
         raise Invalid(
             "an import does not retire",
             {"record_status": "retire the record on its own page; a file does not retire"},
         )
     return {"record_status": wanted}
+
+
+def says_retired(values: Mapping[str, Any]) -> bool:
+    """Say whether a row gives its record the status `retired` (P-311)."""
+    wanted = values.get("record_status")
+    return isinstance(wanted, str) and records.key(wanted) == records.RETIRED
 
 
 def _plain_fields(values: Mapping[str, Any], names: tuple[str, ...]) -> dict[str, Any]:

@@ -167,8 +167,11 @@ def get_address(db: Session, hid: str) -> Address:
     return address
 
 
-def _holder(db: Session, fields: dict[str, Any]) -> dict[str, Any]:
-    """Return the item or the group a new address belongs to: exactly one of the two."""
+def _holder(db: Session, fields: dict[str, Any], filed: bool = False) -> dict[str, Any]:
+    """Return the item or the group a new address belongs to: exactly one of the two.
+
+    A retired one is given no new address, but by a file, which holds the addresses a
+    retired record keeps (P-311)."""
     given = {name: fields.get(name) or None for name in HOLDERS}
     if sum(1 for hid in given.values() if hid) != 1:
         raise Invalid(
@@ -182,7 +185,7 @@ def _holder(db: Session, fields: dict[str, Any]) -> dict[str, Any]:
         holder = db.get(model, hid)
         if holder is None:
             raise Invalid(f"there is no such {what}", {name: f"there is no {what} {hid}"})
-        if holder.record_status == "retired":
+        if holder.record_status == "retired" and not filed:
             raise Invalid(f"the {what} is retired", {name: f"this {what} is retired"})
     return given
 
@@ -343,7 +346,8 @@ def create_address(db: Session, context: AuditContext, fields: dict[str, Any]) -
     """Give an item or a group an address."""
     if "address" not in fields:
         raise Invalid("the address is not acceptable", {"address": "an IPv4 or IPv6 address"})
-    address = Address(**_holder(db, fields), **_checked(db, fields, None))
+    filed = context.via == "import"
+    address = Address(**_holder(db, fields, filed), **_checked(db, fields, None))
     records.created(db, context, RECORD_TYPE, address, FIELDS)
     if address.is_primary:
         _one_primary(db, context, address)

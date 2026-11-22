@@ -7,9 +7,9 @@ the inventory then made is the zip that was loaded, but for what no file sets. A
 whose HID no record has makes the record with it; it is refused where that record was
 deleted, where its key finds another, in a bulk edit and for text that is no HID.
 
-A file does not retire, and a new record is not given what is retired: the records of
-the richer inventory that are retired are brought back before it is exported, and what a
-file makes of a retired record is left to the owner (P-311, a reading of the m lane).
+The records of the richer inventory that are retired are loaded retired, with what a
+retired record keeps: a row that makes a record may make it retired, and what stands on
+it, loaded after it, is taken as the app keeps it on a retired record (P-311).
 """
 
 import csv
@@ -73,29 +73,11 @@ def _rejected(client: TestClient, headers: dict[str, str], job: dict[str, Any]) 
     return [row for row in changed_rows(client, headers, job) if row["outcome"] == "rejected"]
 
 
-def _brought_back(client: TestClient, admin: dict[str, str]) -> None:
-    """Bring back each retired contact and operator: a file makes none retired."""
-    for path in ("/contacts", "/operators"):
-        listed = client.get(
-            f"{API}{path}",
-            params={"filter": "record_status:eq:retired", "include_archived": True},
-            headers=admin,
-        ).json()["items"]
-        for one in listed:
-            answer = client.patch(
-                f"{API}{path}/{one['hid']}",
-                json={"row_version": one["row_version"], "record_status": "active"},
-                headers=admin,
-            )
-            assert answer.status_code == 200, answer.text
-
-
 @pytest.mark.parametrize("config", ["examples_db", "richer_db"], indirect=True)
 @pytest.mark.parametrize("format_", FORMATS)
 def test_the_zip_of_every_table_loads_into_an_empty_inventory_as_it_was(
-    client: TestClient, inventory: dict[str, str], admin: dict[str, str], format_: str
+    client: TestClient, inventory: dict[str, str], format_: str
 ) -> None:
-    _brought_back(client, admin)
     first = _zip(client, inventory, format_)
     held = counts(client, inventory)
     _emptied(client)

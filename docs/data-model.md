@@ -1832,7 +1832,10 @@ it is, whichever way the change came: the API, the web, the CLI, a bulk edit or 
   and `new` the same: its `name`, `hostname` and `fqdn`, those it has, and for an item
   or a group `addresses`, a list of each as `{hid, item_hid, group_hid, address,
   network_hid, role, is_primary}`. A name that the same change alters is written once,
-  with what it was. `delete` holds every field and the addresses as `old`, above.
+  with what it was. `delete` holds every field and the addresses as `old`, above. A
+  record that a file makes retired (P-311) has its one `create` event, which holds
+  `record_status` `retired` with its names and addresses as `new`, and no `retire`
+  event: a sync reads it as nothing to add.
 - **What a change was made by** is an entry of each event it made: `joining_group` and
   `leaving_group`, the group's HID (P-217, P-218); `replacing`, a replacement's HID,
   where an item that takes another's place gives up its name and addresses (P-242);

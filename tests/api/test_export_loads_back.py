@@ -25,7 +25,17 @@ from hirdir.auth.roles import Role
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.db.models import CatalogEntry
-from hirdir.domain import audit, catalog, contacts, items, operators, tags
+from hirdir.domain import (
+    addresses,
+    audit,
+    catalog,
+    contacts,
+    geography,
+    groups,
+    items,
+    operators,
+    tags,
+)
 from hirdir.ids import new_hid
 from hirdir.io import examples, imports
 from hirdir.io.columns import CLEAR_MARK
@@ -154,6 +164,7 @@ def _richer(db: Any) -> None:
             "comments": f"''{CLEAR_MARK}",
         },
     )
+    _retired(db, model)
     db.commit()
     _load(
         db,
@@ -167,6 +178,49 @@ def _richer(db: Any) -> None:
         f"{twins[1].hid},198.51.100.8,Management\n",
     )
     db.commit()
+
+
+def _retired(db: Any, model: str | None) -> None:
+    """Retire, by the rules, records with what a retired record keeps (P-311): a person
+    who left, behind a label released with them; a region, its site and a closet in it,
+    retired with the item that was there, which keeps its address and its ended
+    membership of a group; and a group retired with its address and the ended
+    membership of an item that is not retired."""
+    context = audit.SYSTEM
+    left = contacts.create_contact(
+        db, context, {"name": "Example Left", "email": "example.left@example.net"}
+    )
+    label = operators.create_operator(db, context, {"label": "ex-left", "contact_hid": left.hid})
+    region = geography.create_place(db, context, geography.REGION, {"name": "Example Old"})
+    site = geography.create_place(
+        db, context, geography.SITE, {"name": "Site-8", "region_hid": region.hid}
+    )
+    closet = geography.create_place(
+        db, context, geography.LOCATION, {"name": "Example Closet", "site_hid": site.hid}
+    )
+    gone = items.create_item(
+        db,
+        context,
+        {"catalog_entry_hid": model, "name": "ex-retired", "location_hid": closet.hid},
+    )
+    kept = items.create_item(db, context, {"catalog_entry_hid": model, "name": "ex-kept"})
+    addresses.create_address(db, context, {"item_hid": gone.hid, "address": "198.51.100.9"})
+    kit = groups.create_group(db, context, {"type": "custom", "name": "ex-kit"})
+    old_kit = groups.create_group(db, context, {"type": "custom", "name": "ex-old-kit"})
+    addresses.create_address(db, context, {"group_hid": old_kit.hid, "address": "198.51.100.10"})
+    groups.add_members(db, context, kit.hid, [{"item_hid": gone.hid}])
+    groups.add_members(db, context, old_kit.hid, [{"item_hid": kept.hid}])
+    db.flush()
+    operators.retire_operator(db, context, label.hid, label.row_version)
+    contacts.retire_contact(db, context, left.hid, left.row_version)
+    items.retire_item(db, context, gone.hid, gone.row_version)
+    groups.retire_group(db, context, old_kit.hid, old_kit.row_version)
+    for level, place in (
+        (geography.LOCATION, closet),
+        (geography.SITE, site),
+        (geography.REGION, region),
+    ):
+        geography.retire_place(db, context, level, place.hid, place.row_version)
 
 
 @pytest.fixture(scope="module")

@@ -726,7 +726,8 @@ def _linked(db: Session, model: Any, name: str, hid: Any, record: Any | None, wh
     if found is None:
         raise Invalid(f"there is no such {what}", {name: f"there is no {what} {hid}"})
     unchanged = record is not None and getattr(record, name) == hid
-    if found.record_status == "retired" and not unchanged:
+    # A place that a file makes retired may be in one that is retired (P-311).
+    if records.refuses_retired(found) and not unchanged:
         raise Invalid(f"the {what} is retired", {name: f"this {what} is retired"})
     return found
 
@@ -743,7 +744,7 @@ def _operator(db: Session, fields: dict[str, Any], values: dict[str, Any], recor
                 "there is no such operator", {"operator_hid": f"there is no operator {hid}"}
             )
         unchanged = record is not None and record.operator_hid == hid
-        if found.record_status == "retired" and not unchanged:
+        if records.refuses_retired(found) and not unchanged:
             raise Invalid("the operator is retired", {"operator_hid": "this operator is retired"})
     values["operator_hid"] = hid
 

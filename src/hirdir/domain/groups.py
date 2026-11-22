@@ -1050,7 +1050,10 @@ def add_members(
         item = db.get(Item, item_hid)
         if item is None:
             raise Invalid("there is no such item", {"item_hid": f"there is no item {item_hid}"})
-        if item.record_status == "retired":
+        # A retired item is in no group, and keeps the memberships it had, which have
+        # ended: one entered with its `left_on` is that history, as a retired group takes
+        # one (P-311).
+        if item.record_status == "retired" and given.get("left_on") is None:
             raise Invalid(
                 f"{items.shown_name(item)} is retired", {"item_hid": "this item is retired"}
             )
