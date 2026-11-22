@@ -143,9 +143,10 @@ def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     held_by = held.record_type if held is not None else _one_of(deleted.table_holding(db, hid))
     if held_by is not None:
         kind = held_by.replace("_", " ")
+        one = f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind}"
         raise Conflict(
-            f"the HID {hid} is another record's, of a {kind}",
-            {"hid": f"{hid} is the HID of a {kind}: an HID is one record's, for good"},
+            f"the HID {hid} is another record's, of {one}",
+            {"hid": f"{hid} is the HID of {one}: an HID is one record's, for good"},
         )
     try:
         other = which.find(run, {name: value for name, value in values.items() if name != "hid"})
