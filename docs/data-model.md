@@ -705,6 +705,24 @@ region has the shipping set and no street address. A site and a location have on
 field more, `ship_same_as_address`: deliveries go to the street address, and nobody
 types it a second time.
 
+**The country and the state** of each set, `country` and `state`, `ship_country` and
+`ship_state`, are taken from the lists of [`countries` and `states`](#countries-and-states)
+since 0.9.18 (P-318, P-321). `country` holds the code of a listed country, or is blank,
+which is read as the United States wherever any other field of the same set is filled,
+and is not written so: a place with no address has no country. A country is given by
+its code or its name, without regard to case or to the spaces around it, or as `USA`,
+`U.S.`, `U.S.A.` or `United States of America` for the United States, and its code is
+kept. `state` holds, where the country in force has states listed, the code of one of
+them, given by its code or its name within that country and kept as its code, or is
+blank; where the country has none listed, it is text as typed. A value that no list
+holds is refused at its field, naming where the list is. A country or a state held from
+before that no list holds, which the upgrade to `0019` kept as it was typed, is kept
+until the country or the state of that set is changed, when both are checked; a change
+of anything else of the place goes through. A country is a field of the shipping set as
+the other five are: a shipping set given a country alone has a shipping address of its
+own. An address answers, beside its fields, the names of its country and its state,
+read from the lists when it is read and stored nowhere.
+
 `name` is required and holds no `>`. Within one region, a site and a region directly
 beneath it do not share a name, so that a path names one record. `code` is optional, a short name such as `CEN` or
 `S2`, and is unique when present: among regions, among sites, and within its site for a
@@ -804,8 +822,9 @@ number entered once shows in all three places (P-172).
 | Field | Type | Notes |
 |---|---|---|
 | `contacts.name` | text | required. One record per person or shared mailbox |
-| `contacts.organization`, `phone`, `phone2`, `notes` | text | `phone2` is a second number. Each is optional |
-| `contacts.email` | text | unique when present, without regard to case |
+| `contacts.organization`, `notes` | text | each optional |
+| `contacts.phone`, `phone2` | text | `phone2` is a second number. Each is optional, at most 50 characters, and written in the first pattern of `phone_formats` that fits its digits, wherever it comes in: the API, a file, the command line, the Profile, New user and an operator's new person. One with a letter in it, such as an extension, or that no pattern fits, is kept as typed (P-322) |
+| `contacts.email` | text | unique when present, without regard to case, of the form `name@host` with any host, `localhost` among them; kept in lower case wherever it comes in while `email_lower_case` is true (P-322) |
 | `contacts.record_status` | choice | see Conventions. A contact takes tags |
 | `contacts.is_user`, `user` | read only | `is_user` is true where the contact is the person a user is, and `user` is the `hid`, `username` and `record_status` of that user. A retired account is no user: `is_user` is false for its contact, and `user` still answers it, marked `retired` (P-296) |
 | `contacts.same_name` | read only | how many other contacts have its name, compared without regard to case as a file matches a contact by its name, and counted as a file finds them, the retired and the drafts among them; read when the contact is read, and stored nowhere (P-315). A name that another contact has is saved as any other: the pages and the CLI say that a file then tells the two apart by the email or the HID |
@@ -1742,7 +1761,8 @@ inactive value is no longer offered while the records that hold it keep it.
 
 A setting has a default, written in the code, which for the six weights of P-155 is
 blank: nothing is counted until an Admin sets one; the four of whom to ask (P-169) are
-blank too. The database has no row for a setting
+blank too, and `phone_formats` holds no pattern, so that no number is formatted until an
+Admin chooses one (P-322). The database has no row for a setting
 that has never been changed. Setting it to nothing returns it to the default; the row
 then stays, empty, and keeps its `row_version`. A number has at most two decimal places
 and is refused, not rounded, when it has more.
@@ -1773,8 +1793,8 @@ and is refused, not rounded, when it has more.
 | `reference_file_types` | jpg, jpeg, png, gif, webp, heic, heif, tif, tiff, pdf, doc, docx, xls, xlsx, ppt, pptx, vsd, vsdx, dwg, dxf, txt, csv, log, zip | the extensions of the files a reference may be. An Admin may add another of letters and digits, up to ten, kept as `application/octet-stream`, and never one of `refused_file_types`. A change of it changes no file that is kept |
 | `product_name` | hirdir | the name the web page gives the product, at the upper left of the menu bar, in the tab's title, on the sign-in page and in what the pages say, and the first part of the name of a downloaded file. 1 to 40 characters, with neither `<`, `>`, a control character nor one that turns the direction of the text. The commands, the package, the API and the documentation keep the name hirdir (P-168) |
 | `help_organization` | blank | the group that runs this installation, as About names it under Whom to ask. At most 200 characters, with neither `<` nor `>` (P-169) |
-| `help_email` | blank | the email address to write to, for help with this installation. A plain address: at most 254 characters, one `@` and a domain with a dot, no space and none of `? & = % / : ; , " ' < >` |
-| `help_phone` | blank | the number to call, shown as it is typed. At most 40 characters of digits, spaces, letters and `+ - ( ) . , # *`, a digit among them |
+| `help_email` | blank | the email address to write to, for help with this installation. A plain address: at most 254 characters, one `@` and a domain with a dot, no space and none of `? & = % / : ; , " ' < >`; kept in lower case where `email_lower_case` is true when an Admin sets it (P-322) |
+| `help_phone` | blank | the number to call, shown as it is saved: written in the first pattern of `phone_formats` that fits it when an Admin sets it, and otherwise as typed (P-322). At most 40 characters of digits, spaces, letters and `+ - ( ) . , # * /`, a digit among them |
 | `help_url` | blank | an address on the web for help, such as the team's page, opened in a new tab. `https://` or `http://`, as a link is |
 | `map_link` | `https://www.google.com/maps/search/?api=1&query={latitude},{longitude}` | the address of a map, with `{latitude}` and `{longitude}` where the coordinates of a site or a location go: the coordinates on the place's page open it in a new tab, and following it sends the map's site those coordinates and nothing else. Blank, the coordinates are plain numbers, as where there is no access to the internet. Blank, or an address of `https://` or `http://`, as a link is, of a host with no user or password before it and neither place in it, with both `{latitude}` and `{longitude}` after the host, and none of `"`, `'`, `<`, `>`, a backslash or a control character anywhere; a value stored before the rule was so, which it refuses, gives no place a map (P-229) |
 | `help_on_sign_in` | false | true lists whom to ask on the sign-in page too, which anyone who reaches the site sees; false keeps it to About |
@@ -1783,6 +1803,9 @@ and is refused, not rounded, when it has more.
 | `busy_over_seconds` | 30 | over how long the two measures of the ceiling are read, in seconds, and for how long after it last refused its reads the server refuses what is long. A whole number from 5 to 300 |
 | `reports_ahead_after_seconds` | 30 | how long after the newest change of the inventory or its settings the second process of the service works out again the long reports that the change left stale, in seconds: the coverage report, the renewal worklist, the renewal alert and the capacity balance, each for the view its page opens with. Somebody who asks sooner is answered by the server, which works the report out itself. A whole number from 0 to 3,600; 0, not by day, and they are worked out when the second process starts and at five minutes past midnight alone (P-276) |
 | `access_code_min_length` | 12 | the least length of an access code that is typed, by a person for themselves on their profile or by an Admin for an account, in characters. A whole number from 1 to 64. A code the server makes is of groups of four, three or as many more as make it at least this long (P-300), and a code that is held already is not looked at: nobody is signed out by the setting (P-295) |
+| `phone_formats` | none | the patterns a telephone number is written in, a list tried in its order: none, and no number is formatted until an Admin chooses a pattern (P-322). A pattern is 4 to 40 characters: `#` for each digit, four of them at least; digits before the first `#` alone, the code of a country such as the `1` of `+1 (###) ###-####`; and spaces and `+ - ( ) . /` between them. `###-###-####` and `+1 (###) ###-####` are offered beside a pattern of the Admin's own. A number is written in the first pattern that fits its digits: one whose `#` are as many as its digits, or whose leading digits followed by as many `#` as are left are its digits, the leading digits written once, so that `5550100123` and `1 555 010 0123` are both `+1 (555) 010-0123`. A number typed with a `+` before its first digit gives its country's code: it fits a pattern only by the pattern's leading digits, or by a pattern that has none and writes a `+` itself, so that no code is dropped or put in place of the one typed. A number with anything in it but digits, spaces and `+ - ( ) . /`, a letter of an extension, a `#`, a `*` or a comma among them, and one that no pattern fits, are kept as typed: a format never refuses a value. It applies to `contacts.phone`, `contacts.phone2` and `help_phone`; nothing held is written again when it changes |
+| `email_lower_case` | true | whether an email address is kept in lower case: `contacts.email` wherever it comes in, and `help_email` when an Admin sets it. Its form is held as before, whatever this says; nothing held is written again when it changes (P-322) |
+| `title_case_names` | true | whether the web page writes the name of a person, a contact's name, in Title Case where it is typed in lower case, when the person leaves its box or pastes into it: the first letter of each word, after a space, a hyphen or an apostrophe, raised, and no letter typed as a capital lowered, so that `McDonald`, `IT` and `NOC` stay as typed. The server keeps it for the page and applies it nowhere: a name that comes by the API, a file or the command line is kept as given (P-293, P-322) |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
@@ -1792,6 +1815,43 @@ such as the size of a page or the length of a pattern (D-187).
 The life of a session token, `session_hours`, is in the configuration file and not
 here, because it is needed before the database can be asked. See
 [architecture.md](architecture.md).
+
+### `countries` and `states`
+
+The lists that the country and the state of an address are taken from (P-318, P-321),
+kept by an Admin under Choices and read by every role.
+
+| Record | Fields | Rules |
+|---|---|---|
+| `countries` | `code`, `name`, and the bookkeeping of a choice: `hid`, `row_version`, `created_at`, `updated_at`, `created_by`, `updated_by` | `code` is the two capital letters of ISO 3166-1 alpha-2, given in any case and kept in capitals; `code` and `name` are each unique without regard to case. A name is 1 to 100 characters, and `USA`, `U.S.`, `U.S.A.` and `United States of America` are no name of a country but the United States |
+| `states` | `country`, `code`, `name`, and the same bookkeeping | `country` is the code of its country, and is not changed. `code` is the part of its ISO 3166-2 code after the hyphen, one to three capital letters and digits, `TX` of `US-TX`, given in any case and kept in capitals, unique within its country; `name` is unique within its country without regard to case |
+
+The countries are listed the United States, `US`, first, however it is named, and the
+rest by name; a country's states by name. The United States is renamed and is neither
+removed nor given another code. Its states are the fifty, DC, and Puerto Rico, Guam,
+the US Virgin Islands, American Samoa and the Northern Mariana Islands, which are no
+countries of their own here, so that an address there is written one way.
+
+A code that an address holds is not changed. A country whose code no address holds is
+given another, and its states are then of the new code. A country is removed only where
+no address holds its code, and its states are removed with it, in the same change, none
+of which an address may hold; a state is removed only where no address holds it. A state
+is held by an address set whose `state` is its code and whose country in force is its
+country, a blank country being the United States. Each change is audited: a removal of a
+country holds its code, its name and the states removed with it, and each state's
+removal is an event of its own.
+
+A new inventory, by install or by migration `0019`, starts with every country of the
+Americas as the UN's M49 groups them, from the ISO 3166 data of `iso-codes` 4.20.1, 55
+of them, and their 633 subdivisions, taking the lower level where ISO has two; an
+Admin adds the rest for an enterprise that works across the world. The upgrade turns
+into its code, on every region, site and location, a country held as a listed code or
+name, without regard to case and to spaces before and after, or as one of the common
+spellings of the United States, and a state held as a code or a name of the country in
+force, a blank country being the United States; anything else is kept as it was typed,
+for a person to choose, and each place it changes has an audit event of the system
+holding the values before and after. Both lists are files of the Import page and are in
+Export everything; `hirdir admin reset` keeps them, as it keeps the choices.
 
 ### Access records
 
@@ -1898,7 +1958,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | Field | Type | Notes |
 |---|---|---|
 | `source` | choice | `file` for an import, `bulk` for a bulk edit |
-| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `external_systems`, `agreements`, `contracts`, `purchase_requests`, `purchase_lines`, `items`, `device_groups`, `device_group_members`, `item_replacements`, `addresses`, `contract_coverage`, `registrations` and `capacity_lines` |
+| `entity` | choice | `countries`, `states`, `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `external_systems`, `agreements`, `contracts`, `purchase_requests`, `purchase_lines`, `items`, `device_groups`, `device_group_members`, `item_replacements`, `addresses`, `contract_coverage`, `registrations` and `capacity_lines` |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewed`; `queued` and `applying` while it is being applied in the background; `applied` once every row has been worked; `stopped` when it stopped partway, to be resumed; and `failed`, which only a job of a release before 0.7.0 has, applied as one transaction and undone because a record had changed |

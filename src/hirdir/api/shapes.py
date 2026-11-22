@@ -4,6 +4,7 @@ A page of a list is shaped together, so that the catalog entries, vendors, owner
 tags its rows refer to are each read once for the page and not once for each row.
 """
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
@@ -57,6 +58,7 @@ from hirdir.domain import (
     contacts,
     contract_contacts,
     contracts,
+    countries,
     descent,
     geography,
     groups,
@@ -480,6 +482,7 @@ def regions_out(db: Session, found: list[Region]) -> list[shapes.RegionOut]:
     within = _live_counts(db, Region, Region.parent_region_hid, hids)
     sites = _live_counts(db, Site, Site.region_hid, hids)
     marks = _Labels(db, {region.operator_hid for region in found})
+    lists = countries.Lists.read(db)
     out = []
     for region in found:
         parent = atlas.regions.get(region.parent_region_hid or "")
@@ -488,8 +491,18 @@ def regions_out(db: Session, found: list[Region]) -> list[shapes.RegionOut]:
                 **_own(
                     region,
                     shapes.RegionOut,
-                    ("parent", "path", "tags", "regions", "sites", "operator"),
+                    (
+                        "parent",
+                        "path",
+                        "tags",
+                        "regions",
+                        "sites",
+                        "operator",
+                        "ship_country_name",
+                        "ship_state_name",
+                    ),
                 ),
+                **lists.of(region, geography.REGION),
                 operator=marks.ref(region.operator_hid),
                 parent=None
                 if parent is None
@@ -515,13 +528,24 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
     marks = _Labels(db, {site.operator_hid for site in found})
     figures = weights.in_force(db)
     link = geography.map_link(db)
+    lists = countries.Lists.read(db)
     return [
         shapes.SiteOut(
             **_own(
                 site,
                 shapes.SiteOut,
-                ("region", "path", "tags", "locations", "operator", "effective", "map_url"),
+                (
+                    "region",
+                    "path",
+                    "tags",
+                    "locations",
+                    "operator",
+                    "effective",
+                    "map_url",
+                    *countries.NAMES,
+                ),
             ),
+            **lists.of(site, geography.SITE),
             map_url=geography.map_url(link, site),
             effective=shapes.SiteEffective(
                 support_weight=weight_out(weights.of_site(site, figures))
@@ -554,6 +578,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
     planned_groups = _live_counts(db, DeviceGroup, DeviceGroup.planned_location_hid, hids)
     marks = _Labels(db, {location.operator_hid for location in found})
     link = geography.map_link(db)
+    lists = countries.Lists.read(db)
     out = []
     for location in found:
         site = atlas.site(location.site_hid)
@@ -577,8 +602,10 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                         "planned_groups",
                         "operator",
                         "map_url",
+                        *countries.NAMES,
                     ),
                 ),
+                **lists.of(location, geography.LOCATION),
                 map_url=geography.map_url(link, location),
                 planned_items=planned[location.hid],
                 planned_groups=planned_groups[location.hid],
@@ -681,6 +708,13 @@ def effective_out(db: Session, found: geography.InForce) -> shapes.PlaceEffectiv
     """Return what a place has in force."""
     looked_after = found.operator
     mark = _Labels(db, {looked_after.value}).ref(looked_after.value)
+    # The shipping address in force answers the names of its country and its state, read
+    # from the lists as it is read (P-321).
+    shipping = found.ship_address
+    if shipping.value is not None:
+        shipping = replace(
+            shipping, value={**shipping.value, **countries.Lists.read(db).names(shipping.value)}
+        )
     return shapes.PlaceEffective.model_validate(
         {
             "level": found.level,
@@ -708,7 +742,7 @@ def effective_out(db: Session, found: geography.InForce) -> shapes.PlaceEffectiv
                 }
                 for one in found.contacts
             ],
-            "ship_address": found.ship_address,
+            "ship_address": shipping,
             "ship_instructions": found.ship_instructions,
             "operator": {
                 "value": mark,

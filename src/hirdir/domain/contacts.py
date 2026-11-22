@@ -34,7 +34,7 @@ from hirdir.db.models import (
     Vendor,
     VendorContact,
 )
-from hirdir.domain import audit, choices, contracts, geography, records, tags
+from hirdir.domain import audit, choices, contracts, geography, records, settings, tags
 from hirdir.domain import operators as label_rules
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
@@ -158,6 +158,15 @@ def reference_texts(db: Session, found: list[Contact]) -> dict[str, str]:
 
 
 def _checked(db: Session, fields: dict[str, Any], contact: Contact | None) -> dict[str, Any]:
+    """Return the values of a contact that a change gives, as they are saved.
+
+    Every way a contact's email and numbers come in passes here: the API, a file, the
+    command line, the Profile, New user and an operator's new person. So the input
+    formats are applied here, by the settings in force (P-322): a number written in a
+    pattern of `phone_formats`, and an email address in lower case where
+    `email_lower_case` says so, before its form is checked. The name is kept as given:
+    Title Case is the web page's alone.
+    """
     values: dict[str, Any] = {}
     if "name" in fields:
         name = records.clean(fields["name"])
@@ -168,8 +177,18 @@ def _checked(db: Session, fields: dict[str, Any], contact: Contact | None) -> di
     for name in ("organization", "phone", "phone2", "notes"):
         if name in fields:
             values[name] = records.clean(fields[name])
+    in_force = (
+        settings.formats_in_force(db)
+        if any(name in fields for name in ("phone", "phone2", "email"))
+        else None
+    )
+    for name in ("phone", "phone2"):
+        if in_force is not None and name in values:
+            values[name] = in_force.phone(values[name])
     if "email" in fields:
         email = records.clean(fields["email"])
+        if in_force is not None:
+            email = in_force.email(email)
         if email is not None:
             local, at, domain = email.partition("@")
             if not local or not at or not domain or " " in email or "@" in domain:

@@ -220,6 +220,11 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 - **R7.4a** The coordinates of a site or a location open a map, at an address that a
   setting names and an installation may change or blank; with it blank they are plain
   numbers, as where there is no access to the internet (P-229).
+- **R7.4b** The country of every address, and its state where its country has states
+  listed, MUST be chosen from lists that an Admin keeps, stored as their ISO 3166 codes
+  and shown by their names, the United States first and read as the country of an
+  address that names none, so that what one person types matches what another typed
+  (P-318, P-321).
 - **R7.5** Owner is a reference to a managed owner record with a primary and alternate
   people. An owner outside the operations team is allowed as a marked exception with a
   reason.
@@ -300,13 +305,24 @@ cloud services, with their carriers, their monthly cost and the devices at each 
   group, the place, the owner, the operator, the vendor and the model of an item, and
   likewise in every other list. It looks like the text around it and is underlined
   under the pointer and with the keyboard's focus (P-232).
+- **R10.9** What is typed or pasted MUST be put into one form by formats an Admin turns
+  on and defines, each a setting: a telephone number written in the first of the
+  patterns an Admin chooses that fits its digits, none until one is chosen; an email
+  address in lower case; and, on the web page alone, a person's name in Title Case
+  where it was typed in lower case, never lowering a capital that was typed. The
+  server applies the first two to what comes by the API, a file and the command line
+  as well as the page. Pasting is never hindered: a value is taken as it is pasted and
+  written again in the format, and one that no format fits, such as a number with an
+  extension, is kept as typed, never refused (P-293, P-322).
 
 ### R11 Import and export
 
 - **R11.1** Every record type MUST import from and export to CSV and JSON, from the web
   UI, the API and the CLI.
 - **R11.2** An import is previewed before it is applied. The preview lists creates,
-  updates, unchanged rows and rejected rows with reasons.
+  updates, unchanged rows and rejected rows with reasons. A value that an input format
+  writes in another form is shown as it will be saved, beside the value in the file,
+  so that what an import would tidy is seen before it is applied (P-322).
 - **R11.3** In an import, an empty cell leaves the value as it is. Clearing a value
   takes an explicit marker.
 - **R11.4** Importing the same file twice MUST change nothing the second time.

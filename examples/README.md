@@ -22,43 +22,47 @@ sudo systemctl start hirdir
 To see what an import does, load them one at a time instead, in this order, because a
 record names the ones it refers to:
 
-1. `tags.csv`
-2. `vendors.csv`
-3. `catalog-entries.csv`
-4. `contacts.csv`
-5. `vendor-contacts.csv`
-6. `operators.csv`
-7. `regions.csv`
-8. `sites.csv`
-9. `locations.csv`
-10. `contact-assignments.csv`
-11. `owners.csv`
-12. `owner-members.csv`
-13. `networks.csv`
-14. `external-systems.csv`
-15. `agreements.csv`
-16. `contracts.csv`
-17. `contract-contacts.csv`
-18. `purchase-requests.csv`
-19. `purchase-lines.csv`
-20. `device-groups.csv`
-21. `items.csv`
-22. `device-group-members.csv`
-23. `item-replacements.csv`
-24. `addresses.csv`
-25. `contract-coverage.csv`
-26. `registrations.csv`
-27. `capacity-lines.csv`
-28. `circuit-groups.csv`
-29. `circuits.csv`
-30. `circuit-carriers.csv`
-31. `circuit-costs.csv`
-32. `circuit-contacts.csv`
-33. `circuit-devices.csv`
+1. `countries.csv`
+2. `states.csv`
+3. `tags.csv`
+4. `vendors.csv`
+5. `catalog-entries.csv`
+6. `contacts.csv`
+7. `vendor-contacts.csv`
+8. `operators.csv`
+9. `regions.csv`
+10. `sites.csv`
+11. `locations.csv`
+12. `contact-assignments.csv`
+13. `owners.csv`
+14. `owner-members.csv`
+15. `networks.csv`
+16. `external-systems.csv`
+17. `agreements.csv`
+18. `contracts.csv`
+19. `contract-contacts.csv`
+20. `purchase-requests.csv`
+21. `purchase-lines.csv`
+22. `device-groups.csv`
+23. `items.csv`
+24. `device-group-members.csv`
+25. `item-replacements.csv`
+26. `addresses.csv`
+27. `contract-coverage.csv`
+28. `registrations.csv`
+29. `capacity-lines.csv`
+30. `circuit-groups.csv`
+31. `circuits.csv`
+32. `circuit-carriers.csv`
+33. `circuit-costs.csv`
+34. `circuit-contacts.csv`
+35. `circuit-devices.csv`
 
 Each command shows a preview and changes nothing. Add `--apply` to load the file.
 
 ```bash
+hirdir import examples/countries.csv --entity countries
+hirdir import examples/states.csv --entity states
 hirdir import examples/tags.csv --entity tags
 hirdir import examples/vendors.csv --entity vendors
 hirdir import examples/catalog-entries.csv --entity catalog_entries
@@ -93,6 +97,12 @@ hirdir import examples/circuit-costs.csv --entity circuit_costs
 hirdir import examples/circuit-contacts.csv --entity circuit_contacts
 hirdir import examples/circuit-devices.csv --entity circuit_devices
 ```
+
+The first two files are the lists of countries and states that an address takes its
+country and its state from, as every new inventory has them: loaded into one, each of
+their rows is `unchanged`, and a row that adds or changes a country or a state is an
+Admin's to apply. `hirdir admin load-examples` leaves them out, since `hirdir admin
+reset` keeps the lists, as it keeps the choices.
 
 Loaded a second time, every row is `unchanged`. The `hid` column is there and blank:
 `hirdir` gives each record its HID as it is created. A file exported from a running

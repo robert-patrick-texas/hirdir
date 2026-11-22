@@ -1,10 +1,17 @@
-"""Scenarios S24 to S28 of docs/build-plan.md, against a real server process."""
+"""Scenarios S24 to S28 and S64 of docs/build-plan.md, against a real server process."""
 
+import time
+from pathlib import Path
 from typing import Any
 
 import pytest
+from alembic import command
+from sqlalchemy import text
 
-from tests.acceptance.conftest import ADMIN, Server
+from hirdir.db import migrate
+from hirdir.db.engine import make_engine
+from hirdir.ids import new_hid
+from tests.acceptance.conftest import ADMIN, Server, started
 from tests.acceptance.test_item_scenarios import IVY, Inventory
 
 ROOM = "Americas > Central > Site-2 > Building 1 > Room 102"
@@ -265,3 +272,109 @@ def test_s28_an_owner_outside_the_team_says_why_and_marks_what_it_owns(
     assert (given["owner_exception"], given["owner_exception_reason"]) == (True, reason)
     marked = geography.get("/items", filter="owner_exception:eq:true")["items"]
     assert [one["hid"] for one in marked] == [item["hid"]]
+
+
+# --- S64: the lists of countries and states (P-318, P-321) ---------------------------
+
+# The places of an inventory of 0.9.17, with their addresses as they were typed.
+HELD = (
+    ("regions", "Americas", {"ship_country": "usa", "ship_state": "texas"}),
+    ("sites", "Site-1", {"city": "Austin", "country": "usa", "state": "texas"}),
+    ("sites", "Site-2", {"city": "Nowhere", "country": "Untied States", "state": "Ohio"}),
+)
+
+
+def _typed_before(tmp_path: Path) -> dict[str, str]:
+    """Write a database at 0018, the schema of 0.9.17, holding the places of `HELD`, and
+    return the HID each was given."""
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0018")
+    hids = {name: new_hid() for _, name, _ in HELD}
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        for table, name, address in HELD:
+            columns: dict[str, Any] = {
+                "hid": hids[name],
+                "name": name,
+                "name_key": name.casefold(),
+                **address,
+            }
+            if table == "sites":
+                columns |= {"region_hid": hids["Americas"], "ship_same_as_address": False}
+            connection.execute(
+                text(
+                    f"INSERT INTO {table} ({', '.join(columns)}, record_status, created_at,"  # noqa: S608 - the scenario's own names
+                    f" updated_at, row_version) VALUES ({', '.join(f':{n}' for n in columns)},"
+                    " 'active', '2026-11-01', '2026-11-01', 1)"
+                ),
+                columns,
+            )
+    engine.dispose()
+    return hids
+
+
+def test_s64_an_admin_keeps_the_lists_an_address_keeps_codes_and_the_upgrade_turns_them(
+    tmp_path: Path,
+) -> None:
+    hids = _typed_before(tmp_path)
+    # The server of 0.9.18 starts on it, and the upgrade is made as it starts.
+    with started(tmp_path) as server:
+        desk = Geography(server.sign_in(*ADMIN))
+        desk.post("/users", {"username": IVY[0], "access_code": IVY[1], "role": "inventory"})
+        ivy = Geography(server.sign_in(*IVY))
+
+        # The upgrade wrote the codes of what the lists hold, with an event of its own.
+        site = ivy.get(f"/sites/{hids['Site-1']}")
+        assert (site["country"], site["state"]) == ("US", "TX")
+        assert (site["country_name"], site["state_name"]) == ("United States", "Texas")
+        region = ivy.get(f"/regions/{hids['Americas']}")
+        assert (region["ship_country"], region["ship_state"]) == ("US", "TX")
+        (event,) = ivy.get("/audit-events", record_hid=hids["Site-1"])["items"]
+        assert (event["action"], event["via"], event["actor_hid"]) == ("update", "system", None)
+        assert {one["field"]: (one["old"], one["new"]) for one in event["changes"]} == {
+            "country": ("usa", "US"),
+            "state": ("texas", "TX"),
+        }
+        # What no list holds is kept as it was typed, and listed for a person to choose.
+        kept = ivy.get(f"/sites/{hids['Site-2']}")
+        assert (kept["country"], kept["country_name"]) == ("Untied States", None)
+        assert ivy.get("/audit-events", record_hid=hids["Site-2"])["total"] == 0
+        unlisted = ivy.get("/places/unlisted-addresses")["items"]
+        assert [(one["path"], one["field"], one["value"]) for one in unlisted] == [
+            ("Americas > Site-2", "country", "Untied States")
+        ]
+
+        # An Admin adds a country and two of its states; the Inventory role may not.
+        land = desk.post("/countries", {"code": "xa", "name": "Example Land"})
+        assert land["code"] == "XA"
+        desk.post("/states", {"country": "XA", "code": "N", "name": "North"})
+        desk.post("/states", {"country": "Example Land", "code": "s", "name": "South"})
+        ivy.post("/states", {"country": "XA", "code": "E", "name": "East"}, expect=403)
+        assert [one["code"] for one in ivy.get("/states", country="XA")] == ["N", "S"]
+
+        # A site is given an address there by its names in a file, another by its codes
+        # through the API: both keep the codes, and the answers give the names.
+        filed = ivy.client.post(
+            "/imports/preview",
+            params={"entity": "sites"},
+            content="name,region,city,state,country\n"
+            "Site-3,Americas,Northtown,north,example land\n",
+            headers={"Content-Type": "text/csv"},
+        )
+        assert filed.status_code == 201, filed.text
+        preview = filed.json()
+        assert preview["job"]["created"] == 1
+        begun = ivy.client.post(f"/imports/{preview['job']['hid']}/apply")
+        assert begun.status_code == 202, begun.text
+        deadline = time.monotonic() + 60
+        while ivy.get(f"/imports/{begun.json()['hid']}")["status"] in ("queued", "applying"):
+            assert time.monotonic() < deadline
+            time.sleep(0.05)
+        third = ivy.get("/sites", filter="name:eq:Site-3")["items"][0]
+        assert (third["country"], third["state"]) == ("XA", "N")
+        assert (third["country_name"], third["state_name"]) == ("Example Land", "North")
+        fourth = ivy.post(
+            "/sites",
+            {"name": "Site-4", "region_hid": hids["Americas"], "country": "XA", "state": "S"},
+        )
+        assert (fourth["country"], fourth["state"], fourth["state_name"]) == ("XA", "S", "South")

@@ -39,7 +39,7 @@ from hirdir.domain import (
 from hirdir.ids import new_hid
 from hirdir.io import examples, imports
 from hirdir.io.columns import CLEAR_MARK
-from hirdir.io.entities import LOAD_ORDER
+from hirdir.io.entities import LISTS, LOAD_ORDER
 from tests.api.inventory import API
 
 FORMATS = ("csv", "json")
@@ -335,7 +335,9 @@ def test_the_file_of_every_table_of_the_examples_loads_back_as_nothing_to_change
 
 
 @pytest.mark.parametrize("config", ["empty"], indirect=True)
-@pytest.mark.parametrize("entity", LOAD_ORDER)
+# The lists of countries and states are never empty: a new inventory starts with them,
+# and loads them back as nothing to change, as the examples' own do (P-321).
+@pytest.mark.parametrize("entity", [name for name in LOAD_ORDER if name not in LISTS])
 def test_the_template_of_every_table_is_its_header_and_is_read_with_nothing_to_do(
     client: TestClient, inventory: dict[str, str], entity: str
 ) -> None:

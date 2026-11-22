@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.db.models import Setting
-from hirdir.domain import file_kinds, lifecycle, load, product, records
+from hirdir.domain import file_kinds, formats, lifecycle, load, product, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
@@ -204,6 +204,37 @@ def _extensions(key: str) -> Check:
     return Check(expected, check, lambda: file_kinds.DEFAULT_TYPES)
 
 
+# The input formats (P-322): the patterns a telephone number is written in, and whether an
+# email address is kept in lower case, which the server applies; and Title Case of a
+# person's name, which only the web page reads.
+PHONE_FORMATS = "phone_formats"
+EMAIL_LOWER_CASE = "email_lower_case"
+TITLE_CASE_NAMES = "title_case_names"
+FORMAT_SETTINGS = (PHONE_FORMATS, EMAIL_LOWER_CASE)
+
+
+def _patterns() -> Check:
+    """A list of the patterns of a telephone number, in the order they are tried: those
+    P-293 names are offered, and an Admin may add one of their own (P-322)."""
+    expected = f"a list of patterns, each {formats.SAID}"
+
+    def check(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            raise _refuse(PHONE_FORMATS, expected)
+        chosen: list[str] = []
+        for entry in value:
+            text = entry.strip() if isinstance(entry, str) else ""
+            why = formats.fault(text) if text else "is blank"
+            if why is not None:
+                shown = text or "a pattern"
+                raise _refuse(PHONE_FORMATS, f"{expected}. {shown} {why}")
+            if text not in chosen:
+                chosen.append(text)
+        return chosen
+
+    return Check(expected, check, lambda: formats.OFFERED)
+
+
 MAP_LINK = "map_link"
 # Where the coordinates of a place go in the address of a map (P-229, P-236).
 MAP_PLACES = ("{latitude}", "{longitude}")
@@ -294,13 +325,26 @@ def _end_of_life_dates() -> tuple[str, ...]:
     return catalog.DATES
 
 
+def _phone_as_saved(db: Session, value: Any) -> Any:
+    return formats_in_force(db).phone(value)
+
+
+def _email_as_saved(db: Session, value: Any) -> Any:
+    return formats_in_force(db).email(value)
+
+
 @dataclass(frozen=True)
 class Spec:
-    """One setting: its default, what it means, and what values it takes."""
+    """One setting: its default, what it means, and what values it takes.
+
+    `tidy` is what an input format makes of a value an Admin gives, which is then held
+    to the setting's rule again (P-322).
+    """
 
     default: Any
     meaning: str
     takes: Check
+    tidy: Callable[[Session, Any], Any] | None = None
 
     def check(self, value: Any) -> Any:
         return self.takes.check(value)
@@ -451,15 +495,18 @@ SPECS: dict[str, Spec] = {
             "? & = % / : ; , \" '",
             product.check_email,
         ),
+        _email_as_saved,
     ),
     "help_phone": Spec(
         None,
-        "the number to call for help with this installation, shown as it is typed",
+        "the number to call for help with this installation, shown as it is saved: in "
+        "the first pattern of phone_formats that fits it, and otherwise as it is typed",
         Check(
             f"a number of at most {product.MOST_PHONE} characters: digits, spaces, letters "
-            "and + - ( ) . , # *",
+            "and + - ( ) . , # * /",
             product.check_phone,
         ),
+        _phone_as_saved,
     ),
     "help_url": Spec(
         None,
@@ -527,6 +574,31 @@ SPECS: dict[str, Spec] = {
         "many groups as make it at least this long, and a code that is held already is not "
         "looked at: nobody is signed out by the setting",
         _whole(CODE_LENGTH_SETTING, 1, MOST_CODE_LENGTH, " of characters"),
+    ),
+    # 0.9.18: the input formats (P-293, P-322). No number is formatted until an Admin
+    # chooses a pattern, and nothing held is written again when one of them changes.
+    PHONE_FORMATS: Spec(
+        [],
+        "the patterns a telephone number is written in, tried in their order: a contact's "
+        "numbers, wherever they come in, and help_phone. A number is written in the first "
+        "that fits its digits; one with a letter in it, such as an extension, or that no "
+        "pattern fits, is kept as typed. None: no number is formatted. A change of it "
+        "writes no number that is held again",
+        _patterns(),
+    ),
+    EMAIL_LOWER_CASE: Spec(
+        True,
+        "whether an email address is kept in lower case: a contact's, wherever it comes "
+        "in, and help_email. A change of it writes no address that is held again",
+        Check("true or false", product.check_flag(EMAIL_LOWER_CASE)),
+    ),
+    TITLE_CASE_NAMES: Spec(
+        True,
+        "whether the web page writes a person's name in Title Case where it is typed in "
+        "lower case, as the person leaves its box or pastes into it, lowering no capital "
+        "that was typed. The server applies it nowhere: a name that comes by the API, a "
+        "file or the command line is kept as given",
+        Check("true or false", product.check_flag(TITLE_CASE_NAMES)),
     ),
 }
 
@@ -659,6 +731,12 @@ def check_items(db: Session, count: int, field: str, what: str = "items") -> Non
         )
 
 
+def formats_in_force(db: Session) -> formats.Formats:
+    """Return the input formats the server applies, as the settings say (P-322)."""
+    held = values(db, FORMAT_SETTINGS)
+    return formats.of(held[PHONE_FORMATS], held[EMAIL_LOWER_CASE])
+
+
 def code_length(db: Session) -> int:
     """Return the least length of an access code that is typed (P-295)."""
     return int(value(db, CODE_LENGTH_SETTING))
@@ -684,6 +762,9 @@ def set_setting(
     """
     spec = _spec(key)
     checked = None if new is None else spec.check(new)
+    if checked is not None and spec.tidy is not None:
+        # What a format writes is held to the setting's rule as what is typed is.
+        checked = spec.check(spec.tidy(db, checked))
     if checked == spec.default:
         checked = None
     row = db.scalar(select(Setting).where(Setting.key == key))

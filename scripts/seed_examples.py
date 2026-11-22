@@ -1752,6 +1752,12 @@ Each command shows a preview and changes nothing. Add `--apply` to load the file
 {commands}
 ```
 
+The first two files are the lists of countries and states that an address takes its
+country and its state from, as every new inventory has them: loaded into one, each of
+their rows is `unchanged`, and a row that adds or changes a country or a state is an
+Admin's to apply. `hirdir admin load-examples` leaves them out, since `hirdir admin
+reset` keeps the lists, as it keeps the choices.
+
 Loaded a second time, every row is `unchanged`. The `hid` column is there and blank:
 `hirdir` gives each record its HID as it is created. A file exported from a running
 `hirdir` has the column filled in, and a row with an HID changes that record and no

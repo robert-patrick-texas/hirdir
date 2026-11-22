@@ -889,8 +889,9 @@ def reset(
     Removes every item with its addresses and memberships, every device group,
     network, catalog entry, vendor, owner and tag, every reference with the content of
     its file, the stored imports and the history of those records. Accounts, roles,
-    the contact each user is, settings, choices and lifecycle rules stay, unless
-    --everything is given. A backup is taken first, with the files.
+    the contact each user is, settings, choices, the lists of countries and states and
+    lifecycle rules stay, unless --everything is given, which starts the lists again as
+    a new installation has them. A backup is taken first, with the files.
     """
     config = _load()
     target = _sqlite_path(config)
@@ -913,11 +914,13 @@ def reset(
     if everything:
         typer.echo(
             f"  and, with --everything, the {accounts_held} accounts, the groups, roles and "
-            "tokens, the settings, the choices, the lifecycle rules and the whole audit trail."
+            "tokens, the settings, the choices, the lists of countries and states as they "
+            "were changed, the lifecycle rules and the whole audit trail."
         )
     else:
         typer.echo(
-            "Accounts, roles, the contact each user is, settings, choices and lifecycle rules stay."
+            "Accounts, roles, the contact each user is, settings, choices, the lists of "
+            "countries and states and lifecycle rules stay."
         )
     if not yes and typer.prompt('Type "reset" to go on', default="", show_default=False) != "reset":
         raise _fail("nothing was changed")
@@ -957,6 +960,7 @@ def load_examples() -> None:
 
     Every file of the examples is imported, in the load order, into an inventory that
     holds nothing yet, so that `hirdir admin reset` takes them again and nothing else.
+    The lists of countries and states are not, which a reset keeps.
     It refuses an inventory that holds any record. Accounts and settings are not touched.
     """
     config = _load()

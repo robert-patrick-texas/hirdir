@@ -868,7 +868,12 @@ def _show_rows(rows: list[dict[str, Any]], row_count: int) -> None:
             continue
         typer.echo(f"row {row['row']}  {row['outcome']}  {row['key']}")
         for change in row["changes"]:
-            typer.echo(f"    {change['field']}: {_value(change['old'])} → {_value(change['new'])}")
+            # Where an input format writes the value in another form, the file's (P-322).
+            in_file = change.get("as_in_file")
+            said = f" (in the file: {in_file})" if in_file is not None else ""
+            typer.echo(
+                f"    {change['field']}: {_value(change['old'])} → {_value(change['new'])}{said}"
+            )
         for reason in row["reasons"]:
             where = f"{reason['field']}: " if reason["field"] else ""
             typer.echo(f"    {where}{reason['message']}")
@@ -1681,9 +1686,7 @@ def _show_place(level: str) -> Any:
             ("tags", ", ".join(record["tags"]) or None),
             ("record_status", record["record_status"]),
         ]
-        street = [record.get(name) for name in ("address1", "address2", "city", "state")]
-        street += [record.get(name) for name in ("postal_code", "country")]
-        lines.append(("address", ", ".join(part for part in street if part) or None))
+        lines.append(("address", _address_shown(record)))
         lines.append(("support_weight", _weight_shown(record)))
         for role in in_force["contacts"]:
             where = _from(role)
@@ -1694,7 +1697,7 @@ def _show_place(level: str) -> Any:
                 lines.append((role["role"], f"{contact['name']} {reached}".rstrip() + where))
         shipping = in_force["ship_address"]
         if shipping["value"] is not None:
-            parts = ", ".join(part for part in shipping["value"].values() if part)
+            parts = _address_shown(shipping["value"]) or ""
             if shipping["same_as_address"]:
                 parts += ", its street address"
             lines.append(("ship_address", parts + _from(shipping)))
@@ -1712,6 +1715,23 @@ def _show_place(level: str) -> Any:
         "each with the level it came from."
     )
     return show
+
+
+# The fields of an address in the order it is written.
+ADDRESS = ("address1", "address2", "city", "state", "postal_code", "country")
+
+
+def _address_shown(held: dict[str, Any], prefix: str = "") -> str | None:
+    """Return one set of an address as a person reads it: its state and its country by
+    the names the answer gives them from the lists, and as they are held where the
+    lists have none (P-321)."""
+    parts = [
+        held.get(f"{prefix}{name}_name") or held.get(f"{prefix}{name}")
+        if name in ("state", "country")
+        else held.get(f"{prefix}{name}")
+        for name in ADDRESS
+    ]
+    return ", ".join(part for part in parts if part) or None
 
 
 def _weight_shown(record: dict[str, Any]) -> str | None:
