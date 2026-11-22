@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   listValue,
+  movedUp,
+  settingFormat,
   settingInput,
   settingStart,
   settingText,
   settingValue,
   splitSettings,
   withExtension,
+  withPattern,
 } from "./settings";
 
 describe("settingText", () => {
@@ -203,5 +206,42 @@ describe("listValue", () => {
 
   it("refuses nothing ticked", () => {
     expect(listValue([], ["Test"]).ok).toBe(false);
+  });
+});
+
+describe("the patterns of a telephone number (P-322)", () => {
+  it("is a list of its own, which may be empty", () => {
+    expect(settingInput({ key: "phone_formats", value: [], default: [] })).toBe("patterns");
+    expect(settingInput({ key: "phone_formats", value: ["###-###-####"], default: [] })).toBe(
+      "patterns",
+    );
+    expect(settingInput({ key: "email_lower_case", value: true, default: true })).toBe("flag");
+    expect(settingInput({ key: "title_case_names", value: false, default: true })).toBe("flag");
+  });
+
+  it("adds a pattern at the end, and refuses one that is no pattern or is there", () => {
+    expect(withPattern([], " ###-###-#### ")).toEqual({ ok: true, list: ["###-###-####"] });
+    expect(withPattern(["###-###-####"], "+1 (###) ###-####")).toEqual({
+      ok: true,
+      list: ["###-###-####", "+1 (###) ###-####"],
+    });
+    expect(withPattern(["###-###-####"], "###-###-####")).toEqual({
+      ok: false,
+      error: "###-###-#### is in the list already.",
+    });
+    expect(withPattern([], "").ok).toBe(false);
+    expect(withPattern([], "##").ok).toBe(false);
+  });
+
+  it("moves a pattern up, the first staying first", () => {
+    expect(movedUp(["a", "b", "c"], 2)).toEqual(["a", "c", "b"]);
+    expect(movedUp(["a", "b", "c"], 0)).toEqual(["a", "b", "c"]);
+    expect(movedUp(["a", "b"], 5)).toEqual(["a", "b"]);
+  });
+
+  it("tidies whom to ask's number and address as they are typed", () => {
+    expect(settingFormat("help_phone")).toBe("phone");
+    expect(settingFormat("help_email")).toBe("email");
+    expect(settingFormat("product_name")).toBeUndefined();
   });
 });

@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { api, type Schemas } from "../api";
+import { tidier } from "../lib/formats";
 import { useLoad } from "../lib/hooks";
 import type { FieldSpec, Option } from "../lib/patch";
 import { NO_NEW_PERSON, type PersonChoice, type PersonWay } from "../lib/people";
@@ -101,6 +102,7 @@ export function PersonChooser(props: PersonChooserProps) {
             name={`${name}-name`}
             value={choice.person.name}
             onChange={typed("name")}
+            tidy={tidier("person_name")}
             required
             maxLength={200}
             autoComplete="off"
@@ -113,6 +115,7 @@ export function PersonChooser(props: PersonChooserProps) {
             name={`${name}-email`}
             value={choice.person.email}
             onChange={typed("email")}
+            tidy={tidier("email")}
             maxLength={254}
             autoComplete="off"
             hint="Belongs to one contact only."
@@ -136,6 +139,7 @@ export function PersonChooser(props: PersonChooserProps) {
             name={`${name}-phone`}
             value={choice.person.phone}
             onChange={typed("phone")}
+            tidy={tidier("phone")}
             maxLength={50}
             autoComplete="off"
             error={errors.phone}
@@ -146,6 +150,7 @@ export function PersonChooser(props: PersonChooserProps) {
             name={`${name}-phone2`}
             value={choice.person.phone2}
             onChange={typed("phone2")}
+            tidy={tidier("phone")}
             maxLength={50}
             autoComplete="off"
             error={errors.phone2}
@@ -168,6 +173,7 @@ const PERSON_SPECS: Readonly<Record<PersonField, FieldSpec>> = {
     required: true,
     maxLength: 200,
     hint: "A person, or a shared mailbox",
+    format: "person_name",
   },
   email: {
     name: "email",
@@ -175,9 +181,10 @@ const PERSON_SPECS: Readonly<Record<PersonField, FieldSpec>> = {
     kind: "text",
     maxLength: 254,
     hint: "Belongs to one contact only. A file finds a contact by it.",
+    format: "email",
   },
-  phone: { name: "phone", label: "Phone", kind: "text", maxLength: 50 },
-  phone2: { name: "phone2", label: "Second phone", kind: "text", maxLength: 50 },
+  phone: { name: "phone", label: "Phone", kind: "text", maxLength: 50, format: "phone" },
+  phone2: { name: "phone2", label: "Second phone", kind: "text", maxLength: 50, format: "phone" },
 };
 
 interface ContactChangesProps {

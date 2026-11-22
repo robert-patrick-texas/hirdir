@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { tidier } from "../lib/formats";
 import {
   asked,
   type FieldSpec,
@@ -297,6 +298,7 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             type={kind === "date" ? "date" : kind === "moment" ? "datetime-local" : "text"}
             {...(kind === "integer" ? { inputMode: "numeric" as const } : {})}
             {...(kind === "decimal" ? { inputMode: "decimal" as const } : {})}
+            {...(kind === "text" && spec.format ? { tidy: tidier(spec.format) } : {})}
             autoComplete="off"
             value={text}
             onChange={(next) => onChange(name, next)}

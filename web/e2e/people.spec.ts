@@ -23,23 +23,23 @@
 import { type Browser, expect, type Locator, type Page } from "@playwright/test";
 import { type Headers, make, session } from "./referenceSteps";
 import { region } from "./structure";
-import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
+import { createAccount, expectClean, mark, signIn, test, titled, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
 const suffix = mark("people");
 const username = `e2e-${suffix}-ada`;
 const renamed = `e2e-${suffix}-ada-r`;
-const ada = { name: `Ada Example ${suffix}`, email: `ada.${suffix}@example.org` };
-const bo = { name: `Bo Example ${suffix}`, email: `bo.${suffix}@example.org` };
-const cy = { name: `Cy Example ${suffix}`, email: `cy.${suffix}@example.org` };
+const ada = { name: titled(`Ada Example ${suffix}`), email: `ada.${suffix}@example.org` };
+const bo = { name: titled(`Bo Example ${suffix}`), email: `bo.${suffix}@example.org` };
+const cy = { name: titled(`Cy Example ${suffix}`), email: `cy.${suffix}@example.org` };
 const dee = {
-  name: `Dee Example ${suffix}`,
+  name: titled(`Dee Example ${suffix}`),
   email: `dee.${suffix}@example.net`,
   phone: "+1 555 0151",
   phone2: "+1 555 0152",
 };
-const eve = { name: `Eve Example ${suffix}`, email: `eve.${suffix}@example.net` };
+const eve = { name: titled(`Eve Example ${suffix}`), email: `eve.${suffix}@example.net` };
 const internal = `IN-${suffix}`;
 const external = `EX-${suffix}`;
 

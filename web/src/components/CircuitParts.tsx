@@ -14,8 +14,10 @@ import {
   circuitGroupPath,
   connectedHids,
   countingSide,
+  dateInForce,
   devicePath,
   devicesBody,
+  groupKindLabel,
   lineCarrier,
   mbpsText,
   moneyText,
@@ -25,8 +27,10 @@ import {
   type PendingDevice,
   rateText,
   readMoney,
+  SIDE_DATES,
   SIDES,
   type Side,
+  type SideDate,
   sideLabel,
   sideOf,
   vendorPath,
@@ -140,9 +144,6 @@ export function CircuitFacts({ circuit, choices }: CircuitFactsProps) {
           {yes(circuit.in_service)}
         </Fact>
         <Fact label="Carries production">{yes(circuit.production)}</Fact>
-        <Fact label="Installed on">{circuit.a_installed_on}</Fact>
-        <Fact label="Activated on">{circuit.a_activated_on}</Fact>
-        <Fact label="Disconnected on">{circuit.a_disconnected_on}</Fact>
         <Fact label="Billing account">{circuit.billing_account}</Fact>
         <Fact label="Billing contract">{circuit.billing_contract}</Fact>
         <Fact label="Owner" testId="owner">
@@ -189,55 +190,104 @@ export function CircuitFacts({ circuit, choices }: CircuitFactsProps) {
 
 // --- its two sides --------------------------------------------------------------------
 
-/** Each side: its location's path and site, or its note where it has none. */
+/**
+ * A date of a side as its page shows it (P-320 (2)): the A side's own; the Z side's own,
+ * or, where it is blank, the A side's in force, in the lighter style of a value from
+ * elsewhere, saying so.
+ */
+function SideDateShown({ circuit, side, name }: { circuit: Circuit; side: Side; name: SideDate }) {
+  const date = dateInForce(circuit, side, name);
+  if (date.value === null) return null;
+  if (date.source !== "a_side") return <span data-source={date.source}>{date.value}</span>;
+  return (
+    <span data-source="a_side" className="inherited">
+      {date.value}
+      <span className="muted"> · the A side&apos;s, read where the Z side has none</span>
+    </span>
+  );
+}
+
+/**
+ * Each side: its location's path and site, or, for the Z side, the network it reaches,
+ * or neither, with its note; and beneath it its three dates (P-317, P-320).
+ */
 export function CircuitSides({ circuit }: { circuit: Circuit }) {
   const counting = countingSide(circuit);
+  const deciding = circuit.cost_side === "z" ? "z" : "a";
   return (
     <section aria-labelledby="sides">
       <h2 id="sides">Its two sides</h2>
       <p className="hint">
         The A side is the source and the Z side the destination. A side at a location has that
         location&apos;s site, region, address and site contacts; one with no location ends outside
-        the network, and its note says where.
+        the network, and its note says where. A Z side may name the carrier&apos;s network it
+        reaches instead. Each side has its dates: a blank date of the Z side is read as the A
+        side&apos;s, and the dates of the side its cost counts at say whether it is in service.
       </p>
-      <dl className="facts">
-        {SIDES.map(({ value: side, label }) => {
-          const { at, note } = sideOf(circuit, side);
-          return (
-            <Fact key={side} label={label} testId={`side-${side}`}>
-              <span data-location={at?.location_hid ?? ""}>
-                {at ? (
-                  <>
-                    <Link to={placePath("location", at.location_hid)}>{at.path}</Link>
-                    {at.record_status !== "active" && (
-                      <span className="badge">
-                        {optionLabel(RECORD_STATUSES, at.record_status)}
+      {SIDES.map(({ value: side, label }) => {
+        const { at, network, note } = sideOf(circuit, side);
+        return (
+          <div key={side} className="circuit-side" data-testid={`side-${side}-of`}>
+            <h3>{label}</h3>
+            <dl className="facts">
+              <Fact label="Ends at" testId={`side-${side}`}>
+                <span data-location={at?.location_hid ?? ""} data-network={network?.hid ?? ""}>
+                  {at ? (
+                    <>
+                      <Link to={placePath("location", at.location_hid)}>{at.path}</Link>
+                      {at.record_status !== "active" && (
+                        <span className="badge">
+                          {optionLabel(RECORD_STATUSES, at.record_status)}
+                        </span>
+                      )}
+                      <span className="muted">
+                        {" "}
+                        · site <Link to={placePath("site", at.site_hid)}>{at.site_path}</Link>
                       </span>
-                    )}
-                    <span className="muted">
+                    </>
+                  ) : network ? (
+                    <>
+                      <span className="muted">The network </span>
+                      <Link to={circuitGroupPath(network.hid)} data-testid="z-network">
+                        {network.name}
+                      </Link>
+                      {network.record_status !== "active" && (
+                        <span className="badge">
+                          {optionLabel(RECORD_STATUSES, network.record_status)}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="muted">No location</span>
+                  )}
+                  {note && (
+                    <span data-testid={`note-${side}`}>
                       {" "}
-                      · site <Link to={placePath("site", at.site_hid)}>{at.site_path}</Link>
+                      · <em>{note}</em>
                     </span>
-                  </>
-                ) : (
-                  <span className="muted">No location</span>
-                )}
-                {note && (
-                  <span data-testid={`note-${side}`}>
-                    {" "}
-                    · <em>{note}</em>
-                  </span>
-                )}
-                {counting === side && (
-                  <span className="badge badge-plain mark" data-testid={`counts-${side}`}>
-                    Its cost counts here
-                  </span>
-                )}
-              </span>
-            </Fact>
-          );
-        })}
-      </dl>
+                  )}
+                  {counting === side && (
+                    <span className="badge badge-plain mark" data-testid={`counts-${side}`}>
+                      Its cost counts here
+                    </span>
+                  )}
+                </span>
+              </Fact>
+              {SIDE_DATES.map(({ name, label: dateLabel }) => (
+                <Fact key={name} label={dateLabel} testId={`${side}-${name}`}>
+                  <SideDateShown circuit={circuit} side={side} name={name} />
+                </Fact>
+              ))}
+            </dl>
+            {deciding === side && (
+              <p className="hint" data-testid={`dates-decide-${side}`}>
+                Its cost counts at the {sideLabel(side)}: these dates say whether it is in service,
+                and the months its cost counts.
+              </p>
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -1338,11 +1388,17 @@ function ConnectDevices({
 
 // --- its groups -----------------------------------------------------------------------
 
-/** The groups a circuit is in, each leading to its page. Circuits are put into a group there. */
+/**
+ * The groups a circuit is in, each leading to its page. Circuits are put into a group
+ * there. 0.9.18: the network its Z side names is among them, marked so: it leaves that
+ * one by a change of its Z side (P-320 (7)).
+ */
 export function CircuitGroupsOf({ circuit }: { circuit: Circuit }) {
   const groups = circuit.groups ?? [];
   const sorting = useSorting(groups, {
     name: (group) => group.name,
+    kind: (group) => groupKindLabel(group.kind),
+    how: (group) => (group.z_side ? "By its Z side" : "Put in it"),
     status: (group) => group.record_status,
   });
   return (
@@ -1350,7 +1406,8 @@ export function CircuitGroupsOf({ circuit }: { circuit: Circuit }) {
       <h2 id="circuit-groups">Groups</h2>
       <p className="hint">
         A circuit may be in any number of groups. It is put into a group, and taken out of one, on
-        the page of the group, under <Link to="/circuit-groups">Circuit groups</Link>.
+        the page of the group, under <Link to="/circuit-groups">Circuit groups</Link>; it is in the
+        network its Z side names for as long as its Z side names it.
       </p>
       {groups.length === 0 ? (
         <p className="muted">It is in no group.</p>
@@ -1363,6 +1420,12 @@ export function CircuitGroupsOf({ circuit }: { circuit: Circuit }) {
                 <SortTh sort={sorting} column="name">
                   Group
                 </SortTh>
+                <SortTh sort={sorting} column="kind">
+                  Kind
+                </SortTh>
+                <SortTh sort={sorting} column="how">
+                  In it
+                </SortTh>
                 <SortTh sort={sorting} column="status">
                   Status
                 </SortTh>
@@ -1370,10 +1433,12 @@ export function CircuitGroupsOf({ circuit }: { circuit: Circuit }) {
             </thead>
             <tbody>
               {sorting.rows.map((group) => (
-                <tr key={group.hid} data-group={group.name}>
+                <tr key={group.hid} data-group={group.name} data-z-side={group.z_side}>
                   <th scope="row">
                     <Link to={circuitGroupPath(group.hid)}>{group.name}</Link>
                   </th>
+                  <td>{groupKindLabel(group.kind)}</td>
+                  <td>{group.z_side ? "By its Z side" : "Put in it"}</td>
                   <td>{optionLabel(RECORD_STATUSES, group.record_status)}</td>
                 </tr>
               ))}

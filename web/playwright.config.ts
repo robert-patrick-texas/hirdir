@@ -72,6 +72,13 @@ const THE_NAME_ALONE = /product\.spec\.ts$/;
  * under the rules at the top of e2e/support.ts.
  */
 const THE_CEILING_ALONE = /busy\.spec\.ts$/;
+/**
+ * 0.9.18: formats.spec.ts sets `phone_formats`, which every telephone number that every
+ * other file saves is written in, and turns `title_case_names` off for a moment, which
+ * every name another file types follows (P-322). It runs by itself, after the ceiling.
+ * See the note under the rules at the top of e2e/support.ts.
+ */
+const THE_FORMATS_ALONE = /formats\.spec\.ts$/;
 
 const browsers = [
   { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -105,6 +112,7 @@ export default defineConfig({
         THE_WEIGHTS_ALONE,
         THE_NAME_ALONE,
         THE_CEILING_ALONE,
+        THE_FORMATS_ALONE,
       ],
     })),
     {
@@ -149,6 +157,14 @@ export default defineConfig({
       name: "the ceiling alone",
       testMatch: THE_CEILING_ALONE,
       dependencies: ["the name alone"],
+      workers: 1,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // 0.9.18: the formats of what is typed or pasted, one file by itself, after the ceiling.
+    {
+      name: "the formats alone",
+      testMatch: THE_FORMATS_ALONE,
+      dependencies: ["the ceiling alone"],
       workers: 1,
       use: { ...devices["Desktop Chrome"] },
     },

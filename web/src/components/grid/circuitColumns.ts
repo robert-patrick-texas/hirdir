@@ -4,13 +4,20 @@
 
 import type { Schemas } from "../../api/client";
 import {
+  byZSide,
   CIRCUIT_TYPE_LIST,
   type Circuit,
   type CircuitGroup,
+  circuitGroupPath,
+  dateInForce,
+  GROUP_KINDS,
+  groupKindLabel,
   mbpsText,
   moneyText,
   ownerPath,
   SIDES,
+  type Side,
+  type SideDate,
   sideCell,
   sideHint,
   vendorPath,
@@ -25,12 +32,18 @@ import type { GridColumn } from "./columns";
 
 type Choice = Schemas["ChoiceOut"];
 
-const DAYS: ReadonlyArray<
-  [field: "a_installed_on" | "a_activated_on" | "a_disconnected_on", header: string]
-> = [
-  ["a_installed_on", "Installed"],
-  ["a_activated_on", "Activated"],
-  ["a_disconnected_on", "Disconnected"],
+/**
+ * 0.9.18: the dates of each side, each a column of its own (P-320). A blank date of the Z
+ * side shows the A side's, in the lighter style of a value from elsewhere, and says so on
+ * hover; it is filtered and sorted by the Z side's own.
+ */
+const DAYS: ReadonlyArray<[side: Side, name: SideDate, header: string]> = [
+  ["a", "installed_on", "A installed"],
+  ["a", "activated_on", "A activated"],
+  ["a", "disconnected_on", "A disconnected"],
+  ["z", "installed_on", "Z installed"],
+  ["z", "activated_on", "Z activated"],
+  ["z", "disconnected_on", "Z disconnected"],
 ];
 
 /** What the cost of a circuit that is not in service today says on hover. */
@@ -132,18 +145,31 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
         value: (circuit) =>
           side === "a"
             ? sideCell(circuit.a_side, circuit.a_note)
-            : sideCell(circuit.z_side, circuit.z_note),
+            : sideCell(circuit.z_side, circuit.z_note, circuit.z_group),
         hint: (circuit) =>
           side === "a"
             ? sideHint(circuit.a_side, circuit.a_note)
-            : sideHint(circuit.z_side, circuit.z_note),
+            : sideHint(circuit.z_side, circuit.z_note, circuit.z_group),
         linkTo: (circuit) => {
           const at = side === "a" ? circuit.a_side : circuit.z_side;
-          return at ? placePath("location", at.location_hid) : null;
+          if (at) return placePath("location", at.location_hid);
+          // 0.9.18: a Z side with no location leads to the network it reaches (P-320).
+          return side === "z" && circuit.z_group ? circuitGroupPath(circuit.z_group.hid) : null;
         },
         width: 180,
       }),
     ),
+    {
+      // 0.9.18: the network the Z side reaches, a circuit group of the kind Network (P-320).
+      id: "z_group.name",
+      header: "Z network",
+      kind: "text",
+      column: "z_group",
+      value: (circuit) => circuit.z_group?.name,
+      linkTo: (circuit) => (circuit.z_group ? circuitGroupPath(circuit.z_group.hid) : null),
+      hide: true,
+      width: 180,
+    },
     {
       id: "monthly_cost",
       header: "Monthly cost",
@@ -286,14 +312,28 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
       width: 160,
     },
     ...DAYS.map(
-      ([field, header]): GridColumn<Circuit> => ({
-        id: field,
-        header,
-        kind: "date",
-        value: (circuit) => circuit[field],
-        hide: true,
-        width: 140,
-      }),
+      ([side, name, header]): GridColumn<Circuit> =>
+        side === "a"
+          ? {
+              id: `a_${name}`,
+              header,
+              kind: "date",
+              value: (circuit) => circuit[`a_${name}`],
+              hide: true,
+              width: 150,
+            }
+          : {
+              // The date in force, its own or the A side's, shown lighter, filtered and
+              // sorted as it is in force. An export writes its own, blank where it has none.
+              id: `effective.z_${name}`,
+              header,
+              kind: "date",
+              column: `z_${name}`,
+              value: (circuit) => dateInForce(circuit, "z", name).value,
+              effective: (circuit) => circuit.effective[`z_${name}`],
+              hide: true,
+              width: 150,
+            },
     ),
     {
       id: "in_service",
@@ -407,6 +447,28 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
   ];
 }
 
+/**
+ * 0.9.18: on the page of a network, how each circuit is in it: put into it there, or by
+ * its Z side, which names the network (P-320 (7)). It is the page's to say, and is
+ * neither filtered, sorted nor exported.
+ */
+export function howInColumn(groupHid: string): GridColumn<Circuit> {
+  return {
+    id: "in_group",
+    header: "In it",
+    kind: "text",
+    field: null,
+    sortField: null,
+    column: null,
+    value: (circuit) => (byZSide(circuit, groupHid) ? "By its Z side" : "Put in it"),
+    hint: (circuit) =>
+      byZSide(circuit, groupHid)
+        ? "Its Z side names this network: it leaves it by a change of its Z side"
+        : "",
+    width: 140,
+  };
+}
+
 /** The columns of the grid of circuit groups: each with how many circuits, and their cost. */
 export const CIRCUIT_GROUP_COLUMNS: readonly GridColumn<CircuitGroup>[] = [
   {
@@ -416,6 +478,25 @@ export const CIRCUIT_GROUP_COLUMNS: readonly GridColumn<CircuitGroup>[] = [
     value: (group) => group.name,
     link: true,
     width: 240,
+  },
+  {
+    // 0.9.18: a network, which a Z side may name, or a collection (P-320 (5)).
+    id: "kind",
+    header: "Kind",
+    kind: "choice",
+    value: (group) => groupKindLabel(group.kind),
+    choices: GROUP_KINDS,
+    width: 130,
+  },
+  {
+    id: "carrier.name",
+    header: "Carrier",
+    kind: "text",
+    column: "carrier",
+    value: (group) => group.carrier?.name,
+    linkTo: (group) => (group.carrier ? vendorPath(group.carrier.hid) : null),
+    hint: () => "A network's carrier, a vendor",
+    width: 170,
   },
   {
     id: "circuits",
