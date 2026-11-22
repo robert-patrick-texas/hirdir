@@ -1493,7 +1493,11 @@ def sign_in(
     name_key = _key(username)
     keys = (f"user:{name_key}", f"addr:{address}")
     user = find_user(db, username)
-    context = AuditContext(actor_hid=user.hid if user else None, via=via, request_id=request_id)
+    # A sign-in typed for an account that holds tokens, a service account or an agent, is
+    # by nobody that is known: none of them signs in, and the changes of agents together
+    # hold only what agents did (P-316). The account is the record of its event.
+    by = user.hid if user is not None and is_person(user) else None
+    context = AuditContext(actor_hid=by, via=via, request_id=request_id)
     attempted = [change("username", None, username.strip()[:64])]
 
     wait = throttle.retry_after(*keys)
