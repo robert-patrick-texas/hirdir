@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, type Schemas } from "../api";
 import { CheckGroupField, RadioGroupField, SelectField, TextField } from "../components/Field";
 // 0.8.0: the kept reports and their check (P-157).
@@ -9,7 +9,14 @@ import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { setZone } from "../lib/format";
-import { formatsOf, OFFERED_PATTERNS, patternSample, setFormats, tidier } from "../lib/formats";
+import {
+  formatsOf,
+  OFFERED_PATTERNS,
+  PHONE_FORMATS_KEY,
+  patternSample,
+  setFormats,
+  tidier,
+} from "../lib/formats";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { END_OF_LIFE_DATES } from "../lib/lifecycleReports";
 import { CATALOG_KINDS } from "../lib/options";
@@ -61,6 +68,10 @@ function optionsOf(setting: Setting): Option[] {
 function shownValue(setting: Setting, value: unknown): string {
   // 0.8.0: a default or a minimum of support weight is blank unless an Admin sets one (P-155).
   if (value === null) return "blank";
+  // 0.9.18: an empty list says what it means: no number is formatted (review of 0.9.18).
+  if (Array.isArray(value) && value.length === 0) {
+    return setting.key === PHONE_FORMATS_KEY ? "no pattern: no number is formatted" : "none";
+  }
   const named = OPTION_LABELS[setting.key];
   if (!named) return settingText(value);
   const name = (one: unknown) =>
@@ -677,6 +688,9 @@ function ExtensionList({ name, list, onChange, disabled, hint, error }: Extensio
   );
 }
 
+/** What the focus goes to where it is the box of a pattern of one's own. */
+const OWN = "own";
+
 interface PatternListProps {
   name: string;
   /** The patterns added with one press each. */
@@ -699,6 +713,21 @@ function PatternList(props: PatternListProps) {
   const { name, offered, list, onChange, disabled, hint, error } = props;
   const [typed, setTyped] = useState("");
   const [wrong, setWrong] = useState("");
+  const box = useRef<HTMLFieldSetElement>(null);
+  // 0.9.18: the control the focus goes to once a press has taken away the one that had
+  // it, by its accessible name, or the box of a pattern of one's own (review of 0.9.18).
+  const [focusOn, setFocusOn] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusOn === null || !box.current) return;
+    const target =
+      focusOn === OWN
+        ? box.current.querySelector<HTMLElement>(`input[name="${name}-add"]`)
+        : [...box.current.querySelectorAll<HTMLButtonElement>("button")].find(
+            (button) => button.getAttribute("aria-label") === focusOn && !button.disabled,
+          );
+    target?.focus();
+    setFocusOn(null);
+  }, [focusOn, name]);
 
   function add(pattern: string, own: boolean) {
     const added = withPattern(list, pattern);
@@ -709,14 +738,35 @@ function PatternList(props: PatternListProps) {
     setWrong("");
     if (own) setTyped("");
     onChange(added.list);
+    if (!own) {
+      // The button pressed is disabled now: the next offered one, or the box.
+      const next = offered.find((one) => !added.list.includes(one));
+      setFocusOn(next === undefined ? OWN : `Add ${next}`);
+    }
+  }
+
+  function remove(place: number) {
+    const pattern = list[place];
+    const next = list[place + 1] ?? list[place - 1];
+    onChange(list.filter((one) => one !== pattern));
+    setFocusOn(next === undefined ? OWN : `Remove ${next}`);
+  }
+
+  function moveUp(place: number) {
+    const pattern = list[place] ?? "";
+    onChange(movedUp(list, place));
+    // At the top it has no Move up: its Remove takes the focus.
+    setFocusOn(place - 1 > 0 ? `Move ${pattern} up` : `Remove ${pattern}`);
   }
 
   return (
-    <fieldset className="extension-list" aria-describedby={`${name}-hint`}>
+    <fieldset className="extension-list" aria-describedby={`${name}-hint`} ref={box}>
       <legend>New value</legend>
       <p className="hint" id={`${name}-hint`}>
         {hint} A number is written in the first pattern that fits its digits; one that none fits, or
-        with a letter in it, is kept as typed.
+        with a letter in it, is kept as typed. A pattern of your own has a # for each digit, the
+        digits of a country&apos;s code before the first # alone, and spaces and + - ( ) . / between
+        them.
       </p>
       {list.length === 0 ? (
         <p className="muted" data-testid="no-patterns">
@@ -731,13 +781,15 @@ function PatternList(props: PatternListProps) {
           {list.map((pattern, place) => (
             <li key={pattern}>
               <span className="mono">{pattern}</span>{" "}
-              <span className="muted">writes {patternSample(pattern)}</span>{" "}
+              <span className="muted">
+                writes <span className="nowrap">{patternSample(pattern)}</span>
+              </span>{" "}
               {place > 0 && (
                 <button
                   type="button"
                   aria-label={`Move ${pattern} up`}
                   disabled={disabled}
-                  onClick={() => onChange(movedUp(list, place))}
+                  onClick={() => moveUp(place)}
                 >
                   Move up
                 </button>
@@ -746,7 +798,7 @@ function PatternList(props: PatternListProps) {
                 type="button"
                 aria-label={`Remove ${pattern}`}
                 disabled={disabled}
-                onClick={() => onChange(list.filter((one) => one !== pattern))}
+                onClick={() => remove(place)}
               >
                 Remove
               </button>
@@ -767,7 +819,8 @@ function PatternList(props: PatternListProps) {
           </button>
         ))}
       </p>
-      <div className="cell-form">
+      {/* 0.9.18: Add stands beside the box, not beside its label (review of 0.9.18). */}
+      <div className="cell-form cell-form-end">
         <TextField
           label="Add a pattern of your own"
           name={`${name}-add`}
@@ -775,7 +828,6 @@ function PatternList(props: PatternListProps) {
           onChange={setTyped}
           maxLength={40}
           autoComplete="off"
-          hint="# for each digit; digits before the first # alone, as a country's code; spaces and + - ( ) . / between them."
           disabled={disabled}
           error={wrong || undefined}
           onKeyDown={(event) => {

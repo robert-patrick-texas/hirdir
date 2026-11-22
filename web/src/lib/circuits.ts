@@ -8,7 +8,7 @@
 
 import type { Schemas } from "../api/client";
 import type { FilterNode } from "./filter";
-import type { Option } from "./patch";
+import type { FormValue, FormValues, Option } from "./patch";
 import { placePath } from "./places";
 import { amountText } from "./summary";
 
@@ -229,7 +229,9 @@ export function sideHint(
 ): string {
   if (at) return note ? `${at.path} · ${note}` : at.path;
   if (network)
-    return note ? `The network ${network.name} · ${note}` : `The network ${network.name}`;
+    return note
+      ? `The carrier network ${network.name} · ${note}`
+      : `The carrier network ${network.name}`;
   return note ? `No location: ${note}` : "";
 }
 
@@ -493,8 +495,8 @@ export function retiredText(circuit: CircuitDates & Pick<Circuit, "cost_side">):
       : "This circuit is retired, with no day it was disconnected: it was taken out, and is in service on no day.";
   }
   return disconnected
-    ? `This circuit is retired. It was in service until ${disconnected}, when its Z side, where its cost counts, was disconnected, and counts for that time in what circuits cost.`
-    : "This circuit is retired, with no day its Z side, where its cost counts, was disconnected: it was taken out, and is in service on no day.";
+    ? `This circuit is retired. It was in service until ${disconnected}, when its Z side, whose dates decide, was disconnected, and counts for that time in what circuits cost.`
+    : "This circuit is retired, with no day its Z side, whose dates decide, was disconnected: it was taken out, and is in service on no day.";
 }
 
 // --- the network a Z side reaches (P-319, P-320) ----------------------------------------
@@ -520,21 +522,106 @@ export function byZSide(circuit: Pick<Circuit, "z_group_hid">, groupHid: string)
   return circuit.z_group_hid === groupHid;
 }
 
+/**
+ * What the take-out of circuits from a group says it did (review of 0.9.18): how many left
+ * it, and which stay because their Z side names it, which nothing here changes.
+ */
+export function takenOutText(group: string, taken: number, stay: readonly string[]): string {
+  const said =
+    taken === 0
+      ? `No circuit was taken out of ${group}.`
+      : `${taken} ${taken === 1 ? "circuit" : "circuits"} ${taken === 1 ? "was" : "were"} taken out of ${group}.`;
+  if (stay.length === 0) return said;
+  const named = stay.length <= 3 ? stay.join(", ") : `${stay.length} circuits`;
+  const verb = stay.length === 1 ? "stays" : "stay";
+  const their = stay.length === 1 ? "its" : "their";
+  return `${said} ${named} ${verb} in it by ${their} Z side: a circuit leaves a carrier network by a change of its Z side.`;
+}
+
 /** The networks a vendor is the carrier of. */
 export function networksOfCarrier(vendorHid: string): FilterNode {
   return { and: [networksOnly(), { field: "carrier_hid", op: "eq", value: vendorHid }] };
 }
 
-/** A network as a form offers it for a Z side: its name, with its carrier where it has one. */
+/**
+ * A carrier network as a form offers it for a Z side: by its name, a draft said to be one,
+ * under the name of its carrier, so that a long name with its carrier is not cut short in
+ * the box (review of 0.9.18).
+ */
 export function networkOption(group: {
   hid: string;
   name: string;
+  record_status?: string;
   carrier?: { name: string } | null;
 }): Option {
   return {
     value: group.hid,
-    label: group.carrier ? `${group.name} (${group.carrier.name})` : group.name,
+    label: group.record_status === "draft" ? `${group.name} (draft)` : group.name,
+    ...(group.carrier ? { group: group.carrier.name } : {}),
   };
+}
+
+/**
+ * 0.9.18: the fills of a choice of a Z side that excludes another, its location or its
+ * carrier network (P-320 (6)): choosing one lets go of the other, which is kept aside in
+ * the form and comes back when the choice is undone, so that looking through a list
+ * leaves the record as it was and sends nothing of it (review of 0.9.18, finding 1).
+ */
+export function letsGoOf(other: string): (value: FormValue, before: FormValues) => FormValues {
+  const aside = `${other}:let-go`;
+  return (value, before) => {
+    const held = before[other];
+    const kept = before[aside];
+    if (value !== "") {
+      return typeof held === "string" && held !== "" ? { [other]: "", [aside]: held } : {};
+    }
+    return typeof kept === "string" && kept !== "" ? { [other]: kept, [aside]: "" } : {};
+  };
+}
+
+/**
+ * Whether a circuit is in service on a day by the dates of one side (P-320 (4)): active or
+ * a draft, on a day not before that side's activation and not after its disconnection, a
+ * blank being open; retired, only until a disconnection that side has. The Z side's are
+ * those in force.
+ */
+export function inServiceBy(
+  circuit: CircuitDates & Pick<Circuit, "record_status">,
+  side: Side,
+  day: string,
+): boolean {
+  const activated = dateInForce(circuit, side, "activated_on").value;
+  const disconnected = dateInForce(circuit, side, "disconnected_on").value;
+  if (circuit.record_status === "retired" && disconnected === null) return false;
+  return (activated === null || activated <= day) && (disconnected === null || disconnected >= day);
+}
+
+/** Whether the two sides differ in the dates that decide service: the activation, the disconnection. */
+export function deciderDatesDiffer(circuit: CircuitDates): boolean {
+  return (["activated_on", "disconnected_on"] as const).some(
+    (name) => dateInForce(circuit, "a", name).value !== dateInForce(circuit, "z", name).value,
+  );
+}
+
+/**
+ * What switching `cost_side` does to whether the circuit is in service (P-320 (4)): blank
+ * where both sides' dates are the same; otherwise that the other side's dates then decide,
+ * and whether that changes today's answer.
+ */
+export function switchServiceText(
+  circuit: CircuitDates & Pick<Circuit, "record_status" | "cost_side" | "in_service">,
+  day: string,
+): string {
+  if (!deciderDatesDiffer(circuit)) return "";
+  const other: Side = circuit.cost_side === "z" ? "a" : "z";
+  const then = inServiceBy(circuit, other, day);
+  const whose = `The ${sideLabel(other)}'s dates then decide whether it is in service, and the months its cost counts`;
+  if (then === circuit.in_service) {
+    return `${whose}: it is ${then ? "" : "not "}in service today either way.`;
+  }
+  return then
+    ? `${whose}: it would be in service today, which it is not now.`
+    : `${whose}: it would not be in service today, which it is now, and would cost nothing today.`;
 }
 
 /** The carrier a cost line names, in words: blank is the circuit's primary carrier. */

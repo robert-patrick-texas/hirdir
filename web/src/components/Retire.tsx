@@ -18,6 +18,13 @@ interface RetireProps {
   onChanged: (text: string) => void;
   /** Read the record again, as when someone else has changed it. */
   onReload: () => void;
+  /**
+   * 0.9.18: what to call a field a refusal names, as Problem takes it: blank for the
+   * record as a whole, so that its message is a sentence of its own.
+   */
+  labels?: Readonly<Record<string, string>>;
+  /** 0.9.18: what is said before the records a refusal names, where they run on nothing. */
+  dependsLead?: (count: number) => string;
 }
 
 /**
@@ -27,6 +34,7 @@ interface RetireProps {
 export function Retire(props: RetireProps) {
   const { what, name, retired, about, retiredAbout, retire, bringBack, onChanged, onReload } =
     props;
+  const { labels, dependsLead } = props;
   const action = useAction();
 
   async function run(change: () => Promise<unknown>, done: string) {
@@ -37,7 +45,12 @@ export function Retire(props: RetireProps) {
   return (
     <section aria-labelledby="retire">
       <h2 id="retire">{retired ? "Retired" : "Retire"}</h2>
-      <Problem error={action.error} onReload={onReload} />
+      <Problem
+        error={action.error}
+        onReload={onReload}
+        {...(labels ? { labels } : {})}
+        {...(dependsLead ? { dependsLead } : {})}
+      />
       {retired ? (
         <>
           <p>{retiredAbout}</p>

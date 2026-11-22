@@ -220,9 +220,16 @@ export function patternProblem(pattern: string): string | null {
   return null;
 }
 
-/** A number written in a pattern, to show what it makes: 5550100123 in ###-###-####. */
+/**
+ * A number written in a pattern, to show what it makes: 5550100123 in a pattern of ten
+ * digits, `555-010-0123`, and digits counted up from 1 in one of any other count, so that
+ * no sample looks like a number cut short: `12.34.56.78` in `##.##.##.##`.
+ */
 export function patternSample(pattern: string): string {
   const count = pattern.split("#").length - 1;
-  const digits = "5550100123456789012345678901234567890".slice(0, count);
+  const digits =
+    count === 10
+      ? "5550100123"
+      : Array.from({ length: count }, (_, at) => String((at + 1) % 10)).join("");
   return written(pattern, digits, false) ?? pattern;
 }

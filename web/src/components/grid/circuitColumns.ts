@@ -162,7 +162,7 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
     {
       // 0.9.18: the network the Z side reaches, a circuit group of the kind Network (P-320).
       id: "z_group.name",
-      header: "Z network",
+      header: "Z carrier network",
       kind: "text",
       column: "z_group",
       value: (circuit) => circuit.z_group?.name,
@@ -324,11 +324,12 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
             }
           : {
               // The date in force, its own or the A side's, shown lighter, filtered and
-              // sorted as it is in force. An export writes its own, blank where it has none.
+              // sorted as it is in force. An export writes it as a file of circuits does,
+              // in force, with its source beside it, own or a_side (review of 0.9.18).
               id: `effective.z_${name}`,
               header,
               kind: "date",
-              column: `z_${name}`,
+              column: [`z_${name}`, `z_${name}_source`],
               value: (circuit) => dateInForce(circuit, "z", name).value,
               effective: (circuit) => circuit.effective[`z_${name}`],
               hide: true,

@@ -27,6 +27,7 @@ import {
   groupKindLabel,
   moneyText,
   ownerPath,
+  takenOutText,
   vendorPath,
 } from "../lib/circuits";
 import { plural } from "../lib/format";
@@ -59,7 +60,7 @@ function groupSpecs(
       label: "Kind",
       kind: "choice",
       options: GROUP_KINDS,
-      hint: "A network is a carrier's: its private MPLS network, the internet, a Metro Ethernet region, a cloud on-ramp, which the Z side of a circuit may name. A collection is a set of circuits of the enterprise's own choosing.",
+      hint: "Network: a carrier network, the carrier's private MPLS network, the internet, a Metro Ethernet region or a cloud on-ramp, which the Z side of a circuit may name; not the address ranges under Networks. A collection is a set of circuits of the enterprise's own choosing.",
     },
     {
       name: "carrier_hid",
@@ -67,7 +68,7 @@ function groupSpecs(
       kind: "choice",
       blank: "No carrier",
       options: withCurrent(vendors, carrier),
-      hint: "The carrier whose network it is: a vendor.",
+      hint: "The carrier whose carrier network it is: a vendor.",
       when: (values) => values.kind === "network",
       clearedWhenNotAsked: true,
     },
@@ -136,8 +137,8 @@ export function CircuitGroups() {
         Circuits that may land at different sites, looked at and costed together: those of Internet
         access, or of a cloud on-ramp. A circuit may be in any number of groups. The cost of a group
         is what its circuits in service cost today, each circuit once. A group of the kind Network
-        is a carrier&apos;s network, which the Z side of a circuit may name: its circuits are those
-        put into it and those whose Z side names it.
+        is a carrier network, which the Z side of a circuit may name: its circuits are those put
+        into it and those whose Z side names it.
       </p>
       <Problem error={lists.error} />
       {adding && lists.ready && (
@@ -303,10 +304,14 @@ export function CircuitGroupDetail() {
               retired={record.record_status === "retired"}
               about={
                 record.kind === "network"
-                  ? "A retired group takes no new circuit. Its circuits stay in it, and it can be brought back. A network is not retired while a circuit that is not retired names it on its Z side."
+                  ? "A retired group takes no new circuit. Its circuits stay in it, and it can be brought back. A carrier network is not retired while a circuit that is not retired names it on its Z side."
                   : "A retired group takes no new circuit. Its circuits stay in it, and it can be brought back."
               }
               retiredAbout="This group is retired: its circuits stay listed in it, and it takes no new one."
+              // 0.9.18: the circuits whose Z side reaches a carrier network keep it (P-320 (8)).
+              dependsLead={(count) =>
+                count === 1 ? "The circuit that reaches it:" : `The circuits that reach it:`
+              }
               retire={() =>
                 api.request("post", "/api/v1/circuit-groups/{hid}/retire", {
                   path: { hid: record.hid },
@@ -348,14 +353,6 @@ async function membershipsOf(groupHid: string): Promise<Map<string, string>> {
   }
 }
 
-/** What the take-out of circuits from a group says it did, and what stays by its Z side. */
-export function takenOutText(group: string, taken: number, stay: readonly string[]): string {
-  const said = `${plural(taken, "circuit")} ${taken === 1 ? "was" : "were"} taken out of ${group}.`;
-  if (stay.length === 0) return said;
-  const named = stay.length === 1 ? stay[0] : `${stay.length} circuits`;
-  return `${said} ${named} ${stay.length === 1 ? "stays" : "stay"} in it by ${stay.length === 1 ? "its" : "their"} Z side: a circuit leaves a network by a change of its Z side.`;
-}
-
 interface GroupCircuitsProps {
   group: CircuitGroup;
   mayEdit: boolean;
@@ -377,11 +374,22 @@ function GroupCircuits({ group, mayEdit, turn, onChanged }: GroupCircuitsProps) 
         {
           label: "Take out of the group",
           rowsOnly: true,
+          // 0.9.18: a circuit there by its Z side stays, and is left as it is; where
+          // nothing ticked can leave, the button is not to be pressed (review of 0.9.18).
+          ...(network
+            ? {
+                refuses: (rows: Circuit[]) =>
+                  rows.every((circuit) => byZSide(circuit, group.hid))
+                    ? "Those ticked are in it by their Z side: a circuit leaves a carrier network by a change of its Z side."
+                    : null,
+              }
+            : {}),
           run: async (_chosen, _view, rows) => {
             const result = await taking.run(async () => {
               const members = await membershipsOf(group.hid);
+              const leaving = rows.filter((circuit) => !byZSide(circuit, group.hid));
               let taken = 0;
-              for (const circuit of rows) {
+              for (const circuit of leaving) {
                 const member = members.get(circuit.hid);
                 if (member === undefined) continue;
                 await api.request("delete", "/api/v1/circuit-groups/{hid}/members/{member_hid}", {
@@ -389,7 +397,6 @@ function GroupCircuits({ group, mayEdit, turn, onChanged }: GroupCircuitsProps) 
                 });
                 taken += 1;
               }
-              // 0.9.18: what its Z side brings stays (P-320 (7)).
               const stay = rows.filter((circuit) => byZSide(circuit, group.hid));
               return { taken, stay: stay.map((circuit) => circuit.name) };
             });

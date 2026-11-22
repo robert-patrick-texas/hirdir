@@ -153,7 +153,7 @@ describe("the circuit grid", () => {
     } as unknown as Circuit;
     expect(byId("z_location.name").value(toNetwork)).toBe("Example MPLS");
     expect(cellHint(byId("z_location.name"), toNetwork)).toBe(
-      "The network Example MPLS · hand-off at the carrier",
+      "The carrier network Example MPLS · hand-off at the carrier",
     );
     expect(byId("z_location.name").linkTo?.(toNetwork)).toBe(`/circuit-groups/${NETWORK}`);
     expect(byId("z_group.name").value(toNetwork)).toBe("Example MPLS");
@@ -231,8 +231,11 @@ describe("the circuit grid", () => {
       "a_activated_on",
       "a_disconnected_on",
       "z_installed_on",
+      "z_installed_on_source",
       "z_activated_on",
+      "z_activated_on_source",
       "z_disconnected_on",
+      "z_disconnected_on_source",
       "production",
       "support_weight",
       "owner_exception",
