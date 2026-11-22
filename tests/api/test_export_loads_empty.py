@@ -415,5 +415,13 @@ def test_a_row_whose_hid_no_record_has_is_refused_where_it_would_bring_back_or_d
     assert "contact" in said
     said = refused("device_groups", f"hid,name,type\n{item['hid']},ex-gone-group,custom\n")
     assert "deleted" in said
+    # A record removed outright, as an address is, is told so with when and by whom
+    # (review 10).
+    holder = make.item(name="ex-holder")
+    address = make.address(holder, "192.0.2.77")
+    make.delete(f"/addresses/{address['hid']}")
+    said = refused("addresses", f"hid,item,address\n{address['hid']},ex-holder,192.0.2.78\n")
+    assert said.startswith(f"the address {address['hid']} was deleted on "), said
+    assert said.endswith(" by ivy"), said
     # A bulk edit changes records that exist, and names none that is not.
     make.post("/items/bulk-update", {"hids": [new_hid()], "set": {"comments": "x"}}, 422)

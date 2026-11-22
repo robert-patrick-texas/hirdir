@@ -93,13 +93,13 @@ DELETED_KINDS = {"item": "item", "device_group": "device group"}
 
 
 def _no_record(db: Session, record_type: str, hid: str) -> str:
-    """Say that a row's HID names no record: or, where an Admin deleted it, when and by
-    whom, as its 404 says."""
-    what = DELETED_KINDS.get(record_type)
-    if what is not None:
-        gone = deleted.missing(db, record_type, hid, what)
-        if isinstance(gone, Deleted):
-            return str(gone)
+    """Say that a row's HID names no record: or, where it was deleted by an Admin or
+    removed outright, as an address is, when and by whom, as the audit trail says, in
+    the words of the 404 of a deleted item (P-311)."""
+    what = DELETED_KINDS.get(record_type, record_type.replace("_", " "))
+    gone = deleted.missing(db, record_type, hid, what)
+    if isinstance(gone, Deleted):
+        return str(gone)
     return f"there is no record {hid}"
 
 
