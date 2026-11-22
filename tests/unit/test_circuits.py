@@ -85,3 +85,55 @@ def test_a_weight_of_its_own_is_in_force_and_none_is_none() -> None:
     weighed = weights.of_circuit(_circuit(support_weight=Decimal("1.5")), figures)
     assert (weighed.value, weighed.source) == (Decimal("1.5"), "own")
     assert weights.of_circuit(_circuit(), figures).source == "none"
+
+
+# --- the dates of each side (P-317, P-320) -------------------------------------------
+
+
+def test_a_blank_date_of_the_z_side_is_read_as_the_a_sides_never_copied() -> None:
+    circuit = _circuit(
+        a_installed_on=date(2027, 3, 29),
+        a_activated_on=date(2027, 4, 10),
+        z_installed_on=date(2027, 4, 2),
+    )
+    found = circuits.z_dates_in_force(circuit)
+    assert {name: (one.value, one.source) for name, one in found.items()} == {
+        "z_installed_on": (date(2027, 4, 2), "own"),
+        "z_activated_on": (date(2027, 4, 10), "a_side"),
+        "z_disconnected_on": (None, "none"),
+    }
+    # Nothing is written: the Z side's own activation stays blank.
+    assert circuit.z_activated_on is None
+    assert circuits.side_dates(circuit, "z") == (date(2027, 4, 2), date(2027, 4, 10), None)
+    assert circuits.side_dates(circuit, "a") == (date(2027, 3, 29), date(2027, 4, 10), None)
+
+
+def test_the_side_cost_side_names_decides_whether_a_circuit_is_in_service() -> None:
+    # The A side is activated on 10 April and the Z side, of its own, on 17 April.
+    dates = {"a_activated_on": date(2027, 4, 10), "z_activated_on": date(2027, 4, 17)}
+    by_a, by_z = _circuit(**dates), _circuit(**dates)
+    by_z.cost_side = "z"
+    assert circuits.in_service_on(by_a, date(2027, 4, 12)) is True
+    assert circuits.in_service_on(by_z, date(2027, 4, 12)) is False
+    assert circuits.in_service_on(by_z, date(2027, 4, 17)) is True
+    # The Z side's disconnection, blank, is the A side's: both end on 30 June.
+    by_a.a_disconnected_on = by_z.a_disconnected_on = date(2027, 6, 30)
+    assert circuits.in_service_on(by_z, date(2027, 7, 1)) is False
+    assert circuits.deciding_dates(by_z) == (date(2027, 4, 17), date(2027, 6, 30))
+    # A Z side that ends later keeps a circuit counted by it in service after the A side.
+    by_z.z_disconnected_on = date(2027, 7, 15)
+    assert circuits.in_service_on(by_z, date(2027, 7, 1)) is True
+    assert circuits.in_service_on(by_a, date(2027, 7, 1)) is False
+    # Retired, it was in service until the disconnection of the side that decides.
+    by_z.record_status = "retired"
+    assert circuits.in_service_on(by_z, date(2027, 7, 10)) is True
+    assert circuits.in_service_on(by_z, date(2027, 7, 16)) is False
+
+
+def test_a_circuit_counted_at_its_z_side_with_no_dates_there_is_read_as_before() -> None:
+    # As every circuit of cost_side z was before 0.9.18, which gave the Z side none.
+    circuit = _circuit(a_activated_on=date(2027, 4, 10), a_disconnected_on=date(2027, 9, 20))
+    circuit.cost_side = "z"
+    assert circuits.deciding_dates(circuit) == (date(2027, 4, 10), date(2027, 9, 20))
+    assert circuits.in_service_on(circuit, date(2027, 4, 9)) is False
+    assert circuits.in_service_on(circuit, date(2027, 9, 20)) is True

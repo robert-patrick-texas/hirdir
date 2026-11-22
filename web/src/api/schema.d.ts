@@ -1556,7 +1556,11 @@ export interface paths {
         };
       };
     };
-    /** Create a circuit group: circuits to be looked at and costed together. */
+    /**
+     * Create a circuit group: circuits to be looked at and costed together. Its `kind`
+     * is `network`, a carrier's network that a circuit's Z side may name, with its carrier,
+     * or `collection`, as it is unless said; a collection has no carrier (P-320).
+     */
     post: {
       parameters: {
         query?: never;
@@ -1673,7 +1677,11 @@ export interface paths {
     };
   };
   "/api/v1/circuit-groups/{hid}/members": {
-    /** List the circuits of a group, by name, retired ones too, which say so. */
+    /**
+     * List the circuits of a group, by name, retired ones too, which say so: those added
+     * to it, and those whose Z side names it, `z_side` true, each once. A circuit there by
+     * its Z side alone has no membership, and `hid` null (P-320).
+     */
     get: {
       parameters: {
         query?: {
@@ -1703,7 +1711,8 @@ export interface paths {
     };
     /**
      * Put circuits into a group, all together, each once. A retired group takes none,
-     * and a retired circuit is added to none.
+     * and a retired circuit is added to none. A circuit whose Z side names the group is
+     * added and kept, so that it stays when its Z side is changed (P-320).
      */
     post: {
       parameters: {
@@ -1764,7 +1773,11 @@ export interface paths {
     };
   };
   "/api/v1/circuit-groups/{hid}/retire": {
-    /** Retire a circuit group. Its circuits stay listed in it, and it takes no new one. */
+    /**
+     * Retire a circuit group. Its circuits stay listed in it, and it takes no new one.
+     * A network that a circuit that is not retired names on its Z side is refused, with
+     * those circuits in `depends_on` (P-320).
+     */
     post: {
       parameters: {
         query?: never;
@@ -1786,6 +1799,12 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["CircuitGroupOut"];
+          };
+        };
+        /** Circuits that are not retired name it on their Z side: each is in `depends_on`, to be given another network or retired first. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
           };
         };
         /** Validation Error */
@@ -10167,6 +10186,10 @@ export interface components {
       support_weight?: string | null;
       tags?: string[];
       up_mbps?: string | null;
+      z_activated_on?: string | null;
+      z_disconnected_on?: string | null;
+      z_group_hid?: string | null;
+      z_installed_on?: string | null;
       z_location_hid?: string | null;
       z_note?: string | null;
     };
@@ -10217,33 +10240,56 @@ export interface components {
       support_weight: components["schemas"]["EffectiveWeight"];
       /** The rate in force up: its own, or the full rate of the port, `port`. */
       up_mbps: components["schemas"]["EffectiveValue"];
+      /** The Z side's activation in force, as `z_installed_on`. */
+      z_activated_on: components["schemas"]["EffectiveValue"];
+      /** The Z side's disconnection in force, as `z_installed_on`. */
+      z_disconnected_on: components["schemas"]["EffectiveValue"];
+      /** The Z side's installation in force (P-320): its own, `own`, or the A side's, `a_side`, or none. */
+      z_installed_on: components["schemas"]["EffectiveValue"];
     };
     /** A new circuit group. */
     CircuitGroupCreate: {
+      /** A network's carrier, a vendor. */
+      carrier_hid?: string | null;
       description?: string | null;
+      kind?: "network" | "collection";
       name: string;
       notes?: string | null;
       owner_hid?: string | null;
       record_status?: "draft" | "active";
       tags?: string[];
     };
-    /** One circuit in one group. */
+    /**
+     * One circuit in one group: added to it, or there because its Z side names it, or
+     * both, listed once (P-320).
+     */
     CircuitGroupMemberOut: {
       circuit: components["schemas"]["CircuitRef"];
       circuit_hid: string;
-      created_at: string;
+      /** When it was added; null for a circuit there by its Z side alone. */
+      created_at: string | null;
       group_hid: string;
-      hid: string;
+      /** The membership; null for a circuit that is there by its Z side alone. */
+      hid: string | null;
+      /** The circuit names the group on its Z side. */
+      z_side: boolean;
     };
     /** Circuits to put into a group, all together, each once. */
     CircuitGroupMembersAdd: {
       circuit_hids: string[];
     };
-    /** Circuits that may land at different sites, looked at and costed together. */
+    /**
+     * Circuits that may land at different sites, looked at and costed together: a
+     * carrier's network, which a Z side may name, or a collection (P-319).
+     */
     CircuitGroupOut: {
       /** Twelve times the monthly cost. */
       annual_cost: string;
-      /** How many circuits it has. */
+      /** That vendor. */
+      carrier: components["schemas"]["VendorRef"] | null;
+      /** A network's carrier, a vendor. */
+      carrier_hid: string | null;
+      /** How many circuits it has, each once: those added to it and those whose Z side names it (P-320). */
       circuits: number;
       created_at: string;
       created_by: string | null;
@@ -10251,6 +10297,8 @@ export interface components {
       hid: string;
       /** How many of them are in service today. */
       in_service: number;
+      /** network, a carrier's network or the internet that a circuit's Z side may reach, or collection, circuits put together for the enterprise's own purpose. */
+      kind: "network" | "collection";
       /** What those in service cost a month today, each circuit once. */
       monthly_cost: string;
       name: string;
@@ -10265,7 +10313,10 @@ export interface components {
     };
     /** Fields of a circuit group to change, and the version they were read at. */
     CircuitGroupPatch: {
+      carrier_hid?: string | null;
       description?: string | null;
+      /** Not made collection while a circuit, retired or not, names it on its Z side (P-320). */
+      kind?: "network" | "collection" | null;
       name?: string | null;
       notes?: string | null;
       owner_hid?: string | null;
@@ -10276,8 +10327,12 @@ export interface components {
     /** A circuit group, as a circuit lists it. */
     CircuitGroupRef: {
       hid: string;
+      /** A network, which a Z side may name, or a collection. */
+      kind: "network" | "collection";
       name: string;
       record_status: "draft" | "active" | "retired";
+      /** The circuit names this group on its Z side, as the network it reaches (P-320); false for a group it was added to alone. */
+      z_side?: boolean;
     };
     /**
      * A telecommunication circuit, with what is worked out when it is read.
@@ -10286,8 +10341,11 @@ export interface components {
      * unless `fields` names them; the record has them always.
      */
     CircuitOut: {
+      /** The day the A side was activated, from which the carrier bills it. */
       a_activated_on: string | null;
+      /** The last day the A side was in service. */
       a_disconnected_on: string | null;
+      /** The day the A side was installed. */
       a_installed_on: string | null;
       a_location_hid: string | null;
       a_note: string | null;
@@ -10322,10 +10380,10 @@ export interface components {
       down_mbps: string | null;
       effective: components["schemas"]["CircuitEffective"];
       enterprise_circuit_id: string | null;
-      /** The groups it is in, by name. */
+      /** The groups it is in, by name, each once: those it was added to, and the network its Z side names, with z_side true. */
       groups: components["schemas"]["CircuitGroupRef"][] | null;
       hid: string;
-      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
+      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection, those of the side cost_side names, the Z side's in force where it is z (P-320). */
       in_service: boolean;
       /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
@@ -10349,6 +10407,16 @@ export interface components {
       up_mbps: string | null;
       updated_at: string;
       updated_by: string | null;
+      /** The Z side's own; blank is the A side's (P-320). */
+      z_activated_on: string | null;
+      /** The Z side's own; blank is the A side's (P-320). */
+      z_disconnected_on: string | null;
+      /** That network, with z_side true. */
+      z_group: components["schemas"]["CircuitGroupRef"] | null;
+      /** The carrier network the Z side reaches: a circuit group of the kind network (P-319). Never beside z_location_hid. */
+      z_group_hid: string | null;
+      /** The Z side's own; blank is the A side's (P-320). */
+      z_installed_on: string | null;
       z_location_hid: string | null;
       z_note: string | null;
       /** Null for a side with no location. */
@@ -10381,6 +10449,10 @@ export interface components {
       support_weight?: string | null;
       tags?: string[] | null;
       up_mbps?: string | null;
+      z_activated_on?: string | null;
+      z_disconnected_on?: string | null;
+      z_group_hid?: string | null;
+      z_installed_on?: string | null;
       z_location_hid?: string | null;
       z_note?: string | null;
     };
@@ -10389,7 +10461,7 @@ export interface components {
       circuit_type: string | null;
       enterprise_circuit_id: string | null;
       hid: string;
-      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
+      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection, those of the side cost_side names, the Z side's in force where it is z (P-320). */
       in_service: boolean;
       /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
@@ -10586,7 +10658,7 @@ export interface components {
       from_agreement_label: string | null;
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -10598,7 +10670,7 @@ export interface components {
     ContractEffectiveValue: {
       /** What the agreement gives for this field today, whether the contract overrides it or not. Blank for a contract in no agreement, and where the agreement has nothing. */
       from_agreement: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -11167,7 +11239,7 @@ export interface components {
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label: string | null;
@@ -11186,7 +11258,7 @@ export interface components {
       label: string | null;
       /** internal where its contact is a user's, external where not; none if nobody. */
       scope?: "internal" | "external" | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or group, or the path of the place, it came from. */
       source_label: string | null;
@@ -11197,7 +11269,7 @@ export interface components {
     EffectiveOwner: {
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label?: string | null;
@@ -11231,7 +11303,7 @@ export interface components {
      * A decimal and a date are text, and a truth value is true or false.
      */
     EffectiveValue: {
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -11243,7 +11315,7 @@ export interface components {
       /** The weight before it was raised to the minimum of its kind. Blank where it was not raised. */
       raised_from: string | null;
       /** `setting` where it is the default of its kind. */
-      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "host" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "a_side" | "setting" | "none";
       source_hid: string | null;
       /** The weight in force, as text. Blank: none. */
       value: string | null;

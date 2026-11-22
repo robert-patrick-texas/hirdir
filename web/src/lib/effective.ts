@@ -21,6 +21,7 @@ const FROM: Readonly<Record<Source, string>> = {
   agreement: "the agreement it is in",
   vendor: "the carrier",
   port: "the port",
+  a_side: "the A side",
   setting: "the global setting",
   none: "",
 };

@@ -1,11 +1,13 @@
-"""Scenarios S47 to S50 of docs/build-plan.md, against a real server process: a circuit
+"""Scenarios S47 to S50 and S63 of docs/build-plan.md, against a real server process: a circuit
 with its two sides, its carriers and their numbers and the devices at each end, a dark
 fiber known by the enterprise's own ID, what circuits cost by carrier, site and group,
 the site contacts and the carrier's account manager of a circuit, and circuits carried
-to an empty inventory in files and back."""
+to an empty inventory in files and back; and a circuit into a carrier's network, counted by
+its Z side's dates."""
 
 import csv
 import io
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -392,3 +394,79 @@ def test_s49_a_circuit_shows_its_site_contacts_and_its_carriers_account_manager(
     own = desk.get(f"/circuits/{other['hid']}")["effective"]["account_managers"]
     assert own["source"] == "own"
     assert [one["contact"]["name"] for one in own["value"]] == ["Casey Lund"]
+
+
+def test_s63_a_circuit_into_a_carriers_network_counted_by_its_z_sides_dates(desk: Desk) -> None:
+    places = _two_sites(desk)
+    telecom = desk.vendor("Example Telecom")
+    network = desk.post(
+        "/circuit-groups",
+        {"name": "Example MPLS East", "kind": "network", "carrier_hid": telecom["hid"]},
+    )
+    # A year to come, so that every month of it is counted by the dates alone.
+    year = date.today().year + 2
+    circuit = desk.circuit(
+        "Site-2 MPLS",
+        enterprise_circuit_id="EC-0051",
+        circuit_type="mpls",
+        a_location_hid=places["room"]["hid"],
+        z_group_hid=network["hid"],
+        cost_side="z",
+        carrier_hid=telecom["hid"],
+        a_installed_on=f"{year}-01-02",
+        a_activated_on=f"{year}-01-05",
+        z_activated_on=f"{year}-04-10",
+    )
+    desk.part(circuit, "costs", {"description": "Port", "monthly_cost": "1000.00"})
+    # The Z side's blank installation is the A side's, and its activation its own.
+    effective = desk.get(f"/circuits/{circuit['hid']}")["effective"]
+    assert (effective["z_installed_on"]["value"], effective["z_installed_on"]["source"]) == (
+        f"{year}-01-02",
+        "a_side",
+    )
+    assert effective["z_activated_on"]["source"] == "own"
+    # It is in service from the Z side's activation: 1,000 a month from 10 April costs
+    # 8,700 in the year, and the costs counted at the A side's site, the Z side having none.
+    report = desk.get("/reports/circuit-costs", fiscal_year=year, by="site")
+    assert report["totals"]["cost"] == "8700.00"
+    assert [row["label"] for row in report["rows"]] == ["Americas > Central > Site-2"]
+    listed = desk.post("/circuits/query", {"filter": report["totals"]["filter"]}, 200)
+    assert [one["hid"] for one in listed["items"]] == [circuit["hid"]]
+
+    # The network lists it, by its Z side, once beside one added by hand, also when it is
+    # added by hand itself.
+    other = desk.circuit(
+        "Site-3 MPLS", a_location_hid=places["annex"]["hid"], z_note="carrier network"
+    )
+    members = f"/circuit-groups/{network['hid']}/members"
+    desk.post(members, {"circuit_hids": [other["hid"], circuit["hid"]]})
+    listed = desk.get(members)
+    assert [(one["circuit"]["name"], one["z_side"]) for one in listed["items"]] == [
+        ("Site-2 MPLS", True),
+        ("Site-3 MPLS", False),
+    ]
+    assert listed["total"] == 2
+    assert desk.get(f"/circuit-groups/{network['hid']}")["circuits"] == 2
+
+    # The A side moved after the Z side's activation: the Z side's installation in force,
+    # the A side's, would be after it, and the change is refused at the Z side's field.
+    now = desk.get(f"/circuits/{circuit['hid']}")
+    refused = desk.patch(
+        f"/circuits/{circuit['hid']}",
+        {
+            "row_version": now["row_version"],
+            "a_installed_on": f"{year}-04-20",
+            "a_activated_on": f"{year}-04-25",
+        },
+        422,
+    )
+    assert [one["field"] for one in refused["errors"]] == ["z_activated_on"]
+    assert desk.get(f"/circuits/{circuit['hid']}")["a_installed_on"] == f"{year}-01-02"
+
+    # The network is not retired while the circuit, active, reaches it: it is named.
+    retired = desk.post(
+        f"/circuit-groups/{network['hid']}/retire", {"row_version": network["row_version"]}, 409
+    )
+    assert "EC-0051" in retired["detail"]
+    assert [one["hid"] for one in retired["depends_on"]] == [circuit["hid"]]
+    assert desk.get(f"/circuit-groups/{network['hid']}")["record_status"] == "active"

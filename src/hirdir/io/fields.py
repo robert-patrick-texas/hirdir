@@ -2375,6 +2375,7 @@ _A_LOCATION: Any = aliased(Location, name="a_location")
 _A_SITE: Any = aliased(Site, name="a_site")
 _Z_LOCATION: Any = aliased(Location, name="z_location")
 _Z_SITE: Any = aliased(Site, name="z_site")
+_Z_GROUP: Any = aliased(CircuitGroup, name="z_group")
 _COST_LOCATION: Any = aliased(Location, name="cost_location")
 _COST_SITE: Any = aliased(Site, name="cost_site")
 _PRIMARY_CARRIER: Any = aliased(Vendor, name="primary_carrier")
@@ -2407,18 +2408,29 @@ _FIRST_NUMBER = (
     .correlate(Circuit)
     .scalar_subquery()
 )
-# The groups a circuit is in, retired ones too: retiring a group ends no membership.
-_ITS_CIRCUIT_GROUPS = (CircuitGroupMember.circuit_hid == Circuit.hid,)
+# The groups a circuit is in, retired ones too, since retiring a group ends no
+# membership: those it was added to, and the network its Z side names (P-320).
+_SELF_IN_GROUP: Any = aliased(Circuit, name="circuit_in_group")
+_EVERY_CIRCUIT_GROUP: Any = union_all(
+    select(
+        CircuitGroupMember.circuit_hid.label("circuit_hid"),
+        CircuitGroupMember.group_hid.label("group_hid"),
+    ),
+    select(_SELF_IN_GROUP.hid, _SELF_IN_GROUP.z_group_hid).where(
+        _SELF_IN_GROUP.z_group_hid.is_not(None)
+    ),
+).subquery("every_circuit_group")
+_ITS_CIRCUIT_GROUPS = (_EVERY_CIRCUIT_GROUP.c.circuit_hid == Circuit.hid,)
 _CIRCUIT_GROUPS = _one_of(
-    select(CircuitGroupMember.hid).join(
-        CircuitGroup, CircuitGroup.hid == CircuitGroupMember.group_hid
+    select(_EVERY_CIRCUIT_GROUP.c.group_hid).join(
+        CircuitGroup, CircuitGroup.hid == _EVERY_CIRCUIT_GROUP.c.group_hid
     ),
     *_ITS_CIRCUIT_GROUPS,
 )
 _FIRST_CIRCUIT_GROUP = (
     select(func.min(CircuitGroup.name_key))
-    .select_from(CircuitGroupMember)
-    .join(CircuitGroup, CircuitGroup.hid == CircuitGroupMember.group_hid)
+    .select_from(_EVERY_CIRCUIT_GROUP)
+    .join(CircuitGroup, CircuitGroup.hid == _EVERY_CIRCUIT_GROUP.c.group_hid)
     .where(*_ITS_CIRCUIT_GROUPS)
     .correlate(Circuit)
     .scalar_subquery()
@@ -2476,10 +2488,21 @@ CIRCUITS = Listing(
         ),
         **_columns(Circuit, "choice", "circuit_type", "cost_side", "record_status"),
         **_columns(Circuit, "number", "port_mbps", "down_mbps", "up_mbps", "support_weight"),
-        **_columns(Circuit, "date", "a_installed_on", "a_activated_on", "a_disconnected_on"),
+        # The dates of each side, and the Z side's in force, its own or the A side's (P-320).
+        **_columns(Circuit, "date", *circuits.A_DATES, *circuits.Z_DATES),
+        **{
+            f"effective.z_{day}": Field("date", circuits.z_in_force_column(day))
+            for day in circuits.DAYS
+        },
         "production": Field("boolean", Circuit.production),
         **_columns(
-            Circuit, "reference", "a_location_hid", "z_location_hid", "carrier_hid", "owner_hid"
+            Circuit,
+            "reference",
+            "a_location_hid",
+            "z_location_hid",
+            "z_group_hid",
+            "carrier_hid",
+            "owner_hid",
         ),
         # A side at a location, or at or beneath a site or a region.
         "location": Field(
@@ -2489,6 +2512,8 @@ CIRCUITS = Listing(
         ),
         "a_location.name": Field("text", _A_LOCATION.name),
         "z_location.name": Field("text", _Z_LOCATION.name),
+        # The carrier network the Z side reaches, by its name (P-319).
+        "z_group.name": Field("text", _Z_GROUP.name),
         # Where its cost and its weight count: the location of the side it counts at,
         # and that location's site.
         "cost_location": Field(
@@ -2538,6 +2563,7 @@ CIRCUITS = Listing(
         .outerjoin(_A_SITE, _A_SITE.hid == _A_LOCATION.site_hid)
         .outerjoin(_Z_LOCATION, _Z_LOCATION.hid == Circuit.z_location_hid)
         .outerjoin(_Z_SITE, _Z_SITE.hid == _Z_LOCATION.site_hid)
+        .outerjoin(_Z_GROUP, _Z_GROUP.hid == Circuit.z_group_hid)
         .outerjoin(_COST_LOCATION, _COST_LOCATION.hid == circuits.cost_location_column())
         .outerjoin(_COST_SITE, _COST_SITE.hid == _COST_LOCATION.site_hid)
         .outerjoin(_PRIMARY_CARRIER, _PRIMARY_CARRIER.hid == Circuit.carrier_hid)
@@ -2548,28 +2574,40 @@ CIRCUITS = Listing(
 
 _MEMBER_CIRCUIT: Any = aliased(Circuit, name="member_circuit")
 _GROUP_OWNER: Any = aliased(Owner, name="circuit_group_owner")
-_OF_GROUP = (CircuitGroupMember.group_hid == CircuitGroup.hid,)
+_GROUP_CARRIER: Any = aliased(Vendor, name="circuit_group_carrier")
+# The circuits of a group, each once: those added to it, and those whose Z side names
+# it (P-320).
+_OF_GROUP = (
+    or_(
+        _MEMBER_CIRCUIT.z_group_hid == CircuitGroup.hid,
+        select(CircuitGroupMember.hid)
+        .where(
+            CircuitGroupMember.group_hid == CircuitGroup.hid,
+            CircuitGroupMember.circuit_hid == _MEMBER_CIRCUIT.hid,
+        )
+        .correlate(CircuitGroup, _MEMBER_CIRCUIT)
+        .exists(),
+    ),
+)
 # How many circuits a group has, how many of them are in service today, and what those
 # in service cost today, each circuit once.
 _GROUP_CIRCUITS: ColumnElement[Any] = (
     select(func.count())
-    .select_from(CircuitGroupMember)
+    .select_from(_MEMBER_CIRCUIT)
     .where(*_OF_GROUP)
     .correlate(CircuitGroup)
     .scalar_subquery()
 )
 _GROUP_IN_SERVICE: ColumnElement[Any] = (
     select(func.count())
-    .select_from(CircuitGroupMember)
-    .join(_MEMBER_CIRCUIT, _MEMBER_CIRCUIT.hid == CircuitGroupMember.circuit_hid)
+    .select_from(_MEMBER_CIRCUIT)
     .where(*_OF_GROUP, circuit_records.in_service_column(_MEMBER_CIRCUIT))
     .correlate(CircuitGroup)
     .scalar_subquery()
 )
 _GROUP_MONTHLY: ColumnElement[Any] = (
     select(circuit_records.hundredths_of_lines())
-    .select_from(CircuitGroupMember)
-    .join(_MEMBER_CIRCUIT, _MEMBER_CIRCUIT.hid == CircuitGroupMember.circuit_hid)
+    .select_from(_MEMBER_CIRCUIT)
     .join(CircuitCost, CircuitCost.circuit_hid == _MEMBER_CIRCUIT.hid)
     .where(
         *_OF_GROUP,
@@ -2585,6 +2623,10 @@ CIRCUIT_GROUPS = Listing(
     fields={
         **_bookkeeping(CircuitGroup),
         **_columns(CircuitGroup, "text", "name", "description", "notes"),
+        # A network, which a Z side may name, with its carrier, or a collection (P-319).
+        "kind": Field("choice", CircuitGroup.kind),
+        "carrier_hid": Field("reference", CircuitGroup.carrier_hid),
+        "carrier.name": Field("text", _GROUP_CARRIER.name),
         "owner_hid": Field("reference", CircuitGroup.owner_hid),
         "owner.label": Field("text", _GROUP_OWNER.label),
         "record_status": Field("choice", CircuitGroup.record_status),
@@ -2596,7 +2638,9 @@ CIRCUIT_GROUPS = Listing(
             "number", circuit_records.as_money(_GROUP_MONTHLY, circuit_records.MONTHS)
         ),
     },
-    joined=lambda query: query.outerjoin(_GROUP_OWNER, _GROUP_OWNER.hid == CircuitGroup.owner_hid),
+    joined=lambda query: query.outerjoin(
+        _GROUP_OWNER, _GROUP_OWNER.hid == CircuitGroup.owner_hid
+    ).outerjoin(_GROUP_CARRIER, _GROUP_CARRIER.hid == CircuitGroup.carrier_hid),
     default_sort=("name",),
 )
 

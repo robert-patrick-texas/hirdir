@@ -286,7 +286,7 @@ async function membershipsOf(groupHid: string): Promise<Map<string, string>> {
       path: { hid: groupHid },
       query: { limit: EVERY, offset },
     });
-    for (const member of page.items) found.set(member.circuit_hid, member.hid);
+    for (const member of page.items) if (member.hid) found.set(member.circuit_hid, member.hid);
     if (offset + page.items.length >= page.total || page.items.length === 0) return found;
   }
 }

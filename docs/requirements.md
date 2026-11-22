@@ -466,7 +466,10 @@ records; its owner is an owner; its devices are items and device groups.
   the circuit a number, as for dark fiber a business partner provides (D-158, P-145).
 - **R15.2** A circuit has an A side and a Z side, each a location, or, for an end that
   is not one of the enterprise's places such as the carrier's network, no location and
-  a note of where it ends; at least one side is a location (P-147).
+  a note of where it ends; at least one side is a location (P-147). The Z side MAY
+  name instead the carrier network it reaches, a carrier's private MPLS network, the
+  internet, a Metro Ethernet region or a cloud on-ramp: a circuit group of the kind
+  network, which lists every circuit whose Z side names it (P-319, P-320).
 - **R15.3** A circuit MUST list the devices it connects, each on its side, and each
   device and each location MUST show the circuits it is on (P-147).
 - **R15.4** A circuit has a primary carrier, or the other party that provides it, and
@@ -481,7 +484,10 @@ records; its owner is an owner; its devices are items and device groups.
   contract, its install and activation dates, the day it was disconnected, whether it
   carries production, its type, its speed, an optional support weight, and an owner,
   the person or team responsible for it. Who pays for it is said by a tag or a note
-  (P-145, P-146).
+  (P-145, P-146). The dates are the A side's, and the Z side MAY have its own, which
+  may differ, a blank one being the A side's; the dates of the side its `cost_side`
+  names decide whether it is in service, the months its cost counts and whether it
+  carries its support weight (P-317, P-320).
 - **R15.7** A circuit's monthly recurring cost is entered as the lines the carrier
   bills, and its annual cost is twelve times their sum. Its cost and its support weight
   count at the site of its A side, or of its Z side where it is switched; an Admin
@@ -492,7 +498,9 @@ records; its owner is an owner; its devices are items and device groups.
   of it, as the carrier bills it (P-151).
 - **R15.9** Circuits MAY be put into groups, a circuit into more than one, such as
   Internet access or a cloud on-ramp, and the cost of a group MUST be read as one sum
-  (P-152).
+  (P-152). A group is a network, which a Z side may name, with its carrier, or a
+  collection for the enterprise's own purpose; a network's circuits are those added to
+  it and those whose Z side names it, each counted once (P-319, P-320).
 - **R15.10** Circuits are listed, filtered, sorted and exported as items are, are
   loaded from files, where a row finds its circuit by the enterprise circuit ID, and
   are reached from the API, the command line and the web UI (P-153, P-154).

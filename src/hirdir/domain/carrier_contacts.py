@@ -7,7 +7,8 @@ stand in place of the carrier's, all of them, as a contract's stand in place of 
 agreement's. The site contacts of a circuit are those of the locations of its two
 sides, each role of the `contact_role` list resolved as for the location itself, with
 the level each came from; a circuit may name its own for a side and a role, which then
-stand in place of what the location gives. A side with no location has only its own.
+stand in place of what the location gives. A side with no location, a Z side that names
+the carrier network it reaches among them (P-320), has only its own.
 
 That is worked out when a circuit is read, for a page of circuits at once. Nothing is
 copied: a new telephone number of a carrier's support desk shows on every circuit of
