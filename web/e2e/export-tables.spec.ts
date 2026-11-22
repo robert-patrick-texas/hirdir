@@ -556,7 +556,9 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
       buffer: Buffer.from(`${tagsHeader}\n,${id},,\n`, "utf8"),
     });
   await chooseTags();
-  await expect(page.getByLabel("Records")).toHaveValue("tags");
+  // Records by its own name alone: the pager of what the sites' import made, "Pages of
+  // records", is on show too until the job of the sites goes.
+  await expect(page.getByLabel("Records", { exact: true })).toHaveValue("tags");
   await expect(page).toHaveURL(/\/import$/);
   await expect(page.getByTestId("import-job")).toHaveCount(0);
   const previewed = answer(page, "POST", "/imports/preview");
@@ -566,9 +568,9 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
   await expect(count(page, "created")).toHaveText("1");
   await expect(count(page, "rejected")).toHaveText("0");
   // Records set by hand since the last file is kept for the next.
-  await page.getByLabel("Records").selectOption("sites");
+  await page.getByLabel("Records", { exact: true }).selectOption("sites");
   await chooseTags();
-  await expect(page.getByLabel("Records")).toHaveValue("sites");
+  await expect(page.getByLabel("Records", { exact: true })).toHaveValue("sites");
   await expect(page.getByTestId("import-job")).toHaveCount(0);
 
   // The sites hold the corrected addresses, and their file says so when exported again.

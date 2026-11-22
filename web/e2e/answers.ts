@@ -103,7 +103,7 @@ export async function previewFile(
 ): Promise<void> {
   await page.getByLabel("File", { exact: true }).setInputFiles(file);
   // The name of the file suggested what it holds, the new kinds of record among them.
-  await expect(page.getByLabel("Records")).toHaveValue(entity);
+  await expect(page.getByLabel("Records", { exact: true })).toHaveValue(entity);
   const previewed = answer(page, "POST", "/imports/preview");
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   expect((await previewed).status(), "the file is previewed").toBe(201);

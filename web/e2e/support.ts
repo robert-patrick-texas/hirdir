@@ -387,5 +387,9 @@ export async function expectClean(page: Page, seen: Watch, refusals: string[] = 
   // Some browsers report each refused request on the console as well. Nothing else may be there.
   const unexpected = seen.console.filter((line) => !/Failed to load resource/.test(line));
   expect(unexpected, "console errors").toEqual([]);
-  expect(seen.console.length, "refusals on the console").toBeLessThanOrEqual(refusals.length);
+  // 0.9.17: Chrome ends every request in flight, and says so on the console, when the
+  // host's network changes, as when another run on the host starts or stops a container:
+  // that is no refusal of the server's (P-309).
+  const refused = seen.console.filter((line) => !/net::ERR_NETWORK_CHANGED/.test(line));
+  expect(refused.length, "refusals on the console").toBeLessThanOrEqual(refusals.length);
 }

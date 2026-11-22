@@ -393,7 +393,11 @@ test("P-187: text that cannot be read never shows every item, from Find an item 
   // A list opened with that text says why at once, and asks for no row: nothing to count,
   // to select, to export or to edit in bulk.
   reads = 0;
+  // The page asks for no row, but it is there, its grid with it, once it has read the
+  // choices it offers: a busy server sends its scripts and that answer late (P-309).
+  const ready = answer(page, "GET", "/choices");
   await page.goto(`./items?filter=${encodeURIComponent("core:sw:01")}&minor=1`);
+  await ready;
   const filter = page.getByLabel("Filter", { exact: true });
   await expect(filter).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByText(/^Words alone find a record by its/)).toBeVisible();
