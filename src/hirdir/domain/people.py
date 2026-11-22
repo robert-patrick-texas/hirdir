@@ -571,6 +571,10 @@ def bring_back(
             },
             Existing(CONTACT, contact.hid, contact.name),
         )
+    if accounts.is_agent(user) and answerable_hid:
+        # The person named is held to what a hand-over is, before anything is written,
+        # the one the agent was answerable to too: a person who is not retired (P-316).
+        accounts.checked_answerable(db, answerable_hid)
     if accounts.is_agent(user) and not answerable_hid:
         person = db.get(User, user.answerable_hid) if user.answerable_hid else None
         if person is None or not _standing(person):

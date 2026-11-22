@@ -8,6 +8,8 @@ import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { noRoleWords } from "../lib/accounts";
+import { actorLabel } from "../lib/audit";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { ROLES, roleLabel } from "../lib/roles";
 import { dateValue } from "../lib/sort";
@@ -26,6 +28,11 @@ export function Roles() {
   const grants = useLoad("grants", (signal) =>
     api.request("get", "/api/v1/role-grants", { signal }),
   );
+  // The accounts, each with the roles it holds and where they come from: whom a grant
+  // revoked leaves with no role is said from them (P-314 (4)), and the form grants to one.
+  const users = useLoad("users for grants", (signal) =>
+    api.request("get", "/api/v1/users", { query: { limit: EVERY_USER }, signal }),
+  );
   const [done, setDone] = useState("");
   const revoke = useAction();
   const sorting = useSorting(grants.data, {
@@ -38,6 +45,7 @@ export function Roles() {
   function changed(text: string) {
     setDone(text);
     grants.reload();
+    users.reload();
     // The reader's own role may be what changed.
     auth.refresh();
   }
@@ -88,33 +96,46 @@ export function Roles() {
               </tr>
             </thead>
             <tbody>
-              {sorting.rows.map((grant) => (
-                <tr key={grant.hid}>
-                  <th scope="row">{roleLabel(grant.role)}</th>
-                  <td>
-                    <TargetLink grant={grant} />
-                  </td>
-                  <td>{grant.user_hid ? "User" : "Group"}</td>
-                  <td>
-                    <Time at={grant.created_at} />
-                  </td>
-                  <td>
-                    <ConfirmButton
-                      label="Revoke"
-                      title={`Take ${roleLabel(grant.role)} back from ${grant.target_name}?`}
-                      confirmLabel="Revoke role"
-                      onConfirm={() => revokeGrant(grant)}
-                      disabled={revoke.busy}
-                    >
-                      <p>
-                        {grant.user_hid
-                          ? `The user ${grant.target_name} loses this role at once, unless a group gives it to them.`
-                          : `Every member of the group ${grant.target_name} loses this role at once, unless they hold it another way.`}
-                      </p>
-                    </ConfirmButton>
-                  </td>
-                </tr>
-              ))}
+              {sorting.rows.map((grant) => {
+                // Those who hold this grant: the user, or the members of the group.
+                const holders = (users.data?.items ?? []).filter((user) =>
+                  user.grants.some((held) => held.hid === grant.hid),
+                );
+                const leaves = noRoleWords(holders, { kind: "revoke", grantHid: grant.hid });
+                return (
+                  <tr key={grant.hid}>
+                    <th scope="row">{roleLabel(grant.role)}</th>
+                    <td>
+                      <TargetLink grant={grant} />
+                    </td>
+                    <td>{grant.user_hid ? "User" : "Group"}</td>
+                    <td>
+                      <Time at={grant.created_at} />
+                    </td>
+                    <td>
+                      <ConfirmButton
+                        label="Revoke"
+                        title={`Take ${roleLabel(grant.role)} back from ${grant.target_name}?`}
+                        confirmLabel="Revoke role"
+                        onConfirm={() => revokeGrant(grant)}
+                        disabled={revoke.busy}
+                      >
+                        <p>
+                          {grant.user_hid
+                            ? `The user ${grant.target_name} loses this role at once, unless a group gives it to them.`
+                            : `Every member of the group ${grant.target_name} loses this role at once, unless they hold it another way.`}
+                        </p>
+                        {/* 0.9.17: whom it leaves with no role, said first (P-314 (4)). */}
+                        {leaves && (
+                          <p data-testid="no-role-left">
+                            <strong>{leaves}</strong>
+                          </p>
+                        )}
+                      </ConfirmButton>
+                    </td>
+                  </tr>
+                );
+              })}
               {grants.data.length === 0 && (
                 <tr>
                   <td colSpan={5} className="muted">
@@ -126,7 +147,9 @@ export function Roles() {
           </table>
         </div>
       )}
+      <Problem error={users.error} />
       <GrantForm
+        users={users.data?.items ?? null}
         onGranted={(grant) =>
           changed(`${roleLabel(grant.role)} was granted to ${grant.target_name}.`)
         }
@@ -149,10 +172,14 @@ function TargetLink({ grant }: { grant: Grant }) {
   return <>{grant.target_name}</>;
 }
 
-function GrantForm({ onGranted }: { onGranted: (grant: Grant) => void }) {
-  const users = useLoad("users for grants", (signal) =>
-    api.request("get", "/api/v1/users", { query: { limit: EVERY_USER }, signal }),
-  );
+function GrantForm({
+  users,
+  onGranted,
+}: {
+  /** The accounts to choose from, or null while they are read. */
+  users: readonly Schemas["UserOut"][] | null;
+  onGranted: (grant: Grant) => void;
+}) {
   const groups = useLoad("groups for grants", (signal) =>
     api.request("get", "/api/v1/user-groups", { signal }),
   );
@@ -181,7 +208,6 @@ function GrantForm({ onGranted }: { onGranted: (grant: Grant) => void }) {
       <h2 id="grant">Grant a role</h2>
       <form onSubmit={submit} className="stack">
         <Problem error={action.error} shown={["role", "user_hid", "group_hid"]} />
-        <Problem error={users.error} />
         <Problem error={groups.error} />
         <SelectField label="Role" name="role" value={role} onChange={setRole} error={fields.role}>
           {ROLES.map((name) => (
@@ -219,13 +245,14 @@ function GrantForm({ onGranted }: { onGranted: (grant: Grant) => void }) {
             name="user_hid"
             value={userHid}
             onChange={setUserHid}
-            disabled={!users.data}
+            disabled={!users}
             error={fields.user_hid}
           >
             <option value="">Choose a user…</option>
-            {(users.data?.items ?? []).map((user) => (
+            {(users ?? []).map((user) => (
               <option key={user.hid} value={user.hid}>
-                {user.display_name ? `${user.username} (${user.display_name})` : user.username}
+                {/* 0.9.17: an agent marked with its person, as Who on the Audit page. */}
+                {user.display_name ? `${user.username} (${user.display_name})` : actorLabel(user)}
               </option>
             ))}
           </SelectField>

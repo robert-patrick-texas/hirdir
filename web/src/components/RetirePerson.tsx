@@ -11,8 +11,11 @@ import { type ReactNode, type RefObject, useId, useLayoutEffect, useRef, useStat
 import { Link } from "react-router";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth";
+import { rolesFor } from "../lib/accounts";
 import { toApiError, useAction, useLoad } from "../lib/hooks";
 import {
+  type AgentAction,
+  agentsToSay,
   backChanged,
   blockedWords,
   bringBackBody,
@@ -21,6 +24,7 @@ import {
   contactGoes,
   contactUses,
   goWords,
+  handedTo,
   held,
   keptChoices,
   LINKED_LABELS,
@@ -33,6 +37,7 @@ import {
   operatorUses,
   othersOf,
   ownAccountGoes,
+  refusedAgents,
   refusedHandOvers,
   refusedRows,
   retireBody,
@@ -50,10 +55,12 @@ import {
   sendBringBack,
   sendRetire,
 } from "../lib/person";
-import { allows, ROLES, roleLabel } from "../lib/roles";
+import { allows, roleLabel } from "../lib/roles";
 import { ContactField } from "./ContactField";
 import { CheckField, RadioGroupField, SelectField } from "./Field";
 import { OperatorMark } from "./Operator";
+import { PersonUserField } from "./PersonUserField";
+import type { Picked } from "./PickField";
 import { Problem } from "./Problem";
 
 interface DialogProps {
@@ -198,6 +205,9 @@ function RetireAsk(props: RetireAskProps) {
   }
   // What is still to be chosen, said at its row before anything is sent.
   const [found, setFound] = useState<Record<string, string>>({});
+  // 0.9.17: the names of the people chosen to hand a label to, by the HID of their
+  // contact, so that the button names each (P-314).
+  const [names, setNames] = useState<Readonly<Record<string, string>>>({});
   const action = useAction();
 
   const linked = asked?.linked;
@@ -213,9 +223,18 @@ function RetireAsk(props: RetireAskProps) {
   // the hand-over the server refused, to somebody retired or gone since.
   const refused =
     unlisted || rereading || changed || !linked || !choices
-      ? { rows: {}, shown: ["linked.user", "linked.contact", "linked.operators"] }
+      ? { rows: {}, shown: ["linked.user", "linked.contact", "linked.operators", "linked.agents"] }
       : refusedRows(fields, refusedHandOvers(fields["linked.operators"], on, linked, choices));
-  const rows: Readonly<Record<string, string | undefined>> = { ...refused.rows, ...found };
+  // 0.9.17: what the server says of an agent handed over, at its row (P-316).
+  const agentsRefused =
+    unlisted || rereading || changed || !linked || !choices
+      ? { rows: {}, shown: [] }
+      : refusedAgents(fields, on, linked, choices);
+  const rows: Readonly<Record<string, string | undefined>> = {
+    ...refused.rows,
+    ...agentsRefused.rows,
+    ...found,
+  };
 
   function choose(next: Choices) {
     if (!linked) return;
@@ -250,7 +269,7 @@ function RetireAsk(props: RetireAskProps) {
     if (result.ok) {
       // Whoever retires their own account is signed out by it.
       if (ownAccountGoes(on, linked, choices, admin, auth.user.hid)) auth.signOut();
-      else onRetired(retiredWords(on, linked, choices, admin));
+      else onRetired(retiredWords(on, linked, choices, admin, handedTo(choices, names)));
       return;
     }
     // What is linked may be other than it was when this opened, a record added, parted
@@ -283,7 +302,7 @@ function RetireAsk(props: RetireAskProps) {
         <Problem error={rereadError} />
         <Problem
           error={changed && !unlisted ? null : action.error}
-          shown={refused.shown}
+          shown={[...refused.shown, ...agentsRefused.shown]}
           onReload={() => void readAgain()}
           labels={LINKED_LABELS}
           dependsLead={notSaidLead}
@@ -314,6 +333,7 @@ function RetireAsk(props: RetireAskProps) {
             rows={rows}
             disabled={action.busy || blocked !== null}
             onChoose={choose}
+            onNamed={(picked) => setNames((was) => ({ ...was, [picked.hid]: picked.name }))}
           />
         )}
         {blocked && (
@@ -339,9 +359,9 @@ function RetireAsk(props: RetireAskProps) {
             onClick={() => void retire()}
             disabled={action.busy || !linked}
           >
-            {/* What it will do, as the ticks stand (review 9); the page's own words
-                where nothing is linked. */}
-            {linked && choices && !plain ? goWords(on, linked, choices, admin) : label}
+            {/* What it will do, as the ticks stand, each record named (review 9, P-314);
+                the page's own words where nothing is linked. */}
+            {linked && choices && !plain ? goWords(on, linked, choices, admin, names) : label}
           </button>
         )}
       </p>
@@ -360,6 +380,8 @@ interface RetireRowsProps {
   rows: Readonly<Record<string, string | undefined>>;
   disabled: boolean;
   onChoose: (next: Choices) => void;
+  /** A person was chosen to hand a label to: the button names them. */
+  onNamed: (picked: Picked) => void;
 }
 
 /** What a label may become, in the words of the page of an operator. */
@@ -369,6 +391,18 @@ const ACTIONS: ReadonlyArray<{ value: OperatorAction; label: string }> = [
   { value: "open", label: "Leave open" },
   { value: "keep", label: "Keep" },
 ];
+
+/** 0.9.17: what an agent of the person may become (P-316). */
+const AGENT_ACTIONS: ReadonlyArray<{ value: AgentAction; label: string }> = [
+  { value: "retire", label: "Retire" },
+  { value: "hand_over", label: "Hand to another person" },
+];
+
+function agentHint(action: AgentAction): string {
+  return action === "retire"
+    ? "Retired with the person: its tokens are revoked, and it keeps naming the person it was answerable to."
+    : "Answerable to another person from now on: it holds no more than their role.";
+}
 
 function actionHint(action: OperatorAction, person: string): string {
   if (action === "retire") {
@@ -381,7 +415,7 @@ function actionHint(action: OperatorAction, person: string): string {
 
 /** Each linked record that is not retired, with what is asked of it. */
 function RetireRows(props: RetireRowsProps) {
-  const { on, linked, choices, admin, ownHid, rows, disabled, onChoose } = props;
+  const { on, linked, choices, admin, ownHid, rows, disabled, onChoose, onNamed } = props;
   const others = othersOf(on, linked);
   const going = contactGoes(on, linked, choices);
   const person = linked.contact?.name ?? "";
@@ -492,10 +526,62 @@ function RetireRows(props: RetireRowsProps) {
                 name={`hand_over_${operator.hid}`}
                 value={choice.contactHid}
                 onChange={(hid) => set({ ...choice, contactHid: hid })}
+                onPicked={(picked) => {
+                  if (picked) onNamed(picked);
+                }}
                 blank="Nobody chosen"
                 error={
                   choice.action === "hand_over" ? rows[rowOf("operator", operator.hid)] : undefined
                 }
+                disabled={disabled}
+              />
+            </div>
+          </div>
+        );
+      })}
+      {/* 0.9.17: each agent answerable to the account, while the account goes: retired
+          with it, ticked from the start, or handed to another person (P-316). */}
+      {agentsToSay(on, linked, choices).map((agent) => {
+        const choice = choices.agents[agent.hid] ?? { action: "retire", userHid: "" };
+        const set = (next: { action: AgentAction; userHid: string }) =>
+          onChoose({ ...choices, agents: { ...choices.agents, [agent.hid]: next } });
+        const row = rowOf("agent", agent.hid);
+        const retired = on.kind === "user" ? on.hid : (others.user?.hid ?? "");
+        return (
+          <div className="person-row" data-row="agent" data-agent={agent.hid} key={agent.hid}>
+            <p className="person-about">
+              <Link to={`/admin/users/${encodeURIComponent(agent.hid)}`}>{agent.username}</Link> ·
+              agent · {roleLabel(agent.role)} · {userState(agent)}
+            </p>
+            <div className="person-choice">
+              <RadioGroupField
+                label={`The agent ${agent.username}`}
+                name={`linked_agent_${agent.hid}`}
+                options={AGENT_ACTIONS}
+                value={choice.action}
+                onChange={(value) =>
+                  set({
+                    ...choice,
+                    action: AGENT_ACTIONS.find((one) => one.value === value)?.value ?? "retire",
+                  })
+                }
+                hint={agentHint(choice.action)}
+                error={choice.action === "hand_over" ? undefined : rows[row]}
+                disabled={disabled}
+              />
+            </div>
+            <div hidden={choice.action !== "hand_over"} className="person-hand-over">
+              <PersonUserField
+                label={`Person to hand ${agent.username} to`}
+                name={`hand_agent_${agent.hid}`}
+                value={choice.userHid}
+                onChange={(hid) => set({ ...choice, userHid: hid })}
+                onPicked={(picked) => {
+                  if (picked) onNamed(picked);
+                }}
+                leaveOut={retired ? [retired] : []}
+                blank="Nobody chosen"
+                error={choice.action === "hand_over" ? rows[row] : undefined}
                 disabled={disabled}
               />
             </div>
@@ -515,7 +601,13 @@ function RetireRows(props: RetireRowsProps) {
 }
 
 interface BringBackUserProps {
-  user: { hid: string; username: string; row_version: number; is_service_account: boolean };
+  user: {
+    hid: string;
+    username: string;
+    row_version: number;
+    kind: string;
+    answerable?: { hid: string; username: string; name: string; record_status: string } | null;
+  };
   disabled?: boolean;
   /** The account is back: the user, and its new access code, shown once. */
   onBroughtBack: (answer: BroughtBack) => void;
@@ -580,7 +672,12 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
   );
   const [ticked, setTicked] = useState<readonly string[]>([]);
   const [role, setRole] = useState("");
-  const person = !user.is_service_account;
+  const person = user.kind === "person";
+  // 0.9.17: an agent comes back answerable to its person, or to another chosen here; one
+  // whose person is retired is given another (P-316).
+  const agent = user.kind === "agent";
+  const [answerable, setAnswerable] = useState("");
+  const personGone = agent && user.answerable?.record_status === "retired";
   const action = useAction();
   const linked = read.data;
   const offer = linked ? bringBackOffer(linked) : null;
@@ -607,7 +704,7 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
     if (!linked) return;
     setChanged(null);
     setReread(false);
-    const body = bringBackBody(linked, ticked, version, role);
+    const body = bringBackBody(linked, ticked, version, role, answerable);
     let again = false;
     const result = await action.run(async () => {
       try {
@@ -650,7 +747,7 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
         <Problem error={rereadError} />
         <Problem
           error={changed ? null : action.error}
-          shown={[...refused.shown, "role"]}
+          shown={[...refused.shown, "role", "answerable_hid"]}
           onReload={() => void readAgain()}
           labels={LINKED_LABELS}
         />
@@ -692,13 +789,37 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
                 disabled={action.busy}
               >
                 <option value="">{person ? "Choose a role" : "No role"}</option>
-                {ROLES.map((name) => (
+                {rolesFor(user.kind).map((name) => (
                   <option key={name} value={name}>
                     {roleLabel(name)}
                   </option>
                 ))}
               </SelectField>
             </div>
+            {agent && (
+              <div className="person-row" data-row="answerable">
+                <PersonUserField
+                  label="Answerable to"
+                  name="answerable_hid"
+                  value={answerable}
+                  onChange={setAnswerable}
+                  required={false}
+                  blank={
+                    user.answerable && !personGone
+                      ? `${user.answerable.name}, as before`
+                      : "Nobody chosen"
+                  }
+                  leaveOut={user.answerable ? [user.answerable.hid] : []}
+                  hint={
+                    personGone
+                      ? `${user.answerable?.username ?? "Its person"} is retired: choose the person the agent is answerable to from now on.`
+                      : "Left as it is, the agent is answerable to the person it was; or choose another."
+                  }
+                  error={sentWith || changed ? undefined : action.error?.fields.answerable_hid}
+                  disabled={action.busy}
+                />
+              </div>
+            )}
             {offer.contact && (
               <div className="person-row" data-row="contact">
                 <CheckField
@@ -747,7 +868,9 @@ function BringBackAsk({ user, turn, onCancel, onBroughtBack }: BringBackAskProps
           type="button"
           className="primary"
           onClick={() => void bringBack()}
-          disabled={action.busy || !linked || (person && role === "")}
+          disabled={
+            action.busy || !linked || (person && role === "") || (personGone && answerable === "")
+          }
         >
           Bring back
         </button>

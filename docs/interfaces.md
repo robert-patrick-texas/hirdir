@@ -620,7 +620,11 @@ requests are held to now, which is `role` for a person and a service account and
 agent, the lower of `role` and its person's, null where its tokens are refused for the
 person; and `role_capped_by`, of an agent whose `role_in_force` is lower than `role`, why:
 `person_role`, the person's role is lower, `person_no_role`, `person_disabled` or
-`person_retired`; null where nothing holds it lower, and for the other kinds.
+`person_retired`; null where nothing holds it lower, and for the other kinds. An agent
+that holds Admin all the same, which no route gives it but a database edited by hand or
+restored from one may, is held at Inventory wherever its role is read, beside its
+person's: `role` says `admin`, `role_in_force` `inventory`, and `role_capped_by`
+`never_admin`, unless its person's role is lower still, `person_role`.
 `GET /auth/me`, and the user in the answer of signing in, answer each field of this
 section as a user does, `kind`, `answerable_hid`, `answerable`, `agents`, `grants`,
 `role_in_force` and `role_capped_by`, so that the token of an agent reads its kind, its
@@ -681,7 +685,9 @@ answerable to.
 An agent by itself is retired and brought back as a service account is, its tokens
 revoked when it is retired. `POST /users/{hid}/bring-back` takes `answerable_hid`, of an
 agent alone, a `422` for the other kinds: the person answerable for it from then on, as
-`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`. Left out,
+`PATCH /users/{hid}` hands one over, audited as an `update` after `bring_back`, and held
+to the same rules before anything is changed: a retired person is a `422` on
+`answerable_hid`, the one the agent had among them. Left out,
 the agent stays its person's; where that person is retired it is a `409` on
 `answerable_hid` that names them as `existing`, and nothing changes. An agent may be
 brought back with no role, as a service account may.
@@ -3950,6 +3956,81 @@ server (P-299, P-300):
   refused by the server at New access code, in its words, "this is the access code you
   have now", with the three boxes as typed and no session ended. An Admin who sets the
   code of somebody else may give the one they had.
+
+What 0.9.17 changes on the pages of accounts, of groups and of a retirement (P-307,
+P-314, P-316):
+
+- **The confirmation of a retirement.** The button that goes ahead names each record it
+  changes, by what it is and what it is known by, as the ticks stand, in place of how
+  many more: the record the page is of first, then the labels released, those handed
+  over, each with the person it goes to, those left open, and the account and the
+  contact retired, `Release KL and retire contact Kim Lee`, `Release KL, hand KM to Sam
+  Roe, and retire account klee and contact Kim Lee`, `Retire account klee and contact
+  Kim Lee, release KL, and leave KM open`. A record kept is not named, nothing being
+  done to it, so that with all else kept it is `Release KL` or `Retire account klee`. A
+  label to be handed over while nobody is chosen is `hand KM over`; labels going to
+  one person are named in one clause, `hand KL and KM to Sam Roe`. On a narrow window,
+  360 pixels, the button wraps onto more lines and is never shortened. The words once
+  it is done name the person each label went to.
+- **Users.** Show's first link is Active users, where it said Every user: every account
+  that is not retired, a disabled one among them, as the words above the list say,
+  beside Users with no contact, Users with no operator and Retired users.
+- **A token shown once.** Where the account holds no role, the new token, shown once,
+  says that it is refused until the account holds one, and how one is given; the words
+  go once a role is given on the same page, the token still on show.
+- **Where a role comes from.** A user's page says, under Role, beside the highest, each
+  role the account holds and from where: `of its own`, or `through` a group, the group a
+  link to its page (P-307). A grant of its own is revoked there, by an Admin.
+- **Who is left with no role.** Before an Admin revokes a grant of an account's own,
+  takes an account out of a group, on the account's page by its box or on the group's
+  page by Remove, revokes a grant of a group, on the group's page or under Roles, or
+  deletes a group, the confirmation says whom the change leaves with no role, from the
+  roles each holds and where they come from: `klee will hold no role and be signed
+  out.`; for a group, each member so left, named; of a service account or an agent,
+  that its tokens will be refused. A change that leaves everybody a role says nothing
+  of it, and a box that leaves the account a role changes it at once, as before.
+- **Users, by kind.** The column Kind writes `Person`, `Service` or `Agent`, from
+  `kind`, and Kind beside the search narrows the list to one, `kind=` in the address,
+  kept by Show's links. Role says, under the highest, where each role comes from, of
+  its own or through a group, a link, and of an agent held lower, why: `held to
+  View-only by sam's role`.
+- **New user.** Kind offers Person, Service account and Agent, in place of the box
+  Service account. An agent, like a service account, has no contact, no operator and
+  no access code, and asks for the person answerable, searched for by username or name
+  among the people who are not retired, `answerable_hid`; Create with nobody chosen
+  says so at the field and sends nothing. Role offers an agent View-only and Inventory,
+  never Admin; a group ticked that grants Admin is refused by the server, in its words,
+  at the groups.
+- **An agent's page.** Kind is Agent; Answerable to names its person, a link, marked
+  where retired; Role says the role it holds, where it comes from, and the role it is
+  held to and why, `held to View-only by sam's role`, or that its tokens are refused
+  while sam holds no role, is disabled or is retired, or, of an agent that holds Admin
+  all the same, `held to Inventory: an agent is never Admin`. Answerable to, a section of its
+  own, hands it to another person, by `PATCH /users/{hid}` with `answerable_hid`, the
+  button naming them, `Hand agent-reconcile to Sam Roe`. Its tokens are made and
+  revoked under Tokens as a service account's are, and a new one says, where it is
+  shown once, that it is refused while the agent or its person holds no role. Bring
+  back of an agent asks whom it is answerable to, its person as before unless another
+  is chosen, and another where its person is retired.
+- **A person's page.** Agents lists every agent answerable to them, each a link, a
+  retired one marked.
+- **The confirmation of a retirement**, where it retires the account, has a row for
+  each agent of the account that is not retired, Retire ticked from the start, or Hand
+  to another person, searched for as above; each is named on the button, `retire agent
+  agent-reconcile`, `hand agent-reconcile to Sam Roe`, and sent as `linked.agents`. An
+  agent to be handed to nobody, or to the person retired, is said at its row and
+  nothing is sent; what the server refuses of a hand-over is said at that agent's row.
+  Where the account is kept, its agents are not asked of.
+- **Groups.** The page of a group lists the roles it grants, each revoked there, and
+  the Kind of each member. Putting an agent in a group that grants Admin, or granting
+  Admin to an agent or to a group that holds one, is refused by the server, and its
+  words are shown where the change was asked, beside the box, above the members or at
+  the role.
+- **Audit.** Kind, beside Who, narrows the trail to the changes of people, of service
+  accounts or of agents, `actor_kind`, for every role that reads the trail; Who
+  writes an agent `agent-reconcile (agent, for sam)`. Who, on the Audit page and in an
+  item's history, writes an agent's change `agent-reconcile for sam`, both links for an
+  Admin.
 
 ### The grid
 
