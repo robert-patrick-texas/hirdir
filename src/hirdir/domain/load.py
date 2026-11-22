@@ -128,7 +128,7 @@ UNNAMED: Final = "unnamed"
 OTHERS: Final = "others"
 
 
-def kind_of(account_kind: str) -> WhoKind:
+def kind_of(account_kind: str) -> Literal["person", "service", "agent"]:
     """Return how the measures name an account of a kind, as `users.kind` has it."""
     return SERVICE if account_kind == SERVICE else AGENT if account_kind == AGENT else PERSON
 
