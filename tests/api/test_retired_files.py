@@ -240,3 +240,103 @@ def test_a_living_record_is_linked_from_a_file_to_a_retired_one_where_the_app_ke
     # By the API, a new link to a retired record is refused, as before.
     owner = make.get("/owners", filter="label:eq:Ex Old Team", include_archived=True)["items"][0]
     make.post("/items", {"name": "ex-api", "owner_hid": owner["hid"]}, 422)
+
+
+def _retired_owner_and_operator(files: Files, make: Maker) -> tuple[dict, dict]:
+    files.load("owners", f"hid,label,record_status\n{new_hid()},Ex Old Team,retired\n")
+    files.load("operators", f"hid,label,record_status\n{new_hid()},old-op,retired\n")
+    owner = make.get("/owners", filter="label:eq:Ex Old Team", include_archived=True)["items"][0]
+    operator = make.get("/operators", filter="label:eq:old-op", include_archived=True)["items"][0]
+    return owner, operator
+
+
+def test_a_bulk_edit_links_no_living_item_to_a_retired_record(files: Files, make: Maker) -> None:
+    """Second review, 1: a bulk edit is the API's, and is held to its rules: a new link
+    to a retired record is refused, as PATCH refuses it."""
+    _retired_owner_and_operator(files, make)
+    item = make.item(name="ex-sw")
+    for set_ in ({"owner": "Ex Old Team"}, {"operator": "old-op"}):
+        preview = make.post("/items/bulk-update", {"hids": [item["hid"]], "set": set_})
+        assert preview["job"]["rejected"] == 1, (set_, preview["rows"])
+        assert not any("links to the retired" in note for note in preview["rows"][0]["notes"])
+
+
+def test_a_row_that_changes_a_record_links_it_to_no_retired_one(files: Files, make: Maker) -> None:
+    """Second review, 2, the lead's reading of the owner's words: a row that makes its
+    record may link it to a retired one the app keeps so; a row that changes a record
+    that is there is held to the API's rules, and a new link to a retired one is refused.
+    A value the record has already is no new link, and is passed over as before."""
+    _retired_owner_and_operator(files, make)
+    vendor = make.vendor("Example Vendor")
+    old_model = make.entry(vendor, "EX-OLD")
+    make.post(f"/catalog-entries/{old_model['hid']}/retire", {"row_version": 1}, 200)
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n")
+    item = make.item(name="ex-live")
+    group = make.group("ex-group", "custom")
+    files.load(
+        "device_groups", f"hid,name,type,record_status\n{new_hid()},ex-old-grp,custom,retired\n"
+    )
+    places = make.layout()
+    for entity, text, field in (
+        ("items", f"hid,owner\n{item['hid']},Ex Old Team\n", "owner"),
+        ("items", "name,owner\nex-live,Ex Old Team\n", "owner"),
+        ("items", f"hid,operator\n{item['hid']},old-op\n", "operator"),
+        ("items", f"hid,vendor,pid\n{item['hid']},Example Vendor,EX-OLD\n", "pid"),
+        ("items", f"hid,parent\n{item['hid']},ex-gone\n", "parent"),
+        ("device_groups", f"hid,parent\n{group['hid']},ex-old-grp\n", "parent"),
+        # A place names the field as its rule does.
+        ("sites", f"hid,operator\n{places['site']['hid']},old-op\n", "operator_hid"),
+    ):
+        said = _reasons(files, entity, text)
+        assert said[0]["field"] == field, (text, said)
+    # A row that makes its record may, as before.
+    (row,) = files.preview("items", "name,owner\nex-new,Ex Old Team\n")["rows"]
+    assert row["outcome"] == "create"
+
+
+def test_a_coverage_of_a_retired_item_is_ended_only_by_a_day_that_has_come(
+    files: Files, make: Maker
+) -> None:
+    """Second review, 3: the app ends every coverage of an item on the day it is retired,
+    so a coverage that runs on past today is no coverage a retired item kept."""
+    vendor = make.vendor("Example Vendor")
+    make.post("/contracts", {"number": "C-LIVE", "vendor_hid": vendor["hid"]})
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n")
+    head = "hid,contract,vendor,item,starts_on,ends_on\n"
+    said = _reasons(
+        files,
+        "contract_coverage",
+        f"{head}{new_hid()},C-LIVE,Example Vendor,ex-gone,2026-01-01,2099-12-31\n",
+    )
+    assert said[0]["field"] == "item"
+    (row,) = files.preview(
+        "contract_coverage",
+        f"{head}{new_hid()},C-LIVE,Example Vendor,ex-gone,2026-01-01,2026-01-31\n",
+    )["rows"]
+    assert row["outcome"] == "create", row
+
+
+def test_a_membership_of_a_retired_record_is_ended_only_by_a_day_that_has_come(
+    files: Files, make: Maker
+) -> None:
+    """Second review, 4: a membership whose end is to come is a current one, which no
+    retired item and no retired group takes."""
+    make.group("ex-kit", "custom")
+    make.item(name="ex-kept")
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n")
+    files.load(
+        "device_groups", f"hid,name,type,record_status\n{new_hid()},ex-old-kit,custom,retired\n"
+    )
+    head = "group,item,joined_on,left_on\n"
+    for line in (
+        "ex-kit,ex-gone,2026-01-05,2099-02-05",
+        "ex-old-kit,ex-kept,2026-01-05,2099-02-05",
+    ):
+        (row,) = files.preview("device_group_members", f"{head}{line}\n")["rows"]
+        assert row["outcome"] == "rejected", (line, row)
+    for line in (
+        "ex-kit,ex-gone,2026-01-05,2026-02-05",
+        "ex-old-kit,ex-kept,2026-01-05,2026-02-05",
+    ):
+        (row,) = files.preview("device_group_members", f"{head}{line}\n")["rows"]
+        assert row["outcome"] == "create", (line, row)

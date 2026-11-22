@@ -42,7 +42,7 @@ def user_out(db: Session, user: User) -> schemas.UserOut:
 
 def own_contact(db: Session, contact: Contact) -> schemas.OwnContact:
     """Return the contact a person is, as their profile reads it, with how many others
-    not retired have its name (P-315)."""
+    have its name, the retired and the drafts among them, as a file finds them (P-315)."""
     return schemas.OwnContact(
         **{
             name: getattr(contact, name)

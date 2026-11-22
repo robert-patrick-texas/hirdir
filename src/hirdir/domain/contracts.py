@@ -1986,8 +1986,10 @@ def add_coverage(
         item = db.get(Item, hid) if isinstance(hid, str) else None
         if item is None:
             raise Invalid("there is no such item", {f"{where}item_hid": f"there is no item {hid}"})
-        # A retired item keeps the coverage it had, which has ended (P-311).
-        ended = entry.get("ends_on") is not None
+        # A retired item keeps the coverage it had, which has ended by a day that has
+        # come, as the app ends each on the day the item is retired (P-311).
+        ends_on = records.checked_day(f"{where}ends_on", entry.get("ends_on"))
+        ended = ends_on is not None and ends_on <= today(db)
         if records.refuses_retired(item, "item", kept=ended):
             raise Invalid("the item is retired", {f"{where}item_hid": "this item is retired"})
         starts_on = _own(

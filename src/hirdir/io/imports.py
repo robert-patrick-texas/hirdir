@@ -103,6 +103,18 @@ def _no_record(db: Session, record_type: str, hid: str) -> str:
     return f"there is no record {hid}"
 
 
+def _one_of(table: str | None) -> str | None:
+    """Return what one record of a table is called, as the trail names a kind: `choice`
+    of `choices`, `address` of `addresses`."""
+    if table is None:
+        return None
+    if table.endswith("ies"):
+        return table[:-3] + "y"
+    if table.endswith(("sses", "xes")):
+        return table[:-2]
+    return table.removesuffix("s")
+
+
 def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     """Return the HID a row makes its record with: the one it gives, which no record of
     its table has (P-311), so that the file of every table loads into an empty inventory
@@ -128,11 +140,13 @@ def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
     held = deleted.holder_of(db, hid, run.trail_kinds)
     if held is not None and held.action == deleted.ACTION:
         raise Invalid("there is no such record", {"hid": _no_record(db, held.record_type, hid)})
-    if held is not None:
-        kind = held.record_type.replace("_", " ")
+    held_by = held.record_type if held is not None else _one_of(deleted.table_holding(db, hid))
+    if held_by is not None:
+        kind = held_by.replace("_", " ")
+        one = f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind}"
         raise Conflict(
-            f"the HID {hid} is another record's, of a {kind}",
-            {"hid": f"{hid} is the HID of a {kind}: an HID is one record's, for good"},
+            f"the HID {hid} is another record's, of {one}",
+            {"hid": f"{hid} is the HID of {one}: an HID is one record's, for good"},
         )
     try:
         other = which.find(run, {name: value for name, value in values.items() if name != "hid"})
@@ -222,7 +236,12 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     # A row that makes its record retired makes it so, with the links a retired record
     # keeps (P-311); one that would retire a record that is there is refused by its write.
     retired = records.making_retired() if record is None and says_retired(values) else nullcontext()
-    with records.filing() as linked, retired:
+    # A link the app keeps to a retired record is taken from a file alone, and not from a
+    # bulk edit, which is the API's and held to its rules; and from a row that makes its
+    # record, as a file carries an inventory over, and not from one that changes a record
+    # that is there, which is held to the API's rules as a change by the API is (P-311).
+    filed = run.context.via == "import" and new
+    with records.filing() if filed else nullcontext([]) as linked, retired:
         if made_as is not None:
             with ids.given(which.record_type, made_as):
                 record = which.write(run, record, values, new)
