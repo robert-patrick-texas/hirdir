@@ -56,8 +56,9 @@ const TABLES: ReadonlyArray<readonly [string, string]> = [
   ["Contacts of agreements and contracts", "contract-contacts"],
   ["Purchase requests", "purchase-requests"],
   ["Lines of purchase requests", "purchase-lines"],
-  ["Items", "items"],
+  // 0.9.17: the groups before the items, which may run on one (P-311).
   ["Device groups", "device-groups"],
+  ["Items", "items"],
   ["Members of device groups", "device-group-members"],
   ["Replacements of items", "item-replacements"],
   ["Addresses", "addresses"],
