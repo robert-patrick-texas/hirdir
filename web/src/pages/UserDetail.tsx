@@ -477,7 +477,7 @@ function Answerable({ user, reload }: { user: User; reload: () => void }) {
       <form onSubmit={hand} className="stack" noValidate>
         <Problem error={action.error} shown={["answerable_hid"]} onReload={reload} />
         <PersonUserField
-          label="Hand to"
+          label={`Person to hand ${user.username} to`}
           name="answerable_hid"
           value={chosen}
           onChange={setChosen}

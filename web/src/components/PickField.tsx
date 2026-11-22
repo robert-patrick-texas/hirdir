@@ -2,6 +2,7 @@ import { type KeyboardEvent, type ReactNode, useId, useRef, useState } from "rea
 import { plural } from "../lib/format";
 import { useAsked, useFoundInView, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import type { Option } from "../lib/patch";
+import { clearName } from "../lib/pick";
 import { Problem } from "./Problem";
 
 /**
@@ -134,7 +135,7 @@ export function PickField(props: SearchProps) {
         </span>
         {chosen && !required && (
           <button type="button" onClick={() => choose(null)} disabled={disabled}>
-            Clear<span className="visually-hidden"> the {label.toLowerCase()}</span>
+            Clear<span className="visually-hidden"> {clearName(label)}</span>
           </button>
         )}
       </p>
