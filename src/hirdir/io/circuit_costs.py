@@ -89,15 +89,17 @@ def service_in(
     circuit: Circuit, first: date, last: date, include_drafts: bool
 ) -> tuple[date, date] | None:
     """Return the days from `first` to `last` on which a circuit is in service, as one
-    range, or nothing: its activation and disconnection bound it, and a retired circuit
-    with no disconnection was taken out (P-145)."""
+    range, or nothing: the activation and the disconnection of the side `cost_side` names
+    bound it, as they are in force (P-320), and a retired circuit with no disconnection
+    there was taken out (P-145)."""
+    activated, disconnected = rules.deciding_dates(circuit)
     if circuit.record_status == "retired":
-        if circuit.a_disconnected_on is None:
+        if disconnected is None:
             return None
     elif circuit.record_status not in rules.counted_status(include_drafts):
         return None
-    start = max(first, circuit.a_activated_on) if circuit.a_activated_on else first
-    end = min(last, circuit.a_disconnected_on) if circuit.a_disconnected_on else last
+    start = max(first, activated) if activated else first
+    end = min(last, disconnected) if disconnected else last
     return (start, end) if start <= end else None
 
 
@@ -169,32 +171,45 @@ def _condition(by: str, key: str | None, label: str | None) -> dict[str, Any]:
     return {"field": name, "op": "eq", "value": key}
 
 
-def _window(first: date, last: date) -> dict[str, Any]:
-    """Return the condition of the circuit list that keeps the circuits in service on
-    some day from `first` to `last`, as `service_in` has it: activated by the last day,
-    not disconnected before the first, and, retired, with a disconnection."""
+def _window_of(side: str, first: date, last: date) -> dict[str, Any]:
+    """Return the condition of the circuit list that keeps the circuits counted by one
+    side's dates that are in service on some day from `first` to `last`, as
+    `service_in` has it: activated by the last day, not disconnected before the first,
+    and, retired, with a disconnection. The Z side's are those in force (P-320)."""
+    activated, disconnected = (
+        ("a_activated_on", "a_disconnected_on")
+        if side == "a"
+        else ("effective.z_activated_on", "effective.z_disconnected_on")
+    )
     return {
         "and": [
+            {"field": "cost_side", "op": "eq", "value": side},
             {
                 "or": [
-                    {"field": "a_activated_on", "op": "empty", "value": True},
-                    {"field": "a_activated_on", "op": "lte", "value": last.isoformat()},
+                    {"field": activated, "op": "empty", "value": True},
+                    {"field": activated, "op": "lte", "value": last.isoformat()},
                 ]
             },
             {
                 "or": [
-                    {"field": "a_disconnected_on", "op": "empty", "value": True},
-                    {"field": "a_disconnected_on", "op": "gte", "value": first.isoformat()},
+                    {"field": disconnected, "op": "empty", "value": True},
+                    {"field": disconnected, "op": "gte", "value": first.isoformat()},
                 ]
             },
             {
                 "or": [
                     {"field": "record_status", "op": "ne", "value": "retired"},
-                    {"field": "a_disconnected_on", "op": "empty", "value": False},
+                    {"field": disconnected, "op": "empty", "value": False},
                 ]
             },
         ]
     }
+
+
+def _window(first: date, last: date) -> dict[str, Any]:
+    """Return the condition of the circuit list that keeps the circuits in service on
+    some day from `first` to `last`, each by the dates of the side `cost_side` names."""
+    return {"or": [_window_of(side, first, last) for side in rules.SIDES]}
 
 
 def _overlaps(line: CircuitCost, served: tuple[date, date]) -> bool:
@@ -347,12 +362,20 @@ def _memberships(
     tagged: dict[str, list[str]] = defaultdict(list)
     if by == "group":
         # A retired group keeps its circuits, and its row: retiring it ends no membership.
+        # A network has the circuits whose Z side names it too, each once (P-320).
         for circuit_hid, group_hid in db.execute(
             select(CircuitGroupMember.circuit_hid, CircuitGroupMember.group_hid).where(
                 CircuitGroupMember.circuit_hid.in_(hids)
             )
         ):
             grouped[circuit_hid].append(group_hid)
+        for circuit_hid, group_hid in db.execute(
+            select(Circuit.hid, Circuit.z_group_hid).where(
+                Circuit.hid.in_(hids), Circuit.z_group_hid.is_not(None)
+            )
+        ):
+            if group_hid is not None and group_hid not in grouped[circuit_hid]:
+                grouped[circuit_hid].append(group_hid)
     if by == "tag":
         for record_hid, tag_hid in db.execute(
             select(TagLink.record_hid, TagLink.tag_hid).where(

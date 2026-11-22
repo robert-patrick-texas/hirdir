@@ -11,12 +11,22 @@ from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
-from hirdir.api.schemas import Page
+from hirdir.api.schemas import Page, Problem
 from hirdir.domain import circuit_groups, circuit_records
 from hirdir.io import fields
 
 circuit_routes = APIRouter(prefix="/circuits", tags=["Circuits"], route_class=IdempotentRoute)
 group_routes = APIRouter(prefix="/circuit-groups", tags=["Circuits"], route_class=IdempotentRoute)
+
+
+# A network that circuits reach is not retired: they are named (P-320).
+REACHED: dict[int | str, dict[str, Any]] = {
+    409: {
+        "model": Problem,
+        "description": "Circuits that are not retired name it on their Z side: each is in "
+        "`depends_on`, to be given another network or retired first.",
+    }
+}
 
 
 def _changes(body: r.Model) -> dict[str, Any]:
@@ -257,7 +267,9 @@ def query_groups(body: r.ListQuery, _: Viewer, db: Db) -> Page[c.CircuitGroupOut
 def create_group(
     body: c.CircuitGroupCreate, _: Inventory, context: Audit, db: Db
 ) -> c.CircuitGroupOut:
-    """Create a circuit group: circuits to be looked at and costed together."""
+    """Create a circuit group: circuits to be looked at and costed together. Its `kind`
+    is `network`, a carrier's network that a circuit's Z side may name, with its carrier,
+    or `collection`, as it is unless said; a collection has no carrier (P-320)."""
     made = circuit_groups.create_group(db, context, body.model_dump())
     return circuit_shapes.group_out(db, made)
 
@@ -277,11 +289,13 @@ def update_group(
     return circuit_shapes.group_out(db, changed)
 
 
-@group_routes.post("/{hid}/retire")
+@group_routes.post("/{hid}/retire", responses=REACHED)
 def retire_group(
     hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
 ) -> c.CircuitGroupOut:
-    """Retire a circuit group. Its circuits stay listed in it, and it takes no new one."""
+    """Retire a circuit group. Its circuits stay listed in it, and it takes no new one.
+    A network that a circuit that is not retired names on its Z side is refused, with
+    those circuits in `depends_on` (P-320)."""
     retired = circuit_groups.retire_group(db, context, hid, body.row_version)
     return circuit_shapes.group_out(db, retired)
 
@@ -290,9 +304,13 @@ def retire_group(
 def list_members(
     hid: str, _: Viewer, db: Db, limit: Limit = DEFAULT_LIMIT, offset: Offset = 0
 ) -> Page[c.CircuitGroupMemberOut]:
-    """List the circuits of a group, by name, retired ones too, which say so."""
+    """List the circuits of a group, by name, retired ones too, which say so: those added
+    to it, and those whose Z side names it, `z_side` true, each once. A circuit there by
+    its Z side alone has no membership, and `hid` null (P-320)."""
     page, total = circuit_groups.list_members(db, hid, limit, offset)
-    return Page(items=circuit_shapes.members_out(db, page), total=total, limit=limit, offset=offset)
+    return Page(
+        items=circuit_shapes.members_out(db, hid, page), total=total, limit=limit, offset=offset
+    )
 
 
 @group_routes.post("/{hid}/members", status_code=201)
@@ -300,15 +318,14 @@ def add_members(
     hid: str, body: c.CircuitGroupMembersAdd, _: Inventory, context: Audit, db: Db
 ) -> list[c.CircuitGroupMemberOut]:
     """Put circuits into a group, all together, each once. A retired group takes none,
-    and a retired circuit is added to none."""
+    and a retired circuit is added to none. A circuit whose Z side names the group is
+    added and kept, so that it stays when its Z side is changed (P-320)."""
     made = circuit_groups.add_members(db, context, hid, body.circuit_hids)
-    circuits = {
-        circuit.hid: circuit
-        for circuit in (circuit_records.get_circuit(db, member.circuit_hid) for member in made)
-    }
-    return circuit_shapes.members_out(
-        db, [(member, circuits[member.circuit_hid]) for member in made]
-    )
+    listed = []
+    for member in made:
+        circuit = circuit_records.get_circuit(db, member.circuit_hid)
+        listed.append(circuit_groups.Listed(member, circuit, circuit.z_group_hid == hid))
+    return circuit_shapes.members_out(db, hid, listed)
 
 
 @group_routes.delete("/{hid}/members/{member_hid}", status_code=204)

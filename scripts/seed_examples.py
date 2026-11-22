@@ -959,6 +959,30 @@ CIRCUITS: tuple[tuple[Any, ...], ...] = (
         (("Fiber lease", "300.00", {"starts_on": "2026-01-01"}),),
         (("site2-rtr-wan-02", "a"),),
     ),
+    (
+        # Into the carrier's private network, a circuit group of the kind network, named
+        # on its Z side (P-319). The carrier's end was installed a week after the site's,
+        # and the activation, end to end, is one day for both: the Z side's is blank, and
+        # read as the A side's (P-320).
+        "Site-1 MPLS",
+        {
+            "enterprise_circuit_id": "EC-0104",
+            "circuit_type": "mpls",
+            "port_mbps": "200",
+            "a_location": COMMS_ROOM,
+            "z_group": "Example Telecom MPLS",
+            "carrier": "Example Telecom",
+            "carrier_circuit_number": "EXT/10004/000/EXTL",
+            "billing_account": "BA-100200",
+            "a_installed_on": "2025-08-04",
+            "a_activated_on": "2025-08-18",
+            "z_installed_on": "2025-08-11",
+            "owner": "Network Engineering",
+        },
+        (),
+        (("Port", "600.00", {}),),
+        (),
+    ),
 )
 # The contacts a circuit names of its own (P-149): the circuit, the side, or None for
 # one of the carrier's, the role and the contact. The desk that lets the carrier's
@@ -967,12 +991,22 @@ CIRCUITS: tuple[tuple[Any, ...], ...] = (
 CIRCUIT_CONTACTS: tuple[tuple[str, str | None, str, str], ...] = (
     ("Site-2 internet", "a", "operational", "Facilities Help Desk"),
 )
-# The groups of circuits: name, description, and the circuits in it.
-CIRCUIT_GROUPS = (
+# The groups of circuits: name, description, the circuits added to it, its kind and a
+# network's carrier (P-319). A network has besides the circuits whose Z side names it.
+CIRCUIT_GROUPS: tuple[tuple[str, str, tuple[str, ...], str, str | None], ...] = (
     (
         "Inter-site links",
         "The circuits between the sites",
         ("Site-1 to Site-2", "Site-2 to Site-1 dark fiber"),
+        "collection",
+        None,
+    ),
+    (
+        "Example Telecom MPLS",
+        "The carrier's private network that the sites reach",
+        (),
+        "network",
+        "Example Telecom",
     ),
 )
 
@@ -1566,12 +1600,28 @@ def build(db: Session) -> None:
         if "annual_cost" in fields:
             fields["annual_cost"] = Decimal(fields["annual_cost"])
         capacity.create_line(db, SEED, fields)
+    # The groups come before the circuits, whose Z side may name a network (P-320).
+    its_groups = {}
+    for name, description, _, kind, carrier in CIRCUIT_GROUPS:
+        its_groups[name] = circuit_groups.create_group(
+            db,
+            SEED,
+            {
+                "name": name,
+                "kind": kind,
+                "carrier_hid": vendors[carrier].hid if carrier else None,
+                "description": description,
+                "owner_hid": its_owners["Network Engineering"].hid,
+            },
+        )
     its_circuits = {}
     for name, given, carriers, lines, devices in CIRCUITS:
         fields = dict(given)
-        for day in ("a_installed_on", "a_activated_on", "a_disconnected_on"):
+        for day in circuit_records.DATES:
             if day in fields:
                 fields[day] = date.fromisoformat(fields[day])
+        if "z_group" in fields:
+            fields["z_group_hid"] = its_groups[fields.pop("z_group")].hid
         for side in ("a", "z"):
             if f"{side}_location" in fields:
                 fields[f"{side}_location_hid"] = places[fields.pop(f"{side}_location")].hid
@@ -1599,6 +1649,8 @@ def build(db: Session) -> None:
                 circuit.hid,
                 {"description": description, "monthly_cost": Decimal(cost), **line},
             )
+        if not devices:
+            continue
         circuit_records.add_devices(
             db,
             SEED,
@@ -1617,17 +1669,11 @@ def build(db: Session) -> None:
             its_circuits[name].hid,
             {"side": side, "role": role, "contact_hid": people[person].hid},
         )
-    for name, description, members in CIRCUIT_GROUPS:
-        group = circuit_groups.create_group(
-            db,
-            SEED,
-            {
-                "name": name,
-                "description": description,
-                "owner_hid": its_owners["Network Engineering"].hid,
-            },
-        )
-        circuit_groups.add_members(db, SEED, group.hid, [its_circuits[one].hid for one in members])
+    for name, _, members, _, _ in CIRCUIT_GROUPS:
+        if members:
+            circuit_groups.add_members(
+                db, SEED, its_groups[name].hid, [its_circuits[one].hid for one in members]
+            )
     db.flush()
 
 

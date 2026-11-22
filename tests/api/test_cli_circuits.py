@@ -109,3 +109,48 @@ def test_a_circuit_is_set_listed_retired_and_put_into_a_group(run, desk: Desk, w
 
     assert "Site-3 internet: retired" in run("circuits", "retire", "Site-3 internet").output
     assert "Site-3 internet" not in run("circuits", "list").output
+
+
+def test_a_z_side_is_given_its_network_and_its_dates_and_a_network_shows_what_reaches_it(
+    run, desk: Desk, wired: dict
+) -> None:
+    telecom = desk.get("/vendors", filter="name:eq:Example Telecom")["items"][0]
+    desk.post(
+        "/circuit-groups",
+        {"name": "Example MPLS East", "kind": "network", "carrier_hid": telecom["hid"]},
+    )
+    said = run(
+        "circuits",
+        "set",
+        "Site-3 internet",
+        "z_group=Example MPLS East",
+        "z_note=",
+        "a_installed_on=2027-03-29",
+        "a_activated_on=2027-04-10",
+        "z_installed_on=2027-04-02",
+    ).output
+    assert "Site-3 internet" in said
+    shown = run("circuits", "show", "Site-3 internet").output
+    assert "z_side:              the network Example MPLS East" in shown
+    assert "a_activated_on:      2027-04-10" in shown
+    assert "z_installed_on:      2027-04-02" in shown
+    assert "z_activated_on:      2027-04-10 (A side)" in shown
+    assert "group:               Example MPLS East (Z side)" in shown
+    # A network shows its kind, its carrier, and which circuits its Z sides name.
+    run("circuit-groups", "add", "Example MPLS East", "EC-0042")
+    group = run("circuit-groups", "show", "Example MPLS East").output
+    assert "kind:                network" in group
+    assert "carrier:             Example Telecom" in group
+    assert "circuits:            2" in group
+    rows = {line.split()[0]: line for line in group.splitlines() if line.startswith("Site-")}
+    assert rows["Site-3"].split()[-2:] == ["true", "active"]
+    # One that is there by its Z side alone is not taken out by hand.
+    refused = run("circuit-groups", "remove", "Example MPLS East", "Site-3 internet", expect=4)
+    assert "its Z side names it" in refused.output
+    taken = run("circuit-groups", "remove", "Example MPLS East", "EC-0042").output
+    assert "1 taken out, 1 circuits in all" in taken
+    # A collection is no network for a Z side; the refusal names the field.
+    run("circuits", "set", "EC-0042", "z_location=", "z_group=Inter-site links", expect=4)
+    listed = run("circuit-groups", "list").output
+    assert "network" in listed
+    assert "collection" in listed

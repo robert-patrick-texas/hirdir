@@ -6669,6 +6669,54 @@
             ],
             "title": "Up Mbps"
           },
+          "z_activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Activated On"
+          },
+          "z_disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Disconnected On"
+          },
+          "z_group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Group Hid"
+          },
+          "z_installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Installed On"
+          },
           "z_location_hid": {
             "anyOf": [
               {
@@ -6964,12 +7012,27 @@
           "up_mbps": {
             "$ref": "#/components/schemas/EffectiveValue",
             "description": "The rate in force up: its own, or the full rate of the port, `port`."
+          },
+          "z_activated_on": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "The Z side's activation in force, as `z_installed_on`."
+          },
+          "z_disconnected_on": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "The Z side's disconnection in force, as `z_installed_on`."
+          },
+          "z_installed_on": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "The Z side's installation in force (P-320): its own, `own`, or the A side's, `a_side`, or none."
           }
         },
         "required": [
           "support_weight",
           "down_mbps",
-          "up_mbps"
+          "up_mbps",
+          "z_installed_on",
+          "z_activated_on",
+          "z_disconnected_on"
         ],
         "title": "CircuitEffective",
         "type": "object"
@@ -6978,6 +7041,19 @@
         "additionalProperties": false,
         "description": "A new circuit group.",
         "properties": {
+          "carrier_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A network's carrier, a vendor.",
+            "title": "Carrier Hid"
+          },
           "description": {
             "anyOf": [
               {
@@ -6989,6 +7065,15 @@
               }
             ],
             "title": "Description"
+          },
+          "kind": {
+            "default": "collection",
+            "enum": [
+              "network",
+              "collection"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "name": {
             "maxLength": 200,
@@ -7048,7 +7133,7 @@
       },
       "CircuitGroupMemberOut": {
         "additionalProperties": false,
-        "description": "One circuit in one group.",
+        "description": "One circuit in one group: added to it, or there because its Z side names it, or\nboth, listed once (P-320).",
         "properties": {
           "circuit": {
             "$ref": "#/components/schemas/CircuitRef"
@@ -7058,23 +7143,45 @@
             "type": "string"
           },
           "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was added; null for a circuit there by its Z side alone.",
+            "title": "Created At"
           },
           "group_hid": {
             "title": "Group Hid",
             "type": "string"
           },
           "hid": {
-            "title": "Hid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The membership; null for a circuit that is there by its Z side alone.",
+            "title": "Hid"
+          },
+          "z_side": {
+            "description": "The circuit names the group on its Z side.",
+            "title": "Z Side",
+            "type": "boolean"
           }
         },
         "required": [
           "hid",
           "group_hid",
           "circuit_hid",
+          "z_side",
           "circuit",
           "created_at"
         ],
@@ -7104,7 +7211,7 @@
       },
       "CircuitGroupOut": {
         "additionalProperties": false,
-        "description": "Circuits that may land at different sites, looked at and costed together.",
+        "description": "Circuits that may land at different sites, looked at and costed together: a\ncarrier's network, which a Z side may name, or a collection (P-319).",
         "properties": {
           "annual_cost": {
             "description": "Twelve times the monthly cost.",
@@ -7115,8 +7222,31 @@
             "title": "Annual Cost",
             "type": "string"
           },
+          "carrier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That vendor."
+          },
+          "carrier_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A network's carrier, a vendor.",
+            "title": "Carrier Hid"
+          },
           "circuits": {
-            "description": "How many circuits it has.",
+            "description": "How many circuits it has, each once: those added to it and those whose Z side names it (P-320).",
             "title": "Circuits",
             "type": "integer"
           },
@@ -7155,6 +7285,15 @@
             "description": "How many of them are in service today.",
             "title": "In Service",
             "type": "integer"
+          },
+          "kind": {
+            "description": "network, a carrier's network or the internet that a circuit's Z side may reach, or collection, circuits put together for the enterprise's own purpose.",
+            "enum": [
+              "network",
+              "collection"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "monthly_cost": {
             "description": "What those in service cost a month today, each circuit once.",
@@ -7241,6 +7380,9 @@
         "required": [
           "hid",
           "name",
+          "kind",
+          "carrier_hid",
+          "carrier",
           "description",
           "notes",
           "owner_hid",
@@ -7264,6 +7406,18 @@
         "additionalProperties": false,
         "description": "Fields of a circuit group to change, and the version they were read at.",
         "properties": {
+          "carrier_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Hid"
+          },
           "description": {
             "anyOf": [
               {
@@ -7275,6 +7429,22 @@
               }
             ],
             "title": "Description"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "network",
+                  "collection"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Not made collection while a circuit, retired or not, names it on its Z side (P-320).",
+            "title": "Kind"
           },
           "name": {
             "anyOf": [
@@ -7362,6 +7532,15 @@
             "title": "Hid",
             "type": "string"
           },
+          "kind": {
+            "description": "A network, which a Z side may name, or a collection.",
+            "enum": [
+              "network",
+              "collection"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -7374,11 +7553,18 @@
             ],
             "title": "Record Status",
             "type": "string"
+          },
+          "z_side": {
+            "default": false,
+            "description": "The circuit names this group on its Z side, as the network it reaches (P-320); false for a group it was added to alone.",
+            "title": "Z Side",
+            "type": "boolean"
           }
         },
         "required": [
           "hid",
           "name",
+          "kind",
           "record_status"
         ],
         "title": "CircuitGroupRef",
@@ -7398,6 +7584,7 @@
                 "type": "null"
               }
             ],
+            "description": "The day the A side was activated, from which the carrier bills it.",
             "title": "A Activated On"
           },
           "a_disconnected_on": {
@@ -7410,6 +7597,7 @@
                 "type": "null"
               }
             ],
+            "description": "The last day the A side was in service.",
             "title": "A Disconnected On"
           },
           "a_installed_on": {
@@ -7422,6 +7610,7 @@
                 "type": "null"
               }
             ],
+            "description": "The day the A side was installed.",
             "title": "A Installed On"
           },
           "a_location_hid": {
@@ -7693,7 +7882,7 @@
                 "type": "null"
               }
             ],
-            "description": "The groups it is in, by name.",
+            "description": "The groups it is in, by name, each once: those it was added to, and the network its Z side names, with z_side true.",
             "title": "Groups"
           },
           "hid": {
@@ -7701,7 +7890,7 @@
             "type": "string"
           },
           "in_service": {
-            "description": "It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection.",
+            "description": "It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection, those of the side cost_side names, the Z side's in force where it is z (P-320).",
             "title": "In Service",
             "type": "boolean"
           },
@@ -7865,6 +8054,68 @@
             ],
             "title": "Updated By"
           },
+          "z_activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Z side's own; blank is the A side's (P-320).",
+            "title": "Z Activated On"
+          },
+          "z_disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Z side's own; blank is the A side's (P-320).",
+            "title": "Z Disconnected On"
+          },
+          "z_group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CircuitGroupRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That network, with z_side true."
+          },
+          "z_group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The carrier network the Z side reaches: a circuit group of the kind network (P-319). Never beside z_location_hid.",
+            "title": "Z Group Hid"
+          },
+          "z_installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Z side's own; blank is the A side's (P-320).",
+            "title": "Z Installed On"
+          },
           "z_location_hid": {
             "anyOf": [
               {
@@ -7913,6 +8164,8 @@
           "a_location_hid",
           "a_note",
           "z_location_hid",
+          "z_group_hid",
+          "z_group",
           "z_note",
           "a_side",
           "z_side",
@@ -7927,6 +8180,9 @@
           "a_installed_on",
           "a_activated_on",
           "a_disconnected_on",
+          "z_installed_on",
+          "z_activated_on",
+          "z_disconnected_on",
           "production",
           "support_weight",
           "owner_hid",
@@ -8258,6 +8514,54 @@
             ],
             "title": "Up Mbps"
           },
+          "z_activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Activated On"
+          },
+          "z_disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Disconnected On"
+          },
+          "z_group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Group Hid"
+          },
+          "z_installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Installed On"
+          },
           "z_location_hid": {
             "anyOf": [
               {
@@ -8320,7 +8624,7 @@
             "type": "string"
           },
           "in_service": {
-            "description": "It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection.",
+            "description": "It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection, those of the side cost_side names, the Z side's in force where it is z (P-320).",
             "title": "In Service",
             "type": "boolean"
           },
@@ -9448,6 +9752,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -9518,6 +9823,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -13072,6 +13378,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -13212,6 +13519,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -13297,6 +13605,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -13534,6 +13843,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -13604,6 +13914,7 @@
               "agreement",
               "vendor",
               "port",
+              "a_side",
               "setting",
               "none"
             ],
@@ -36662,7 +36973,7 @@
         ]
       },
       "post": {
-        "description": "Create a circuit group: circuits to be looked at and costed together.",
+        "description": "Create a circuit group: circuits to be looked at and costed together. Its `kind`\nis `network`, a carrier's network that a circuit's Z side may name, with its carrier,\nor `collection`, as it is unless said; a collection has no carrier (P-320).",
         "operationId": "create_group_api_v1_circuit_groups_post",
         "parameters": [
           {
@@ -36861,7 +37172,7 @@
     },
     "/api/v1/circuit-groups/{hid}/members": {
       "get": {
-        "description": "List the circuits of a group, by name, retired ones too, which say so.",
+        "description": "List the circuits of a group, by name, retired ones too, which say so: those added\nto it, and those whose Z side names it, `z_side` true, each once. A circuit there by\nits Z side alone has no membership, and `hid` null (P-320).",
         "operationId": "list_members_api_v1_circuit_groups__hid__members_get",
         "parameters": [
           {
@@ -36926,7 +37237,7 @@
         ]
       },
       "post": {
-        "description": "Put circuits into a group, all together, each once. A retired group takes none,\nand a retired circuit is added to none.",
+        "description": "Put circuits into a group, all together, each once. A retired group takes none,\nand a retired circuit is added to none. A circuit whose Z side names the group is\nadded and kept, so that it stays when its Z side is changed (P-320).",
         "operationId": "add_members_api_v1_circuit_groups__hid__members_post",
         "parameters": [
           {
@@ -37047,7 +37358,7 @@
     },
     "/api/v1/circuit-groups/{hid}/retire": {
       "post": {
-        "description": "Retire a circuit group. Its circuits stay listed in it, and it takes no new one.",
+        "description": "Retire a circuit group. Its circuits stay listed in it, and it takes no new one.\nA network that a circuit that is not retired names on its Z side is refused, with\nthose circuits in `depends_on` (P-320).",
         "operationId": "retire_group_api_v1_circuit_groups__hid__retire_post",
         "parameters": [
           {
@@ -37099,6 +37410,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Circuits that are not retired name it on their Z side: each is in `depends_on`, to be given another network or retired first."
           },
           "422": {
             "content": {

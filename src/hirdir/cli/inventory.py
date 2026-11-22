@@ -74,7 +74,9 @@ SHOWN = {
         "name,enterprise_circuit_id,circuit_type,speed,carrier,carrier_circuit_number,"
         "a_site,z_site,monthly_cost,record_status"
     ),
-    "circuit_groups": "name,description,owner,circuits,monthly_cost,annual_cost,record_status",
+    "circuit_groups": (
+        "name,kind,carrier,description,owner,circuits,monthly_cost,annual_cost,record_status"
+    ),
 }
 # What a minor item may have from the item it is in.
 FROM_ABOVE = ("lifecycle_state", "disposition", "expected_online")
@@ -3595,15 +3597,20 @@ CIRCUIT_FIELDS = (
     "carrier_circuit_number",
     "billing_account",
     "billing_contract",
+    # The dates of each side (P-320): a Z side's date given is its own.
     "a_installed_on",
     "a_activated_on",
     "a_disconnected_on",
+    "z_installed_on",
+    "z_activated_on",
+    "z_disconnected_on",
     "production",
     "support_weight",
     "notes",
     "record_status",
 )
-CIRCUIT_REFERENCES = ("carrier", "owner", "a_location", "z_location", "tags")
+CIRCUIT_REFERENCES = ("carrier", "owner", "a_location", "z_location", "z_group", "tags")
+CIRCUIT_DAYS = ("installed_on", "activated_on", "disconnected_on")
 
 
 def find_circuit(target: Target, text: str) -> dict[str, Any]:
@@ -3633,12 +3640,28 @@ def find_circuit(target: Target, text: str) -> dict[str, Any]:
 
 
 def _circuit_side(circuit: dict[str, Any], side: str) -> str | None:
-    """Return one side of a circuit as one line: its location's path, or its note."""
+    """Return one side of a circuit as one line: its location's path, or the carrier
+    network a Z side reaches (P-320), or its note."""
     at, note = circuit[f"{side}_side"], circuit[f"{side}_note"]
+    network = circuit.get("z_group") if side == "z" else None
+    if at is None and network is not None:
+        retired = " (retired)" if network["record_status"] == "retired" else ""
+        return f"the network {network['name']}{retired}" + (f", {note}" if note else "")
     if at is None:
         return note
     retired = " (retired)" if at["record_status"] == "retired" else ""
     return f"{at['path']}{retired}" + (f", {note}" if note else "")
+
+
+def _circuit_dates(circuit: dict[str, Any]) -> list[tuple[str, Any]]:
+    """Return a line for each date of each side: the A side's own, and the Z side's in
+    force, marked `(A side)` where it is the A side's (P-320)."""
+    lines: list[tuple[str, Any]] = [(f"a_{day}", circuit[f"a_{day}"]) for day in CIRCUIT_DAYS]
+    for day in CIRCUIT_DAYS:
+        in_force = circuit["effective"][f"z_{day}"]
+        came = " (A side)" if in_force["source"] == "a_side" else ""
+        lines.append((f"z_{day}", f"{in_force['value']}{came}" if in_force["value"] else None))
+    return lines
 
 
 def _named_contact(named: Any) -> str:
@@ -3718,10 +3741,7 @@ def show_circuit(
     lines += [
         ("billing_account", found["billing_account"]),
         ("billing_contract", found["billing_contract"]),
-        *(
-            (name, found[name])
-            for name in ("a_installed_on", "a_activated_on", "a_disconnected_on")
-        ),
+        *_circuit_dates(found),
         ("production", found["production"]),
         ("in_service", found["in_service"]),
         ("support_weight", weight["value"]),
@@ -3736,7 +3756,8 @@ def show_circuit(
     lines += [("monthly_cost", found["monthly_cost"]), ("annual_cost", found["annual_cost"])]
     for group in found["groups"] or []:
         retired = " (retired)" if group["record_status"] == "retired" else ""
-        lines.append(("group", group["name"] + retired))
+        reached = " (Z side)" if group.get("z_side") else ""
+        lines.append(("group", group["name"] + reached + retired))
     lines += [
         ("notes", found["notes"]),
         ("tags", ", ".join(found["tags"]) or None),
@@ -3758,7 +3779,7 @@ def set_circuit(
         typer.Argument(
             help="field=value to set and field= to clear, a field named as a column of a "
             "file: carrier= takes a vendor's name, owner= a label, a_location= and "
-            "z_location= a path, and tags= labels joined with ;."
+            "z_location= a path, z_group= a network's name, and tags= labels joined with ;."
         ),
     ],
     url: Url = None,
@@ -3783,6 +3804,9 @@ def set_circuit(
             )
         elif name in ("a_location", "z_location"):
             body[f"{name}_hid"] = find_place(target, value, "location")["hid"] if value else None
+        elif name == "z_group":
+            # The carrier network the Z side reaches, a circuit group (P-320).
+            body["z_group_hid"] = find_circuit_group(target, value)["hid"] if value else None
         elif name == "tags":
             body["tags"] = [label.strip() for label in value.split(";") if label.strip()]
         elif name in CIRCUIT_FIELDS:
@@ -3849,6 +3873,8 @@ def show_circuit_group(
     lines: list[tuple[str, Any]] = [
         ("hid", found["hid"]),
         ("name", found["name"]),
+        ("kind", found["kind"]),
+        ("carrier", found["carrier"]["name"] if found["carrier"] else None),
         ("description", found["description"]),
         ("owner", found["owner"]["label"] if found["owner"] else None),
         ("circuits", found["circuits"]),
@@ -3866,7 +3892,7 @@ def show_circuit_group(
     if members:
         typer.echo("")
         head = ["name", "enterprise_circuit_id", "circuit_type", "speed", "in_service"]
-        rows = [[*head, "monthly_cost", "record_status"]]
+        rows = [[*head, "monthly_cost", "z_side", "record_status"]]
         for member in members:
             one = member["circuit"]
             rows.append(
@@ -3877,6 +3903,7 @@ def show_circuit_group(
                     one["speed"] or "",
                     "true" if one["in_service"] else "false",
                     one["monthly_cost"],
+                    "true" if member["z_side"] else "false",
                     one["record_status"],
                 ]
             )
@@ -3912,7 +3939,8 @@ def remove_from_circuit_group(
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Take circuits out of a group. The audit trail keeps what each membership was."""
+    """Take circuits out of a group. The audit trail keeps what each membership was. A
+    circuit that is in a network by its Z side alone is changed by `circuits set`."""
     target = client.load_target(url, token)
     found = find_circuit_group(target, group)
     held = {member["circuit_hid"]: member for member in _group_members(target, found["hid"])}
@@ -3921,6 +3949,13 @@ def remove_from_circuit_group(
         one = find_circuit(target, text)
         if one["hid"] not in held:
             raise client.fail(f"{one['name']} is not in {found['name']}", client.EXIT_INVALID)
+        if held[one["hid"]]["hid"] is None:
+            raise client.fail(
+                f"{one['name']} is in {found['name']} because its Z side names it, and was "
+                "not added to it: give its Z side another network, or none, with "
+                "hirdir circuits set",
+                client.EXIT_INVALID,
+            )
         taken.append(held[one["hid"]])
     for member in taken:
         client.call(target, "DELETE", f"/circuit-groups/{found['hid']}/members/{member['hid']}")
