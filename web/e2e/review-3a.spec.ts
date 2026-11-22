@@ -11,8 +11,9 @@
 // order.
 
 import { readFile } from "node:fs/promises";
-import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page, Response } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { answer, listed, queried } from "./answers";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -22,15 +23,31 @@ const label = (name: string) => `${name} ${id}`;
 /** A host name of this file, which begins with its mark. */
 const host = (name: string) => `${id}-${name}`;
 
-type Headers = { Authorization: string };
+/**
+ * What the file's own requests to the API are sent with: the session, and a connection
+ * of their own. P-309: the request client keeps a connection open between requests, and
+ * the server closes one that has been idle for 5 seconds; on a busy host a request sent
+ * on it as it closes was answered `read ECONNRESET`. A connection that ends with its
+ * answer is never sent on idle.
+ */
+type Headers = { Authorization: string; Connection: "close" };
 
 async function session(request: APIRequestContext, account: Account): Promise<Headers> {
   const answer = await request.post("./api/v1/auth/sign-in", {
+    headers: { Connection: "close" },
     data: { username: account.username, access_code: account.accessCode },
   });
   expect(answer.status(), "the account of the file signs in through the API").toBe(200);
   const { token } = (await answer.json()) as { token: string };
-  return { Authorization: `Bearer ${token}` };
+  return { Authorization: `Bearer ${token}`, Connection: "close" };
+}
+
+// P-309: each read and each save of the server is waited for before what the page shows
+// of it is expected, with answer, listed and queried of answers.ts.
+
+/** The page's answer to a search of the catalog whose address, decoded, holds `parts`. */
+function catalogSearched(page: Page, ...parts: string[]): Promise<Response> {
+  return listed(page, "/catalog-entries", ...parts);
 }
 
 async function make(
@@ -103,6 +120,23 @@ function details(page: Page): Locator {
   return page.getByRole("region", { name: "Details" });
 }
 
+/** An item's page, once the server has answered with the item. */
+async function openItem(page: Page, hid: string) {
+  const opened = answer(page, "GET", `/items/${hid}`);
+  await page.goto(`./items/${hid}`);
+  await opened;
+}
+
+/**
+ * Press Save in an item's details, and wait for the server's answer, which must be that
+ * it was saved. Until then the status "saved" on show may be the save's before it.
+ */
+async function saveItem(page: Page, save: Locator, hid: string) {
+  const answered = answer(page, "PATCH", `/items/${hid}`);
+  await save.click();
+  expect((await answered).status(), "the save is answered as saved").toBe(200);
+}
+
 /** A request held back until it is let go, as a busy server answers late. */
 async function holdBack(page: Page, url: string, method: string) {
   let release = () => {};
@@ -134,7 +168,8 @@ test("what is typed into an item's details after Save, while the page reads it a
   const headers = await records(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto(`./items/${made.item}`);
+  const item = made.item ?? "";
+  await openItem(page, item);
   await expect(page.getByRole("heading", { level: 1, name: host("mill-sw-01") })).toBeVisible();
   const form = details(page);
   const serial = form.getByLabel("Serial number");
@@ -143,17 +178,14 @@ test("what is typed into an item's details after Save, while the page reads it a
   const saved = page.getByRole("status").filter({ hasText: "The item was saved." });
 
   // The page's reading of the item after the save is held back, as a busy server's.
-  const reread = await holdBack(page, `**/api/v1/items/${made.item}`, "GET");
+  const reread = await holdBack(page, `**/api/v1/items/${item}`, "GET");
   await serial.fill(`SER-${id}`);
-  await save.click();
+  await saveItem(page, save, item);
   await expect(saved).toBeVisible();
   await expect.poll(reread.asked, "the page reads the item again").toBeGreaterThan(0);
   // Typed in the moment after Save, before the item has been read again.
   await tag.fill(`TAG-${id}`);
-  const answered = page.waitForResponse(
-    (answer) =>
-      answer.url().endsWith(`/api/v1/items/${made.item}`) && answer.request().method() === "GET",
-  );
+  const answered = answer(page, "GET", `/items/${item}`);
   reread.release();
   await answered;
   await reread.done();
@@ -161,29 +193,29 @@ test("what is typed into an item's details after Save, while the page reads it a
   await expect(form.getByLabel("Serial number")).toHaveValue(`SER-${id}`);
   await expect(form.getByLabel("Asset tag")).toHaveValue(`TAG-${id}`);
   await expect(save).toBeEnabled();
-  await save.click();
+  // The second save is answered, and the item read again after it, before the scenario
+  // goes on: the status "saved" on show until then is the first save's.
+  const readAgain = answer(page, "GET", `/items/${item}`);
+  await saveItem(page, save, item);
+  await readAgain;
   await expect(saved).toBeVisible();
   await expect(page.getByText("changed by someone else", { exact: false })).toHaveCount(0);
-  await expect
-    .poll(async () => (await read(request, headers, `/items/${made.item}`)).asset_tag)
-    .toBe(`TAG-${id}`);
+  expect((await read(request, headers, `/items/${item}`)).asset_tag).toBe(`TAG-${id}`);
 
   // Saved again before the page has read the item: the second save goes with the version
   // the first was answered with, and is not refused as stale.
-  const late = await holdBack(page, `**/api/v1/items/${made.item}`, "GET");
+  const late = await holdBack(page, `**/api/v1/items/${item}`, "GET");
   await form.getByLabel("FQDN").fill(`${host("mill-sw-01")}.example.net`);
-  await save.click();
+  await saveItem(page, save, item);
   await expect.poll(late.asked, "the page reads the item again").toBeGreaterThan(0);
   await form.getByLabel("MAC address").fill("00:00:5e:00:53:01");
-  await save.click();
-  await expect
-    .poll(async () => (await read(request, headers, `/items/${made.item}`)).mac_address)
-    .toBeTruthy();
+  await saveItem(page, save, item);
+  expect((await read(request, headers, `/items/${item}`)).mac_address).toBeTruthy();
   late.release();
   await late.done();
   await expect(saved).toBeVisible();
-  const item = await read(request, headers, `/items/${made.item}`);
-  expect(item.fqdn).toBe(`${host("mill-sw-01")}.example.net`);
+  const now = await read(request, headers, `/items/${item}`);
+  expect(now.fqdn).toBe(`${host("mill-sw-01")}.example.net`);
 
   await expectClean(page, seen);
 });
@@ -203,7 +235,7 @@ test("a kept field that someone else changed meanwhile says so under it, and a f
   ).hid;
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto(`./items/${item}`);
+  await openItem(page, item);
   await expect(page.getByRole("heading", { level: 1, name: host("mill-sw-02") })).toBeVisible();
   const form = details(page);
   const tag = form.getByLabel("Asset tag");
@@ -212,7 +244,7 @@ test("a kept field that someone else changed meanwhile says so under it, and a f
 
   const reread = await holdBack(page, `**/api/v1/items/${item}`, "GET");
   await form.getByLabel("Serial number").fill(`SER2-${id}`);
-  await save.click();
+  await saveItem(page, save, item);
   await expect(saved).toBeVisible();
   await expect.poll(reread.asked, "the page reads the item again").toBeGreaterThan(0);
   await tag.fill(`MINE-${id}`);
@@ -227,10 +259,7 @@ test("a kept field that someone else changed meanwhile says so under it, and a f
     },
   });
   expect(other.status(), await other.text()).toBe(200);
-  const answered = page.waitForResponse(
-    (answer) =>
-      answer.url().endsWith(`/api/v1/items/${item}`) && answer.request().method() === "GET",
-  );
+  const answered = answer(page, "GET", `/items/${item}`);
   reread.release();
   await answered;
   await reread.done();
@@ -246,11 +275,9 @@ test("a kept field that someone else changed meanwhile says so under it, and a f
   await expect(form.getByLabel("FQDN")).not.toHaveAccessibleDescription(/meanwhile/);
 
   // Saving replaces it, as the person was told, and the note goes.
-  await save.click();
+  await saveItem(page, save, item);
   await expect(saved).toBeVisible();
-  await expect
-    .poll(async () => (await read(request, headers, `/items/${item}`)).asset_tag)
-    .toBe(`MINE-${id}`);
+  expect((await read(request, headers, `/items/${item}`)).asset_tag).toBe(`MINE-${id}`);
   await expect(form.getByText("Changed meanwhile", { exact: false })).toHaveCount(0);
 
   await expectClean(page, seen);
@@ -292,8 +319,12 @@ test("a list keeps its place: Back and a link back show the rows it was on, with
   await signIn(page, account);
   await page.goto("./items");
   const grid = page.getByTestId("grid-items");
+  // Each reading of the list is of this file's rows: it is waited for before the grid is.
+  const listed = () => queried(page, "/items/query", host("row-"));
   await page.getByLabel("Filter", { exact: true }).fill(`hostname:prefix:${host("row-")}`);
+  const filtered = listed();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await filtered;
   await expect(page.getByText("60 items", { exact: true })).toBeVisible();
   await expect(grid.locator(".ag-row[row-index='0']")).toBeVisible();
 
@@ -309,11 +340,17 @@ test("a list keeps its place: Back and a link back show the rows it was on, with
   expect(rowId).toBeTruthy();
   const opened = grid.locator(`.ag-row[row-id="${rowId}"]`);
   const name = (await row.locator('[col-id="name"] a').textContent()) ?? "";
+  // The item's page, once the server has answered with the item.
+  const shown = () => answer(page, "GET", `/items/${rowId}`);
+  const first = shown();
   await row.locator('[col-id="name"] a').click();
+  await first;
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
   // The browser's Back: the same rows, scrolled as they were, the row opened marked.
+  const back = listed();
   await page.goBack();
+  await back;
   await expect(opened).toHaveClass(/row-opened/);
   await expect(opened).toBeInViewport();
   expect(await scrolled(grid)).toBeGreaterThan(900);
@@ -325,22 +362,28 @@ test("a list keeps its place: Back and a link back show the rows it was on, with
   // come, scrolled inside the grid as they were, with the row opened marked. 0.9.15: the
   // page itself is at its top, with the menu bar in view, as every page opened from the
   // menu bar is; only Back and Forward put the window back (P-301).
+  const again = shown();
   await opened.locator('[col-id="name"] a').click();
+  await again;
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   await page.route("**/api/v1/items/query", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await route.continue().catch(() => {});
   });
   const menuBar = page.getByRole("navigation", { name: "Main" });
+  const late = listed();
   await menuBar.getByRole("link", { name: "Items", exact: true }).click();
-  await expect(opened).toHaveClass(/row-opened/, { timeout: 15_000 });
+  await late;
+  await expect(opened).toHaveClass(/row-opened/);
   expect(await scrolled(grid)).toBeGreaterThan(900);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(menuBar).toBeInViewport({ ratio: 1 });
   await page.unroute("**/api/v1/items/query");
 
   // A new sort begins at the top, with no row marked.
+  const sorted = listed();
   await grid.locator('[role="columnheader"][col-id="name"]').click();
+  await sorted;
   await expect(grid.locator(".ag-row[row-index='0']")).toBeInViewport();
   await expect.poll(() => scrolled(grid)).toBe(0);
   await expect(grid.locator(".row-opened")).toHaveCount(0);
@@ -368,14 +411,21 @@ test("a list shows its rows where the browser refuses session storage (P-203)", 
   const page = await context.newPage();
   const seen = await watch(context);
   await signIn(page, account);
+  const listed = () => queried(page, "/items/query", host("row-"));
+  const first = listed();
   await page.goto(`./items?filter=${encodeURIComponent(`hostname:prefix:${host("row-")}`)}`);
+  await first;
   const grid = page.getByTestId("grid-items");
   await expect(page.getByText("60 items", { exact: true })).toBeVisible();
   const row = grid.locator(".ag-row[row-index='2']");
   const name = (await row.locator('[col-id="name"] a').textContent()) ?? "";
+  const shown = answer(page, "GET", `/items/${await row.getAttribute("row-id")}`);
   await row.locator('[col-id="name"] a').click();
+  await shown;
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  const back = listed();
   await page.goBack();
+  await back;
   await expect(page.getByText("60 items", { exact: true })).toBeVisible();
   await expect(grid.locator(".ag-row[row-index='0']")).toBeVisible();
   await expectClean(page, seen);
@@ -424,9 +474,11 @@ test("a catalog entry is chosen by searching for it, in New item, in an item's d
     await route.continue().catch(() => {});
   });
   // Each word is looked for in the PID, the model name and the vendor's name.
+  const searched = catalogSearched(page, id, "access");
   await entry.fill(`${id} access`);
   await expect(form.getByText("Searching…")).toBeVisible();
   const offered = entriesFound(form).getByRole("button");
+  await searched;
   await expect(offered).toHaveCount(1);
   await expect(offered).toHaveText(
     `SN-24T-${id} · ${label("Sample Networks")} · ${label("Access Switch")}`,
@@ -441,40 +493,43 @@ test("a catalog entry is chosen by searching for it, in New item, in an item's d
     `SN-24T-${id} · ${label("Sample Networks")} · ${label("Access Switch")}`,
   );
 
-  // Create and add another like it keeps the model, and a scanner's Enter makes the next.
+  // Create and add another like it keeps the model, and a scanner's Enter makes the next:
+  // each item made once the server has answered that it is.
+  const create = async (send: () => Promise<void>) => {
+    const created = answer(page, "POST", "/items");
+    await send();
+    expect((await created).status(), "the item is made").toBe(201);
+  };
   await serial.fill(`SER-${id}-N1`);
   await hostname.fill(host("new-01"));
-  await form.getByRole("button", { name: "Create and add another like it" }).click();
+  await create(() => form.getByRole("button", { name: "Create and add another like it" }).click());
   await expect(serial).toBeFocused();
   await expect(form.getByTestId("chosen-catalog_entry_hid")).toContainText(`SN-24T-${id}`);
   await hostname.fill(host("new-02"));
   await serial.fill(`SER-${id}-N2`);
-  await serial.press("Enter");
+  await create(() => serial.press("Enter"));
   await expect(serial).toHaveValue("");
   await expect(serial).toBeFocused();
-  await expect
-    .poll(async () => {
-      const answer = await request.post("./api/v1/items/query", {
-        headers,
-        data: { filter: { field: "hostname", op: "prefix", value: host("new-") }, limit: 10 },
-      });
-      const { items } = (await answer.json()) as { items: Array<{ catalog_entry_hid: string }> };
-      return items.map((item) => item.catalog_entry_hid);
-    })
-    .toEqual([second, second]);
+  // Both are made: the list of them is read once, after the second was answered.
+  const both = await request.post("./api/v1/items/query", {
+    headers,
+    data: { filter: { field: "hostname", op: "prefix", value: host("new-") }, limit: 10 },
+  });
+  expect(both.status(), "the items made are looked for").toBe(200);
+  const { items } = (await both.json()) as { items: Array<{ catalog_entry_hid: string }> };
+  expect(items.map((item) => item.catalog_entry_hid)).toEqual([second, second]);
 
   // An item's details: the entry it has is named, and another is found by searching.
-  await page.goto(`./items/${made.item}`);
+  const item = made.item ?? "";
+  await openItem(page, item);
   const details = page.getByRole("region", { name: "Details" });
   await details.getByLabel("Catalog entry").fill(`48P ${id}`);
   await entriesFound(details)
     .getByRole("button", { name: new RegExp(`^SN-48P-${id} ·`) })
     .click();
-  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await saveItem(page, details.getByRole("button", { name: "Save", exact: true }), item);
   await expect(page.getByRole("status").filter({ hasText: "The item was saved." })).toBeVisible();
-  await expect
-    .poll(async () => (await read(request, headers, `/items/${made.item}`)).catalog_entry_hid)
-    .toBe(made.entry);
+  expect((await read(request, headers, `/items/${item}`)).catalog_entry_hid).toBe(made.entry);
   await expect(details.getByTestId("chosen-catalog_entry_hid")).toContainText(`SN-48P-${id}`);
 
   // The successor of a catalog entry, named by the entry by HID alone, is named in its form.
@@ -484,11 +539,18 @@ test("a catalog entry is chosen by searching for it, in New item, in an item's d
   await entriesFound(entryForm)
     .getByRole("button", { name: new RegExp(`^SN-48P-${id} ·`) })
     .click();
+  const entrySaved = answer(page, "PATCH", `/catalog-entries/${second}`);
   await entryForm.getByRole("button", { name: "Save", exact: true }).click();
-  await expect
-    .poll(async () => (await read(request, headers, `/catalog-entries/${second}`)).successor_hid)
-    .toBe(made.entry);
+  expect((await entrySaved).status(), "the catalog entry is saved").toBe(200);
+  expect((await read(request, headers, `/catalog-entries/${second}`)).successor_hid).toBe(
+    made.entry,
+  );
+  // Read again, the page has the entry, and the successor it names by HID alone, which
+  // it reads to name it.
+  const entryRead = answer(page, "GET", `/catalog-entries/${second}`);
+  const successorRead = answer(page, "GET", `/catalog-entries/${made.entry}`);
   await page.reload();
+  await Promise.all([entryRead, successorRead]);
   await expect(entryForm.getByTestId("chosen-successor_hid")).toHaveText(
     `SN-48P-${id} · ${label("Sample Networks")} · ${label("Edge Switch")}`,
   );
@@ -514,11 +576,19 @@ test("a model that is not in the catalog is added from New item, and what was ty
 
   // A model the catalog does not have: the search finds nothing, and offers to add it.
   const pid = `SN-8X-${id}`;
+  const nothing = catalogSearched(page, pid);
   await form.getByLabel("Catalog entry").fill(pid);
+  await nothing;
   await expect(form.getByText("No catalog entry matches.")).toBeVisible();
   await form.getByRole("button", { name: "Add this model to the catalog" }).click();
   const add = form.getByRole("group", { name: "Add a model to the catalog" });
   await expect(add.getByLabel("PID")).toHaveValue(pid);
+  /** Send the model to the catalog, and wait for the server's answer, of `status`. */
+  const addModel = async (send: () => Promise<void>, status: number) => {
+    const answered = answer(page, "POST", "/catalog-entries");
+    await send();
+    expect((await answered).status(), "the catalog's answer to the model").toBe(status);
+  };
 
   // Refused by the server: its answer is shown, and everything typed stays.
   await add.getByLabel("Model name").fill(label("Uplink Module"));
@@ -527,14 +597,14 @@ test("a model that is not in the catalog is added from New item, and what was ty
   await expect(add.getByText("Choose the vendor.")).toBeVisible();
   await add.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
   await add.getByLabel("PID").fill(made.pid ?? "");
-  await add.getByRole("button", { name: "Add to the catalog" }).click();
+  await addModel(() => add.getByRole("button", { name: "Add to the catalog" }).click(), 409);
   await expect(add.locator(".field-error, .alert-error").first()).toBeVisible();
   await expect(add.getByLabel("Model name")).toHaveValue(label("Uplink Module"));
   await expect(form.getByLabel("Hostname")).toHaveValue(host("new-model-01"));
 
   // Added: the entry is chosen for the item and the keyboard goes on to its next field.
   await add.getByLabel("PID").fill(pid);
-  await add.getByLabel("PID").press("Enter");
+  await addModel(() => add.getByLabel("PID").press("Enter"), 201);
   await expect(form.getByTestId("chosen-catalog_entry_hid")).toHaveText(
     `${pid} · ${label("Sample Networks")} · ${label("Uplink Module")}`,
   );
@@ -543,7 +613,12 @@ test("a model that is not in the catalog is added from New item, and what was ty
   await expect(form.getByLabel("Hostname")).toHaveValue(host("new-model-01"));
   await expect(form.getByLabel("Asset tag")).toHaveValue(`AT-${id}-M1`);
   await form.getByLabel("Serial number").fill(`SER-${id}-M1`);
+  // Made, and its page opened, once the server has answered with it.
+  const created = answer(page, "POST", "/items");
+  const opened = answer(page, "GET", /\/api\/v1\/items\/[^/]+$/);
   await form.getByRole("button", { name: "Create item" }).click();
+  expect((await created).status(), "the item is made").toBe(201);
+  await opened;
   await expect(page.getByRole("heading", { level: 1, name: host("new-model-01") })).toBeVisible();
   const hid = page.url().split("/").pop() ?? "";
   const item = await read(request, headers, `/items/${hid}`);
@@ -554,7 +629,9 @@ test("a model that is not in the catalog is added from New item, and what was ty
   // Where the search finds models, adding another is offered as a small link.
   await page.goto("./items");
   await page.getByRole("button", { name: "New item" }).click();
+  const some = catalogSearched(page, id);
   await form.getByLabel("Catalog entry").fill(id);
+  await some;
   await expect(entriesFound(form).getByRole("button").first()).toBeVisible();
   await expect(form.getByRole("button", { name: "Add a model to the catalog" })).toBeVisible();
 
@@ -589,12 +666,16 @@ test("a model the catalog has already is offered to be used, and the part that a
 
   // The PID the catalog has already: the refusal offers that entry, to use or to open
   // in a new tab, and Use it chooses it with what was typed kept.
+  const nothing = catalogSearched(page, `${id}-none`);
   await form.getByLabel("Catalog entry").fill(`${id}-none`);
+  await nothing;
   await expect(form.getByText("No catalog entry matches.")).toBeVisible();
   await form.getByRole("button", { name: "Add this model to the catalog" }).click();
   await add.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
   await add.getByLabel("PID").fill(made.pid ?? "");
+  const refused = answer(page, "POST", "/catalog-entries");
   await add.getByRole("button", { name: "Add to the catalog" }).click();
+  expect((await refused).status(), "the PID the catalog has already is refused").toBe(409);
   await expect(add.getByText("The catalog entry that has it:")).toBeVisible();
   const existing = add.getByRole("link", { name: /opens in a new tab/ });
   await expect(existing).toHaveAttribute("target", "_blank");
@@ -623,7 +704,9 @@ test("small words: a create says so with a link, a bulk edit's preview speaks of
   await page.getByRole("button", { name: "New region", exact: true }).click();
   const newRegion = page.getByRole("region", { name: "New region", exact: true });
   await newRegion.getByLabel("Name (required)").fill(label("Northreach"));
+  const regionMade = answer(page, "POST", "/regions");
   await newRegion.getByRole("button", { name: "Create region" }).click();
+  expect((await regionMade).status(), "the region is made").toBe(201);
   const said = page.getByRole("status").filter({ hasText: "was created." });
   await expect(said).toHaveText(`Region ${label("Northreach")} was created.`);
   await expect(said).toBeInViewport();
@@ -636,13 +719,21 @@ test("small words: a create says so with a link, a bulk edit's preview speaks of
   const newEntry = page.getByRole("region", { name: "New catalog entry", exact: true });
   await newEntry.getByLabel("Vendor").selectOption({ label: label("Sample Networks") });
   await newEntry.getByLabel("PID").fill(`SN-4X-${id}`);
+  // Made, and its page opened, once the server has answered with it.
+  const entryMade = answer(page, "POST", "/catalog-entries");
+  const entryOpened = answer(page, "GET", /\/api\/v1\/catalog-entries\/[^/]+$/);
   await newEntry.getByRole("button", { name: "Create catalog entry" }).click();
+  expect((await entryMade).status(), "the catalog entry is made").toBe(201);
+  await entryOpened;
   await expect(said).toHaveText(
     `Catalog entry ${label("Sample Networks")} SN-4X-${id} was created.`,
   );
 
   // A bulk edit's preview: nothing to create, and the rows in the order of the items.
+  const tenListed = () => queried(page, "/items/query", host("row-0"));
+  const ten = tenListed();
   await page.goto(`./items?filter=${encodeURIComponent(`hostname:prefix:${host("row-0")}`)}`);
+  await ten;
   const grid = page.getByTestId("grid-items");
   await expect(page.getByText("10 items", { exact: true })).toBeVisible();
   await grid.locator(".ag-row[row-index='0'] [col-id='serial_number']").click();
@@ -651,7 +742,9 @@ test("small words: a create says so with a link, a bulk edit's preview speaks of
   await bulk.getByLabel("Field to change").selectOption({ label: "Comments" });
   await bulk.getByRole("button", { name: "Add", exact: true }).click();
   await bulk.getByLabel("Set to").fill(label("Checked"));
+  const previewed = answer(page, "POST", "/items/bulk-update");
   await bulk.getByRole("button", { name: "Preview the change" }).click();
+  await previewed;
   const counts = page.getByTestId("preview-counts");
   await expect(counts.locator('[data-count="updated"] dd')).toHaveText("1");
   await expect(counts.locator('[data-count="created"]')).toHaveCount(0);
@@ -665,7 +758,9 @@ test("small words: a create says so with a link, a bulk edit's preview speaks of
   await page.getByRole("button", { name: "Reset layout and filters" }).click();
   await page.getByText("Columns", { exact: true }).click();
   await page.getByLabel("Filter", { exact: true }).fill(`hostname:prefix:${host("row-0")}`);
+  const tenAgain = tenListed();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await tenAgain;
   await expect(page.getByText("10 items", { exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();

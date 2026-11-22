@@ -13,17 +13,17 @@
 // It keeps to the rules of support.ts: an account and names of its own, and every report
 // and grid filtered down to this file's records before anything is counted.
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { answer, answers, importFile, listed, queried } from "./answers";
 import {
   chooseColumns,
   gridRow,
-  newContract,
-  openContract,
+  type NewContract,
   pickContract,
   ROOM,
   resetGrid,
 } from "./contractSteps";
-import { importFile, openItem, region } from "./structure";
+import { region } from "./structure";
 import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -60,11 +60,93 @@ async function selectCoverage(page: Page, ...names: string[]) {
   await expect(page.getByTestId("grid-selected")).toContainText(`${names.length} selected`);
 }
 
-/** Retire the item on show. */
+// P-309: each answer of the server is waited for before what the page shows of it is
+// expected (answers.ts). The steps of contractSteps.ts and structure.ts that read a page
+// are taken here in that way: an item's page, a contract's, a new contract.
+const ITEM = /\/api\/v1\/items\/[^/]+$/;
+const CONTRACT = /\/api\/v1\/contracts\/[^/]+$/;
+const CONTRACT_COVERAGE = /\/api\/v1\/contracts\/[^/]+\/coverage$/;
+
+/**
+ * The answers an item's page reads: the item, and its coverage. They are read again
+ * when the item changes.
+ */
+function itemRead(page: Page): Promise<unknown> {
+  return Promise.all([answer(page, "GET", ITEM), answer(page, "GET", "/contract-coverage")]);
+}
+
+/**
+ * The answers a contract's page reads: the contract, and the coverage in its grid. They
+ * are read again when a coverage changes.
+ */
+function contractRead(page: Page): Promise<unknown> {
+  return Promise.all([answer(page, "GET", CONTRACT), answer(page, "GET", CONTRACT_COVERAGE)]);
+}
+
+/**
+ * Open an item from the grid, by its hostname, once the server has answered with it. The
+ * link asks for minor items too, as the links of the app do.
+ */
+async function openItem(page: Page, hostname: string) {
+  await page.goto(`./items?filter=${encodeURIComponent(`hostname:eq:${hostname}`)}&minor=1`);
+  const read = itemRead(page);
+  await page.getByTestId("grid-items").getByRole("link", { name: hostname, exact: true }).click();
+  await read;
+  await expect(page.getByRole("heading", { level: 1, name: hostname })).toBeVisible();
+}
+
+/** Open a contract from the grid of contracts, by its number, once it is read. */
+async function openContract(page: Page, number: string) {
+  await page.goto(`./contracts?filter=${encodeURIComponent(`number:eq:${number}`)}`);
+  const read = contractRead(page);
+  await page.getByTestId("grid-contracts").getByRole("link", { name: number, exact: true }).click();
+  await read;
+  await expect(page.getByRole("heading", { level: 1, name: number })).toBeVisible();
+}
+
+/** Make a contract that stands by itself, on the page of contracts, and open it. */
+async function newContract(page: Page, contract: NewContract) {
+  await page.goto("./contracts");
+  await page.getByRole("button", { name: "New contract" }).click();
+  const form = region(page, "New contract");
+  await form.getByLabel("Number (required)").fill(contract.number);
+  await form.getByLabel("Vendor", { exact: true }).selectOption({ label: contract.vendor });
+  if (contract.starts) await form.getByLabel("Starts on").fill(contract.starts);
+  if (contract.ends) await form.getByLabel("Ends on").fill(contract.ends);
+  const made = answer(page, "POST", "/contracts");
+  const read = contractRead(page);
+  await form.getByRole("button", { name: "Create contract" }).click();
+  expect((await made).status(), "the contract is made").toBe(201);
+  await read;
+  await expect(page.getByRole("heading", { level: 1, name: contract.number })).toBeVisible();
+}
+
+/** Retire the item on show, once the server has answered, and read it again. */
 async function retire(page: Page) {
+  const retired = answer(page, "POST", /\/api\/v1\/items\/[^/]+\/retire$/);
+  const read = itemRead(page);
   await page.getByRole("button", { name: "Retire item" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Retire item" }).click();
+  expect((await retired).status(), "the item is retired").toBe(200);
+  await read;
   await expect(page.getByText("The item was retired.")).toBeVisible();
+}
+
+/**
+ * Press the button that settles the coverages chosen, one request for each, and wait for
+ * the last, and for the contract and its coverage read again.
+ */
+async function settleCoverage(
+  page: Page,
+  button: Locator,
+  rows: number,
+  method: "DELETE" | "PATCH",
+) {
+  const done = answers(page, rows, method, /\/api\/v1\/contracts\/[^/]+\/coverage\/[^/]+$/);
+  const read = contractRead(page);
+  await button.click();
+  await done;
+  await read;
 }
 
 /** The coverage of the item on show under this file's contract. */
@@ -93,14 +175,18 @@ test("five switches are put under one contract from the item grid", async ({ pag
   );
   await newContract(page, { number, vendor, starts: `${year - 1}-01-01`, ends });
 
+  const listedItems = queried(page, "/items/query", prefix);
   await page.goto(`./items?filter=${encodeURIComponent(own)}`);
+  await listedItems;
   await expect(page.getByTestId("grid-total")).toHaveText("5 items");
   await page.getByRole("button", { name: "Select all that match" }).click();
   await page.getByRole("button", { name: "Cover with a contract" }).click();
   const cover = page.getByTestId("cover-items");
   await expect(cover.getByRole("heading", { name: "Cover 5 items with a contract" })).toBeVisible();
   await pickContract(cover, number);
+  const covered = answer(page, "POST", CONTRACT_COVERAGE);
   await cover.getByRole("button", { name: "Cover 5 items" }).click();
+  expect((await covered).status(), "the items are covered").toBe(201);
   await expect(
     page.getByText(`5 items are now under ${number}. Nothing was written to any of them.`),
   ).toBeVisible();
@@ -120,7 +206,12 @@ test("D-141: two coverages made by mistake are removed at once", async ({ page, 
   await expect(settle.getByRole("heading", { name: "Remove 2 coverages" })).toBeVisible();
   await expect(settle).toContainText(mistake1);
   await expect(settle).toContainText(mistake2);
-  await settle.getByRole("button", { name: "Remove 2 coverages" }).click();
+  await settleCoverage(
+    page,
+    settle.getByRole("button", { name: "Remove 2 coverages" }),
+    2,
+    "DELETE",
+  );
   await expect(
     page.getByText("2 coverages were removed. The audit trail holds what they were."),
   ).toBeVisible();
@@ -156,9 +247,12 @@ test("D-141, D-162: two switches leave service, are counted under the contract, 
   }
 
   // The list for the vendor in the coverage report: the column is the server's field.
+  const report = listed(page, "/reports/coverage", prefix);
+  const section = queried(page, "/items/query", prefix);
   await page.goto(
     `./reports/coverage?${new URLSearchParams({ filter: own, section: "out_of_service" }).toString()}`,
   );
+  await Promise.all([report, section]);
   await expect(page.getByTestId("count-out_of_service")).toHaveAttribute("data-count", "2");
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   const list = "grid-coverage-out_of_service";
@@ -175,19 +269,24 @@ test("D-141, D-162: two switches leave service, are counted under the contract, 
 
   // The item grid finds them by the contract that still counts them, and the column is in
   // its chooser.
+  const stillCounted = () => queried(page, "/items/query", number);
+  const found = stillCounted();
   await page.goto(
     `./items?filter=${encodeURIComponent(`out_of_service_contract.number:eq:${number}`)}&archived=1`,
   );
+  await found;
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   await chooseColumns(page, ["Still counted under"], ROOM);
   await expect(
     gridRow(page, "grid-items", left1).locator('[col-id="out_of_service_contract.number"]'),
   ).toHaveText(number);
   // Sorted by it on the server: the header sorts, and both rows stay.
+  const sorted = stillCounted();
   await page
     .getByTestId("grid-items")
     .locator('.ag-header-cell[col-id="out_of_service_contract.number"] .ag-header-cell-label')
     .click();
+  await sorted;
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   await resetGrid(page);
 
@@ -202,7 +301,12 @@ test("D-141, D-162: two switches leave service, are counted under the contract, 
   await expect(
     settle.getByRole("heading", { name: "The vendor has been told of 2 items" }),
   ).toBeVisible();
-  await settle.getByRole("button", { name: "The vendor has been told" }).click();
+  await settleCoverage(
+    page,
+    settle.getByRole("button", { name: "The vendor has been told" }),
+    2,
+    "PATCH",
+  );
   await expect(
     page.getByText("The vendor has been told of 2 items that left service."),
   ).toBeVisible();
@@ -212,9 +316,13 @@ test("D-141, D-162: two switches leave service, are counted under the contract, 
 
   // The contract counts them no longer: the list for the vendor is empty, and the
   // switch says nothing of it.
+  const again = listed(page, "/reports/coverage", prefix);
   await page.goto(`./reports/coverage?filter=${encodeURIComponent(own)}`);
+  await again;
   await expect(page.getByTestId("count-out_of_service")).toHaveAttribute("data-count", "0");
+  const read = itemRead(page);
   await page.goto(pages[0] ?? "");
+  await read;
   await expect(page.getByRole("heading", { level: 1, name: left1 })).toBeVisible();
   await expect(itsCoverage(page)).toHaveAttribute("data-left-service", "false");
   await expect(page.getByTestId("item-counted-under")).toHaveCount(0);
@@ -239,15 +347,24 @@ test("D-141: a switch that left and came back has its coverage opened again", as
     itsCoverage(page).getByRole("button", { name: `Open the coverage under ${number} again` }),
   ).toHaveCount(0);
 
+  // Brought back once the server has answered, and the item read again.
+  const brought = answer(page, "PATCH", ITEM);
+  const readBack = itemRead(page);
   await region(page, "Retired").getByRole("button", { name: "Bring back as active" }).click();
+  expect((await brought).status(), "the item is brought back").toBe(200);
+  await readBack;
   await expect(page.getByText("The item is active again.")).toBeVisible();
   // Back in service, it is on no list of what has left, and its coverage stays ended
   // until a person opens it again.
   await expect(page.getByTestId("item-counted-under")).toHaveCount(0);
   await expect(itsCoverage(page)).toHaveAttribute("data-left-service", "true");
+  const opened = answer(page, "PATCH", /\/api\/v1\/contracts\/[^/]+\/coverage\/[^/]+$/);
+  const readAgain = itemRead(page);
   await itsCoverage(page)
     .getByRole("button", { name: `Open the coverage under ${number} again` })
     .click();
+  expect((await opened).status(), "the coverage is opened again").toBe(200);
+  await readAgain;
   await expect(
     page.getByText(
       `The coverage of ${back} under ${number} is open again, with the period of the contract.`,

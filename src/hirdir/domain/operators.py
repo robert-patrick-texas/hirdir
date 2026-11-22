@@ -135,7 +135,8 @@ def _checked(db: Session, fields: dict[str, Any], operator: Operator | None) -> 
                 raise Invalid(
                     "there is no such contact", {"contact_hid": f"there is no contact {hid}"}
                 )
-            if contact.record_status == "retired":
+            # A label that a file makes retired still names its contact (P-311).
+            if records.refuses_retired(contact):
                 raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
         values["contact_hid"] = hid
     if "record_status" in fields:

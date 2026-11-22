@@ -20,6 +20,7 @@ import { TextField } from "../components/Field";
 import { GenerateCode } from "../components/GenerateCode";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { SameName } from "../components/SameName";
 import { SecretBox } from "../components/SecretBox";
 import { HelpList } from "../components/WhomToAsk";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
@@ -96,6 +97,10 @@ export function Profile() {
 function Details({ contact, reload }: { contact: Contact; reload: () => void }) {
   const { took } = useAuth();
   const [done, setDone] = useState("");
+  // 0.9.17: the name a save sent, where other contacts have it, as the answer counts
+  // them (P-315); a save that sends no name says nothing of it.
+  const [same, setSame] = useState<{ name: string; others: number } | null>(null);
+  const sent = useRef<{ name: string; others: number } | null>(null);
   return (
     <section
       className="profile-part"
@@ -105,16 +110,24 @@ function Details({ contact, reload }: { contact: Contact; reload: () => void }) 
       <h2 id="profile-details">Details</h2>
       <p className="hint">They are your contact's, and are shown wherever you are named.</p>
       <Notice text={done} />
+      {same && <SameName name={same.name} others={same.others} whose="own" />}
       <EditForm<Contact, Schemas["OwnContactPatch"]>
         specs={DETAIL_SPECS}
         record={contact}
         save={async (body) => {
           const me = await api.request("patch", "/api/v1/auth/me/contact", { body });
+          sent.current =
+            "name" in body && me.contact
+              ? { name: me.contact.name, others: me.contact.same_name }
+              : null;
           // The frame takes the answer: the name shows on every page at once.
           took(me);
           return me.contact;
         }}
-        onSaved={() => setDone("Your details were saved.")}
+        onSaved={() => {
+          setDone("Your details were saved.");
+          setSame(sent.current);
+        }}
         onReload={reload}
         submitLabel="Save details"
       />

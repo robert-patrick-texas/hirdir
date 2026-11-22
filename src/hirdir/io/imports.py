@@ -17,6 +17,7 @@ import hashlib
 import logging
 import threading
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
@@ -24,16 +25,16 @@ from sqlalchemy import case, func, insert, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from hirdir import clock
+from hirdir import clock, ids
 from hirdir.auth.roles import Role
 from hirdir.db import dialect, engine
 from hirdir.db.models import AuditEvent, ImportJob, ImportRow, User
 from hirdir.domain import accounts, audit, deleted, items, records, systems
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Deleted, Invalid, NotAllowed, NotFound
+from hirdir.domain.errors import Conflict, Deleted, Existing, Invalid, NotAllowed, NotFound
 from hirdir.io import columns as cells
 from hirdir.io import files
-from hirdir.io.entities import Entity, Run, entity
+from hirdir.io.entities import Entity, Run, entity, says_retired
 from hirdir.io.files import Row, reason
 
 OUTCOMES = ("create", "update", "unchanged", "rejected")
@@ -100,6 +101,42 @@ def _no_record(db: Session, which: Entity, hid: str) -> str:
     return f"there is no record {hid}"
 
 
+def _made_as(run: Run, which: Entity, values: dict[str, Any], hid: str) -> str:
+    """Return the HID a row makes its record with: the one it gives, which no record of
+    its table has (P-311), so that the file of every table loads into an empty inventory
+    with each record as it was, and a reference by HID finds what an earlier file made.
+
+    It is refused where the text is no HID; where the record of that HID was deleted or
+    removed, which the audit trail says, since a file brings nothing back; where the
+    row's own key finds another record, which it names, so that a file of another
+    inventory makes no second of what this one has; and in a bulk edit, which changes
+    records that exist.
+    """
+    db = run.db
+    if run.mode == "update":
+        raise Invalid("there is no such record", {"hid": "a bulk edit changes records that exist"})
+    if not ids.is_hid(hid):
+        raise Invalid(
+            "there is no such record",
+            {"hid": f"there is no record {hid}, and it is no HID, which an export writes"},
+        )
+    if deleted.deletion(db, which.record_type, hid) is not None:
+        raise Invalid("there is no such record", {"hid": _no_record(db, which, hid)})
+    try:
+        other = which.find(run, {name: value for name, value in values.items() if name != "hid"})
+    except Invalid:
+        # The key answers to several records: it finds none of them by itself.
+        other = None
+    if other is not None and other.hid not in run.seen:
+        named = which.key(values, other)
+        raise Conflict(
+            f"this row names {named}, which is another record, by an HID it does not have",
+            {"hid": f"{named} has the HID {other.hid}: give that, or leave the HID out"},
+            Existing(which.record_type, other.hid, named),
+        )
+    return hid
+
+
 def _typed(which: Entity, values: dict[str, Any]) -> dict[str, Any]:
     typed = {}
     for name, value in values.items():
@@ -139,10 +176,11 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     """
     db = run.db
     hid = values.get("hid")
+    made_as: str | None = None
     if hid:
         record = db.get(which.model, hid)
         if record is None:
-            raise Invalid("there is no such record", {"hid": _no_record(db, which, hid)})
+            made_as = _made_as(run, which, values, hid)
     else:
         record = which.find(run, values)
     result.key = which.key(values, record)
@@ -169,7 +207,17 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
         before = which.read_for(run, [record])[0]
     if claimed:
         run.claim(record.hid)
-    record = which.write(run, record, values, new)
+    # A row that makes its record retired makes it so, with the links a retired record
+    # keeps (P-311); one that would retire a record that is there is refused by its write.
+    retired = records.making_retired() if record is None and says_retired(values) else nullcontext()
+    with retired:
+        if made_as is not None:
+            with ids.given(which.record_type, made_as):
+                record = which.write(run, record, values, new)
+            if record.hid != made_as:
+                raise Invalid("the record was not made with its HID", {"hid": made_as})
+        else:
+            record = which.write(run, record, values, new)
     db.flush()
     result.changes = [
         change

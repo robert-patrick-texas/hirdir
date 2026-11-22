@@ -1022,7 +1022,7 @@ def test_a_moment_with_no_zone_follows_the_time_zone_setting_wherever_it_comes_i
     # In a file, and for the master that is seen of a stack: New York, until it is changed.
     text = "hostname,observed_status,observed_at\nsite2-sw-01,online,2026-11-02T10:00:00\n"
     preview = _send(make, "items", text)
-    assert _told(preview["rows"][0])["observed_at"] == (None, "2026-11-02T15:00:00+00:00")
+    assert _told(preview["rows"][0])["observed_at"] == (None, "2026-11-02T15:00:00Z")
     make.apply(f"/imports/{preview['job']['hid']}/apply")
     assert make.get(f"/items/{first['hid']}")["observed_at"] == "2026-11-02T15:00:00Z"
     # The same file again changes nothing, and neither does the moment with its zone.

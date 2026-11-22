@@ -782,6 +782,12 @@ class ContactOut(Model):
             "that name it. `GET /contacts/{hid}/uses` lists them."
         )
     )
+    same_name: int = Field(
+        description="How many other contacts that are not retired have its name, compared "
+        "without regard to case as a file matches a contact by its name (P-315). A name "
+        "another has is saved as any other; a file then tells them apart by the email or "
+        "the HID."
+    )
     row_version: int
     created_at: datetime
     updated_at: datetime

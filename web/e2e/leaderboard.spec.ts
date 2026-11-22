@@ -22,11 +22,23 @@
 //   model is named by its vendor and PID and leads to its catalog entry, which has a
 //   column of how many items are of it, a link to them.
 
-import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test";
+import {
+  type APIRequestContext,
+  expect,
+  type Locator,
+  type Page,
+  type Response,
+} from "@playwright/test";
+import { answer, listed, queried } from "./answers";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 test.use({ viewport: { width: 1280, height: 900 } });
+
+// P-309: each scenario opens page after page, each counted by the server, which on a busy
+// host answers a count in several seconds: a scenario is given two minutes, as those of
+// the other files are, and waits for each answer before it reads what the page shows.
+const BUDGET = 120_000;
 
 const suffix = mark("leaderboard");
 const name = (one: string) => `${one} ${suffix}`;
@@ -63,13 +75,47 @@ async function noSidewaysScroll(page: Page) {
   expect(scroll, "the page is no wider than the window").toBeLessThanOrEqual(client);
 }
 
-/** The grid of items a link led to holds as many as the count said. */
+/**
+ * The page's answers to the counts of the scoreboard, by operator, by site and by group,
+ * for the items of this file: the three tables of the page.
+ */
+function scoreboardCounted(page: Page): Promise<Response[]> {
+  return Promise.all(
+    ["operator", "site", "group"].map((by) => listed(page, "/reports/summary", `by=${by}`, suffix)),
+  );
+}
+
+/**
+ * The page's answers to what an operator's page reads of what it is on: the tree, and the
+ * count of its items beside it, which is a search of the items as the grid's is.
+ */
+function treeDrawn(page: Page, operator: string): Promise<Response[]> {
+  return Promise.all([
+    answer(page, "GET", `/operators/${operator}/assignments`),
+    queried(page, "/items/query", '"limit":1,'),
+  ]);
+}
+
+/**
+ * The grid of items a link led to holds as many as the count said, once the server has
+ * answered the grid's search. The page the link is on has no search of the items of its
+ * own left unanswered: the first that is answered is the grid's.
+ */
 async function leadsTo(page: Page, link: Locator, items: number) {
+  const listedItems = answer(page, "POST", "/items/query");
   await link.click();
+  await listedItems;
   await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
   await expect(page.getByTestId("grid-total")).toHaveText(
     `${items} ${items === 1 ? "item" : "items"}`,
   );
+}
+
+/** The browser's Back, to a page that `read` says is read again, once it is. */
+async function backTo(page: Page, read: () => Promise<unknown>) {
+  const again = read();
+  await page.goBack();
+  await again;
 }
 
 const ids: Record<string, string> = {};
@@ -129,9 +175,13 @@ test("what an operator is on, as a tree of boxes, every count a link", async ({
   page,
   account,
 }) => {
+  test.setTimeout(BUDGET);
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto(`./operators/${ids.opa}`);
+  const opa = ids.opa ?? "";
+  const drawn = treeDrawn(page, opa);
+  await page.goto(`./operators/${opa}`);
+  await drawn;
   const tree = page.getByTestId("operator-tree");
   await expect(tree.getByRole("figure", { name: `What ${name("OPA")} is on` })).toBeVisible();
   // At the top, the operator and every item it is in force for.
@@ -179,16 +229,18 @@ test("what an operator is on, as a tree of boxes, every count a link", async ({
   const fromSite = siteBox.getByRole("link", { name: "2 items have it from here" });
   await fromSite.focus();
   await expect(fromSite).toBeFocused();
+  const fromSiteListed = answer(page, "POST", "/items/query");
   await page.keyboard.press("Enter");
+  await fromSiteListed;
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   await expect(page.getByTestId("grid-items")).toContainText(`sfp1-${suffix}`);
-  await page.goBack();
+  await backTo(page, () => treeDrawn(page, opa));
   await leadsTo(
     page,
     page.getByTestId("tree-root").getByRole("link", { name: "6 items in force" }),
     6,
   );
-  await page.goBack();
+  await backTo(page, () => treeDrawn(page, opa));
   await leadsTo(
     page,
     page
@@ -207,9 +259,14 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   page,
   account,
 }) => {
+  test.setTimeout(BUDGET);
   const seen = await watch(page.context());
   await signIn(page, account);
+  // Three tables are counted at once: on a busy host longer than the 5 seconds of a wait,
+  // so each count is waited for, and then what the page shows of it.
+  const counted = scoreboardCounted(page);
   await page.goto(`./reports/scoreboard?${new URLSearchParams({ filter: mine }).toString()}`);
+  await counted;
   await expect(page.getByRole("heading", { level: 1, name: "Scoreboard" })).toBeVisible();
 
   // The leaderboard: OPA with its six items, and none of the split, which is a table of its
@@ -217,8 +274,7 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   const operators = page.getByTestId("score-operators");
   const measure = (row: Locator, which: string) => row.locator(`[data-measure="${which}"]`);
   const leader = operators.locator(`tbody tr[data-operator="${ids.opa}"]`);
-  // Three tables are counted at once: on a busy host longer than the 5 seconds of a wait.
-  await expect(measure(leader, "items")).toHaveText("6", { timeout: 20_000 });
+  await expect(measure(leader, "items")).toHaveText("6");
   await expect(measure(leader, "own")).toHaveCount(0);
   await expect(operators.getByRole("columnheader", { name: "Own", exact: true })).toHaveCount(0);
   // Its health is one column: a bar in four parts that nobody hears, the numbers beside it
@@ -311,7 +367,9 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   // among them; its members to its own members.
   await leadsTo(page, measure(g, "items").getByRole("link"), 3);
   await expect(page.getByTestId("grid-items")).toContainText(`sw5-${suffix}`);
-  await page.goBack();
+  // Back, the scoreboard counts its tables again.
+  const back = () => backTo(page, () => scoreboardCounted(page));
+  await back();
   await leadsTo(
     page,
     page
@@ -323,19 +381,22 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
 
   // How OPA's items have it leads to exactly those items: the two from its group, the
   // member of the nested group among them; and the groups given it to the list of groups.
-  await page.goBack();
+  await back();
   const opaAgain = page.getByTestId("score-split").locator(`tbody tr[data-operator="${ids.opa}"]`);
   await leadsTo(page, measure(opaAgain, "from_group").getByRole("link"), 2);
   await expect(page.getByTestId("grid-items")).toContainText(`sw5-${suffix}`);
-  await page.goBack();
+  await back();
   await leadsTo(page, measure(opaAgain, "from_place").getByRole("link"), 2);
   await expect(page.getByTestId("grid-items")).toContainText(`sfp1-${suffix}`);
-  await page.goBack();
+  await back();
+  const groupsListed = answer(page, "POST", "/device-groups/query");
   await measure(opaAgain, "groups_given").getByRole("link").click();
+  await groupsListed;
   await expect(page.getByTestId("grid-device-groups")).toContainText(name("G"));
   await expect(page.getByTestId("grid-total")).toHaveText("1 group");
   // The places given it are no one list, and lead nowhere.
-  await page.goBack();
+  await back();
+  await expect(measure(opaAgain, "places_given")).toHaveText("1");
   await expect(measure(opaAgain, "places_given").getByRole("link")).toHaveCount(0);
 
   await expectClean(page, seen);
@@ -345,10 +406,13 @@ test("the summary by group and by model, the most first, and a model's items on 
   page,
   account,
 }) => {
+  test.setTimeout(BUDGET);
   const seen = await watch(page.context());
   await signIn(page, account);
   // By model: P1 with three items, P2 with one, and the five with no model last, unranked.
+  const byModel = listed(page, "/reports/summary", "by=model", suffix);
   await page.goto(`./reports?${new URLSearchParams({ filter: mine, by: "model" }).toString()}`);
+  await byModel;
   await expect(page.getByRole("heading", { level: 1, name: "Summary" })).toBeVisible();
   const rows = page.getByTestId("summary-rows").locator("tbody tr");
   await expect(rows).toHaveCount(3);
@@ -370,7 +434,9 @@ test("the summary by group and by model, the most first, and a model's items on 
   await expect(model).toHaveAttribute("href", new RegExp(`/catalog/${ids.p1}$`));
 
   // By group: offered among the choices, each row a group with its type and members.
+  const byGroup = listed(page, "/reports/summary", "by=group", suffix);
   await page.getByLabel("By", { exact: true }).selectOption("group");
+  await byGroup;
   await expect(page.getByRole("heading", { level: 2, name: "By group" })).toBeVisible();
   const g = page.getByTestId("summary-rows").locator(`tbody tr[data-key="${ids.g}"]`);
   await expect(g.getByTestId("row-detail")).toHaveText("Custom · 2 members · 1 nested group");
@@ -381,9 +447,11 @@ test("the summary by group and by model, the most first, and a model's items on 
   await noSidewaysScroll(page);
 
   // The management report is by model too.
+  const management = listed(page, "/reports/management", "by=model", suffix);
   await page.goto(
     `./reports/management?${new URLSearchParams({ filter: mine, by: "model" }).toString()}`,
   );
+  await management;
   await expect(
     page
       .getByTestId("management-rows")
@@ -391,7 +459,9 @@ test("the summary by group and by model, the most first, and a model's items on 
   ).toHaveText("3");
 
   // The catalog: how many items are of each model, a link to them, sorted by the server.
+  const entries = queried(page, "/catalog-entries/query", suffix);
   await page.goto(`./catalog?filter=${encodeURIComponent(`pid:eq:${name("P1")}`)}`);
+  await entries;
   const catalog = page.getByTestId("grid-catalog");
   await expect(catalog.getByRole("columnheader", { name: "Items" })).toBeVisible();
   await leadsTo(page, catalog.getByRole("link", { name: "3", exact: true }), 3);

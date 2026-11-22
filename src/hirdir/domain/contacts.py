@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
 from hirdir.auth.roles import Role
@@ -524,6 +524,37 @@ def operators_of(db: Session, hids: list[str]) -> dict[str, list[Operator]]:
     ):
         found[operator.contact_hid or ""].append(operator)
     return found
+
+
+def same_names(db: Session, hids: list[str]) -> dict[str, int]:
+    """Return how many other contacts that are not retired have the name of each of the
+    contacts, compared as a file matches a contact by its name, by `name_key`: read in
+    one query for them all, and stored nowhere (P-315). A name another has is saved as
+    any other; this is what the pages and the CLI say of it."""
+    counts = dict.fromkeys(hids, 0)
+    if not hids:
+        return counts
+    other = aliased(Contact)
+    for piece in _pieces(sorted(set(hids))):
+        counted = db.execute(
+            select(Contact.hid, func.count(other.hid))
+            .join(
+                other,
+                (other.name_key == Contact.name_key)
+                & (other.hid != Contact.hid)
+                & (other.record_status != "retired"),
+            )
+            .where(Contact.hid.in_(piece))
+            .group_by(Contact.hid)
+        )
+        for hid, count in counted:
+            counts[hid] = count
+    return counts
+
+
+def _pieces(hids: list[str], size: int = 500) -> list[list[str]]:
+    """Return a list of HIDs in pieces small enough for one `IN` of either database."""
+    return [hids[start : start + size] for start in range(0, len(hids), size)]
 
 
 def is_operator(contact: Contact, operators: list[Operator]) -> bool:

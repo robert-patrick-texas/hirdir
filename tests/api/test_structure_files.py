@@ -431,7 +431,9 @@ def test_what_a_row_of_groups_and_of_members_must_say(make: Maker, files: Files)
         ("x,,,,,,", "type", "one of stack"),
         ("x,custom,,no-such-group,,,", "parent", "there is no device group"),
         ("x,custom,,,Nobody,,", "owner", "there is no owner"),
-        ("x,custom,,,,retired,", "record_status", "does not retire"),
+        # A group that is there is not retired by a file; a new one may be made retired,
+        # since 0.9.17 (P-311).
+        ("site2-sw-stack1,stack,site2-sw-stack1,,,retired,", "record_status", "does not retire"),
         ("site2-wireless,custom,,site2-wlc-ha,,,", "parent", "within it"),
     ):
         preview = files.preview("device_groups", GROUPS.splitlines()[0] + "\n" + line + "\n")

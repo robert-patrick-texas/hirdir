@@ -12,6 +12,7 @@ import { PersonChain } from "../components/PersonChain";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { RetirePerson } from "../components/RetirePerson";
+import { SameName } from "../components/SameName";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import {
@@ -331,6 +332,8 @@ export function ContactDetail() {
       {contact.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
+          {/* 0.9.17: a name another contact has is said, after a save too (P-315). */}
+          <SameName name={record.name} others={record.same_name} whose="contact" />
           {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). */}
           <PersonChain kind="contact" hid={record.hid} turn={record.row_version} />
           <dl className="facts" data-testid="contact-facts">
