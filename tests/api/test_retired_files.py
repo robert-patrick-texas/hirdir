@@ -292,3 +292,25 @@ def test_a_row_that_changes_a_record_links_it_to_no_retired_one(files: Files, ma
     # A row that makes its record may, as before.
     (row,) = files.preview("items", "name,owner\nex-new,Ex Old Team\n")["rows"]
     assert row["outcome"] == "create"
+
+
+def test_a_coverage_of_a_retired_item_is_ended_only_by_a_day_that_has_come(
+    files: Files, make: Maker
+) -> None:
+    """Second review, 3: the app ends every coverage of an item on the day it is retired,
+    so a coverage that runs on past today is no coverage a retired item kept."""
+    vendor = make.vendor("Example Vendor")
+    make.post("/contracts", {"number": "C-LIVE", "vendor_hid": vendor["hid"]})
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n")
+    head = "hid,contract,vendor,item,starts_on,ends_on\n"
+    said = _reasons(
+        files,
+        "contract_coverage",
+        f"{head}{new_hid()},C-LIVE,Example Vendor,ex-gone,2026-01-01,2099-12-31\n",
+    )
+    assert said[0]["field"] == "item"
+    (row,) = files.preview(
+        "contract_coverage",
+        f"{head}{new_hid()},C-LIVE,Example Vendor,ex-gone,2026-01-01,2026-01-31\n",
+    )["rows"]
+    assert row["outcome"] == "create", row
