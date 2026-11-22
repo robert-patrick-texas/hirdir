@@ -52,6 +52,7 @@ import {
   NEW_USER_FIELDS,
   newUserBody,
   newUserErrors,
+  noUsersWords,
   queryOf,
   typeLabel,
   USERS_GAPS,
@@ -335,7 +336,7 @@ export function Users() {
                 {users.data.items.length === 0 && (
                   <tr>
                     <td colSpan={10} className="muted">
-                      {noUsers(q, gap)}
+                      {noUsersWords(q, gap, kind)}
                     </td>
                   </tr>
                 )}
@@ -428,15 +429,6 @@ function UserRole({ user }: { user: User }) {
       {capped && <span className="user-role-capped">{capped}</span>}
     </>
   );
-}
-
-/** What the list says when it holds nobody: of the search, of the gap, or of the whole. */
-function noUsers(q: string, gap: UsersGap): string {
-  if (q) return "No user matches the search.";
-  if (gap === "no-contact") return "Every user who is a person has a contact.";
-  if (gap === "no-operator") return "Every user who is a person works as an operator.";
-  if (gap === "retired") return "No account is retired.";
-  return "There are no users.";
 }
 
 /**
