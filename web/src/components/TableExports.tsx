@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { api } from "../api";
+import { UNLISTED_PATH } from "../lib/countries";
 import { latestOf, type Saving, savedText, useSaving } from "../lib/download";
 import { useLoad, useReloadOn } from "../lib/hooks";
 import { useSite } from "../lib/product";
@@ -103,6 +104,14 @@ export function TableExports({ turn }: { turn: number }) {
       <p className="hint" data-testid="export-tables-said">
         {tablesText(rows)}, in the order their files are loaded, each exported whole as its import
         reads it. A table that holds nothing gives its CSV template: its header row alone.
+      </p>
+      {/* 0.9.18: a row of a place whose country or state no list holds is refused where it is
+          loaded, at that field, until the value is chosen on its place (P-321). */}
+      <p className="hint" data-testid="unlisted-lead">
+        A place whose country or state is in no list is exported as it is held. Loaded back here as
+        it is, its row changes nothing; loaded into another inventory, it is refused at that field
+        until the value is chosen from the lists on the place. Each is named, with a link to its
+        place, under <Link to={UNLISTED_PATH}>Addresses not in the lists</Link>.
       </p>
       <div className="table-exports-all">
         <span className="table-exports-lead">Export everything</span>{" "}

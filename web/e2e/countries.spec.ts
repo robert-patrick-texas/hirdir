@@ -24,7 +24,7 @@
 
 import { readFile } from "node:fs/promises";
 import { type APIRequestContext, expect, type Locator, type Page } from "@playwright/test";
-import { answer } from "./answers";
+import { answer, openImport } from "./answers";
 import { places } from "./geographySteps";
 import { session } from "./referenceSteps";
 import { region } from "./structure";
@@ -244,6 +244,19 @@ test("an address in a country with no states takes its state as text, and a stat
   await expect(unlisted).toContainText("Street address");
   await expect(unlisted).toContainText("State or province");
   await expect(unlisted.getByTestId("unlisted-value")).toHaveText(typed);
+
+  // The Import page leads to them, as a file that holds such a value is refused at its
+  // field where it is loaded into another inventory: the link brings the window to them,
+  // with the keyboard on their heading, once the page has come.
+  await openImport(page);
+  const lead = page.getByTestId("unlisted-lead");
+  await expect(lead).toContainText("loaded into another inventory, it is refused at that field");
+  const arrived = answer(page, "GET", "/places/unlisted-addresses");
+  await lead.getByRole("link", { name: "Addresses not in the lists" }).click();
+  await expect(page).toHaveURL(/list=countries#unlisted-addresses$/);
+  await arrived;
+  await expect(page.getByRole("heading", { level: 2, name: "Addresses not in the lists" })).toBeFocused();
+  await expect(unlisted).toBeInViewport();
   await unlisted.getByRole("link", { name: depot }).click();
   await expect(page.getByTestId("place-path")).toHaveText(depot);
 

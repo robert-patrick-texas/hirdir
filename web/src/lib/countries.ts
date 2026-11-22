@@ -18,6 +18,14 @@ export type UnlistedAddress = Schemas["UnlistedAddress"];
 /** The United States: first in the list, and the country of an address that names none. */
 export const US = "US";
 
+/**
+ * The addresses not in the lists, under Admin › Choices › Countries: the heading of the
+ * section, and a link to it, which brings the window to it once the page has come. A row
+ * of a file whose country or state no list holds is refused there until it is chosen.
+ */
+export const UNLISTED_ID = "unlisted-addresses";
+export const UNLISTED_PATH = `/admin/choices?list=countries#${UNLISTED_ID}`;
+
 /** What a form field holds, as text. */
 function textOf(value: FormValue | undefined): string {
   return typeof value === "string" ? value : "";

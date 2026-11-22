@@ -4294,7 +4294,12 @@ What 0.9.18 adds of the lists of countries and states (P-318, P-321):
   both, Addresses not in the lists: each country and state of an address that no list
   holds, from `GET /places/unlisted-addresses`, a hundred to a page, with the place by
   its path, a link to its page, its kind, which address, the field and the value as it
-  was typed; none says so.
+  was typed; none says so. The Import page says beneath its list of tables that such a
+  value is exported as it is held, changes nothing loaded back as it is, and is refused
+  at its field where a file of it is loaded into another inventory until it is chosen on
+  its place, with a link, Addresses not in the lists, to
+  `/admin/choices?list=countries#unlisted-addresses`, which brings the window to them with
+  the keyboard on their heading once the page has come.
 - **Every address form.** In New region, New site and New location and in the Details
   of each, Country, and Shipping country, is a list of the countries by their names,
   the United States first, which sends the code. A blank country is shown as the

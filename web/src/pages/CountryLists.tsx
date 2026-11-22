@@ -9,8 +9,8 @@
 // States' code is not offered to change, nor the United States to remove, since neither
 // is ever taken.
 
-import { Fragment, useState } from "react";
-import { Link } from "react-router";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router";
 import { api, type Schemas } from "../api";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { SelectField } from "../components/Field";
@@ -26,6 +26,7 @@ import {
   type State,
   stateCounts,
   statesOf,
+  UNLISTED_ID,
   type UnlistedAddress,
   US,
   unlistedFieldLabel,
@@ -308,7 +309,10 @@ export function CountriesList({ mayEdit }: ListProps) {
         </div>
       )}
       <CountriesExport mayEdit={mayEdit} />
-      <UnlistedAddresses turn={turn} />
+      <UnlistedAddresses
+        turn={turn}
+        ready={countries.data !== undefined && states.data !== undefined}
+      />
     </>
   );
 }
@@ -513,7 +517,10 @@ export function StatesList({ mayEdit, country, onCountry }: StatesListProps) {
         </div>
       )}
       <CountriesExport mayEdit={mayEdit} />
-      <UnlistedAddresses turn={turn} />
+      <UnlistedAddresses
+        turn={turn}
+        ready={countries.data !== undefined && states.data !== undefined}
+      />
     </>
   );
 }
@@ -557,11 +564,31 @@ function RowEdit<R extends { hid: string; row_version: number }>(props: RowEditP
 const UNLISTED_PAGE = 100;
 
 /**
+ * Where the address names the addresses not in the lists, as the link of the Import page
+ * does, the window is brought to their heading and the keyboard put on it: once for each
+ * address, when the page above it and the list itself have come, so that rows drawn
+ * above do not move it away again.
+ */
+function useToUnlisted(ready: boolean) {
+  const { hash, key } = useLocation();
+  const done = useRef("");
+  useEffect(() => {
+    if (!ready || done.current === key || hash !== `#${UNLISTED_ID}`) return;
+    const heading = document.getElementById(UNLISTED_ID);
+    if (!heading) return;
+    done.current = key;
+    heading.scrollIntoView({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [hash, key, ready]);
+}
+
+/**
  * The addresses that hold a country or a state that no list holds, as the upgrade to
  * 0.9.18 kept them: each a link to its place, whose Details offer the lists to choose
  * from (P-321 (7)). Read again whenever `turn` changes, as after a change of the lists.
+ * `ready` says that what stands above it on the page has come.
  */
-export function UnlistedAddresses({ turn }: { turn: number }) {
+export function UnlistedAddresses({ turn, ready }: { turn: number; ready: boolean }) {
   const [offset, setOffset] = useState(0);
   const unlisted = useLoad(`unlisted addresses ${offset}`, (signal) =>
     api.request("get", "/api/v1/places/unlisted-addresses", {
@@ -571,9 +598,12 @@ export function UnlistedAddresses({ turn }: { turn: number }) {
   );
   useReloadOn(turn, unlisted.reload);
   const page = unlisted.data;
+  useToUnlisted(ready && page !== undefined);
   return (
-    <section aria-labelledby="unlisted-addresses" data-testid="unlisted-addresses">
-      <h2 id="unlisted-addresses">Addresses not in the lists</h2>
+    <section aria-labelledby={UNLISTED_ID} data-testid="unlisted-addresses">
+      <h2 id={UNLISTED_ID} tabIndex={-1}>
+        Addresses not in the lists
+      </h2>
       <p className="hint">
         Each country and state of an address that no list holds, as it was typed before the lists
         were kept: the retired places and the drafts among them. Open a place and choose the country
