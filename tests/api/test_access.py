@@ -204,7 +204,7 @@ def test_service_account_uses_tokens_not_codes(client: TestClient, admin: dict) 
     created = client.post(
         f"{API}/users",
         headers=admin,
-        json={"username": "svc-monitor", "is_service_account": True, "role": "viewer"},
+        json={"username": "svc-monitor", "kind": "service", "role": "viewer"},
     ).json()
     assert created["access_code"] is None
     hid = created["user"]["hid"]
@@ -270,7 +270,7 @@ def test_the_users_are_sorted_by_the_columns_of_their_table(
     nia = make.post(
         "/users", {"username": "nia", "contact": {"name": "Beta Person"}, "role": "inventory"}
     )["user"]
-    make.post("/users", {"username": "bot", "is_service_account": True})
+    make.post("/users", {"username": "bot", "kind": "service"})
     for group, user in ((readers, zed), (auditors, zed), (readers, nia)):
         added = client.put(f"{API}/user-groups/{group['hid']}/members/{user['hid']}", headers=admin)
         assert added.status_code == 204
@@ -291,8 +291,8 @@ def test_the_users_are_sorted_by_the_columns_of_their_table(
     # The first of a user's groups by name: auditors before Readers.
     assert users(sort="groups") == ["Zed", "nia", "ada", "bot", "ivy", "vic"]
     assert users(sort="-groups") == ["nia", "Zed", "ada", "bot", "ivy", "vic"]
-    assert users(sort="-is_service_account")[0] == "bot"
-    assert users(sort="is_service_account")[-1] == "bot"
+    assert users(sort="-kind")[0] == "bot"
+    assert users(sort="kind")[-1] == "bot"
     assert users(sort="-disabled")[0] == "nia"
     assert users(sort="-username") == ["Zed", "vic", "nia", "ivy", "bot", "ada"]
     # Only Ada has signed in.

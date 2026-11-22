@@ -676,7 +676,7 @@ def test_a_long_request_by_a_service_token_holds_no_other_writer(
     created = client.post(
         f"{API}/users",
         headers=admin,
-        json={"username": "svc-reports", "is_service_account": True, "role": "viewer"},
+        json={"username": "svc-reports", "kind": "service", "role": "viewer"},
     ).json()
     made = client.post(
         f"{API}/users/{created['user']['hid']}/service-tokens",

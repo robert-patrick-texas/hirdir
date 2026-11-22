@@ -144,16 +144,45 @@ class OperatorBrief(Model):
 
 # A user's notes are as long as a contact's may be (P-281).
 NOTES_LENGTH = 10_000
+# What kind of account a user is (P-316): a person's, a service's, which does a fixed
+# job, or an agent's, which decides what to change as a person does and is answerable
+# to one.
+UserKind = Literal["person", "service", "agent"]
+# Why the role in force of an agent is lower than the role it holds (P-316).
+CappedBy = Literal["person_role", "person_no_role", "person_disabled", "person_retired"]
+
+
+class AccountRef(Model):
+    """An account as another names it: the person an agent is answerable to, or an agent
+    of a person (P-316)."""
+
+    hid: str
+    username: str
+    name: str = Field(description="The name of its contact, or its username where it has none.")
+    record_status: Literal["active", "retired"]
+
+
+class UserGrant(Model):
+    """One role an account holds, and where it comes from (P-307)."""
+
+    hid: str = Field(description="The grant, as `/role-grants` names it.")
+    role: Literal["viewer", "inventory", "admin"]
+    group: GroupRef | None = Field(
+        description="The group the role is granted to, which the account is in; null for a "
+        "grant of the account's own."
+    )
 
 
 class UserOut(Model):
-    """A user: the part of a person who signs in, or a service account (P-172)."""
+    """A user: the part of a person who signs in, a service account or an agent (P-172,
+    P-316)."""
 
     hid: str
     username: str
     contact_hid: str | None
     contact: PersonRef | None = Field(
-        description="The contact the user is. None for a service account, or a user not given one."
+        description="The contact the user is. None for a service account and an agent, or a "
+        "user not given one."
     )
     display_name: str = Field(description="The name of its contact; blank where it has none.")
     email: str = Field(description="The email of its contact; blank where it has none.")
@@ -166,7 +195,20 @@ class UserOut(Model):
         "For an Admin: answered by `GET /users` and `GET /users/{hid}` and the routes that "
         "change a user, and null from `GET /auth/me` and signing in, for anybody."
     )
-    is_service_account: bool
+    kind: UserKind = Field(
+        description="`person`, `service` or `agent`, set when the account is made and not "
+        "changed after (P-316)."
+    )
+    answerable_hid: str | None = Field(
+        description="Of an agent alone: the person answerable for it (P-316). Null for the others."
+    )
+    answerable: AccountRef | None = Field(
+        description="Of an agent alone: the person answerable for it, read now."
+    )
+    agents: list[AccountRef] = Field(
+        description="Of a person: the agents answerable to them, the retired among them, by "
+        "username. None for a service account or an agent."
+    )
     disabled: bool
     record_status: Literal["active", "retired"] = Field(
         description="`retired`, the account of somebody who has left: it signs in with "
@@ -174,6 +216,22 @@ class UserOut(Model):
         "`disabled`, beside it, is an account that may not sign in for now (P-296)."
     )
     role: str | None = Field(description="The highest role held directly or through a group.")
+    grants: list[UserGrant] = Field(
+        description="Every grant that gives the account a role, of its own or of a group it "
+        "is in: the highest role first, a grant of its own before those of groups, and the "
+        "groups by name (P-307). `role` is the highest of them."
+    )
+    role_in_force: str | None = Field(
+        description="The role the account's requests are held to now. For a person and a "
+        "service account, `role`. For an agent, the lower of `role` and the role of the "
+        "person answerable for it, and null where the person holds no role, is disabled or "
+        "is retired, its tokens being refused then (P-316)."
+    )
+    role_capped_by: CappedBy | None = Field(
+        description="Of an agent alone, where its person holds `role_in_force` lower than "
+        "`role`, why: the person's role is lower, `person_role`, or the person holds none, "
+        "is disabled or is retired. Null where nothing holds it lower."
+    )
     groups: list[GroupRef]
     last_sign_in_at: datetime | None
     row_version: int
@@ -223,7 +281,18 @@ class UserCreate(Model):
     contact: NewPerson | None = Field(
         default=None, description="A new contact, made in the same change."
     )
-    is_service_account: bool = False
+    kind: UserKind = Field(
+        default="person",
+        description="`person`, `service` or `agent`; not changed after (P-316). A service "
+        "account and an agent take no contact, no access code and no operator: they hold "
+        "tokens.",
+    )
+    answerable_hid: str | None = Field(
+        default=None,
+        max_length=36,
+        description="Of an agent, and required of it: the person answerable for it, a user "
+        "of the kind `person` who is not retired. Refused to the other kinds (P-316).",
+    )
     access_code: str | None = Field(
         default=None, max_length=200, description="Left out, a code is generated."
     )
@@ -231,7 +300,7 @@ class UserCreate(Model):
         default=None,
         description="A role to grant at once. A person is given one, or a group in "
         "`group_hids` that grants one, or it is a `422` on `role` (P-299); a service account "
-        "may have none.",
+        "and an agent may have none. An agent is never Admin (P-316).",
     )
     group_hids: list[str] = Field(
         default=[],
@@ -256,11 +325,23 @@ class UserPatch(Model):
     contact_hid: str | None = Field(
         default=None,
         max_length=36,
-        description="Another contact; null for none. A service account has none.",
+        description="Another contact; null for none. A service account and an agent have none.",
     )
     disabled: bool | None = None
     notes: str | None = Field(
         default=None, max_length=NOTES_LENGTH, description="Null or blank clears them (P-281)."
+    )
+    kind: UserKind | None = Field(
+        default=None,
+        description="The kind is not changed after the account is made: the kind it has is "
+        "no change, and any other is a `422` on `kind` (P-316).",
+    )
+    answerable_hid: str | None = Field(
+        default=None,
+        max_length=36,
+        description="Of an agent: another person answerable for it, a user of the kind "
+        "`person` who is not retired, which hands the agent over. Null, or given for another "
+        "kind, is a `422` on `answerable_hid` (P-316).",
     )
 
 
@@ -272,7 +353,8 @@ Retired = Literal["no", "yes", "only"]
 
 
 class LinkedUser(Model):
-    """The user of a person, as the chain of the person shows it (P-297)."""
+    """The user of a person, as the chain of the person shows it (P-297), or an agent
+    answerable to that user (P-316)."""
 
     hid: str
     username: str
@@ -317,6 +399,10 @@ class Person(Model):
     operators: list[LinkedOperator] = Field(
         description="Every operator of the contact, in the order of their labels."
     )
+    agents: list[LinkedUser] = Field(
+        description="Every agent answerable to the user, the retired among them, by username "
+        "(P-316); none where there is no user, or it is no person."
+    )
 
 
 class OperatorPlan(Model):
@@ -335,6 +421,23 @@ class OperatorPlan(Model):
     )
 
 
+class AgentPlan(Model):
+    """What becomes of one agent of a person who is retired (P-316)."""
+
+    hid: str = Field(max_length=36)
+    action: Literal["retire", "hand_over"] = Field(
+        description="`retire` retires the agent with the person, its tokens revoked; "
+        "`hand_over` makes `user_hid` answerable for it."
+    )
+    user_hid: str | None = Field(
+        default=None,
+        max_length=36,
+        description="With `hand_over`, and with no other action: the person answerable for "
+        "the agent from then on, a user of the kind `person`, not retired and not the one "
+        "retired.",
+    )
+
+
 class Linked(Model):
     """What becomes of each record linked to the one a retirement is of (P-297). Every
     linked record that is not retired is said, and the record the route is on is not."""
@@ -342,6 +445,13 @@ class Linked(Model):
     user: Literal["retire", "keep"] | None = None
     contact: Literal["retire", "keep"] | None = None
     operators: list[OperatorPlan] = Field(default=[], max_length=1000)
+    agents: list[AgentPlan] = Field(
+        default=[],
+        max_length=1000,
+        description="Where the request retires a user that is a person: what becomes of each "
+        "agent answerable to it that is not retired, each to be said (P-316). Said where "
+        "no user is retired, it is a `422`.",
+    )
 
 
 class Retirement(Model):
@@ -387,13 +497,22 @@ class BringBack(Model):
         default=None,
         description="`viewer`, `inventory` or `admin`, granted in the same change. A person "
         "is given one, since an account with no role does not sign in: left out, it is a "
-        "`422` on `role`. A service account may be brought back with none (P-299).",
+        "`422` on `role`. A service account and an agent may be brought back with none "
+        "(P-299), and an agent is never Admin (P-316).",
+    )
+    answerable_hid: str | None = Field(
+        default=None,
+        max_length=36,
+        description="Of an agent: the person answerable for it from then on, a user of the "
+        "kind `person` who is not retired. Left out, it stays its person's; where that "
+        "person is retired, it is a `409` on `answerable_hid` that names them. Given for "
+        "another kind, a `422` (P-316).",
     )
 
 
 class UserBroughtBack(Model):
     """A user brought back, with its new access code, shown this once; a service account
-    has none (P-296)."""
+    and an agent have none (P-296)."""
 
     user: UserOut
     access_code: str | None
@@ -466,7 +585,7 @@ class MeOut(Model):
     contact_hid: str | None
     contact: OwnContact | None = Field(
         description="The contact the person is, with the version to change it at. None for "
-        "a service account, or a user not given one."
+        "a service account and an agent, or a user not given one."
     )
     display_name: str = Field(description="The name of its contact; blank where it has none.")
     email: str = Field(description="The email of its contact; blank where it has none.")
@@ -480,9 +599,29 @@ class MeOut(Model):
         description="Always null: the notes on an account are an Admin's, answered by the "
         "routes of users alone (P-281)."
     )
-    is_service_account: bool
+    kind: UserKind = Field(description="`person`, `service` or `agent` (P-316).")
+    answerable_hid: str | None = Field(
+        description="Of an agent alone: the person answerable for it (P-316)."
+    )
+    answerable: AccountRef | None = Field(
+        description="Of an agent alone: the person answerable for it, read now (P-316)."
+    )
+    agents: list[AccountRef] = Field(
+        description="Of a person: the agents answerable to them, as on a user (P-316)."
+    )
     disabled: bool
     role: str | None = Field(description="The highest role held directly or through a group.")
+    grants: list[UserGrant] = Field(
+        description="Each role held and where it comes from, as on a user (P-307)."
+    )
+    role_in_force: str | None = Field(
+        description="The role the requests of this session or token are held to: `role`, "
+        "or for an agent the lower of `role` and its person's (P-316)."
+    )
+    role_capped_by: CappedBy | None = Field(
+        description="Of an agent alone, where its person holds it lower than `role`, why, as "
+        "on a user (P-316)."
+    )
     groups: list[GroupRef]
     last_sign_in_at: datetime | None
     row_version: int
@@ -588,7 +727,8 @@ class GrantCreate(Model):
 
 
 class ServiceTokenOut(Model):
-    """A service token. The secret is not kept and cannot be shown again."""
+    """A token of a service account or an agent (P-316). The secret is not kept and
+    cannot be shown again."""
 
     hid: str
     user_hid: str
@@ -620,6 +760,18 @@ class AuditEventOut(Model):
     at: datetime
     actor_hid: str | None
     actor_name: str | None
+    actor_kind: UserKind | None = Field(
+        description="The kind of the account that acted, `person`, `service` or `agent`; "
+        "null for the system (P-316)."
+    )
+    for_hid: str | None = Field(
+        description="Of an event made by an agent: the person it was answerable to when the "
+        "event was made. Null for every other (P-316)."
+    )
+    for_name: str | None = Field(
+        description="The username of that person, read now: a history writes "
+        "`agent-reconcile for sam`."
+    )
     via: str
     request_id: str
     action: str
@@ -811,11 +963,11 @@ class LoadPoints(Model):
 
 
 class LoadWho(Model):
-    """Who asked a request: the account, a person's or a service's. `unnamed` where
-    nothing verifiable said who: a sign-in, a token that did not hold, a request with
-    none; its `hid` and `username` are null."""
+    """Who asked a request: the account, a person's, a service's or an agent's (P-316).
+    `unnamed` where nothing verifiable said who: a sign-in, a token that did not hold, a
+    request with none; its `hid` and `username` are null."""
 
-    kind: Literal["person", "service", "unnamed"]
+    kind: Literal["person", "service", "agent", "unnamed"]
     hid: str | None
     username: str | None
 
@@ -839,8 +991,9 @@ class LoadSlow(Model):
 class LoadPerson(Model):
     """What one account met in the last ten minutes."""
 
-    kind: Literal["person", "service", "unnamed", "others"] = Field(
-        description="`person` or `service`: an account. `unnamed`: the requests that "
+    kind: Literal["person", "service", "agent", "unnamed", "others"] = Field(
+        description="`person`, `service` or `agent`: an account, by its kind (P-316). "
+        "`unnamed`: the requests that "
         "nothing verifiable named an account for, together. `others`: the accounts "
         "past the fifty that are counted each by itself, together."
     )

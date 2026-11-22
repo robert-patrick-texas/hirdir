@@ -128,7 +128,8 @@ USERS = Table(
             .scalar_subquery(),
         ),
         "notes": Field("text", User.notes),
-        "is_service_account": Field("boolean", User.is_service_account),
+        # `agent`, `person`, `service`, as the kinds sort by name (P-316).
+        "kind": Field("choice", User.kind),
         "disabled": Field("boolean", User.disabled),
         # `active` before `retired`, where the retired are asked for (P-296).
         "record_status": Field("choice", User.record_status),
@@ -148,6 +149,15 @@ AUDIT_EVENTS = Table(
     {
         "at": Field("timestamp", AuditEvent.at),
         "actor_name": Field("text", _username(AuditEvent.actor_hid, AuditEvent)),
+        # The kind of the account that acted, and the person an agent's was for (P-316).
+        "actor_kind": Field(
+            "choice",
+            select(User.kind)
+            .where(User.hid == AuditEvent.actor_hid)
+            .correlate(AuditEvent)
+            .scalar_subquery(),
+        ),
+        "for_name": Field("text", _username(AuditEvent.for_hid, AuditEvent)),
         "via": Field("text", AuditEvent.via),
         "action": Field("text", AuditEvent.action),
         "record_type": Field("text", func.nullif(AuditEvent.record_type, "")),
