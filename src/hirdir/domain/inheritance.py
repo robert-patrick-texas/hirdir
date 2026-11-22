@@ -38,6 +38,8 @@ Source = Literal[
     # A circuit's contacts from its primary carrier, and its rates from its port (0.8.0).
     "vendor",
     "port",
+    # A date of a circuit's Z side that it gives none of: the A side's (P-320).
+    "a_side",
     "setting",
     "none",
 ]

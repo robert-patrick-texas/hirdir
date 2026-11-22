@@ -1,4 +1,5 @@
 {"schema": "hirdir/1", "entity": "circuit_costs", "mode": "upsert", "records": [
+  {"circuit": "EC-0104", "description": "Port", "monthly_cost": "600.00", "vendor": null, "starts_on": null, "ends_on": null, "notes": null},
   {"circuit": "Site-1 to Site-2", "description": "Local loop", "monthly_cost": "120.00", "vendor": "Example Local Exchange", "starts_on": null, "ends_on": null, "notes": null},
   {"circuit": "Site-1 to Site-2", "description": "Port", "monthly_cost": "400.00", "vendor": null, "starts_on": null, "ends_on": null, "notes": null},
   {"circuit": "EC-0101", "description": "Access", "monthly_cost": "150.00", "vendor": null, "starts_on": null, "ends_on": null, "notes": null},
