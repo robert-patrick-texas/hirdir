@@ -744,7 +744,7 @@ def _operator(db: Session, fields: dict[str, Any], values: dict[str, Any], recor
                 "there is no such operator", {"operator_hid": f"there is no operator {hid}"}
             )
         unchanged = record is not None and record.operator_hid == hid
-        if records.refuses_retired(found) and not unchanged:
+        if records.refuses_retired(found, "operator", kept=True) and not unchanged:
             raise Invalid("the operator is retired", {"operator_hid": "this operator is retired"})
     values["operator_hid"] = hid
 

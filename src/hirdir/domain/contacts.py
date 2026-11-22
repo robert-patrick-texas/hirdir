@@ -624,7 +624,8 @@ def _checked_assignment(
                 dict.fromkeys(named or PLACES, "exactly one of a region, a site and a location"),
             )
         place = geography.get_place(db, PLACES[named[0]], fields[named[0]])
-        if place.record.record_status == "retired":
+        # A retired place keeps the contacts assigned to it (P-311).
+        if records.refuses_retired(place.record, place.level, kept=True):
             raise Invalid("the place is retired", {named[0]: f"this {place.level} is retired"})
         values[named[0]] = place.hid
         where = (named[0], place.hid)
@@ -674,7 +675,8 @@ def _checked_assignment(
                     "there is no such contact",
                     {"contact_hid": f"there is no contact {contact_hid}"},
                 )
-            if contact.record_status == "retired":
+            # A retired contact still stands where it is assigned (P-311).
+            if records.refuses_retired(contact, "contact", kept=True):
                 raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
         values["contact_hid"] = contact_hid
     beside = _beside(db, *where, role, assignment.hid if assignment is not None else None)

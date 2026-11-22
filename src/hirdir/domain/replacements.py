@@ -276,7 +276,8 @@ def replace(
             raise Invalid(
                 "there is no such item", {"new_item_hid": f"there is no item {new_item_hid}"}
             )
-        if found.record_status == "retired":
+        # A replacement stays on record when either item is retired later (P-311).
+        if records.refuses_retired(found, "item", kept=True):
             raise Invalid("the item is retired", {"new_item_hid": "this item is retired"})
         new = found
         _refuse_same_day(db, old, new, day)

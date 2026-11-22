@@ -144,14 +144,6 @@ def test_what_the_app_refuses_a_retired_record_a_file_refuses(
     assert said[0]["field"] == "item"
     said = _reasons(files, "device_group_members", "group,item\nex-old-kit,ex-kept\n")
     assert said[0]["field"] in ("group", "members", "")
-    # An assignment of a retired contact to a place.
-    files.load("regions", "name\nExample Open\n")
-    said = _reasons(
-        files,
-        "contact_assignments",
-        "region,role,contact\nExample Open,technical,left@example.net\n",
-    )
-    assert said[0]["field"] == "contact"
     # And the API gives a retired item no new address, as before: a file is the one door.
     item = make.get("/items", filter="name:eq:ex-retired", include_archived=True)["items"][0]
     make.post("/addresses", {"item_hid": item["hid"], "address": "198.51.100.11"}, 422)
@@ -197,3 +189,49 @@ def test_what_stands_on_a_retired_record_is_taken_from_a_file_only_where_a_file_
     make.post(f"/items/{filed['hid']}/retire", {"row_version": back["row_version"]}, 200)
     said = _reasons(files, "addresses", "item,address\nex-filed,198.51.100.24\n")
     assert said[0]["field"] == "item"
+
+
+def test_a_living_record_is_linked_from_a_file_to_a_retired_one_where_the_app_keeps_it(
+    files: Files, make: Maker
+) -> None:
+    """The owner's answer to review 1b: "Allow where the app keeps it". Each row says so
+    in its notes; what the app does not keep stays refused, and so does the API."""
+    files.load(
+        "contacts",
+        f"hid,name,email,record_status\n{new_hid()},Rex Example,rex@example.net,retired\n",
+    )
+    files.load("owners", f"hid,label,record_status\n{new_hid()},Ex Old Team,retired\n")
+    files.load("regions", f"hid,name,record_status\n{new_hid()},Example Old,retired\n")
+    vendor = make.vendor("Example Vendor")
+    model = make.entry(vendor, "EX-OLD9")
+    make.post(f"/catalog-entries/{model['hid']}/retire", {"row_version": 1}, 200)
+
+    def taken(entity: str, text: str, note: str) -> None:
+        (row,) = files.preview(entity, text)["rows"]
+        assert row["outcome"] == "create", row
+        assert any(note in said for said in row["notes"]), row["notes"]
+        files.load(entity, text)
+
+    taken(
+        "items",
+        "name,vendor,pid,owner\nex-living,Example Vendor,EX-OLD9,Ex Old Team\n",
+        "links to the retired catalog entry EX-OLD9",
+    )
+    taken(
+        "owner_members",
+        "owner,contact,role\nEx Old Team,rex@example.net,primary\n",
+        "links to the retired owner Ex Old Team",
+    )
+    taken(
+        "contact_assignments",
+        "region,role,contact\nExample Old,technical,rex@example.net\n",
+        "links to the retired region Example Old",
+    )
+    # What the app does not keep: a living place in a retired one, and a living label
+    # on a retired contact.
+    assert _reasons(files, "sites", "name,region\nSite-9,Example Old\n")[0]["field"] == "region"
+    said = _reasons(files, "operators", "label,contact\nrex-open,rex@example.net\n")
+    assert said[0]["field"] == "contact"
+    # By the API, a new link to a retired record is refused, as before.
+    owner = make.get("/owners", filter="label:eq:Ex Old Team", include_archived=True)["items"][0]
+    make.post("/items", {"name": "ex-api", "owner_hid": owner["hid"]}, 422)

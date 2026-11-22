@@ -569,8 +569,9 @@ def _checked(db: Session, fields: dict[str, Any], circuit: Circuit | None) -> di
     if "support_weight" in fields:
         values["support_weight"] = _weight(fields["support_weight"])
     if "owner_hid" in fields:
+        # A retired owner keeps what refers to it (P-311).
         values["owner_hid"] = records.linked(
-            db, Owner, "owner_hid", fields["owner_hid"], circuit, "owner"
+            db, Owner, "owner_hid", fields["owner_hid"], circuit, "owner", kept=True
         )
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
@@ -717,7 +718,8 @@ def retire_circuit(db: Session, context: AuditContext, hid: str, row_version: in
 def _open(db: Session, hid: str) -> Circuit:
     """Return a circuit that may take a new part: one that is not retired."""
     circuit = get_circuit(db, hid)
-    if circuit.record_status == "retired":
+    # A retired circuit keeps its parts, which a file of them holds (P-311).
+    if records.refuses_retired(circuit, "circuit", kept=True):
         raise Invalid(
             "the circuit is retired",
             {"circuit_hid": "a retired circuit takes no new part; bring it back first"},
@@ -1039,7 +1041,8 @@ def add_devices(
         holder = db.get(model, hid) if isinstance(hid, str) else None
         if holder is None:
             raise Invalid(f"there is no such {what}", {field: f"there is no {what} {hid}"})
-        if holder.record_status == "retired":
+        # A retired item or group stays a device of the circuits it was (P-311).
+        if records.refuses_retired(holder, what, kept=True):
             raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
         if (field, hid) in taken or find_device(db, circuit.hid, field, hid) is not None:
             raise Conflict(

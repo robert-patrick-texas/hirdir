@@ -1966,7 +1966,8 @@ def add_coverage(
     # Checked against the other coverages of each item under this contract.
     dialect.hold_other_writers(db)
     contract = get_contract(db, contract_hid)
-    if contract.record_status == "retired":
+    # A retired contract keeps its coverages on record (P-311).
+    if records.refuses_retired(contract, "contract", kept=True):
         raise Invalid("the contract is retired", {"contract_hid": "this contract is retired"})
     if not entries:
         raise Invalid("nothing to cover", {"items": "name one item or more"})
@@ -1985,7 +1986,9 @@ def add_coverage(
         item = db.get(Item, hid) if isinstance(hid, str) else None
         if item is None:
             raise Invalid("there is no such item", {f"{where}item_hid": f"there is no item {hid}"})
-        if item.record_status == "retired":
+        # A retired item keeps the coverage it had, which has ended (P-311).
+        ended = entry.get("ends_on") is not None
+        if records.refuses_retired(item, "item", kept=ended):
             raise Invalid("the item is retired", {f"{where}item_hid": "this item is retired"})
         starts_on = _own(
             records.checked_day(f"{where}starts_on", entry.get("starts_on")), its.starts_on

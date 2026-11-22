@@ -82,6 +82,13 @@ def _built(
     return whole(folder, made)
 
 
+def vm_vendor(db: Session) -> str:
+    """The first vendor, by name."""
+    vendor = db.scalars(select(Vendor).order_by(Vendor.name_key)).first()
+    assert vendor is not None
+    return vendor.hid
+
+
 def _models(db: Session) -> tuple[str, str]:
     """A model of hardware, and one of a virtual machine, of the first vendor."""
     vendor = db.scalars(select(Vendor).order_by(Vendor.name_key)).first()
@@ -176,6 +183,21 @@ def _retired_shapes(db: Session) -> None:
     on_cluster = items.create_item(
         db, context, {"catalog_entry_hid": vm, "name": "ex-vm2", "host_group_hid": cluster.hid}
     )
+    # What lives on, linked to what is retired, as the app keeps it (review 1b): an item
+    # of a model and of an owner that are retired, one of the people of the owner, and
+    # the person's assignment to the closet, both of which are retired after.
+    old_model = catalog.create_entry(
+        db, context, {"vendor_hid": vm_vendor(db), "pid": "EX-OLD9", "kind": "hardware"}
+    )
+    items.create_item(
+        db,
+        context,
+        {"catalog_entry_hid": old_model.hid, "name": "ex-living", "owner_hid": team.hid},
+    )
+    owners.add_member(db, context, team.hid, {"contact_hid": person.hid, "role": "primary"})
+    contacts.create_assignment(
+        db, context, {"location_hid": closet.hid, "role": "technical", "contact_hid": person.hid}
+    )
     circuit = circuit_records.create_circuit(
         db,
         context,
@@ -216,6 +238,7 @@ def _retired_shapes(db: Session) -> None:
         },
     )
     owners.retire_owner(db, context, team.hid, now(team))
+    catalog.retire_entry(db, context, old_model.hid, now(old_model))
 
 
 @pytest.fixture(scope="module")

@@ -303,7 +303,8 @@ def _checked_contact(db: Session, value: Any) -> Contact:
             "there is no such contact",
             {"contact_hid": f"there is no contact {hid}" if hid else "must not be blank"},
         )
-    if contact.record_status == "retired":
+    # A retired contact stays named where it is (P-311).
+    if records.refuses_retired(contact, "contact", kept=True):
         raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
     return contact
 
@@ -463,7 +464,8 @@ def add_circuit_contact(
     """
     dialect.hold_other_writers(db)
     circuit = get_circuit(db, hid)
-    if circuit.record_status == "retired":
+    # A retired circuit keeps its parts (P-311).
+    if records.refuses_retired(circuit, "circuit", kept=True):
         raise Invalid("the circuit is retired", {"circuit_hid": "this circuit is retired"})
     side = _checked_side(fields.get("side"))
     role = _checked_role(db, fields.get("role"), side)
