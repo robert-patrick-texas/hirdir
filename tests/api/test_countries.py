@@ -325,6 +325,32 @@ def test_a_country_given_by_another_spelling_of_the_one_held_is_no_change(
     assert set(errors(refused)) == {"state"}
 
 
+def test_the_united_states_given_for_a_blank_country_is_no_change_of_the_country(
+    client: TestClient, ivy: Maker
+) -> None:
+    """A blank country of a set that has another field is the United States in force:
+    the United States given is no change of the country, and a state held from before
+    that no list holds stays until the state or the country in force is changed. What
+    was given is stored (the review of 0.9.18, finding 5)."""
+    region = ivy.region("Americas")
+    blank = ivy.site("Site-NY", region, city="Albany")
+    _held(client, Site, blank["hid"], state="N.Y.")
+    version = ivy.get(f"/sites/{blank['hid']}")["row_version"]
+    for given in ("US", None, "usa"):
+        kept = ivy.patch(
+            f"/sites/{blank['hid']}", {"row_version": version, "city": "Troy", "country": given}
+        )
+        # What was given is stored, as it always is: a code, or blank.
+        assert (kept["country"], kept["state"]) == ("US" if given else None, "N.Y."), given
+        version = kept["row_version"]
+    # Another country in force checks the state held.
+    refused = ivy.patch(f"/sites/{blank['hid']}", {"row_version": version, "country": "CA"}, 422)
+    assert set(errors(refused)) == {"state"}
+    # So does a state given, which is held to the list of the country in force.
+    chosen = ivy.patch(f"/sites/{blank['hid']}", {"row_version": version, "state": "New York"})
+    assert (chosen["country"], chosen["state"]) == ("US", "NY")
+
+
 def test_the_shipping_address_in_force_answers_the_names_with_its_source(ivy: Maker) -> None:
     region = ivy.region("Americas", ship_country="MX", ship_state="jalisco", ship_city="Zapopan")
     site = ivy.site("Site-3", region)

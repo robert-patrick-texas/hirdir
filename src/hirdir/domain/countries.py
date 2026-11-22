@@ -476,21 +476,34 @@ def delete_state(db: Session, context: AuditContext, hid: str, role: Role | None
 # --- an address ----------------------------------------------------------------------
 
 
+def country_in_force(values: Mapping[str, Any], prefix: str = "") -> str | None:
+    """Return the country in force of one set of an address: its own, or the United
+    States where it names none and any other field of the set is filled."""
+    country = values.get(f"{prefix}country")
+    if country:
+        return country
+    others = (values.get(f"{prefix}{name}") for name in ADDRESS_FIELDS if name != "country")
+    return US if any(others) else None
+
+
 def checked_address(
     db: Session, fields: Mapping[str, Any], values: dict[str, Any], record: Any, prefix: str = ""
 ) -> None:
     """Hold the country and the state of one set of an address to the lists (P-321).
 
     `values` holds what the change gives, as the place's own rules took it. A country
-    given is the code it resolves to, and is no change where that is the code held. Where
-    the change changes the country or the state of the set, both are checked: the country is a
-    listed one, found by its code or its name, and kept as its code, or blank, which is
-    read as the United States and not written so; the state, where the country in force
-    has states listed, one of them, kept as its code, or blank, and where it has none, text
-    as typed. A value held from before that no list holds is kept until then, so that a
-    change of anything else of the place goes through.
+    given is the code it resolves to, and is stored as given; the country is changed only
+    where the country in force is another, a blank one being the United States where the
+    set has any other field. Where the change changes the country in force or the state
+    of the set, both are checked: the country is a listed one, found by its code or its
+    name, and kept as its code, or blank, which is read as the United States and not
+    written so; the state, where the country in force has states listed, one of them,
+    kept as its code, or blank, and where it has none, text as typed. A value held from
+    before that no list holds is kept until then, so that a change of anything else of
+    the place goes through.
     """
     country_field, state_field = f"{prefix}country", f"{prefix}state"
+    names = [f"{prefix}{name}" for name in ADDRESS_FIELDS]
 
     def held(name: str) -> Any:
         return getattr(record, name) if record is not None else None
@@ -500,8 +513,13 @@ def checked_address(
         # A country given by its name, or by its code in another case, is the code it
         # resolves to: that it is spelled otherwise than the one held changes nothing.
         country = values[country_field] = the_country(db, country, country_field).code
+    before = country_in_force({name: held(name) for name in names}, prefix)
+    after = country_in_force(
+        {**{name: values.get(name, held(name)) for name in names}, country_field: country},
+        prefix,
+    )
     state_changed = state_field in fields and values.get(state_field) != held(state_field)
-    if not state_changed and country == held(country_field):
+    if not state_changed and after == before:
         return
     state = values.get(state_field, held(state_field))
     code = US
@@ -541,13 +559,8 @@ class Lists:
         return cls(countries, states, frozenset(country for country, _ in states))
 
     def in_force(self, values: Mapping[str, Any], prefix: str = "") -> str | None:
-        """Return the country in force of one set of an address: its own, or the United
-        States where it names none and any other field of the set is filled."""
-        country = values.get(f"{prefix}country")
-        if country:
-            return country
-        others = (values.get(f"{prefix}{name}") for name in ADDRESS_FIELDS if name != "country")
-        return US if any(others) else None
+        """Return the country in force of one set of an address, as `country_in_force`."""
+        return country_in_force(values, prefix)
 
     def names(self, values: Mapping[str, Any], prefix: str = "") -> dict[str, str | None]:
         """Return `country_name` and `state_name` of one set of an address, with the

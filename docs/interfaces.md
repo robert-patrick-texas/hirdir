@@ -1827,7 +1827,7 @@ code or its name, without regard to case, or as `USA`, `U.S.`, `U.S.A.` or `Unit
 States of America`; a state by its code or its name within the country in force, a
 blank country being the United States; and an export writes the codes the place holds,
 which load back as nothing to change. A value that no list holds is rejected at its
-column, and one held from before is kept until the row changes the country or the state
+column, and one held from before is kept until the row changes the state or the country in force
 of that set (P-321): see [Countries and states](#countries-and-states).
 
 A row of `countries` gives `code`, the ISO 3166-1 alpha-2 code in any case, and `name`;
@@ -2957,9 +2957,13 @@ or its name and kept as its code, or are blank; where the country has none liste
 as typed, as before. A value that no list holds is a `422` at its field, which names
 the list: `GET /countries`, or `GET /states?country=MX` for the country in force. A
 country or a state held from before that no list holds, which the upgrade kept as it
-was typed, is kept until the country or the state of that set is changed, when both are
-checked; a change of anything else of the place goes through, and so does the value sent
-back as it is held.
+was typed, is kept until the state or the country in force of that set is changed,
+when both are checked; a change of anything else of the place goes through, and so does
+the value sent back as it is held. A country given is the code it resolves to, stored as
+given, and changes the country only where the country in force is another: `Mexico` or
+`mx` given for `MX`, or `US` for a blank country of a set that has another field, which
+is the United States in force, changes none, and a state held that no list holds stays
+(after the review of 0.9.18).
 
 Beside its fields, the answer of a site and of a location holds `country_name`,
 `state_name`, `ship_country_name` and `ship_state_name`, and that of a region the two of
