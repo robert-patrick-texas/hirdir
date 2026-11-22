@@ -1,23 +1,115 @@
 import { describe, expect, it } from "vitest";
 import {
+  cappedWords,
   type Holder,
+  kindName,
+  kindWord,
   leavesNoRole,
+  leftWithNone,
   noRoleWords,
   remaining,
+  rolesFor,
   type Source,
+  sourceWords,
+  tokenRefused,
   tokenWaits,
 } from "./accounts";
 
-const OWN: Source = { role: "viewer", grantHid: "R1", groupHid: null };
-const TEAM: Source = { role: "inventory", grantHid: "R2", groupHid: "G1" };
-const TEAM_TOO: Source = { role: "viewer", grantHid: "R3", groupHid: "G1" };
-const DESK: Source = { role: "viewer", grantHid: "R4", groupHid: "G2" };
+const TEAM_GROUP = { hid: "G1", name: "Network team" };
+const OWN: Source = { hid: "R1", role: "viewer", group: null };
+const TEAM: Source = { hid: "R2", role: "inventory", group: TEAM_GROUP };
+const TEAM_TOO: Source = { hid: "R3", role: "viewer", group: TEAM_GROUP };
+const DESK: Source = { hid: "R4", role: "viewer", group: { hid: "G2", name: "Help desk" } };
+
+describe("the kind of an account (P-316)", () => {
+  it("is written in a word on the list, and named on the page", () => {
+    expect(["person", "service", "agent"].map(kindWord)).toEqual(["Person", "Service", "Agent"]);
+    expect(["person", "service", "agent"].map(kindName)).toEqual([
+      "Person",
+      "Service account",
+      "Agent",
+    ]);
+  });
+
+  it("offers an agent every role but Admin", () => {
+    expect(rolesFor("agent")).toEqual(["viewer", "inventory"]);
+    expect(rolesFor("person")).toEqual(["viewer", "inventory", "admin"]);
+    expect(rolesFor("service")).toEqual(["viewer", "inventory", "admin"]);
+  });
+});
 
 describe("a token made for an account that holds no role (P-314)", () => {
+  const sam = { hid: "U9", username: "sam", name: "Sam Roe", record_status: "active" as const };
+  const base = {
+    username: "agent-reconcile",
+    kind: "agent" as const,
+    role: "inventory",
+    role_in_force: "inventory",
+    role_capped_by: null,
+    answerable: sam,
+  };
+
   it("says it is refused until the account holds one, and how one is given", () => {
     expect(tokenWaits("svc-sync")).toBe(
       "svc-sync holds no role, so this token is refused until it holds one: grant it a role under Roles, or put it in a group that grants one. The token works from then on.",
     );
+    expect(
+      tokenRefused({
+        ...base,
+        kind: "service",
+        username: "svc-sync",
+        role: null,
+        answerable: null,
+      }),
+    ).toBe(tokenWaits("svc-sync"));
+    expect(tokenRefused({ ...base, role: null, role_in_force: null })).toBe(
+      tokenWaits("agent-reconcile"),
+    );
+  });
+
+  it("says of an agent's that it is refused while its person cannot answer for it", () => {
+    expect(tokenRefused({ ...base, role_in_force: null, role_capped_by: "person_disabled" })).toBe(
+      "This token is refused while sam is disabled: agent-reconcile answers for nothing more than its person does. It works once sam can answer for it.",
+    );
+    // Held lower, it works.
+    expect(
+      tokenRefused({ ...base, role_in_force: "viewer", role_capped_by: "person_role" }),
+    ).toBeNull();
+    expect(tokenRefused(base)).toBeNull();
+  });
+});
+
+describe("the role an agent is held to (P-316)", () => {
+  const sam = { hid: "U9", username: "sam", name: "Sam Roe", record_status: "active" as const };
+  const agent = {
+    username: "agent-reconcile",
+    kind: "agent" as const,
+    role: "inventory",
+    role_in_force: "viewer",
+    role_capped_by: "person_role" as const,
+    answerable: sam,
+  };
+
+  it("says why it is held lower than it holds", () => {
+    expect(cappedWords(agent)).toBe("held to View-only by sam's role");
+    expect(cappedWords({ ...agent, role_in_force: null, role_capped_by: "person_no_role" })).toBe(
+      "its tokens are refused while sam holds no role",
+    );
+    expect(cappedWords({ ...agent, role_in_force: null, role_capped_by: "person_retired" })).toBe(
+      "its tokens are refused while sam is retired",
+    );
+  });
+
+  it("says nothing where nothing holds it lower, nor of a person", () => {
+    expect(cappedWords({ ...agent, role_in_force: "inventory", role_capped_by: null })).toBeNull();
+    expect(cappedWords({ ...agent, kind: "person", role_capped_by: null })).toBeNull();
+  });
+});
+
+describe("where a role comes from (P-307)", () => {
+  it("is of its own, or through a group, named", () => {
+    expect(sourceWords(OWN)).toBe("of its own");
+    expect(sourceWords(TEAM)).toBe("through Network team");
   });
 });
 
@@ -42,11 +134,11 @@ describe("what a change leaves of the roles of an account (P-314)", () => {
 });
 
 describe("what a confirmation says of whom a change leaves with no role (P-314)", () => {
-  const klee: Holder = { username: "klee", kind: "person", sources: [TEAM] };
-  const sroe: Holder = { username: "sroe", kind: "person", sources: [TEAM, TEAM_TOO] };
-  const jdoe: Holder = { username: "jdoe", kind: "person", sources: [OWN, TEAM] };
-  const sync: Holder = { username: "svc-sync", kind: "service", sources: [TEAM] };
-  const agent: Holder = { username: "agent-reconcile", kind: "agent", sources: [TEAM] };
+  const klee: Holder = { username: "klee", kind: "person", grants: [TEAM] };
+  const sroe: Holder = { username: "sroe", kind: "person", grants: [TEAM, TEAM_TOO] };
+  const jdoe: Holder = { username: "jdoe", kind: "person", grants: [OWN, TEAM] };
+  const sync: Holder = { username: "svc-sync", kind: "service", grants: [TEAM] };
+  const agent: Holder = { username: "agent-reconcile", kind: "agent", grants: [TEAM] };
 
   it("names the one account, in the owner's words", () => {
     expect(noRoleWords([klee], { kind: "leave", groupHid: "G1" })).toBe(
@@ -55,6 +147,10 @@ describe("what a confirmation says of whom a change leaves with no role (P-314)"
   });
 
   it("names each member so left, and nobody who keeps a role", () => {
+    expect(leftWithNone([klee, sroe, jdoe], { kind: "leave", groupHid: "G1" })).toEqual([
+      klee,
+      sroe,
+    ]);
     expect(noRoleWords([klee, sroe, jdoe], { kind: "leave", groupHid: "G1" })).toBe(
       "klee and sroe will each hold no role and be signed out.",
     );

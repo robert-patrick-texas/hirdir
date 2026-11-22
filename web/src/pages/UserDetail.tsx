@@ -10,13 +10,21 @@ import { MakeOperator } from "../components/MakeOperator";
 import { OperatorMark } from "../components/Operator";
 import { ContactChanges, PersonChooser } from "../components/Person";
 import { PersonChain } from "../components/PersonChain";
+import { PersonUserField } from "../components/PersonUserField";
 import { Notice, Problem } from "../components/Problem";
 import { BringBackUser, RetirePerson } from "../components/RetirePerson";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
-import { tokenWaits } from "../lib/accounts";
+import {
+  cappedWords,
+  holdsTokens,
+  kindName,
+  noRoleWords,
+  sourceWords,
+  tokenRefused,
+} from "../lib/accounts";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
@@ -76,7 +84,14 @@ function UserPage({ hid }: { hid: string }) {
         <>
           {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). */}
           <PersonChain kind="user" hid={user.data.hid} turn={user.data.row_version} />
-          <Facts user={user.data} />
+          <Facts
+            user={user.data}
+            onRoleChanged={() => {
+              user.reload();
+              // The reader's own role may be what changed.
+              if (auth.user.hid === hid) auth.refresh();
+            }}
+          />
           {retired && (
             <p className="alert" data-testid="user-retired">
               This account is retired: it signs in with nothing, is in no group and holds no role.
@@ -102,18 +117,26 @@ function UserPage({ hid }: { hid: string }) {
               }}
             />
           )}
-          {!user.data.is_service_account && (
+          {/* 0.9.17: an agent's person, and the agent handed to another (P-316). */}
+          {user.data.kind === "agent" && !retired && (
+            <Answerable
+              key={`answerable ${user.data.hid} ${user.data.row_version}`}
+              user={user.data}
+              reload={user.reload}
+            />
+          )}
+          {user.data.kind === "person" && (
             <Person
               key={`person ${user.data.hid} ${user.data.row_version}`}
               user={user.data}
               reload={user.reload}
             />
           )}
-          {!retired && !user.data.is_service_account && (
+          {!retired && user.data.kind === "person" && (
             <AccessCode user={user.data} reload={user.reload} />
           )}
           {!retired && <Sessions user={user.data} reload={user.reload} />}
-          {user.data.is_service_account && <Tokens user={user.data} />}
+          {holdsTokens(user.data.kind) && <Tokens user={user.data} />}
           <RetireUser
             key={`retire ${user.data.hid} ${user.data.row_version}`}
             user={user.data}
@@ -145,9 +168,11 @@ function BroughtBackUser({ back, onDone }: { back: BroughtBack; onDone: () => vo
   // 0.9.15: with the role chosen in the confirmation (P-299).
   const holding = user.role ? `the role ${roleLabel(user.role)}` : "no role";
   if (access_code === null) {
+    const what = user.kind === "agent" ? "agent" : "service account";
+    const whose = user.answerable ? `, answerable to ${user.answerable.username},` : "";
     return (
       <Notice
-        text={`The service account ${user.username} is active again, with ${holding}. It has no group and no token: give them below.`}
+        text={`The ${what} ${user.username} is active again${whose} with ${holding}. It has no group and no token: give them below.`}
       />
     );
   }
@@ -223,21 +248,66 @@ function RetireUser({ user, onRetired, onBroughtBack }: RetireUserProps) {
   );
 }
 
-function Facts({ user }: { user: User }) {
+function Facts({ user, onRoleChanged }: { user: User; onRoleChanged: () => void }) {
+  const capped = cappedWords(user);
   return (
     <dl className="facts" data-testid="user-facts">
       <dt>Username</dt>
       <dd className="mono">{user.username}</dd>
       <dt>Kind</dt>
-      <dd>{user.is_service_account ? "Service account" : "Person"}</dd>
+      <dd data-testid="user-kind">{kindName(user.kind)}</dd>
+      {/* 0.9.17: the person an agent is answerable to, a link (P-316). */}
+      {user.kind === "agent" && (
+        <>
+          <dt>Answerable to</dt>
+          <dd data-testid="user-answerable">
+            {user.answerable ? (
+              <>
+                <Link to={`/admin/users/${encodeURIComponent(user.answerable.hid)}`}>
+                  {user.answerable.name}
+                </Link>
+                {user.answerable.name !== user.answerable.username && (
+                  <span className="muted"> ({user.answerable.username})</span>
+                )}
+                {user.answerable.record_status === "retired" && (
+                  <span className="badge">Retired</span>
+                )}
+              </>
+            ) : (
+              <span className="muted">—</span>
+            )}
+          </dd>
+        </>
+      )}
       <dt>State</dt>
       <dd data-testid="user-state">{userState(user)}</dd>
       <dt>Role</dt>
-      <dd>
-        {roleLabel(user.role)} <Link to="/admin/roles">(role grants)</Link>
+      <dd data-testid="user-role">
+        {roleLabel(user.role)}
+        {/* 0.9.17: of an agent, the role it is held to and why (P-316). */}
+        {capped && <span data-testid="user-role-capped"> · {capped}</span>}{" "}
+        <Link to="/admin/roles">(role grants)</Link>
+        {/* 0.9.17: each role it holds and where it comes from (P-307). */}
+        <RoleSources user={user} onChanged={onRoleChanged} />
       </dd>
+      {/* 0.9.17: the agents answerable to a person, each a link (P-316). */}
+      {user.kind === "person" && (
+        <>
+          <dt>Agents</dt>
+          <dd data-testid="user-agents">
+            {user.agents.length === 0 && <span className="muted">—</span>}
+            {user.agents.map((agent, index) => (
+              <span key={agent.hid}>
+                {index > 0 && ", "}
+                <Link to={`/admin/users/${encodeURIComponent(agent.hid)}`}>{agent.username}</Link>
+                {agent.record_status === "retired" && <span className="badge">Retired</span>}
+              </span>
+            ))}
+          </dd>
+        </>
+      )}
       <dt>Groups</dt>
-      <dd>
+      <dd data-testid="user-groups-fact">
         {user.groups.length === 0 && <span className="muted">—</span>}
         {user.groups.map((group, index) => (
           <span key={group.hid}>
@@ -248,7 +318,7 @@ function Facts({ user }: { user: User }) {
       </dd>
       {/* 0.9.13: the operators it works as, as links, and one made in one press where it
           has a contact and is behind none (P-280, P-284). */}
-      {!user.is_service_account && (
+      {user.kind === "person" && (
         <>
           <dt>Operators</dt>
           <dd data-testid="user-operators">
@@ -304,6 +374,126 @@ function Facts({ user }: { user: User }) {
         <Time at={user.updated_at} />
       </dd>
     </dl>
+  );
+}
+
+/**
+ * 0.9.17: each role an account holds and where it comes from, of its own or through a
+ * group, the group a link (P-307). A grant of its own is revoked here; what the change
+ * leaves the account is said before it is made, from where its roles come (P-314).
+ */
+function RoleSources({ user, onChanged }: { user: User; onChanged: () => void }) {
+  const action = useAction();
+  if (user.grants.length === 0) return null;
+
+  async function revoke(grant: Schemas["UserGrant"]) {
+    const result = await action.run(() =>
+      api.request("delete", "/api/v1/role-grants/{hid}", { path: { hid: grant.hid } }),
+    );
+    if (result.ok) onChanged();
+  }
+
+  return (
+    <>
+      <ul className="role-sources" data-testid="role-sources">
+        {user.grants.map((grant) => {
+          const leaves = noRoleWords([user], { kind: "revoke", grantHid: grant.hid });
+          return (
+            <li key={grant.hid} className="role-source" data-grant={grant.hid}>
+              {roleLabel(grant.role)},{" "}
+              {grant.group ? (
+                <>
+                  through{" "}
+                  <Link to={`/admin/groups/${encodeURIComponent(grant.group.hid)}`}>
+                    {grant.group.name}
+                  </Link>
+                </>
+              ) : (
+                sourceWords(grant)
+              )}
+              {!grant.group && (
+                <>
+                  {" "}
+                  <ConfirmButton
+                    label={`Revoke ${roleLabel(grant.role)}`}
+                    title={`Take ${roleLabel(grant.role)} back from ${user.username}?`}
+                    confirmLabel="Revoke role"
+                    onConfirm={() => revoke(grant)}
+                    disabled={action.busy}
+                  >
+                    <p>{`${user.username} loses this role at once, unless a group gives it to them.`}</p>
+                    {leaves && (
+                      <p data-testid="no-role-left">
+                        <strong>{leaves}</strong>
+                      </p>
+                    )}
+                  </ConfirmButton>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <Problem error={action.error} />
+    </>
+  );
+}
+
+/**
+ * 0.9.17: the person an agent is answerable to, and the agent handed to another person
+ * by an Admin (P-316): from then on the agent holds no more than their role.
+ */
+function Answerable({ user, reload }: { user: User; reload: () => void }) {
+  const [chosen, setChosen] = useState("");
+  const [name, setName] = useState("");
+  const [done, setDone] = useState("");
+  const action = useAction();
+  const fields = action.error?.fields ?? {};
+
+  async function hand(event: FormEvent) {
+    event.preventDefault();
+    if (chosen === "") return;
+    setDone("");
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/users/{hid}", {
+        path: { hid: user.hid },
+        body: { row_version: user.row_version, answerable_hid: chosen },
+      }),
+    );
+    if (!result.ok) return;
+    setDone(`${user.username} is answerable to ${name} from now on.`);
+    reload();
+  }
+
+  return (
+    <section aria-labelledby="answerable">
+      <h2 id="answerable">Answerable to</h2>
+      <p>
+        An agent is answerable to a person: it holds no more than their role, read at each of its
+        requests, and its tokens are refused while they hold none, are disabled or are retired.
+        Handed to another person, it holds no more than theirs from then on.
+      </p>
+      <Notice text={done} />
+      <form onSubmit={hand} className="stack" noValidate>
+        <Problem error={action.error} shown={["answerable_hid"]} onReload={reload} />
+        <PersonUserField
+          label="Hand to"
+          name="answerable_hid"
+          value={chosen}
+          onChange={setChosen}
+          onPicked={(picked) => setName(picked?.name ?? "")}
+          blank="Nobody chosen"
+          leaveOut={user.answerable ? [user.answerable.hid] : []}
+          error={fields.answerable_hid}
+          disabled={action.busy}
+        />
+        <p className="actions">
+          <button type="submit" className="primary" disabled={action.busy || chosen === ""}>
+            {chosen && name ? `Hand ${user.username} to ${name}` : "Hand over"}
+          </button>
+        </p>
+      </form>
+    </section>
   );
 }
 
@@ -764,14 +954,15 @@ function Tokens({ user }: { user: User }) {
 
   return (
     <section aria-labelledby="tokens">
-      <h2 id="tokens">Service tokens</h2>
+      <h2 id="tokens">{user.kind === "agent" ? "Tokens" : "Service tokens"}</h2>
       {secret && (
         <SecretBox
           title={`Token ${secret.token.name} for ${user.username}`}
           secret={secret.secret}
           // 0.9.17: an account that holds no role has its tokens refused (P-299, P-314),
-          // as the account now stands: a role given since, on this page, says nothing.
-          {...(user.role ? {} : { note: tokenWaits(user.username) })}
+          // and an agent's while its person cannot answer for it (P-316), as the account
+          // now stands: a role given since, on this page, says nothing.
+          {...(tokenRefused(user) ? { note: tokenRefused(user) ?? "" } : {})}
           onDone={() => setSecret(null)}
         />
       )}
@@ -781,7 +972,7 @@ function Tokens({ user }: { user: User }) {
       {tokens.data && (
         <div className="scroll">
           <table>
-            <caption className="visually-hidden">Service tokens of {user.username}</caption>
+            <caption className="visually-hidden">Tokens of {user.username}</caption>
             <thead>
               <tr>
                 <SortTh sort={sorting} column="name">
@@ -839,7 +1030,9 @@ function Tokens({ user }: { user: User }) {
               {tokens.data.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted">
-                    This service account has no tokens.
+                    {user.kind === "agent"
+                      ? "This agent has no tokens."
+                      : "This service account has no tokens."}
                   </td>
                 </tr>
               )}

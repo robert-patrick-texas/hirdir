@@ -3983,6 +3983,47 @@ P-314, P-316):
   out.`; for a group, each member so left, named; of a service account or an agent,
   that its tokens will be refused. A change that leaves everybody a role says nothing
   of it, and a box that leaves the account a role changes it at once, as before.
+- **Users, by kind.** The column Kind writes `Person`, `Service` or `Agent`, from
+  `kind`, and Kind beside the search narrows the list to one, `kind=` in the address,
+  kept by Show's links. Role says, under the highest, where each role comes from, of
+  its own or through a group, a link, and of an agent held lower, why: `held to
+  View-only by sam's role`.
+- **New user.** Kind offers Person, Service account and Agent, in place of the box
+  Service account. An agent, like a service account, has no contact, no operator and
+  no access code, and asks for the person answerable, searched for by username or name
+  among the people who are not retired, `answerable_hid`; Create with nobody chosen
+  says so at the field and sends nothing. Role offers an agent View-only and Inventory,
+  never Admin; a group ticked that grants Admin is refused by the server, in its words,
+  at the groups.
+- **An agent's page.** Kind is Agent; Answerable to names its person, a link, marked
+  where retired; Role says the role it holds, where it comes from, and the role it is
+  held to and why, `held to View-only by sam's role`, or that its tokens are refused
+  while sam holds no role, is disabled or is retired. Answerable to, a section of its
+  own, hands it to another person, by `PATCH /users/{hid}` with `answerable_hid`, the
+  button naming them, `Hand agent-reconcile to Sam Roe`. Its tokens are made and
+  revoked under Tokens as a service account's are, and a new one says, where it is
+  shown once, that it is refused while the agent or its person holds no role. Bring
+  back of an agent asks whom it is answerable to, its person as before unless another
+  is chosen, and another where its person is retired.
+- **A person's page.** Agents lists every agent answerable to them, each a link, a
+  retired one marked.
+- **The confirmation of a retirement**, where it retires the account, has a row for
+  each agent of the account that is not retired, Retire ticked from the start, or Hand
+  to another person, searched for as above; each is named on the button, `retire agent
+  agent-reconcile`, `hand agent-reconcile to Sam Roe`, and sent as `linked.agents`. An
+  agent to be handed to nobody, or to the person retired, is said at its row and
+  nothing is sent; what the server refuses of a hand-over is said at that agent's row.
+  Where the account is kept, its agents are not asked of.
+- **Groups.** The page of a group lists the roles it grants, each revoked there, and
+  the Kind of each member. Putting an agent in a group that grants Admin, or granting
+  Admin to an agent or to a group that holds one, is refused by the server, and its
+  words are shown where the change was asked, beside the box, above the members or at
+  the role.
+- **Audit.** Kind, beside Who, narrows the trail to the changes of people, of service
+  accounts or of agents, `actor_kind`, for every role that reads the trail; Who
+  writes an agent `agent-reconcile (agent, for sam)`. Who, on the Audit page and in an
+  item's history, writes an agent's change `agent-reconcile for sam`, both links for an
+  Admin.
 
 ### The grid
 

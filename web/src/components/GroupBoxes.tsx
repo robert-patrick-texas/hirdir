@@ -9,8 +9,10 @@ import { useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { ApiError } from "../api/client";
+import { noRoleWords } from "../lib/accounts";
 import { useAction, useLoad } from "../lib/hooks";
 import { goneGroups, goneWords, groupGrants } from "../lib/onboarding";
+import { AskFirst } from "./AskFirst";
 import { Problem } from "./Problem";
 
 type Group = Schemas["GroupOut"];
@@ -125,9 +127,17 @@ function GroupBox({ user, group, member, onChanged, onMissing }: GroupBoxProps) 
   // Held at once, before the page has drawn the box as busy: a second press sends nothing.
   const out = useRef(false);
   const shown = wanted ?? member;
+  // 0.9.17: a box that takes the last role from the account asks first, saying so, from
+  // the roles it holds and where they come from (P-314 (4)); any other changes at once.
+  const leaves = member ? noRoleWords([user], { kind: "leave", groupHid: group.hid }) : null;
+  const [asking, setAsking] = useState(false);
 
-  async function toggle(next: boolean) {
+  async function toggle(next: boolean, asked = false) {
     if (out.current) return;
+    if (!next && leaves !== null && !asked) {
+      setAsking(true);
+      return;
+    }
     out.current = true;
     setWanted(next);
     const path = { hid: group.hid, user_hid: user.hid };
@@ -178,6 +188,22 @@ function GroupBox({ user, group, member, onChanged, onMissing }: GroupBoxProps) 
             ? `Not taken out of ${group.name}: ${refusal}`
             : `Not added to ${group.name}: ${refusal}`}
         </p>
+      )}
+      {asking && leaves && (
+        <AskFirst
+          title={`Take ${user.username} out of ${group.name}?`}
+          confirmLabel={`Take ${user.username} out`}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false);
+            void toggle(false, true);
+          }}
+        >
+          <p>{`The roles ${group.name} grants are all that ${user.username} holds.`}</p>
+          <p data-testid="no-role-left">
+            <strong>{leaves}</strong>
+          </p>
+        </AskFirst>
       )}
     </div>
   );

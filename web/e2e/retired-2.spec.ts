@@ -104,7 +104,7 @@ test("review 2: a retired service account is offered no new token, and its token
   const username = `e2e-${suffix}-svc`;
   const made = await request.post("./api/v1/users", {
     headers,
-    data: { username, is_service_account: true },
+    data: { username, kind: "service" },
   });
   expect(made.status(), await made.text()).toBe(201);
   const service = ((await made.json()) as { user: { hid: string; username: string } }).user;

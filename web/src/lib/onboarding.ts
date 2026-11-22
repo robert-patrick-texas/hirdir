@@ -4,6 +4,7 @@
 // of a person in one press. This holds what the forms work out from what is typed.
 
 import type { Schemas } from "../api/client";
+import type { Kind } from "./accounts";
 import { readColour } from "./colour";
 import { type FilterNode, formatShort, parseShort } from "./filter";
 import { type Mark, operatorPath, safeColour } from "./operators";
@@ -107,7 +108,10 @@ export function refusedField(fields: Readonly<Record<string, string>>): boolean 
 /** What the New user form holds (P-282, P-283). */
 export interface NewUserForm {
   username: string;
-  service: boolean;
+  /** 0.9.17: a person's, a service's or an agent's (P-316). */
+  kind: Kind;
+  /** The person answerable for an agent, by the HID of their account, or blank. */
+  answerableHid: string;
   /** Also a contact: the person, a new contact or one there is. */
   alsoContact: boolean;
   person: PersonChoice;
@@ -145,13 +149,25 @@ export type NewUserBody = Schemas["UserCreate"];
  * are ticked, its role, its groups and its notes. A service account is no person and has
  * neither box, nor an access code. What is missing is said of its field before anything
  * is sent. A label left blank is the username, which the server gives; a colour not
- * chosen is the next that no operator has, which it gives too.
+ * chosen is the next that no operator has, which it gives too. 0.9.17: the kind, and an
+ * agent, which has none of a person's either, with the person answerable for it (P-316).
  */
 export function newUserBody(
   form: NewUserForm,
 ): { ok: true; body: NewUserBody } | { ok: false; field: string; error: string } {
-  const body: NewUserBody = { username: form.username.trim(), is_service_account: form.service };
-  if (!form.service && form.alsoContact) {
+  const person = form.kind === "person";
+  const body: NewUserBody = { username: form.username.trim(), kind: form.kind };
+  if (form.kind === "agent") {
+    if (form.answerableHid === "") {
+      return {
+        ok: false,
+        field: "answerable_hid",
+        error: "Choose the person answerable for the agent.",
+      };
+    }
+    body.answerable_hid = form.answerableHid;
+  }
+  if (person && form.alsoContact) {
     const read = readPerson(form.person);
     if (!read.ok) return { ok: false, field: read.field, error: read.error };
     if (read.contactHid !== null) body.contact_hid = read.contactHid;
@@ -172,7 +188,7 @@ export function newUserBody(
   if (form.role !== "") body.role = form.role;
   if (form.groupHids.length > 0) body.group_hids = [...form.groupHids];
   if (form.notes.trim() !== "") body.notes = form.notes.trim();
-  if (!form.service && form.accessCode !== "") body.access_code = form.accessCode;
+  if (person && form.accessCode !== "") body.access_code = form.accessCode;
   return { ok: true, body };
 }
 
@@ -271,13 +287,28 @@ export function usersGapQuery(gap: UsersGap): {
   return {};
 }
 
-/** The address of the list of users: what is searched for, the gap, and the page. */
-export function usersAddress(q: string, gap: UsersGap, offset: number): URLSearchParams {
+/**
+ * The address of the list of users: what is searched for, the gap, the page, and,
+ * since 0.9.17, the kind it is narrowed to, blank for every kind (P-316).
+ */
+export function usersAddress(
+  q: string,
+  gap: UsersGap,
+  offset: number,
+  kind: Kind | "" = "",
+): URLSearchParams {
   const wanted = new URLSearchParams();
   if (q) wanted.set("q", q);
   for (const [name, value] of Object.entries(usersGapQuery(gap))) wanted.set(name, value);
+  if (kind) wanted.set("kind", kind);
   if (offset > 0) wanted.set("offset", String(offset));
   return wanted;
+}
+
+/** The kind a list of users is narrowed to, as the address of the page says it. */
+export function usersKindOf(params: URLSearchParams): Kind | "" {
+  const kind = params.get("kind");
+  return kind === "person" || kind === "service" || kind === "agent" ? kind : "";
 }
 
 /** The query of an address as it is written after the path: blank where it has none. */
@@ -323,7 +354,8 @@ export function contactsAddress(filter: string): string {
 /** The fields of the user itself that a refusal names, each said beside its input. */
 const USER_FIELDS = [
   "username",
-  "is_service_account",
+  "kind",
+  "answerable_hid",
   "contact_hid",
   "role",
   "notes",

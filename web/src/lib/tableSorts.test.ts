@@ -34,7 +34,7 @@ describe("the sort fields of the paged tables", () => {
       operators: "operators",
       role: "role",
       groups: "groups",
-      kind: "is_service_account",
+      kind: "kind",
       state: "disabled",
       last_sign_in: "last_sign_in_at",
       notes: "notes",

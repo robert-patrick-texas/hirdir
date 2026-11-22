@@ -36,6 +36,15 @@ export interface OperatorChoice {
   contactHid: string;
 }
 
+/** 0.9.17: what becomes of an agent of the person (P-316): retired, or handed over. */
+export type AgentAction = "retire" | "hand_over";
+
+export interface AgentChoice {
+  action: AgentAction;
+  /** The person an agent is handed to, by the HID of their account, or blank. */
+  userHid: string;
+}
+
 /** What the confirmation holds of each linked record. */
 export interface Choices {
   /** Retire is ticked for the account. */
@@ -44,6 +53,8 @@ export interface Choices {
   contact: boolean;
   /** What becomes of each label, by its HID. */
   operators: Readonly<Record<string, OperatorChoice>>;
+  /** What becomes of each agent of the account, by its HID, while the account goes. */
+  agents: Readonly<Record<string, AgentChoice>>;
 }
 
 /** What `linked` of a retirement says. */
@@ -65,13 +76,34 @@ export function othersOf(on: On, linked: Linked): Linked {
     user: linked.user && standing(linked.user, on) ? linked.user : null,
     contact: linked.contact && standing(linked.contact, on) ? linked.contact : null,
     operators: linked.operators.filter((operator) => standing(operator, on)),
+    agents: linked.agents.filter((agent) => standing(agent, on)),
   };
+}
+
+/**
+ * 0.9.17: whether the account of the person is retired by what is asked, by its own
+ * route or ticked: the agents answerable to it are then to be said (P-316), and not
+ * otherwise, since an agent is said only where its person goes.
+ */
+export function accountGoes(on: On, linked: Linked, firm: Choices): boolean {
+  if (on.kind === "user") return true;
+  return othersOf(on, linked).user !== null && firm.user;
+}
+
+/** The agents a retirement has to say something of: those not retired, while the account goes. */
+export function agentsToSay(on: On, linked: Linked, firm: Choices): LinkedUser[] {
+  return accountGoes(on, linked, firm) ? othersOf(on, linked).agents : [];
 }
 
 /** Whether nothing that is not retired is linked: the record is retired by itself, as before. */
 export function nothingLinked(on: On, linked: Linked): boolean {
   const others = othersOf(on, linked);
-  return others.user === null && others.contact === null && others.operators.length === 0;
+  return (
+    others.user === null &&
+    others.contact === null &&
+    others.operators.length === 0 &&
+    others.agents.length === 0
+  );
 }
 
 /** Whether the contact is retired by what is asked: by its own route, or ticked. */
@@ -105,16 +137,22 @@ export function held(on: On, linked: Linked, choices: Choices, admin: boolean): 
     const was = choices.operators[operator.hid] ?? { action: "retire", contactHid: "" };
     operators[operator.hid] = going && was.action === "keep" ? { ...was, action: "retire" } : was;
   }
+  // Retire ticked for each agent from the start, as for every linked record (P-316).
+  const agents: Record<string, AgentChoice> = {};
+  for (const agent of others.agents) {
+    agents[agent.hid] = choices.agents[agent.hid] ?? { action: "retire", userHid: "" };
+  }
   return {
     user: others.user !== null && !accountStays && (going || choices.user),
     contact,
     operators,
+    agents,
   };
 }
 
 /** What the confirmation opens with: Retire ticked for each linked record (P-291). */
 export function startChoices(on: On, linked: Linked, admin: boolean): Choices {
-  return held(on, linked, { user: true, contact: true, operators: {} }, admin);
+  return held(on, linked, { user: true, contact: true, operators: {}, agents: {} }, admin);
 }
 
 /**
@@ -136,14 +174,15 @@ export function keptChoices(
       user: before.user === null ? true : was.choices.user,
       contact: before.contact === null ? true : was.choices.contact,
       operators: was.choices.operators,
+      agents: was.choices.agents,
     },
     admin,
   );
 }
 
 /** The row of the confirmation a record has: where a refusal of it is said. */
-export function rowOf(kind: PersonKind, hid = ""): string {
-  return kind === "operator" ? `operator ${hid}` : kind;
+export function rowOf(kind: PersonKind | "agent", hid = ""): string {
+  return kind === "operator" || kind === "agent" ? `${kind} ${hid}` : kind;
 }
 
 /**
@@ -180,6 +219,23 @@ export function retireBody(
       return { hid: operator.hid, action: "hand_over", contact_hid: choice.contactHid };
     });
   }
+  // 0.9.17: each agent of an account that goes, retired or handed to another person.
+  const agents = agentsToSay(on, linked, firm);
+  if (agents.length > 0) {
+    const retired = on.kind === "user" ? on.hid : (others.user?.hid ?? "");
+    said.agents = agents.map((agent) => {
+      const choice = firm.agents[agent.hid] ?? { action: "retire", userHid: "" };
+      if (choice.action === "retire") return { hid: agent.hid, action: "retire" };
+      if (choice.userHid === "") {
+        errors[rowOf("agent", agent.hid)] =
+          "Choose the person the agent is handed to, or Retire it.";
+      } else if (choice.userHid === retired) {
+        errors[rowOf("agent", agent.hid)] =
+          "This is the person who is retired: choose another person, or Retire it.";
+      }
+      return { hid: agent.hid, action: "hand_over", user_hid: choice.userHid };
+    });
+  }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   const body: RetireBody = { row_version: rowVersion };
   if (Object.keys(said).length > 0) body.linked = said;
@@ -213,10 +269,36 @@ export function refusedRows(
 }
 
 /**
+ * 0.9.17: where what the server says of the agents, `linked.agents`, is said: at the
+ * hand-over of each agent the sentence names, or, where it names none of them, above the
+ * rows with the rest.
+ */
+export function refusedAgents(
+  fields: Readonly<Record<string, string>>,
+  on: On,
+  linked: Linked,
+  choices: Choices,
+): { rows: Record<string, string>; shown: string[] } {
+  const message = fields["linked.agents"];
+  if (message === undefined) return { rows: {}, shown: [] };
+  const named = agentsToSay(on, linked, choices).filter(
+    (agent) =>
+      choices.agents[agent.hid]?.action === "hand_over" && message.includes(agent.username),
+  );
+  if (named.length === 0) return { rows: {}, shown: [] };
+  const rows: Record<string, string> = {};
+  for (const agent of named) rows[rowOf("agent", agent.hid)] = message;
+  return { rows, shown: ["linked.agents"] };
+}
+
+/**
  * What a refusal says of the labels is a sentence of its own, with the labels named in
  * it: it is said as it is, with no name of a field before it.
  */
-export const LINKED_LABELS: Readonly<Record<string, string>> = { "linked.operators": "" };
+export const LINKED_LABELS: Readonly<Record<string, string>> = {
+  "linked.operators": "",
+  "linked.agents": "",
+};
 
 /** How much names a contact, said beside it so that the choice is an informed one. */
 export function contactUses(uses: number): string {
@@ -281,6 +363,15 @@ export function retiredWords(
       more.push(`${operator.label} was handed over${to ? ` to ${to}` : ""}`);
     } else kept.push(`the label ${operator.label}`);
   }
+  // 0.9.17: the agents of the account that went with it, or were handed over (P-316).
+  for (const agent of agentsToSay(on, linked, firm)) {
+    const choice = firm.agents[agent.hid];
+    if (!choice || choice.action === "retire") gone.push(`the agent ${agent.username}`);
+    else {
+      const to = handedTo[agent.hid];
+      more.push(`${agent.username} was handed${to ? ` to ${to}` : " over"}`);
+    }
+  }
   // A sentence that begins with a username or a label begins as that is written.
   const sentences = [gone.length > 0 ? `${first}, with ${listed(gone)}` : first];
   if (more.length > 0) sentences.push(listed(more));
@@ -318,6 +409,7 @@ export function bringBackBody(
   ticked: readonly string[],
   rowVersion: number,
   role = "",
+  answerableHid = "",
 ): BringBackBody {
   const offer = bringBackOffer(linked);
   const said: Schemas["LinkedBack"] = {};
@@ -331,6 +423,8 @@ export function bringBackBody(
   // 0.9.15: the role the account is brought back holding, none where none is chosen,
   // which the server refuses for a person (P-299).
   if (role !== "") body.role = role;
+  // 0.9.17: an agent's person from then on, where another is chosen (P-316).
+  if (answerableHid !== "") body.answerable_hid = answerableHid;
   return body;
 }
 
@@ -385,6 +479,7 @@ export function sameOthers(on: On, was: Linked, now: Linked): boolean {
       `user ${others.user?.hid ?? ""}`,
       `contact ${others.contact?.hid ?? ""}`,
       ...others.operators.map((operator) => `operator ${operator.hid}`).sort(),
+      ...others.agents.map((agent) => `agent ${agent.hid}`).sort(),
     ].join("\n");
   };
   return named(was) === named(now);
@@ -444,6 +539,11 @@ export function handedTo(
     const name = names[choice.contactHid];
     if (choice.action === "hand_over" && name !== undefined) to[hid] = name;
   }
+  // 0.9.17: and each agent handed over, to the person named by the HID of their account.
+  for (const [hid, choice] of Object.entries(choices.agents)) {
+    const name = names[choice.userHid];
+    if (choice.action === "hand_over" && name !== undefined) to[hid] = name;
+  }
   return to;
 }
 
@@ -499,6 +599,16 @@ export function goWords(
     else if (choice.action === "hand_over") {
       const to = choice.contactHid === "" ? "" : (names[choice.contactHid] ?? "");
       handed.set(to, [...(handed.get(to) ?? []), operator.label]);
+    }
+  }
+  // 0.9.17: each agent of an account that goes: `retire agent agent-reconcile`, `hand
+  // agent-reconcile to Sam Roe` (P-316).
+  for (const agent of agentsToSay(on, linked, firm)) {
+    const choice = firm.agents[agent.hid] ?? { action: "retire", userHid: "" };
+    if (choice.action === "retire") retired.push(`agent ${agent.username}`);
+    else {
+      const to = choice.userHid === "" ? "" : (names[choice.userHid] ?? "");
+      handed.set(to, [...(handed.get(to) ?? []), agent.username]);
     }
   }
   const of = (verb: string, records: readonly string[], after = "") =>

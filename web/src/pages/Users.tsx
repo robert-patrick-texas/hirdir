@@ -7,6 +7,7 @@ import { createdState } from "../components/Created";
 import {
   CheckField,
   CheckGroupField,
+  RadioGroupField,
   SelectField,
   TextAreaField,
   TextField,
@@ -17,12 +18,23 @@ import { saveFile } from "../components/grid/save";
 import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { PersonChooser } from "../components/Person";
+import { PersonUserField } from "../components/PersonUserField";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { ValueLink } from "../components/ValueLink";
+import {
+  cappedWords,
+  holdsTokens,
+  KINDS,
+  type Kind,
+  kindHint,
+  kindWord,
+  rolesFor,
+  sourceWords,
+} from "../lib/accounts";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { userState } from "../lib/linked";
 import { useSettings } from "../lib/lists";
@@ -47,10 +59,11 @@ import {
   usersAddress,
   usersGapOf,
   usersGapQuery,
+  usersKindOf,
 } from "../lib/onboarding";
 import { markOf, operatorPath } from "../lib/operators";
 import { type PersonChoice, personChoice } from "../lib/people";
-import { ROLES, roleLabel } from "../lib/roles";
+import { roleLabel } from "../lib/roles";
 import { USERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 
@@ -68,6 +81,8 @@ export function Users() {
   // 0.9.13: the gap the list is narrowed to, kept in the address, so that a link to it
   // can be sent to a colleague (P-280).
   const gap = usersGapOf(params);
+  // 0.9.17: the kind the list is narrowed to, kept in the address too (P-316).
+  const kind = usersKindOf(params);
   const [search, setSearch] = useState(q);
   const [adding, setAdding] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
@@ -76,15 +91,16 @@ export function Users() {
   const sort = useServerSort<User>({
     fields: USERS_SORT,
     onChange: () => {
-      if (offset > 0) show({ q, offset: 0, gap });
+      if (offset > 0) show({ q, offset: 0, gap, kind });
     },
   });
   const users = sort.held(
-    useLoad(`users ${offset} ${q} ${gap} ${sort.param ?? ""}`, (signal) =>
+    useLoad(`users ${offset} ${q} ${gap} ${kind} ${sort.param ?? ""}`, (signal) =>
       api.request("get", "/api/v1/users", {
         query: {
           q,
           ...usersGapQuery(gap),
+          ...(kind ? { kind } : {}),
           ...sort.query,
           limit: PAGE,
           offset,
@@ -95,13 +111,13 @@ export function Users() {
   );
   const holdsAll = users.data ? users.data.total === users.data.items.length : false;
 
-  function show(next: { q: string; offset: number; gap: UsersGap }) {
-    setParams(usersAddress(next.q, next.gap, next.offset));
+  function show(next: { q: string; offset: number; gap: UsersGap; kind: Kind | "" }) {
+    setParams(usersAddress(next.q, next.gap, next.offset, next.kind));
   }
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
-    show({ q: search.trim(), offset: 0, gap });
+    show({ q: search.trim(), offset: 0, gap, kind });
   }
 
   return (
@@ -130,6 +146,22 @@ export function Users() {
           />
           <button type="submit">Search</button>
         </form>
+        {/* 0.9.17: narrowed to the accounts of one kind, at once (P-316). */}
+        <SelectField
+          label="Kind"
+          name="kind"
+          value={kind}
+          onChange={(chosen) =>
+            show({ q, offset: 0, gap, kind: KINDS.find((one) => one === chosen) ?? "" })
+          }
+        >
+          <option value="">Every kind</option>
+          {KINDS.map((one) => (
+            <option key={one} value={one}>
+              {kindWord(one)}
+            </option>
+          ))}
+        </SelectField>
         {!adding && (
           <button
             type="button"
@@ -162,7 +194,7 @@ export function Users() {
         label="Show users"
         links={USERS_GAPS.map((one) => ({
           text: one.label,
-          to: `/admin/users${queryOf(usersAddress(q, one.value, 0))}`,
+          to: `/admin/users${queryOf(usersAddress(q, one.value, 0, kind))}`,
           current: one.value === gap,
         }))}
       />
@@ -269,10 +301,13 @@ export function Users() {
                     <td className="user-operators" data-testid="user-operators">
                       <UserOperators user={user} />
                     </td>
-                    <td>
-                      {user.role ? roleLabel(user.role) : <span className="muted">none</span>}
+                    {/* 0.9.17: and where it comes from, of its own or through a
+                        group, a link; and an agent's held lower by its person (P-307,
+                        P-316). */}
+                    <td className="user-role" data-testid="user-role">
+                      <UserRole user={user} />
                     </td>
-                    <td>
+                    <td data-testid="user-groups-cell">
                       {user.groups.map((group, index) => (
                         <Fragment key={group.hid}>
                           {index > 0 && ", "}
@@ -282,7 +317,7 @@ export function Users() {
                         </Fragment>
                       ))}
                     </td>
-                    <td>{user.is_service_account ? "Service" : "Person"}</td>
+                    <td data-testid="user-kind">{kindWord(user.kind)}</td>
                     <td data-testid="user-state">{userState(user)}</td>
                     <td>
                       <Time at={user.last_sign_in_at} />
@@ -312,7 +347,7 @@ export function Users() {
             limit={PAGE}
             offset={offset}
             noun="users"
-            onChange={(next) => show({ q, offset: next, gap })}
+            onChange={(next) => show({ q, offset: next, gap, kind })}
           />
         </>
       )}
@@ -361,6 +396,40 @@ function ExportUsers({ retired }: { retired: boolean }) {
   );
 }
 
+/**
+ * 0.9.17: the role of a user on the list, the highest it holds, and where each comes
+ * from, of its own or through a group, a link to the group (P-307); of an agent, what
+ * holds it lower (P-316).
+ */
+function UserRole({ user }: { user: User }) {
+  if (!user.role) return <span className="muted">none</span>;
+  const capped = cappedWords(user);
+  return (
+    <>
+      <span>{roleLabel(user.role)}</span>
+      <span className="user-role-from muted">
+        {user.grants.map((grant, index) => (
+          <Fragment key={grant.hid}>
+            {index > 0 && "; "}
+            {user.grants.length > 1 && `${roleLabel(grant.role)} `}
+            {grant.group ? (
+              <>
+                through{" "}
+                <ValueLink kind="user_group" hid={grant.group.hid} admin>
+                  {grant.group.name}
+                </ValueLink>
+              </>
+            ) : (
+              sourceWords(grant)
+            )}
+          </Fragment>
+        ))}
+      </span>
+      {capped && <span className="user-role-capped">{capped}</span>}
+    </>
+  );
+}
+
 /** What the list says when it holds nobody: of the search, of the gap, or of the whole. */
 function noUsers(q: string, gap: UsersGap): string {
   if (q) return "No user matches the search.";
@@ -391,10 +460,13 @@ function CreatedUser({ created, onDone }: { created: Created; onDone: () => void
   const { user, access_code } = created;
   const made = <MadeWithUser created={created} />;
   if (access_code === null) {
+    // 0.9.17: a service account or an agent, which holds tokens (P-316).
+    const what = user.kind === "agent" ? "agent" : "service account";
+    const whose = user.answerable ? `, answerable to ${user.answerable.username},` : "";
     return (
       <>
         <Notice
-          text={`The service account ${user.username} was created. It has no access code: open it to create a token.`}
+          text={`The ${what} ${user.username}${whose} was created. It has no access code: open it to create a token.`}
         />
         {made}
       </>
@@ -475,7 +547,10 @@ interface NewUserProps {
  */
 function NewUser({ onCancel, onCreated }: NewUserProps) {
   const [username, setUsername] = useState("");
-  const [service, setService] = useState(false);
+  // 0.9.17: a person's, a service's or an agent's, and an agent's person (P-316).
+  const [kind, setKind] = useState<Kind>("person");
+  const [answerableHid, setAnswerableHid] = useState("");
+  const service = holdsTokens(kind);
   const [alsoContact, setAlsoContact] = useState(true);
   const [person, setPerson] = useState<PersonChoice>(() => personChoice("new"));
   const [alsoOperator, setAlsoOperator] = useState(true);
@@ -512,7 +587,8 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
     event.preventDefault();
     const read = newUserBody({
       username,
-      service,
+      kind,
+      answerableHid,
       alsoContact,
       person,
       alsoOperator,
@@ -586,14 +662,41 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. An Admin can change it later."
           error={fields.username}
         />
-        <CheckField
-          label="Service account"
-          name="is_service_account"
-          checked={service}
-          onChange={setService}
-          hint="For automation. It cannot sign in with an access code: it holds tokens. It is no person, and has no contact and no operator."
-          error={fields.is_service_account}
+        <RadioGroupField
+          label="Kind"
+          name="kind"
+          options={KINDS.map((one) => ({
+            value: one,
+            label: one === "service" ? "Service account" : kindWord(one),
+          }))}
+          value={kind}
+          onChange={(chosen) => {
+            setFound({});
+            const next = KINDS.find((one) => one === chosen) ?? "person";
+            setKind(next);
+            // An agent is never Admin: the role is chosen again.
+            if (next === "agent" && role === "admin") setRole("");
+          }}
+          hint={kindHint(kind)}
+          error={fields.kind}
+          disabled={action.busy}
         />
+        {kind === "agent" && (
+          <PersonUserField
+            label="Person answerable"
+            name="answerable_hid"
+            value={answerableHid}
+            onChange={(hid) => {
+              setFound({});
+              setAnswerableHid(hid);
+            }}
+            blank="Nobody chosen"
+            required
+            hint="The person the agent answers to, who holds a role: the agent holds no more than their role, and its tokens are refused while they hold none."
+            error={fields.answerable_hid}
+            disabled={action.busy}
+          />
+        )}
         {!service && (
           <div className="onboard-part" data-testid="new-user-contact">
             <CheckField
@@ -675,14 +778,16 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           value={role}
           onChange={setRole}
           hint={
-            service
-              ? "A service account may be made with no role; its tokens are refused until it has one."
-              : "A person is given a role, here or by a group ticked below that grants one: an account with no role cannot sign in."
+            kind === "agent"
+              ? "An agent may be made with no role; its tokens are refused until it has one. It is never Admin, and holds no more than the role of its person."
+              : service
+                ? "A service account may be made with no role; its tokens are refused until it has one."
+                : "A person is given a role, here or by a group ticked below that grants one: an account with no role cannot sign in."
           }
           error={fields.role}
         >
           <option value="">No role</option>
-          {ROLES.map((name) => (
+          {rolesFor(kind).map((name) => (
             <option key={name} value={name}>
               {roleLabel(name)}
             </option>

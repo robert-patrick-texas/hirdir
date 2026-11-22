@@ -82,7 +82,7 @@ test("P-314: a token made for an account that holds no role says it is refused u
       headers,
       data: {
         username: `e2e-${suffix}-${key}`,
-        is_service_account: true,
+        kind: "service",
         ...(role ? { role } : {}),
       },
     });

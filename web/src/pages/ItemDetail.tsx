@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } 
 import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { Actor } from "../components/Actor";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
 import { ConnectedCircuits } from "../components/CircuitConnections";
@@ -26,7 +27,6 @@ import { DeleteRecord, retireItem, useHostedQuestion } from "../components/Remov
 import { SortTh } from "../components/SortTh";
 import { StackFacts } from "../components/StackMember";
 import { Time } from "../components/Time";
-import { ValueLink } from "../components/ValueLink";
 // 0.8.0: a default and a minimum of the support weight of a major item (P-155).
 import { Raised } from "../components/Weight";
 import { WhyEachValue } from "../components/WhyEachValue";
@@ -1757,10 +1757,9 @@ function History({ item }: { item: Item }) {
                                 <Time at={event.at} />
                               </td>
                               <td rowSpan={changes.length}>
+                                {/* 0.9.17: an agent's change, for its person (P-316). */}
                                 {event.actor_name ? (
-                                  <ValueLink kind="user" hid={event.actor_hid} admin={admin}>
-                                    {event.actor_name}
-                                  </ValueLink>
+                                  <Actor event={event} admin={admin} />
                                 ) : (
                                   <Dash />
                                 )}
