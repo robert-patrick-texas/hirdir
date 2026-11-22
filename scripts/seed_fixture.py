@@ -1410,6 +1410,8 @@ CIRCUIT_KINDS = (
     ),
     CircuitKind("other", 2.0, "OOB", (10,), "carrier network", ("Example Broadband",), (60, 200)),
 )
+# The kind whose far end is a carrier's private network, a circuit group (P-319).
+MPLS = next(kind for kind in CIRCUIT_KINDS if kind.type == "mpls")
 # The kinds in the underlay of the SD-WAN of a region, and those between data centers.
 UNDERLAY = ("internet", "mpls")
 INTERCONNECT = ("dark_fiber", "wavelength")
@@ -1587,6 +1589,12 @@ def _circuit_fields(
         fields["z_location_hid"] = dice.pick(far.racks or far.rooms, "z side", number)
         if dice.chance(0.1, "counted far", number):
             fields["cost_side"] = "z"
+        installed, activated = fields["a_installed_on"], fields["a_activated_on"]
+        if installed is not None and dice.chance(0.2, "z side installed later", number):
+            # The far end installed some days after the near one, and activated with it,
+            # end to end: the Z side's activation is blank, and the A side's (P-320).
+            later = dice.between(0, max(0, (activated - installed).days), "z installed", number)
+            fields["z_installed_on"] = installed + timedelta(days=later)
     else:
         fields["z_note"] = kind.far_end or "carrier network"
     if dice.chance(0.85, "enterprise id", number):
@@ -1763,6 +1771,24 @@ def make_circuits(
     desks = {vendors[name]: hid for name, hid in desks.items()}
     routers = _routers(planned)
     circuits = plan_circuits(dice, made, shape, vendors)
+    # The private network of each carrier of MPLS, a circuit group of the kind network,
+    # which the Z side of each of its MPLS circuits reaches (P-319, P-320).
+    networks = {
+        vendors[carrier]: circuit_groups.create_group(
+            db,
+            SEED,
+            {
+                "name": f"{carrier} MPLS",
+                "kind": "network",
+                "carrier_hid": vendors[carrier],
+                "description": "The carrier's private network the sites reach",
+            },
+        ).hid
+        for carrier in MPLS.carriers
+    }
+    for one in circuits:
+        if one.kind is MPLS and one.far is None:
+            one.fields["z_group_hid"] = networks[one.fields["carrier_hid"]]
     site_desks: dict[str, str] = {}
     for number, one in enumerate(circuits, start=1):
         one.hid = circuit_records.create_circuit(db, SEED, dict(one.fields)).hid
@@ -2153,6 +2179,9 @@ def counts(db: Session) -> dict[str, int]:
         "draft circuits": of(Circuit, Circuit.record_status == "draft"),
         "retired circuits": of(Circuit, Circuit.record_status == "retired"),
         "circuits with a weight": of(Circuit, Circuit.support_weight.is_not(None)),
+        # The Z side's network and its own dates (P-320).
+        "circuits that reach a network": of(Circuit, Circuit.z_group_hid.is_not(None)),
+        "circuits with Z side dates": of(Circuit, Circuit.z_installed_on.is_not(None)),
         "circuits with another carrier": of(
             Circuit,
             select(CircuitCarrier.hid).where(CircuitCarrier.circuit_hid == Circuit.hid).exists(),
@@ -2161,6 +2190,7 @@ def counts(db: Session) -> dict[str, int]:
         "credit lines": of(CircuitCost, CircuitCost.monthly_cost < 0),
         "circuit devices": of(CircuitDevice),
         "circuit groups": of(CircuitGroup),
+        "circuit groups that are networks": of(CircuitGroup, CircuitGroup.kind == "network"),
         "circuit group members": of(CircuitGroupMember),
         "contacts of carriers": of(VendorContact),
         "contacts of circuits": of(CircuitContact),

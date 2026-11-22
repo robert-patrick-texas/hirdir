@@ -1586,16 +1586,25 @@ location, and takes `within` with a region, a site or a location, `a_location.na
 `z_location.name` are the names of its two sides, `a_site.name` and `z_site.name` the
 names of their sites, `cost_site_hid` is the site it counts at, `cost_site.name` its
 name, and `cost_location` the location it counts at, which takes `within` as `location`
-does, `groups.name` and `groups.hid` find it by any of its groups, `owner.label` and `owner_exception` go
+does, `groups.name` and `groups.hid` find it by any of its groups, those it was added
+to and the network its Z side names, `z_group_hid` is that network and
+`z_group.name` its name, `owner.label` and `owner_exception` go
 by its owner, `effective.support_weight` is its weight in force,
 `effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
-it gives none, `billed_by` finds it by its primary carrier or a carrier that bills one of
+it gives none, `a_installed_on`, `a_activated_on` and `a_disconnected_on` are the A
+side's dates and `z_installed_on`, `z_activated_on` and `z_disconnected_on` the Z
+side's own, `effective.z_installed_on`, `effective.z_activated_on` and
+`effective.z_disconnected_on` the Z side's in force, its own or the A side's (P-320),
+`billed_by` finds it by its primary carrier or a carrier that bills one of
 its lines,
 `monthly_cost` and `annual_cost` what it costs today, nothing on a day it is not in
-service, and `in_service` is true where it is in service today, a draft in a view that
+service, and `in_service` is true where it is in service today, by the dates of the
+side `cost_side` names, a draft in a view that
 includes drafts. The record of a draft, read by itself, answers both as a view of drafts
-does: what it will cost. The list of circuit groups has `owner.label` and
-`circuits`, how many it has, and `in_service`, `monthly_cost` and `annual_cost` as its
+does: what it will cost. The list of circuit groups has `kind`, `carrier_hid` and
+`carrier.name`, a network's carrier, `owner.label` and
+`circuits`, how many it has, those added to it and those whose Z side names it, each
+once, and `in_service`, `monthly_cost` and `annual_cost` as its
 record has them. The lists of regions, sites and locations have
 `support_weight`, the place's own, and the list of sites `effective.support_weight`, the
 weight a site counts at: its own or `default_site_weight`, raised to
@@ -1802,8 +1811,8 @@ countries and states (P-321).
 | `purchase_requests` | `reference`, `requested_on`, `status`, `notes` | |
 | `purchase_lines` | `request`, `line`, `vendor`, `pid`, `part_number`, `description`, `quantity`, `destination_site`, `expected_on`, `notes` | `tracked`, `received_quantity`, `pending_quantity`, `mismatched_items` |
 | `capacity_lines` | `side`, `category`, `name`, `effect`, `quantity`, `units_each`, `factor`, `share`, `applies_to`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
-| `circuit_groups` | `name`, `description`, `owner`, `notes`, `record_status`, `tags` | `circuits`, `monthly_cost`, `annual_cost` |
-| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `a_installed_on`, `a_activated_on`, `a_disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `owner_exception_reason`, `in_service`, `support_weight_source` |
+| `circuit_groups` | `name`, `kind`, `carrier`, `description`, `owner`, `notes`, `record_status`, `tags` | `circuits`, `monthly_cost`, `annual_cost` |
+| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_group`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `a_installed_on`, `a_activated_on`, `a_disconnected_on`, `z_installed_on`, `z_activated_on`, `z_disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `owner_exception_reason`, `in_service`, `support_weight_source`, `z_installed_on_source`, `z_activated_on_source`, `z_disconnected_on_source` |
 | `circuit_carriers` | `circuit`, `vendor`, `role`, `circuit_number`, `priority`, `notes` | |
 | `circuit_costs` | `circuit`, `description`, `monthly_cost`, `vendor`, `starts_on`, `ends_on`, `notes` | |
 | `circuit_contacts` | `circuit`, `side`, `role`, `contact`, `priority` | |
@@ -1866,7 +1875,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list. `'!clear` is the text `!clear`, which is how an export writes a value that is that text (see Export) |
-| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155) |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155). It is so as well for the dates of a circuit's Z side and those of its A side (P-320) |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire a record that is there. A row that would change `record_status` of a record that is there to `retired`, from `active` or `draft`, is rejected. Since 0.9.17 a row that makes a record, with the HID it gives as every export writes one, may make it retired, in `create` and in `upsert`, for every table whose records have a status (P-311); a row with no HID that says `retired` is rejected as before, since the keys of a file pass over the retired and it would make a retired twin at each load: it is made so, in its one `create` event, which holds `record_status` `retired`, with no `retire` event and no day of its retirement, and the preview shows the row as a `create` of a retired record: its notes say `makes the record retired`, and the page writes its change `made retired, as the file says: record_status: (blank) → retired`. It keeps every link of its own that a retired record keeps in the app, to records that are retired too: a label its contact, a place the place it is in and its operator, an item its location, its parent, its model, its owner, its operator and the item or the group it runs on, retired with it or gone from the team's hands, a group its parent, its owner, its location and its operator, a circuit its places and its owner, and a capacity line the lines it applies to. What stands on a retired record, which the order of loading puts after it, is taken as the app keeps it on one, where a file made that record retired and it is so still: its addresses, which no other door gives a retired item or group, and memberships of the item that have ended, entered with `left_on`; a record retired in the app is given neither by a file (after the review of 0.9.17). The creation of such an address holds `holder_retired`, true, so that a sync reads it as nothing to add. A retired group takes a membership that has ended by any door, as before. A record that is not retired is linked to a retired one by a row of a file that makes it, where the app keeps such a link once the other is retired (the owner's answer at the review of 0.9.17); a row that changes a record that is there, and a bulk edit, are held to the API's rules, and a new link to a retired record is refused to them, a value the record has already being no new link: an item or a purchase line to its retired model, an item, a group, a circuit or a circuit group to its retired owner, an item, a group or a place to its retired operator, a minor item to a retired major one, a group to a retired group it is within, a person of an owner to the retired owner or contact, an assignment to a retired place or contact, a contact of an agreement, a contract, a vendor or a circuit to a retired contact or record, a part of a circuit, a device of a circuit or a member of a circuit group to a retired circuit, item, group or circuit group, a registration to a retired system or holder, a coverage to a retired contract and, where it has ended, to a retired item, a replacement to a retired item, and a capacity line to a retired place or line. The row says each in its notes, `links to the retired owner Ex Old Team`, which the preview shows. What the app does not keep stays refused: a living item, group, circuit or place in a retired place, a living label on a retired contact, a living item on a retired host, an open membership of a retired item or in a retired group, a living contract in a retired agreement. The API refuses a new link to a retired record, as before. What the app gives no retired record is refused in a file the same way: a label that is not retired on a retired contact, a place or an item that is not retired in a retired place, a membership with no end of a retired item or in a retired group, and an assignment of a retired contact to a place. So the zip of Export everything, its retired records among them, loads whole into an empty inventory. A row may bring a retired record back with `active` or `draft`. A row that brings a retired contact or operator back is rejected for anybody but an Admin, and one that brings an operator back onto a contact that is retired is rejected for an Admin too, unless the row takes the contact off, in the preview and in the apply (P-298) |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
@@ -1883,7 +1892,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Links | `links` of a region, a site, a location and a catalog entry holds the links of the record in their order, each written `text <url>`, or `<url>` where it has no text, and joined with `;`: `Data sheet <https://www.example.com/c9300.pdf>; <https://www.example.com/c9300-install.html>`. The text of a link runs to its `<`, so it may hold a `;`, and each link ends with its `>`. A JSON file holds the same text. The cell is the whole list: a row that names it changes the links whole, and `!clear` leaves the record none. An export writes them so, and a file carries them out and back unchanged. A link that is not written so, or whose address is not a web address, rejects the row, naming the link |
 | Capacity lines | `effect` is `add`, as it is when left blank, or `multiply`. `applies_to` of a line that multiplies names the staff lines it works on, each by its name, joined with `;`: a line whose name holds a `;` cannot be named there, and is named on its own page or through the API instead. A line that multiplies leaves `quantity` and `units_each` blank, and is worked after the lines of the same file it may apply to, wherever it stands |
 | Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. It is matched by its `hid`, or else by its two items and its `replaced_on` (P-241). A row that gives no `replaced_on` is the one replacement of those two items where there is one, and a new one, of today, where there is none; where there are several it is rejected, and asks for the day. A row that matches one changes its `reason` and `reference` alone, and one that would give it another item or another day is rejected. An export writes `replaced_on` on every row, so that a file exported loads back and changes nothing, an item replaced twice and two items that swapped places and back among them. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
-| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the primary carrier and the number it gives the circuit, which are the primary carrier's columns, so that a number a carrier gives as another of a circuit's carriers finds nothing here, and the row is refused for the number another circuit has; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. The first of these that the row gives decides, as for items: a row with an enterprise circuit ID that no circuit has is a new circuit. More than one answer is an error on the row, never a guess. So two circuits of one name with neither an enterprise circuit ID nor a primary carrier's number cannot be told apart by a file loaded without their HIDs, as two items of one name with neither a serial number nor an asset tag cannot: loaded into an empty inventory, the second row is rejected as naming the record of the first, and such circuits are given an enterprise circuit ID to travel. `down_mbps` and `up_mbps` are the circuit's own, blank being the full rate of the port, and a row that gives the port's rate to a circuit that has none of its own leaves it so. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `groups` names the circuit's groups, joined with `;`, and is the whole list, as `tags` is. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
+| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the primary carrier and the number it gives the circuit, which are the primary carrier's columns, so that a number a carrier gives as another of a circuit's carriers finds nothing here, and the row is refused for the number another circuit has; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. The first of these that the row gives decides, as for items: a row with an enterprise circuit ID that no circuit has is a new circuit. More than one answer is an error on the row, never a guess. So two circuits of one name with neither an enterprise circuit ID nor a primary carrier's number cannot be told apart by a file loaded without their HIDs, as two items of one name with neither a serial number nor an asset tag cannot: loaded into an empty inventory, the second row is rejected as naming the record of the first, and such circuits are given an enterprise circuit ID to travel. `down_mbps` and `up_mbps` are the circuit's own, blank being the full rate of the port, and a row that gives the port's rate to a circuit that has none of its own leaves it so. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `z_group` is the carrier network the Z side reaches, a circuit group of the kind `network`, by its name or its HID, and `!clear` takes it away; a row that gives the Z side a location and a network is rejected. The A side's dates are `a_installed_on`, `a_activated_on` and `a_disconnected_on`, and the Z side's `z_installed_on`, `z_activated_on` and `z_disconnected_on`, the names of before 0.9.18 being columns no more (P-320). An export writes the Z side's dates in force, with `_source` `own` or `a_side` where sources are asked for, and with `own_values` its own; a row that gives the Z side the very date it has from the A side, on a circuit with none of its own, leaves it reading the A side's, as the A side's stands after the row. `groups` names the groups the circuit was added to, joined with `;`, and is the whole list, as `tags` is: the network its Z side names is not among them, so that an export loaded back makes no membership of a Z side. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. A row of `circuit_groups` gives `kind`, `network` or `collection`, `collection` where a new group's row gives none, and `carrier`, a network's carrier, named as a circuit's carrier is, a carrier that is no vendor yet made one; circuit groups load before circuits, so that a circuit's `z_group` finds its network in a file of every table. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
 | Load order | countries, states, tags, vendors, catalog entries, contacts, vendor contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, device groups, items (parents before children), members, replacements, addresses, coverage, registrations, capacity lines, circuit groups, circuits, circuit carriers, circuit costs, circuit contacts, circuit devices. Addresses come after the groups, because a group has addresses too, and the devices of circuits after the items and the groups they name. The groups come before the items since 0.9.17, so that an item that runs on a stack or a cluster finds its host group in a file of every table (P-311): a group names no item. The lists of countries and states come first, before the places whose addresses take them (P-321) |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply, in whichever batch they were made; after a resume, the request ID of the resume. The preview is an event on the job, and so are `apply_started`, `apply_resumed` and `apply_stopped`, the last made by the server, and `apply` at the end, with the counts of what the apply did |
 
@@ -2692,12 +2701,15 @@ half up. By `carrier` a line counts under the vendor that bills it, its own or t
 circuit's primary carrier, and a circuit is in the row of each carrier that bills any of
 it in the year: a line billed on no day of the year's service puts no carrier in a row,
 and a circuit with no such line is in the row of its primary carrier; by `site` it is in the row of the site it counts at; by `region` in that of each
-region at or above that site; by `group` in the row of each group it is in, a retired
+region at or above that site; by `group` in the row of each group it is in, those it
+was added to and the network its Z side names, once, a retired
 group among them, since retiring a group ends no membership, and by `tag`
 of each tag; by `circuit_type` and `owner` in one row. The blank row is what has none,
 and the totals count each circuit once. A row's `filter` lists its circuits on `GET
 /circuits`, with the report's filter, the year's window of service (activated by its last
-day, not disconnected before its first, and, retired, with a disconnection) and the
+day, not disconnected before its first, and, retired, with a disconnection, each by the
+dates of the side `cost_side` names: `a_activated_on` and `a_disconnected_on` for the
+A side, `effective.z_activated_on` and `effective.z_disconnected_on` for the Z side) and the
 row's own condition: by `billed_by`, the circuits that carrier provides or bills a line
 of, whatever the dates of the line, so that it may list a circuit more than the row
 counts where the carrier's only line on it was billed before or after the year, and by
@@ -3015,9 +3027,12 @@ model](data-model.md#circuits) page names them, and what is worked out when it i
   "circuit_type": "internet", "port_mbps": "1000.00", "down_mbps": "200.00", "up_mbps": "20.00",
   "speed": "1G / 200M / 20M",
   "a_location_hid": null, "a_note": "carrier network",
-  "z_location_hid": "0193a1f4-...", "z_note": null, "cost_side": "a",
+  "z_location_hid": "0193a1f4-...", "z_group_hid": null, "z_group": null, "z_note": null,
+  "cost_side": "a",
   "cost_site_hid": "0193a1f4-...", "cost_site_path": "Americas > Central > Site-2",
   "carrier_hid": "0193a1f4-...", "carrier_circuit_number": "EXT/12345/000/EXTL",
+  "a_installed_on": "2027-03-29", "a_activated_on": "2027-04-10", "a_disconnected_on": null,
+  "z_installed_on": "2027-04-02", "z_activated_on": null, "z_disconnected_on": null,
   "monthly_cost": "1000.00", "annual_cost": "12000.00", "in_service": true,
   "a_side": null,
   "z_side": { "location_hid": "0193a1f4-...", "name": "Building 1",
@@ -3030,25 +3045,43 @@ model](data-model.md#circuits) page names them, and what is worked out when it i
                "vendor": null, "starts_on": null, "ends_on": null, "in_date": true } ],
   "devices": [ { "hid": "...", "side": "z", "item_hid": "...", "group_hid": null,
                  "name": "site2-rtr-01", "record_status": "active" } ],
-  "groups": [ { "hid": "...", "name": "Internet access" } ],
+  "groups": [ { "hid": "...", "name": "Internet access", "kind": "collection",
+                "z_side": false, "record_status": "active" } ],
   "effective": {
     "support_weight": { "value": "2.00", "source": "setting", "source_hid": null },
     "down_mbps": { "value": "200.00", "source": "own", "source_hid": null },
     "up_mbps": { "value": "20.00", "source": "own", "source_hid": null },
+    "z_installed_on": { "value": "2027-04-02", "source": "own", "source_hid": null },
+    "z_activated_on": { "value": "2027-04-10", "source": "a_side", "source_hid": null },
+    "z_disconnected_on": { "value": null, "source": "none", "source_hid": null },
     "account_managers": { "value": [ "..." ], "source": "vendor", "source_hid": "0193a1f4-..." },
     "support_contacts": { "value": [ "..." ], "source": "vendor", "source_hid": "0193a1f4-..." },
     "site_contacts": { "a": [], "z": [ { "role": "technical", "value": [ "..." ],
                                          "source": "site", "source_hid": "0193a1f4-..." } ] } } }
 ```
 
-A side with no location is `null` in `a_side` or `z_side`. A list leaves `carriers`,
+A side with no location is `null` in `a_side` or `z_side`. `z_group_hid` is the carrier
+network the Z side reaches, a circuit group of the kind `network`, and `z_group` that
+group, its `hid`, `name`, `kind` and `record_status`, or `null`. `groups` is every
+group the circuit is in, by name, each once: those it was added to, with `z_side`
+false, and the network its Z side names, with `z_side` true, also where it was added
+to that one by hand. `effective.z_installed_on`, `effective.z_activated_on` and
+`effective.z_disconnected_on` are the Z side's dates in force, its own with the source
+`own`, or the A side's with `a_side`, or blank with `none` (P-320); `in_service`,
+`monthly_cost` and `annual_cost` follow the dates of the side `cost_side` names. A
+list leaves `carriers`,
 `costs`, `devices`, `groups` and the contacts out of each row, as `null`, which its own
 routes and the record answer; `fields` may ask for them. The record also answers
 `owner_exception` and `owner_exception_reason`, as an item does. A new circuit with no `cost_side` takes
 the setting `circuit_cost_side`. A request that leaves both sides with no location,
-gives a side with no location no note, gives a rate with no port speed or above it,
-puts an activation before the installation or a disconnection before the activation,
-or gives a carrier's number with no carrier, is a `422` that names the field; an
+gives a side with no location no note, or a Z side with no location and no network no
+note, gives a rate with no port speed or above it, puts an activation before the
+installation or a disconnection before the activation, on either side, the Z side's
+dates read as they are in force, so that a change of an A side's date may be refused
+at the Z side's field it puts out of order, gives the Z side a location and a network
+both, names on the Z side a group of the kind `collection`, a retired network or one
+there is not, brings a circuit back while its network is retired, or gives a carrier's
+number with no carrier, is a `422` that names the field; an
 enterprise circuit ID or a carrier's number that another circuit has is a `409` that
 names it.
 
@@ -3104,15 +3137,27 @@ each with its HID, name, enterprise circuit ID and side, the HID of the connecti
 circuits finds those with a side at a location, or at or beneath a site or a region, by
 `location:within:`, which a location's page asks for.
 
-**Circuit groups.** `GET /circuit-groups/{hid}` answers the group's fields, `circuits`,
+**Circuit groups.** `GET /circuit-groups/{hid}` answers the group's fields, its `kind`,
+`network` or `collection`, `collection` where a new group gives none, and a network's
+`carrier_hid` with `carrier`, the vendor's `hid` and `name`; `circuits`,
 how many it has, `in_service`, how many of them are in service today, and their
-`monthly_cost` and `annual_cost`, each circuit once. `GET /circuit-groups/{hid}/members`
-lists its circuits by name, paged, each with its `circuit`; `POST` adds circuits,
-`circuit_hids`, several at a time, each once, a circuit already in the group being a
-`409`, and
+`monthly_cost` and `annual_cost`, each circuit once. A network's circuits are those
+added to it and those whose Z side names it (P-320). `GET /circuit-groups/{hid}/members`
+lists its circuits by name, paged, each once, with its `circuit` and `z_side`, true
+where the circuit names the group on its Z side, and `hid` and `created_at`, the
+membership's, which are `null` for a circuit that is there by its Z side alone;
+`POST` adds circuits,
+`circuit_hids`, several at a time, each once, a circuit already added to the group being a
+`409`, and one that names the group on its Z side being added and kept, so that it
+stays when its Z side is changed; and
 `DELETE /circuit-groups/{hid}/members/{member_hid}` takes one out, the audit event
-holding what it was. A retired group takes no circuit, and a retired circuit is added
-to none.
+holding what it was, a circuit whose Z side names the group staying listed by it. A
+retired group takes no circuit, and a retired circuit is added
+to none. A `carrier_hid` on a collection, a retired vendor newly named, or a change of
+`kind` to `collection` while a circuit, retired or not, names the group on its Z side,
+is a `422` that names the field, the last saying how many circuits name it. The
+retirement of a network that a circuit that is not retired names on its Z side is a
+`409` that says how many, and names them.
 
 ## Reference files
 
@@ -3299,8 +3344,10 @@ hirdir report capacity --try default_item_weight=1 --try weight_per_resource_uni
 hirdir circuits list --filter 'circuit_type:eq:internet effective.down_mbps:lt:100'
 hirdir circuits show EC-0042                     # by HID, enterprise circuit ID or name
 hirdir circuits set EC-0042 cost_side=z          # count it at the far end
+hirdir circuits set EC-0051 z_group='Example MPLS East' z_activated_on=2027-04-17
 hirdir circuits add-contact EC-0042 noc@example.net --role support_contact
 hirdir circuit-groups show 'Internet access'     # its circuits, and what they cost
+hirdir circuit-groups show 'Example MPLS East'   # a network: its carrier, and each circuit's Z side
 hirdir circuit-groups add 'Internet access' EC-0042 EC-0043
 hirdir vendors add-contact 'Example Telecom' jordan.reyes@example.com --role account_manager
 hirdir report circuit-costs --year 2027 --by site
@@ -3356,8 +3403,8 @@ refused leaves the others as they went.
 | A purchase | `hirdir purchases show` takes the HID or the reference of a request, and prints each line with its model, or as not tracked, and the part number procurement gave it. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
 | A vendor | `hirdir vendors portfolio VENDOR` prints the totals, the kinds and the models. With `--format csv` or `json` and `--output` it writes the items of the vendor, one row each, with their coverage |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
-| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups. `hirdir circuits set CIRCUIT field=value` changes the fields of one circuit, each named as a column of its file names it (`carrier`, `owner`, `a_location`), as a change on its page does: a value given is the circuit's own, also one that is the default it has, and its groups are changed with `hirdir circuit-groups`. `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
-| Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
+| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups, the network its Z side names marked `(Z side)`; the dates of each side, the Z side's in force marked `(A side)` where they are the A side's. `hirdir circuits set CIRCUIT field=value` changes the fields of one circuit, each named as a column of its file names it (`carrier`, `owner`, `a_location`, `z_group`, `z_activated_on`), as a change on its page does: a value given is the circuit's own, also one that is the default it has or a Z side's date the same as the A side's, and its groups are changed with `hirdir circuit-groups`. `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
+| Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its kind, a network's carrier, and its circuits and their cost, each circuit whose Z side names it marked `z_side`; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line. A circuit that is in a network by its Z side alone is not taken out by `remove`, which says so and changes nothing: its Z side is changed with `hirdir circuits set` |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
 | Your own profile | `hirdir whoami` prints who is signed in, their role and groups, and under them the contact they are, field by field, and each operator they are behind with its colour, or that the account has no contact. `hirdir profile show` prints the same as a profile, and with `--format json` the answer of `GET /auth/me`. `hirdir profile set` changes what is the person's own by `PATCH /auth/me/contact` and `PATCH /auth/me/operators/{hid}`: `--name`, `--email`, `--phone`, `--phone2` and `--organization`, each cleared by `''` but the name, and `--label` and `--colour` of their operator. A person behind several says which with `--operator`, by its label or its HID; which one is meant is settled before anything is sent. The contact and an operator are two changes, the contact first: where the change of the operator is refused, as for a label that another has, the change of the contact is kept, and the command says so on a line before the refusal, `your contact is changed (phone); your operator klee is not:`, and exits with the code of the refusal. `hirdir profile access-code` asks for the code the person has and twice for the new one, none of them shown as it is typed, changes it by `POST /auth/me/access-code`, and keeps the new session as `hirdir sign-in` does: every other session of the person has ended, a token given by `--token` or `HIRDIR_TOKEN` with them, which it says. Every role does this for itself; an account with no role is not signed in (P-299). `hirdir profile access-code --generate` asks for the code the person has alone, has the server make the new one by `GET /auth/new-access-code`, sets it as a typed one is set, and prints it once (P-300). Since 0.9.17, where a name saved by `hirdir profile set --name` is one that another contact has, which is saved as any other, the command says so on a line after the change, with how many and how to list them: `another contact is named Kim Lee: a file tells you apart by your email or your HID; hirdir contacts list --filter 'name:eq:Kim Lee' --include-archived --include-drafts lists them` (P-315), the filter written as the web writes it, as a tree in JSON where the name holds what the short form would read as a condition. `hirdir contacts` has no command that makes or changes a contact: a contact is made and changed on the web or by a file. `hirdir sign-in` of an account that holds no role prints the server's words and whom to ask, each that is set, keeps no session and exits `3`; the server refuses a service token (P-294, P-295) |

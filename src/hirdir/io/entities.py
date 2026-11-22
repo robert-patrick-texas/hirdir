@@ -4831,6 +4831,9 @@ class CircuitGroups(Entity):
     columns = (
         HID,
         Column("name"),
+        # A network, which a circuit's Z side may name, or a collection (P-319, P-320).
+        Column("kind", limit=20),
+        Column("carrier"),
         Column("description", limit=LONG),
         Column("owner"),
         NOTES,
@@ -4841,9 +4844,14 @@ class CircuitGroups(Entity):
         Column("annual_cost", "money", settable=False),
         *BOOKKEEPING,
     )
-    aliases: ClassVar[Mapping[str, str]] = {"owner_hid": "owner", "owner.label": "owner"}
-    renamed: ClassVar[Mapping[str, str]] = {"owner_hid": "owner"}
-    _direct = ("name", "description", "notes", "tags")
+    aliases: ClassVar[Mapping[str, str]] = {
+        "owner_hid": "owner",
+        "owner.label": "owner",
+        "carrier_hid": "carrier",
+        "carrier.name": "carrier",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"owner_hid": "owner", "carrier_hid": "carrier"}
+    _direct = ("name", "kind", "description", "notes", "tags")
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         name = values.get("name")
@@ -4856,6 +4864,12 @@ class CircuitGroups(Entity):
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        if "carrier" in values:
+            named = values["carrier"]
+            # Named as a circuit's carrier is: one that is no vendor yet is made one, to be
+            # reviewed (P-14, P-320).
+            carrier = run.vendor(named, create=True) if named is not None else None
+            given["carrier_hid"] = carrier.hid if carrier is not None else None
         if "owner" in values:
             owner = values["owner"]
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
@@ -4870,12 +4884,17 @@ class CircuitGroups(Entity):
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         hids = [group.hid for group in found]
         its_owners = _by_hid(db, Owner, {group.owner_hid for group in found})
+        carriers = _by_hid(db, Vendor, {group.carrier_hid for group in found})
         labels = tags.labels_of(db, self.record_type, hids)
         summed = circuit_groups.summaries(db, hids, circuit_records.today(db))
         return [
             {
                 **_kept(group),
                 "name": group.name,
+                "kind": group.kind,
+                "carrier": items.name_or_hid(carriers[group.carrier_hid].name, group.carrier_hid)
+                if group.carrier_hid
+                else None,
                 "description": group.description,
                 "owner": items.name_or_hid(its_owners[group.owner_hid].label, group.owner_hid)
                 if group.owner_hid
@@ -4908,15 +4927,18 @@ class Circuits(Entity):
         Column("a_location", limit=LONG),
         Column("a_note"),
         Column("z_location", limit=LONG),
+        # The carrier network the Z side reaches, a circuit group, by its name (P-320).
+        Column("z_group"),
         Column("z_note"),
         Column("cost_side", limit=1),
         Column("carrier"),
         Column("carrier_circuit_number", limit=100),
         Column("billing_account", limit=100),
         Column("billing_contract"),
-        Column("a_installed_on", "date"),
-        Column("a_activated_on", "date"),
-        Column("a_disconnected_on", "date"),
+        *(Column(name, "date") for name in circuit_records.A_DATES),
+        # A blank date of the Z side is the A side's: an export writes the one in force,
+        # with its source where sources are asked for (P-320).
+        *(Column(name, "date", inherits=True) for name in circuit_records.Z_DATES),
         Column("production", "boolean"),
         Column("support_weight", "number", inherits=True),
         Column("owner"),
@@ -4935,9 +4957,13 @@ class Circuits(Entity):
         Column("owner_exception_reason", limit=LONG, settable=False),
         Column("in_service", "boolean", settable=False),
         Column("support_weight_source", limit=20, settable=False),
+        *(Column(f"{name}_source", limit=20, settable=False) for name in circuit_records.Z_DATES),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
+        **{f"effective.{name}": name for name in circuit_records.Z_DATES},
+        "z_group_hid": "z_group",
+        "z_group.name": "z_group",
         "carrier_hid": "carrier",
         "carrier.name": "carrier",
         "owner_hid": "owner",
@@ -4955,6 +4981,7 @@ class Circuits(Entity):
         "owner_hid": "owner",
         "a_location_hid": "a_location",
         "z_location_hid": "z_location",
+        "z_group_hid": "z_group",
         # What putting it into a group refuses is said of the row's groups.
         "circuit_hids": "groups",
     }
@@ -4970,9 +4997,7 @@ class Circuits(Entity):
         "carrier_circuit_number",
         "billing_account",
         "billing_contract",
-        "a_installed_on",
-        "a_activated_on",
-        "a_disconnected_on",
+        *circuit_records.DATES,
         "production",
         "support_weight",
         "notes",
@@ -5036,6 +5061,11 @@ class Circuits(Entity):
                 given[f"{side}_location_hid"] = (
                     run.place(named, column, geography.LOCATION).hid if named is not None else None
                 )
+        if "z_group" in values:
+            named = values["z_group"]
+            given["z_group_hid"] = (
+                circuit_groups.the_one(db, named, "z_group").hid if named is not None else None
+            )
         if "carrier" in values:
             named = values["carrier"]
             # A carrier that is no vendor yet is made one, to be reviewed (P-14, P-153).
@@ -5046,6 +5076,14 @@ class Circuits(Entity):
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
+        # A date of the Z side that is the very date it has from the A side, as the row
+        # leaves that, on a circuit that gives the Z side none of its own, leaves it
+        # reading the A side's: an import makes no override of what it inherits (D-65).
+        for day in circuits.DAYS:
+            own = getattr(record, f"z_{day}") if record is not None else None
+            a_side = given.get(f"a_{day}", getattr(record, f"a_{day}", None))
+            if own is None and given.get(f"z_{day}") is not None and given[f"z_{day}"] == a_side:
+                del given[f"z_{day}"]
         if "production" in given and given["production"] is None:
             # True unless said: a cleared cell says nothing.
             given["production"] = True
@@ -5092,6 +5130,7 @@ class Circuits(Entity):
         its_owners = _by_hid(db, Owner, {circuit.owner_hid for circuit in found})
         labels = tags.labels_of(db, self.record_type, hids)
         its_groups = circuit_groups.groups_of(db, hids)
+        networks = _by_hid(db, CircuitGroup, {circuit.z_group_hid for circuit in found})
         lines = circuit_records.lines_of(db, hids)
         figures = weights.in_force(db)
 
@@ -5103,7 +5142,9 @@ class Circuits(Entity):
         for circuit in found:
             owner = its_owners.get(circuit.owner_hid or "")
             carrier = carriers.get(circuit.carrier_hid or "")
+            network = networks.get(circuit.z_group_hid or "")
             weight = weights.of_circuit(circuit, figures)
+            z_dates = circuits.z_dates_in_force(circuit)
             monthly = (
                 circuit_records.monthly_cost(lines[circuit.hid], day)
                 if circuits.in_service_on(circuit, day, True)
@@ -5115,6 +5156,13 @@ class Circuits(Entity):
                     **{name: getattr(circuit, name) for name in self._direct if name != "tags"},
                     "a_location": atlas.location_path(circuit.a_location_hid) or None,
                     "z_location": atlas.location_path(circuit.z_location_hid) or None,
+                    "z_group": items.name_or_hid(network.name, network.hid) if network else None,
+                    # The Z side's own dates, or those in force with their source.
+                    **{
+                        name: getattr(circuit, name) if own else z_dates[name].value
+                        for name in circuit_records.Z_DATES
+                    },
+                    **{f"{name}_source": z_dates[name].source for name in circuit_records.Z_DATES},
                     "carrier": items.name_or_hid(carrier.name, carrier.hid) if carrier else None,
                     "support_weight": circuit.support_weight if own else weight.value,
                     "support_weight_source": weight.source,

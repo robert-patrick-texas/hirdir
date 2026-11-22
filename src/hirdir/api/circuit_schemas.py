@@ -199,11 +199,20 @@ class CircuitDevicePatch(Model):
     notes: LongText | None = None
 
 
+GroupKind = Literal["network", "collection"]
+
+
 class CircuitGroupRef(Model):
     """A circuit group, as a circuit lists it."""
 
     hid: str
     name: str
+    kind: GroupKind = Field(description="A network, which a Z side may name, or a collection.")
+    z_side: bool = Field(
+        default=False,
+        description="The circuit names this group on its Z side, as the network it reaches "
+        "(P-320); false for a group it was added to alone.",
+    )
     record_status: RecordStatus
 
 
@@ -222,6 +231,16 @@ class CircuitEffective(Model):
     )
     up_mbps: EffectiveValue = Field(
         description="The rate in force up: its own, or the full rate of the port, `port`."
+    )
+    z_installed_on: EffectiveValue = Field(
+        description="The Z side's installation in force (P-320): its own, `own`, or the A "
+        "side's, `a_side`, or none."
+    )
+    z_activated_on: EffectiveValue = Field(
+        description="The Z side's activation in force, as `z_installed_on`."
+    )
+    z_disconnected_on: EffectiveValue = Field(
+        description="The Z side's disconnection in force, as `z_installed_on`."
     )
     account_managers: CarrierContacts | None = Field(
         default=None,
@@ -259,6 +278,11 @@ class CircuitOut(Model):
     a_location_hid: str | None
     a_note: str | None
     z_location_hid: str | None
+    z_group_hid: str | None = Field(
+        description="The carrier network the Z side reaches: a circuit group of the kind "
+        "network (P-319). Never beside z_location_hid."
+    )
+    z_group: CircuitGroupRef | None = Field(description="That network, with z_side true.")
     z_note: str | None
     a_side: CircuitSide | None = Field(description="Null for a side with no location.")
     z_side: CircuitSide | None = Field(description="Null for a side with no location.")
@@ -270,9 +294,20 @@ class CircuitOut(Model):
     carrier_circuit_number: str | None
     billing_account: str | None
     billing_contract: str | None
-    a_installed_on: date | None
-    a_activated_on: date | None
-    a_disconnected_on: date | None
+    a_installed_on: date | None = Field(description="The day the A side was installed.")
+    a_activated_on: date | None = Field(
+        description="The day the A side was activated, from which the carrier bills it."
+    )
+    a_disconnected_on: date | None = Field(description="The last day the A side was in service.")
+    z_installed_on: date | None = Field(
+        description="The Z side's own; blank is the A side's (P-320)."
+    )
+    z_activated_on: date | None = Field(
+        description="The Z side's own; blank is the A side's (P-320)."
+    )
+    z_disconnected_on: date | None = Field(
+        description="The Z side's own; blank is the A side's (P-320)."
+    )
     production: bool
     support_weight: Weight | None
     owner_hid: str | None
@@ -287,14 +322,18 @@ class CircuitOut(Model):
     annual_cost: SignedMoneySum = Field(description="Twelve times the monthly cost.")
     in_service: bool = Field(
         description="It is in service today: active, or a draft in a view of drafts or read "
-        "by itself, and not before its activation or after its disconnection."
+        "by itself, and not before its activation or after its disconnection, those of "
+        "the side cost_side names, the Z side's in force where it is z (P-320)."
     )
     carriers: list[CircuitCarrierOut] | None = Field(
         description="Its carriers beside the primary one, by priority."
     )
     costs: list[CircuitCostOut] | None = Field(description="Its cost lines, by description.")
     devices: list[CircuitDeviceOut] | None = Field(description="The devices it connects.")
-    groups: list[CircuitGroupRef] | None = Field(description="The groups it is in, by name.")
+    groups: list[CircuitGroupRef] | None = Field(
+        description="The groups it is in, by name, each once: those it was added to, and the "
+        "network its Z side names, with z_side true."
+    )
     contacts: list[CircuitContactOut] | None = Field(
         default=None, description="The contacts it names of its own (P-149)."
     )
@@ -323,6 +362,7 @@ class CircuitCreate(Model):
     a_location_hid: Hid | None = None
     a_note: Name | None = None
     z_location_hid: Hid | None = None
+    z_group_hid: Hid | None = None
     z_note: Name | None = None
     cost_side: Side | None = None
     carrier_hid: Hid | None = None
@@ -332,6 +372,9 @@ class CircuitCreate(Model):
     a_installed_on: date | None = None
     a_activated_on: date | None = None
     a_disconnected_on: date | None = None
+    z_installed_on: date | None = None
+    z_activated_on: date | None = None
+    z_disconnected_on: date | None = None
     production: bool = True
     support_weight: Weight | None = None
     owner_hid: Hid | None = None
@@ -354,6 +397,7 @@ class CircuitPatch(Model):
     a_location_hid: Hid | None = None
     a_note: Name | None = None
     z_location_hid: Hid | None = None
+    z_group_hid: Hid | None = None
     z_note: Name | None = None
     cost_side: Side | None = None
     carrier_hid: Hid | None = None
@@ -363,6 +407,9 @@ class CircuitPatch(Model):
     a_installed_on: date | None = None
     a_activated_on: date | None = None
     a_disconnected_on: date | None = None
+    z_installed_on: date | None = None
+    z_activated_on: date | None = None
+    z_disconnected_on: date | None = None
     production: bool | None = None
     support_weight: Weight | None = None
     owner_hid: Hid | None = None
@@ -385,7 +432,8 @@ class CircuitRef(Model):
     speed: str | None
     in_service: bool = Field(
         description="It is in service today: active, or a draft in a view of drafts or read "
-        "by itself, and not before its activation or after its disconnection."
+        "by itself, and not before its activation or after its disconnection, those of "
+        "the side cost_side names, the Z side's in force where it is z (P-320)."
     )
     monthly_cost: SignedMoneySum = Field(
         description="The sum of its cost lines in date today while it is in service, and "
@@ -396,15 +444,25 @@ class CircuitRef(Model):
 
 
 class CircuitGroupOut(Model):
-    """Circuits that may land at different sites, looked at and costed together."""
+    """Circuits that may land at different sites, looked at and costed together: a
+    carrier's network, which a Z side may name, or a collection (P-319)."""
 
     hid: str
     name: str
+    kind: GroupKind = Field(
+        description="network, a carrier's network or the internet that a circuit's Z side "
+        "may reach, or collection, circuits put together for the enterprise's own purpose."
+    )
+    carrier_hid: str | None = Field(description="A network's carrier, a vendor.")
+    carrier: VendorRef | None = Field(description="That vendor.")
     description: str | None
     notes: str | None
     owner_hid: str | None
     owner: OwnerRef | None
-    circuits: int = Field(description="How many circuits it has.")
+    circuits: int = Field(
+        description="How many circuits it has, each once: those added to it and those whose "
+        "Z side names it (P-320)."
+    )
     in_service: int = Field(description="How many of them are in service today.")
     monthly_cost: SignedMoneySum = Field(
         description="What those in service cost a month today, each circuit once."
@@ -423,6 +481,8 @@ class CircuitGroupCreate(Model):
     """A new circuit group."""
 
     name: Name = Field(min_length=1)
+    kind: GroupKind = "collection"
+    carrier_hid: Hid | None = Field(default=None, description="A network's carrier, a vendor.")
     description: LongText | None = None
     notes: LongText | None = None
     owner_hid: Hid | None = None
@@ -435,6 +495,12 @@ class CircuitGroupPatch(Model):
 
     row_version: int
     name: Name | None = None
+    kind: GroupKind | None = Field(
+        default=None,
+        description="Not made collection while a circuit, retired or not, names it on its Z "
+        "side (P-320).",
+    )
+    carrier_hid: Hid | None = None
     description: LongText | None = None
     notes: LongText | None = None
     owner_hid: Hid | None = None
@@ -443,13 +509,19 @@ class CircuitGroupPatch(Model):
 
 
 class CircuitGroupMemberOut(Model):
-    """One circuit in one group."""
+    """One circuit in one group: added to it, or there because its Z side names it, or
+    both, listed once (P-320)."""
 
-    hid: str
+    hid: str | None = Field(
+        description="The membership; null for a circuit that is there by its Z side alone."
+    )
     group_hid: str
     circuit_hid: str
+    z_side: bool = Field(description="The circuit names the group on its Z side.")
     circuit: CircuitRef
-    created_at: datetime
+    created_at: datetime | None = Field(
+        description="When it was added; null for a circuit there by its Z side alone."
+    )
 
 
 class CircuitGroupMembersAdd(Model):

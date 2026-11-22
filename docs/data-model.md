@@ -34,6 +34,7 @@ where it came from.**
 | Site: `support_weight` | the setting `default_site_weight`. A region and a location have their own alone, and no place passes its weight down |
 | Circuit: `support_weight` | the setting `default_circuit_weight` |
 | Circuit: `down_mbps`, `up_mbps`, each by itself | its own `port_mbps`, the full rate of its port |
+| Circuit: `z_installed_on`, `z_activated_on`, `z_disconnected_on`, each by itself | its own A side's date of the same name, `a_installed_on`, `a_activated_on` or `a_disconnected_on`, with the source `a_side` (P-320) |
 | Circuit: the contacts of each role, `account_manager` and `support_contact`, all of one role together | its primary carrier, the vendor |
 | Circuit: the site contacts of each side, per role | the location of that side, resolved as for the location |
 | Catalog entry: `stack_discount_pct` | the global setting |
@@ -85,7 +86,7 @@ the rules of D-128, D-129, D-134 and P-175, said in one place, for whoever runs
 | A device group, nested | no: one group it is in | the same four, from that group and the groups above it |
 | A location, a site, a region | no: one parent location, one site, one region | contacts by role, the shipping address and instructions, the operator, each up that one line |
 | A contract | no: one support agreement | the dates, the support and the contacts that it does not override |
-| A circuit, in circuit groups | yes, any number | nothing: a circuit group is a way of looking at circuits and costing them |
+| A circuit, in circuit groups | yes, any number, by hand, and the network its Z side names | nothing: a circuit group is a way of looking at circuits and costing them, and a network is where a Z side ends |
 | A user, in user groups | yes | its role, the highest of what it and every group of its is granted, so no two can tie |
 | A contact | named by any number of places, owners, operators and users | nothing: what is true of a person is kept on the contact, and the others read it |
 
@@ -1445,8 +1446,9 @@ event that holds what it was.
 A telecommunication circuit the team looks after, beside the device inventory: a link
 between two of the enterprise's places, or from one of them into a carrier's network or
 a cloud service. A circuit shares what the inventory holds: its ends are locations,
-its carriers vendors, its contacts contact records, its owner an owner, and its devices
-items and device groups (D-157, D-158, P-145 to P-154).
+its carriers vendors, its contacts contact records, its owner an owner, the carrier
+network its Z side reaches a circuit group, and its devices items and device groups
+(D-157, D-158, P-145 to P-154, P-317, P-319, P-320).
 
 | Field | Type | Notes |
 |---|---|---|
@@ -1457,13 +1459,15 @@ items and device groups (D-157, D-158, P-145 to P-154).
 | `port_mbps` | decimal | the speed of the physical interface, in Mbps, more than zero |
 | `down_mbps`, `up_mbps` | decimal | the rates the circuit is limited to, download and upload, in Mbps, more than zero and not more than `port_mbps`, which they need. Blank is the full rate of the port |
 | `a_location_hid`, `z_location_hid` | reference | the A side, the source, and the Z side, the destination: each a location, or blank where that end is not one of the enterprise's places. At least one is given |
-| `a_note`, `z_note` | text | where a side ends: "carrier network", "cloud on-ramp", "demarc in the basement". Required for a side with no location |
+| `z_group_hid` | reference | the carrier network the Z side reaches: a circuit group of the kind `network`, not retired when it is named, and never one of the kind `collection`. Optional, and never beside `z_location_hid`: a Z side names a location, a network, or neither. Named so since `networks` are the address ranges of the inventory |
+| `a_note`, `z_note` | text | where a side ends: "carrier network", "cloud on-ramp", "demarc in the basement". Required for a side with no location and, on the Z side, no network; a Z side that names a network may have one too |
 | `cost_side` | choice | `a` or `z`: the side whose site the circuit's cost and support weight count at. Given to a new circuit from the setting `circuit_cost_side` |
 | `carrier_hid` | reference | the primary carrier, or the other party that provides the circuit: a vendor. Optional |
 | `carrier_circuit_number` | text | the number the primary carrier gives the circuit. Optional, and needs `carrier_hid` |
 | `billing_account` | text | the billing account number |
 | `billing_contract` | text | the reference of the billing contract |
-| `a_installed_on`, `a_activated_on`, `a_disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation |
+| `a_installed_on`, `a_activated_on`, `a_disconnected_on` | date | the A side's dates: the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation. Called `installed_on`, `activated_on` and `disconnected_on` before 0.9.18, and no alias of the old names is kept (P-317) |
+| `z_installed_on`, `z_activated_on`, `z_disconnected_on` | date | the Z side's dates, where they differ from the A side's: one end may be installed or taken out on another day than the other, though the activation, the confirmation that the circuit works end to end, is most often one day for both. Each optional, a blank being read as the A side's and never copied (see "The two sides"). Any Z side has them: one at a location, one that names a network, and one with a note alone |
 | `production` | boolean | whether it carries the enterprise's production work. True unless said. It changes nothing of what the circuit costs |
 | `support_weight` | decimal | the work the circuit adds, blank unless given |
 | `owner_hid` | reference | the person or team responsible for the circuit, its primary stakeholder, who need not be the one who asked for it |
@@ -1482,14 +1486,34 @@ the rate is blank and is the port speed, and a list filters and sorts by them (P
 
 **The two sides.** A side at a location has that location's site, region, address and
 site contacts, read when it is asked for, and nothing is typed again. The far end of an
-internet or an MPLS circuit is in the carrier's network: that side has no location and
-a note. A side is not given a location that is retired (P-147).
+internet or an MPLS circuit is in the carrier's network: that side has no location,
+and has a note or, on the Z side, names the network it reaches, `z_group_hid`, a
+circuit group of the kind `network` (P-319). A side is not given a location that is
+retired, nor a Z side a network that is retired, and a retired circuit is not brought
+back while either is (P-147, P-320). The A side names a location or has a note, and at
+least one side is a location, so that a circuit's cost counts at a site: a Z side that
+names a network has an A side at a location. Such a side, with no location, has only
+the site contacts the circuit names for it.
 
-**In service.** A circuit is in service on a day that is not before its
-`a_activated_on` and not after its `a_disconnected_on`, a blank being open, while it is
-active, or a draft in a view that includes drafts. A retired circuit that has a
-`a_disconnected_on` was in service until then; one retired with none was taken out, and
-is in service on no day.
+Each side has its dates (P-317). A blank date of the Z side is read as the A side's,
+never copied: the record answers `effective.z_installed_on`,
+`effective.z_activated_on` and `effective.z_disconnected_on`, each the Z side's own
+with the source `own`, or the A side's with the source `a_side`, or blank with `none`.
+The order of each side is held on what is in force: no activation before the
+installation, and no disconnection before the activation or, where it has none, before
+the installation, the Z side's dates read as they are in force. So a change of an A
+side's date that would put the Z side's in force out of order is refused at the Z
+side's field that it breaks: an A side's installation moved after the Z side's own
+activation is refused at `z_activated_on` (P-320).
+
+**In service.** The dates that decide are those of the side `cost_side` names, the Z
+side's in force where it is `z`, whether or not that side is a location (P-320). A
+circuit is in service on a day that is not before that side's activation and not after
+its disconnection, a blank being open, while it is active, or a draft in a view that
+includes drafts. A retired circuit that has a disconnection on that side was in
+service until then; one retired with none was taken out, and is in service on no day.
+A circuit whose Z side has no dates of its own is so read by the A side's dates,
+whichever side it counts at, as every circuit was before 0.9.18.
 
 **Where it counts.** The cost and the support weight of a circuit count at one site:
 that of the location of its `cost_side`, or of the other side where that one has no
@@ -1501,8 +1525,9 @@ value of a circuit that a setting gives when the circuit is made rather than whe
 read: a change of the default is for new circuits only (P-150).
 
 **Its cost** is `monthly_cost`, the sum of its cost lines in date today while it is in
-service, and nothing on a day it is not, and `annual_cost`, twelve times that, both
-worked out when they are read (D-158). The lines keep their amounts, so a circuit that
+service, by the dates of the side `cost_side` names, and nothing on a day it is not,
+and `annual_cost`, twelve times that, both worked out when they are read (D-158,
+P-320). The months of the report of what circuits cost are counted by the same dates. The lines keep their amounts, so a circuit that
 is disconnected shows what it cost line by line. A draft is in service in a view that
 includes drafts, and so is its record read by itself: an ordered circuit shows what it
 will cost.
@@ -1598,12 +1623,20 @@ event that holds what it was.
 
 ### `circuit_groups` and `circuit_group_members`
 
-A collection of circuits that may land at different sites, looked at and costed
-together: Internet access, or a cloud on-ramp such as Azure ExpressRoute (P-152).
+Circuits that may land at different sites, looked at and costed together (P-152). A
+group has a kind (P-319): a `network`, a carrier's private MPLS network, the internet,
+a Metro Ethernet region or a cloud on-ramp such as Azure ExpressRoute, which the Z side
+of a circuit may name as the network it reaches; or a `collection`, a set of circuits
+looked at and costed together for the enterprise's own purpose, such as Internet
+access, as every group was before 0.9.18. Geography stays for the places where the
+enterprise's things are: a carrier network has no address, shipping, contacts,
+capacity or operator.
 
 | Field | Type | Notes |
 |---|---|---|
 | `circuit_groups.name` | text, unique | required, without regard to case |
+| `circuit_groups.kind` | choice | `network` or `collection`. Required: `collection` for every group made before 0.9.18, and for a new one unless said. A group is not made a `collection` while a circuit, retired or not, names it on its Z side (P-320) |
+| `circuit_groups.carrier_hid` | reference | a network's carrier, a vendor. Optional, and refused on a collection |
 | `circuit_groups.description`, `notes` | text | |
 | `circuit_groups.owner_hid` | reference | optional |
 | `circuit_groups.record_status` | choice | see Conventions. A group takes tags |
@@ -1612,8 +1645,15 @@ together: Internet access, or a cloud on-ramp such as Azure ExpressRoute (P-152)
 A membership is removed outright, with an audit event that holds what it was: a group
 is a way of looking at circuits, not a fact of their history. A retired circuit stays
 listed in its groups, marked so, and is added to none; a retired group takes no new
-circuit. A group answers how many circuits it has, how many of them are in service
-today, and their `monthly_cost` and `annual_cost`, each circuit once.
+circuit. **A network's circuits** are those added to it by hand and those whose Z side
+names it, each once (P-320). The second are read when the group is read and are not
+stored as memberships, so that a circuit given another network on its Z side leaves
+the first and is listed by the second in the same change. A circuit that names a
+network on its Z side may be added to it by hand as well, and then stays in it when its
+Z side is changed. A network is not retired while a circuit that is not retired names
+it: the refusal says how many, and names them. A group answers how many circuits it
+has, how many of them are in service today, and their `monthly_cost` and
+`annual_cost`, each circuit once.
 
 ### `reference_files` and `reference_attachments`
 
@@ -2253,7 +2293,8 @@ of four switches.
 **The support weight of the report** is that of the items, as above, and beside it
 that of the places, the weight in force of each region, site and location that is
 active, and of the circuits, the weight in force of each circuit that is active and not
-disconnected before today: `items_weight`, `places_weight` and `circuits_weight`, which
+disconnected before today, by the disconnection of the side `cost_side` names, the Z
+side's in force where it is `z` (P-320): `items_weight`, `places_weight` and `circuits_weight`, which
 add up to `support_weight`. A site with none counts at `default_site_weight` and a
 circuit at `default_circuit_weight`, each raised to its minimum; the report says how
 many items, sites and circuits counted at a default and how many were raised (P-155).
