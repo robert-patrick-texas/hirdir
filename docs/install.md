@@ -2342,12 +2342,31 @@ What an Admin sees changed:
   where from: of its own, or through a group, named and a link, the highest first.
 - **Active users.** Show, on the list of users, says Active users where it said Every
   user, for every account that is not retired, beside Retired users.
+- **Files keep their HIDs, and may hold the retired** (P-311). A row whose HID no record
+  has makes the record with that HID, where it was rejected, unless the HID is not one
+  `hirdir` makes, is or was the HID of a record of any table, or the row's own key, a
+  serial number, an asset tag, an email, finds another record. A row that makes a
+  record, and gives its HID, may make it retired, with what a retired record keeps; and
+  a record that is not retired may name a retired one where `hirdir` keeps such a link
+  after a retirement, as an item its model. The preview says so of each such row. A
+  file still never retires a record that is there. So Export everything, retired
+  records and all, loads whole into an empty inventory. Device groups now load before
+  items, in the order of the import commands above.
+- **Exported times end with `Z`**, as the API writes them, where they ended `+00:00`; a
+  file with either is read alike.
+- **A name another contact has** (P-315) is saved as before, and the contact's page and
+  the Profile say that another contact is named so and that a file tells them apart by
+  the email or the HID.
+- **The audit trail** (P-310): every event of an address says the address and whose it
+  is, and a retirement or a bringing back holds the names and the addresses of the
+  record, for the sync to IPAM, DNS and monitoring that is to read it after 1.0.0.
 
 Before the upgrade, look at the scripts that read `is_service_account` from a user, send
 it to `POST /users`, or call `hirdir admin create-user --service-account`: from 0.9.17
 they read and send `kind`, and call `--kind service`. Look also at any that makes a
 person with `hirdir admin create-user` and no `--role` or `--group`: it is refused from
-0.9.17, and is given a role, a group that grants one, or `--no-role`.
+0.9.17, and is given a role, a group that grants one, or `--no-role`. And look at any
+that loads files in an order of its own: device groups come before items from 0.9.17.
 
 For a script that reads the API: every user answers `kind`, `person`, `service` or
 `agent`, where it answered `is_service_account`, which is gone; `POST /users` takes
