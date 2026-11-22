@@ -18,6 +18,7 @@ import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import {
+  accountWords,
   cappedWords,
   holdsTokens,
   kindName,
@@ -82,8 +83,11 @@ function UserPage({ hid }: { hid: string }) {
       {user.loading && !user.data && <p role="status">Loading…</p>}
       {user.data && (
         <>
-          {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). */}
-          <PersonChain kind="user" hid={user.data.hid} turn={user.data.row_version} />
+          {/* 0.9.14: the person it belongs to, operator, contact, user (P-291). 0.9.17:
+              a service account and an agent are no person, and have no chain (review 10). */}
+          {user.data.kind === "person" && (
+            <PersonChain kind="user" hid={user.data.hid} turn={user.data.row_version} />
+          )}
           <Facts
             user={user.data}
             onRoleChanged={() => {
@@ -94,10 +98,7 @@ function UserPage({ hid }: { hid: string }) {
           />
           {retired && (
             <p className="alert" data-testid="user-retired">
-              This account is retired: it signs in with nothing, is in no group and holds no role.
-              Its username, its notes and its contact taken away are all that is changed of it. An
-              access code, a role, a group, a token and another contact are given once it is brought
-              back.
+              {accountWords(user.data.kind).retiredAlert}
             </p>
           )}
           <Details
@@ -133,7 +134,10 @@ function UserPage({ hid }: { hid: string }) {
           {!retired && user.data.kind === "person" && (
             <AccessCode user={user.data} reload={user.reload} />
           )}
-          {!retired && <Sessions user={user.data} reload={user.reload} />}
+          {/* A service account and an agent have no session (review 10). */}
+          {!retired && user.data.kind === "person" && (
+            <Sessions user={user.data} reload={user.reload} />
+          )}
           {holdsTokens(user.data.kind) && <Tokens user={user.data} refresh={user.refresh} />}
           <RetireUser
             key={`retire ${user.data.hid} ${user.data.row_version}`}
@@ -199,28 +203,21 @@ function RetireUser({ user, onRetired, onBroughtBack }: RetireUserProps) {
   const auth = useAuth();
   const own = auth.user.hid === user.hid;
   const retired = userState(user) === "Retired";
+  // 0.9.17: for what the kind is (review 10).
+  const words = accountWords(user.kind);
   return (
     <section aria-labelledby="retire">
       <h2 id="retire">{retired ? "Retired" : "Retire"}</h2>
       {retired ? (
         <>
-          <p>
-            Brought back, the account is active again with a new access code, shown once, the role
-            chosen in the confirmation and no group. Where its contact is retired, the two are
-            brought back together.
-          </p>
+          <p>{words.broughtBackLead}</p>
           <div className="actions">
             <BringBackUser user={user} onBroughtBack={onBroughtBack} />
           </div>
         </>
       ) : (
         <>
-          <p>
-            For somebody who has left. A retired account signs in with nothing, leaves its groups
-            and its role, and keeps its username. The list of users, every picker and the
-            users&apos; file leave it out until the retired are asked for. To keep somebody out for
-            now, disable the account instead.
-          </p>
+          <p>{words.retireLead}</p>
           <div className="actions">
             <RetirePerson
               on={{ kind: "user", hid: user.hid }}
@@ -234,10 +231,7 @@ function RetireUser({ user, onRetired, onBroughtBack }: RetireUserProps) {
               }
               onRetired={onRetired}
             >
-              <p>
-                {user.username} signs in no longer, and leaves its groups and its role. An Admin can
-                bring the account back, with a new access code.
-              </p>
+              <p>{words.retireConfirm(user.username)}</p>
             </RetirePerson>
           </div>
         </>
@@ -548,7 +542,7 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
           hint={
             retired
               ? "A retired account keeps its username, which no other account takes. Give it another one here to free the name for somebody new."
-              : "What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. Another one keeps the sessions; the old one signs nobody in."
+              : accountWords(user.kind).usernameHint
           }
           error={fields.username}
         />
@@ -558,7 +552,7 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
             name="disabled"
             checked={disabled}
             onChange={setDisabled}
-            hint="A disabled user cannot sign in, and every session they have ends. For somebody who has left, retire the account, below."
+            hint={accountWords(user.kind).disabledHint}
             error={fields.disabled}
           />
         )}

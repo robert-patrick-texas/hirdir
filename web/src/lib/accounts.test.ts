@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountWords,
   agentRoleWords,
   agentsOfGroupLead,
   bringBackRoleHint,
@@ -131,6 +132,36 @@ describe("what Bring back says under Role, for each kind (review 7)", () => {
     expect(bringBackRoleHint("agent")).toBe(
       "An agent may come back with none; its tokens are refused until it has one. It is never Admin, and holds no more than the role of its person.",
     );
+  });
+});
+
+describe("the words of an account's page, for what the kind is (review 10)", () => {
+  it("speak of signing in and of an access code for a person alone", () => {
+    const person = accountWords("person");
+    expect(person.usernameHint).toContain("What the person signs in with");
+    expect(person.retireConfirm("klee")).toBe(
+      "klee signs in no longer, and leaves its groups and its role. An Admin can bring the account back, with a new access code.",
+    );
+    for (const kind of ["service", "agent"]) {
+      const words = accountWords(kind);
+      const all = [
+        words.usernameHint,
+        words.newUsernameHint,
+        words.disabledHint,
+        words.retireLead,
+        words.retireConfirm("agent-late"),
+        words.retiredAlert,
+        words.broughtBackLead,
+      ].join(" ");
+      expect(all).not.toMatch(/sign(s|ed)? in|session|access code/);
+      expect(words.retireConfirm("agent-late")).toBe(
+        "The tokens of agent-late are revoked, and it leaves its groups and its role. An Admin can bring the account back, with no token: new ones are made on its page.",
+      );
+      expect(words.disabledHint).toContain("tokens are refused");
+      expect(words.broughtBackLead).toContain("no token");
+    }
+    expect(accountWords("agent").broughtBackLead).toContain("answerable to its person");
+    expect(accountWords("service").broughtBackLead).not.toContain("answerable");
   });
 });
 

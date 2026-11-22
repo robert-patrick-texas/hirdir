@@ -41,6 +41,63 @@ export function agentRoleWords(role: string | null | undefined): string {
   return role === "admin" ? "Admin, held to Inventory: an agent is never Admin" : roleLabel(role);
 }
 
+/** What the page of an account, and New user, say of it, for what its kind is. */
+export interface AccountWords {
+  /** Under the username on the page of the account. */
+  usernameHint: string;
+  /** Under the username on New user. */
+  newUsernameHint: string;
+  /** Under Disabled. */
+  disabledHint: string;
+  /** Above Retire account. */
+  retireLead: string;
+  /** In the confirmation of Retire account, where nothing is linked. */
+  retireConfirm: (username: string) => string;
+  /** At the top of the page of a retired account. */
+  retiredAlert: string;
+  /** Above Bring back. */
+  broughtBackLead: string;
+}
+
+const NAME_RULE = "1 to 64 letters, digits, dots, hyphens and underscores";
+
+/**
+ * 0.9.17: the words of an account's page for what the kind is (review 10). A person
+ * signs in with an access code and has sessions; a service account and an agent hold
+ * tokens, have neither, and are retired with their tokens revoked.
+ */
+export function accountWords(kind: string): AccountWords {
+  if (holdsTokens(kind)) {
+    return {
+      usernameHint: `What the account is known by in the lists and the audit trail: ${NAME_RULE}. Its tokens go on working under another.`,
+      newUsernameHint: `What the account is known by in the lists and the audit trail: ${NAME_RULE}. An Admin can change it later.`,
+      disabledHint:
+        "A disabled account's tokens are refused until it is enabled again. For one that is no longer used, retire it, below.",
+      retireLead:
+        "For an account that is no longer used. A retired account has its tokens revoked, leaves its groups and its role, and keeps its username. The list of users, every picker and the users' file leave it out until the retired are asked for. To stop it for now, disable it instead.",
+      retireConfirm: (username) =>
+        `The tokens of ${username} are revoked, and it leaves its groups and its role. An Admin can bring the account back, with no token: new ones are made on its page.`,
+      retiredAlert:
+        "This account is retired: its tokens are revoked, it is in no group and holds no role. Its username and its notes are all that is changed of it. A role, a group and a token are given once it is brought back.",
+      broughtBackLead: `Brought back, the account is active again with the role chosen in the confirmation, or none, no group and no token: new tokens are made on its page.${kind === "agent" ? " It is answerable to its person as before, or to another chosen there." : ""}`,
+    };
+  }
+  return {
+    usernameHint: `What the person signs in with: ${NAME_RULE}. Another one keeps the sessions; the old one signs nobody in.`,
+    newUsernameHint: `What the person signs in with: ${NAME_RULE}. An Admin can change it later.`,
+    disabledHint:
+      "A disabled user cannot sign in, and every session they have ends. For somebody who has left, retire the account, below.",
+    retireLead:
+      "For somebody who has left. A retired account signs in with nothing, leaves its groups and its role, and keeps its username. The list of users, every picker and the users' file leave it out until the retired are asked for. To keep somebody out for now, disable the account instead.",
+    retireConfirm: (username) =>
+      `${username} signs in no longer, and leaves its groups and its role. An Admin can bring the account back, with a new access code.`,
+    retiredAlert:
+      "This account is retired: it signs in with nothing, is in no group and holds no role. Its username, its notes and its contact taken away are all that is changed of it. An access code, a role, a group, a token and another contact are given once it is brought back.",
+    broughtBackLead:
+      "Brought back, the account is active again with a new access code, shown once, the role chosen in the confirmation and no group. Where its contact is retired, the two are brought back together.",
+  };
+}
+
 /** What Bring back says under Role, of the kind brought back (review 7). */
 export function bringBackRoleHint(kind: string): string {
   if (kind === "agent") {

@@ -26,6 +26,7 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { ValueLink } from "../components/ValueLink";
 import {
+  accountWords,
   cappedWords,
   holdsTokens,
   KINDS,
@@ -206,7 +207,8 @@ export function Users() {
           <p className="hint">
             A user is the part of a person who signs in. Its name, its email and its numbers are
             those of its contact, and are changed on the contact, or on the page of the user. The
-            operators are the labels the person works equipment under.{" "}
+            operators are the labels the person works equipment under. A service account and an
+            agent are no person: each holds tokens, and has no contact and no operator.{" "}
             {/* 0.9.17: Active users is every account that is not retired (P-314). */}
             {gap === "retired"
               ? "These accounts are retired: each signs in with nothing, and is brought back on its page."
@@ -651,7 +653,7 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           required
           maxLength={64}
           autoComplete="off"
-          hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. An Admin can change it later."
+          hint={accountWords(kind).newUsernameHint}
           error={fields.username}
         />
         <RadioGroupField
