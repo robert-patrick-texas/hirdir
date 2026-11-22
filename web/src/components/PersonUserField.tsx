@@ -3,6 +3,7 @@
 // over. Only a person's account that is not retired is offered, as the server takes.
 
 import { api } from "../api";
+import { userOptionLabel } from "../lib/people";
 import { PICK_LIMIT } from "../lib/pick";
 import { type Found, PickField, type PickFieldProps } from "./PickField";
 
@@ -23,7 +24,7 @@ async function findPeople(
   return {
     options: users.map((user) => ({
       value: user.hid,
-      label: user.display_name ? `${user.display_name} (${user.username})` : user.username,
+      label: userOptionLabel(user),
       // A sentence calls a person by their name, or by their username where they have none.
       name: user.display_name || user.username,
     })),

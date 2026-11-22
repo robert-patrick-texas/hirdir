@@ -147,6 +147,20 @@ export function personLabel(contact: {
   return contact.is_user ? `${named}, a user` : named;
 }
 
+/**
+ * 0.9.17: a person's account as a picker of people offers it, named as a contact that is
+ * a user is offered, `Sam Roe (sroe@example.net), user sroe`, so that a person is named
+ * one way in every picker (review 12); an account with no contact by its username.
+ */
+export function userOptionLabel(user: {
+  display_name: string;
+  email: string;
+  username: string;
+}): string {
+  if (!user.display_name) return user.username;
+  return personLabel({ name: user.display_name, email: user.email, user });
+}
+
 /** The two numbers of a person, as one line: the first, then the second. */
 export function numbersText(phone: string | null | undefined, phone2: string | null | undefined) {
   return [phone, phone2].filter((one): one is string => Boolean(one)).join(" · ");
