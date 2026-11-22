@@ -38,6 +38,8 @@ from hirdir.io.entities import Entity, Run, entity, says_retired
 from hirdir.io.files import Row, reason
 
 OUTCOMES = ("create", "update", "unchanged", "rejected")
+# What a row that makes its record retired says of it (P-311).
+MADE_RETIRED = "makes the record retired"
 # What an apply did with a row: as previewed, or not, because it was stale or refused.
 APPLIED_OUTCOMES = ("create", "update", "unchanged", "stale", "rejected")
 COUNTED = {"create": "created", "update": "updated", "unchanged": "unchanged"}
@@ -228,8 +230,12 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
                 raise Invalid("the record was not made with its HID", {"hid": made_as})
         else:
             record = which.write(run, record, values, new)
-    # A link the app keeps to a retired record is said in the row's notes (P-311).
-    run.notes.extend(linked)
+    # A row that makes its record retired says so plainly, and so does a link the app
+    # keeps to a retired record, in the row's notes, which the preview shows (P-311).
+    if isinstance(retired, nullcontext):
+        run.notes.extend(linked)
+    else:
+        run.notes.extend([MADE_RETIRED, *linked])
     db.flush()
     result.changes = [
         change

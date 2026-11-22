@@ -175,6 +175,15 @@ describe("valueText and changeText", () => {
     expect(changeText({ field: "tags", old: ["lab"], new: [] })).toBe("tags: lab → (blank)");
   });
 
+  it("say plainly that a row makes its record retired (P-311)", () => {
+    expect(changeText({ field: "record_status", old: null, new: "retired" })).toBe(
+      "made retired, as the file says: record_status: (blank) → retired",
+    );
+    expect(changeText({ field: "record_status", old: "draft", new: "active" })).toBe(
+      "record_status: draft → active",
+    );
+  });
+
   it("say a registration a row makes or brings back by its status (P-248)", () => {
     expect(changeText({ field: "registration", old: "not_reported", new: "registered" })).toBe(
       "registration with the system: Not reported → Registered",

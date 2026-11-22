@@ -53,6 +53,11 @@ def test_a_row_that_makes_a_record_may_make_it_retired_in_one_event(
     label = make.get("/operators", filter="label:eq:ex-left", include_archived=True)["items"][0]
     assert (contact["record_status"], label["record_status"]) == ("retired", "retired")
     assert label["contact_hid"] == contact["hid"]
+    # The preview says so of the row, plainly (review 7).
+    (row,) = files.preview(
+        "items", f"hid,name,record_status\n{new_hid()},ex-gone,retired\n", mode=mode
+    )["rows"]
+    assert (row["outcome"], row["notes"]) == ("create", ["makes the record retired"])
     # One event, the creation, which says it was made retired.
     events = make.audit(record_hid=contact["hid"])
     assert [event["action"] for event in events] == ["create"]
