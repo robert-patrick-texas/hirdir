@@ -56,6 +56,18 @@ function grouped(options: readonly Option[]): ReactNode {
 }
 
 /**
+ * 0.9.18: the options of a field that follow what the form holds now (P-321): for a
+ * field of text, a list of them where it is given some, and undefined, a box of text,
+ * where it is given none; for a choice, its options, which a blank shown as what it
+ * stands for needs too. Undefined for any other field.
+ */
+function followingList(spec: FieldSpec, values: FormValues): readonly Option[] | undefined {
+  if (spec.kind !== "text" && spec.kind !== "choice") return undefined;
+  if (spec.optionsFrom) return spec.optionsFrom(values);
+  return spec.kind === "choice" && spec.blankAs ? (spec.options ?? []) : undefined;
+}
+
+/**
  * The inputs of a form, one for each field it is given, each labelled. A field with a
  * heading starts a new group under that heading.
  */
@@ -115,6 +127,23 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
       ...(spec.required === undefined ? {} : { required: spec.required }),
       ...(spec.maxLength === undefined ? {} : { maxLength: spec.maxLength }),
     };
+    // 0.9.18: a list whose options follow another field, and a blank shown as what it
+    // stands for: the country and the state of an address (P-321).
+    const following = followingList(spec, values);
+    if (following !== undefined) {
+      return (
+        <SelectField
+          key={name}
+          {...shared}
+          {...(spec.required === undefined ? {} : { required: spec.required })}
+          value={text === "" && spec.blankAs ? spec.blankAs.value : text}
+          onChange={(next) => onChange(name, next)}
+        >
+          {spec.blank !== undefined && !spec.blankAs && <option value="">{spec.blank}</option>}
+          {grouped(following)}
+        </SelectField>
+      );
+    }
     switch (kind) {
       case "boolean":
         return (

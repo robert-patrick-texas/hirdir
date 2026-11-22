@@ -107,8 +107,10 @@ export interface FieldSpec {
   /**
    * 0.9.8: what else the form fills when this field is changed, which the person may
    * change after: the moment an item was seen, filled with now as the item is chosen.
+   * 0.9.18: given what the form held before the change too, as the state of an address
+   * follows its country (P-321).
    */
-  fills?: (value: FormValue) => FormValues;
+  fills?: (value: FormValue, before: FormValues) => FormValues;
   /** 0.9.8: what more is said beneath the field, given what the form holds now. */
   hintFrom?: (values: FormValues) => string | undefined;
   /**
@@ -124,6 +126,23 @@ export interface FieldSpec {
   sample?: (values: FormValues) => string;
   /** 0.9.13: for a colour, whether the sample is shown as an operator (the default) or a tag. */
   sampleAs?: "operator" | "tag";
+  // --- 0.9.18: options that follow another field, and a blank shown as what it stands
+  // for: the country and the state of an address (P-321). ---
+  /**
+   * The options, given what the form holds now, in place of `options`: the states of the
+   * country chosen in the same form. A field of text is a list of them where it gives
+   * some, with `blank` for none chosen, and a box of text where it gives none.
+   */
+  optionsFrom?: (values: FormValues) => readonly Option[] | undefined;
+  /**
+   * The option a blank stands for, shown chosen while the field is blank: the United
+   * States, for a country (P-321 (8)). It is sent only beside a value in one of `with`,
+   * the other fields of the same address, and in a change only where the record held
+   * none of them, so that the default gives a record nothing it did not have and changes
+   * nothing it holds. Chosen while none of `with` holds a value, it is sent as a blank.
+   */
+  blankAs?: { value: string; with: readonly string[] };
+  // --- end of 0.9.18 ---
 }
 
 export type FormValue = string | boolean | string[];
@@ -184,7 +203,7 @@ export function changedValues(
   value: FormValue,
 ): FormValues {
   const fills = specs.find((spec) => spec.name === name)?.fills;
-  return { ...values, [name]: value, ...(fills ? fills(value) : {}) };
+  return { ...values, [name]: value, ...(fills ? fills(value, values) : {}) };
 }
 
 /** The names of the request a form's fields are sent as: their own, and their aliases. */
@@ -325,6 +344,65 @@ function unchanged(spec: FieldSpec, stored: unknown, wanted: unknown): boolean {
   return was === wanted;
 }
 
+// --- 0.9.18: a blank shown as what it stands for (P-321 (8)) ---
+
+/** Whether a value read from a field is one: not blank, not off, not an empty list. */
+function given(value: unknown): boolean {
+  return value !== null && value !== false && !(Array.isArray(value) && value.length === 0);
+}
+
+/** Whether any of the named fields that the form asks for holds a value. */
+function anyFilled(specs: readonly FieldSpec[], names: readonly string[], values: FormValues) {
+  return names.some((name) => {
+    const spec = specs.find((one) => one.name === name);
+    if (!spec || !asked(spec, values)) return false;
+    const result = read(spec, values[name]);
+    return "value" in result && given(result.value);
+  });
+}
+
+/** Whether a record holds none of the named fields. */
+function heldNone(record: Stored, names: readonly string[]): boolean {
+  return names.every((name) => text(record[name]).trim() === "");
+}
+
+/**
+ * What a field with `blankAs` sends: nothing (`none`), a value (`sent`), or what any field
+ * sends (`other`). A blank, or the value it stands for chosen in a field that held none,
+ * is the default, shown chosen: it is sent beside another field of its address, in a
+ * change only where the record held none of them. The value it stands for chosen with no
+ * other field filled is no address, and is sent as a blank where the record held another.
+ * `record` is null for a record being made.
+ */
+type Defaulted = { as: "other" } | { as: "none" } | { as: "sent"; value: string | null };
+
+function defaulted(
+  specs: readonly FieldSpec[],
+  spec: FieldSpec,
+  values: FormValues,
+  record: Stored | null,
+): Defaulted {
+  const standsFor = spec.blankAs;
+  if (!standsFor) return { as: "other" };
+  const typed = text(values[spec.name]).trim();
+  const held = record === null ? "" : text(record[spec.name]).trim();
+  const beside = anyFilled(specs, standsFor.with, values);
+  if (typed === "" || (held === "" && typed === standsFor.value)) {
+    if (!beside || (record !== null && !heldNone(record, standsFor.with))) return { as: "none" };
+    return { as: "sent", value: standsFor.value };
+  }
+  if (typed === standsFor.value && !beside) {
+    // Held so with nothing beside it, and left as it was: no change.
+    if (record !== null && held === standsFor.value && heldNone(record, standsFor.with)) {
+      return { as: "none" };
+    }
+    return { as: "sent", value: null };
+  }
+  return { as: "other" };
+}
+
+// --- end of 0.9.18 ---
+
 export interface Built<T> {
   body: T;
   /** The names of the fields the body changes or sets. */
@@ -354,6 +432,16 @@ export function buildPatch<T extends { row_version: number }>(
       }
       continue;
     }
+    // 0.9.18: a blank shown as what it stands for (P-321 (8)).
+    const fallback = defaulted(specs, spec, values, record);
+    if (fallback.as === "none") continue;
+    if (fallback.as === "sent") {
+      if (!unchanged(spec, record[spec.name], fallback.value)) {
+        body[spec.name] = fallback.value;
+        changed.push(spec.name);
+      }
+      continue;
+    }
     const result = read(spec, values[spec.name]);
     if ("error" in result) {
       // What was typed cannot be sent. If it is what the form started with, it is no change.
@@ -379,6 +467,16 @@ export function buildCreate<T>(specs: readonly FieldSpec[], values: FormValues):
   const errors: Record<string, string> = {};
   for (const spec of specs) {
     if (!asked(spec, values)) continue;
+    // 0.9.18: a blank shown as what it stands for, sent beside another field (P-321 (8)).
+    const fallback = defaulted(specs, spec, values, null);
+    if (fallback.as === "none") continue;
+    if (fallback.as === "sent") {
+      if (fallback.value !== null) {
+        body[spec.name] = fallback.value;
+        changed.push(spec.name);
+      }
+      continue;
+    }
     const result = read(spec, values[spec.name]);
     if ("error" in result) {
       errors[spec.name] = result.error;

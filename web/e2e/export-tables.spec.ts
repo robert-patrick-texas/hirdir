@@ -37,6 +37,10 @@ const sites = [`Site-A ${id}`, `Site-B ${id}`];
 
 // Every table, in the order their files are loaded: its name for people and its file.
 const TABLES: ReadonlyArray<readonly [string, string]> = [
+  // 0.9.18: the lists of countries and states, before the places whose addresses take
+  // them; every inventory starts with them, so neither holds nothing (P-321).
+  ["Countries", "countries"],
+  ["States", "states"],
   ["Tags", "tags"],
   ["Vendors", "vendors"],
   ["Catalog entries", "catalog-entries"],
@@ -255,11 +259,16 @@ test("the Import page lists every table in the order of loading, and exports one
   // Every table, in the order their files are loaded, each with how many it holds.
   await expect(tables(page).locator("tbody th")).toHaveText(TABLES.map(([label]) => label));
   await expect(tables(page).getByTestId("table-count").filter({ hasText: "…" })).toHaveCount(0);
-  // How many hold nothing is said too, as "33 tables, 5 holding nothing yet": it is what
+  // How many hold nothing is said too, as "35 tables, 5 holding nothing yet": it is what
   // the other files have made so far.
   await expect(page.getByTestId("export-tables-said")).toHaveText(
     new RegExp(`^${TABLES.length} tables(, [^,]+ holding nothing yet)?, in the order`),
   );
+  // 0.9.18: the lists of countries and states are never empty: an inventory starts with
+  // them (P-321).
+  for (const entity of ["countries", "states"]) {
+    await expect(tableRow(page, entity)).toHaveAttribute("data-count", /^[1-9]\d*$/);
+  }
   // The upload is where it was, beside the list.
   await expect(page.getByLabel("File", { exact: true })).toBeVisible();
   await expectClean(page, seen);

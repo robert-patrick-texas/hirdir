@@ -4,7 +4,9 @@ import {
   buildCreate,
   buildPatch,
   canonicalDecimal,
+  changedValues,
   type FieldSpec,
+  type FormValues,
   formOf,
   hintOf,
 } from "./patch";
@@ -366,6 +368,131 @@ describe("a field that is cleared while it is not asked for", () => {
       ship_address1: "typed before the tick",
     });
     expect(built.body).toEqual({ ship_same_as_address: true });
+  });
+});
+
+describe("a blank shown as what it stands for: the country of an address (P-321 (8))", () => {
+  const typed = (values: Record<string, unknown>) => values.ship_same_as_address !== true;
+  const set = ["ship_address1", "ship_city", "ship_state"];
+  const specs: FieldSpec[] = [
+    { name: "ship_same_as_address", label: "Deliveries go to the street address", kind: "boolean" },
+    ...set.map(
+      (name): FieldSpec => ({
+        name,
+        label: name,
+        kind: "text",
+        when: typed,
+        clearedWhenNotAsked: true,
+      }),
+    ),
+    {
+      name: "ship_country",
+      label: "Shipping country",
+      kind: "text",
+      when: typed,
+      clearedWhenNotAsked: true,
+      optionsFrom: () => [
+        { value: "US", label: "United States" },
+        { value: "CA", label: "Canada" },
+      ],
+      blankAs: { value: "US", with: set },
+      // The state follows the country: here, cleared as it changes.
+      fills: (value, before): FormValues =>
+        value === before.ship_country ? {} : { ship_state: "" },
+    },
+    { name: "notes", label: "Notes", kind: "longtext" },
+  ];
+  const none = {
+    row_version: 4,
+    ship_same_as_address: false,
+    ship_address1: null,
+    ship_city: null,
+    ship_state: null,
+    ship_country: null,
+    notes: null,
+  };
+
+  it("sends nothing of the default for a new record with no other field of the address", () => {
+    // A shipping country alone would give the place a shipping address of its own, and
+    // stop what it inherits.
+    const built = buildCreate(specs, { ...formOf(specs), notes: "made" });
+    expect(built.body).toEqual({ notes: "made" });
+    // Chosen with nothing beside it, it is no address either.
+    expect(buildCreate(specs, { ...formOf(specs), ship_country: "US" }).body).toEqual({});
+  });
+
+  it("sends the default beside another field of the address of a new record", () => {
+    const built = buildCreate(specs, { ...formOf(specs), ship_city: "Springfield" });
+    expect(built.body).toEqual({ ship_city: "Springfield", ship_country: "US" });
+    // Another country chosen is sent as any value is.
+    const chosen = buildCreate(specs, {
+      ...formOf(specs),
+      ship_city: "Toronto",
+      ship_country: "CA",
+    });
+    expect(chosen.body).toEqual({ ship_city: "Toronto", ship_country: "CA" });
+  });
+
+  it("changes nothing of a record that holds no address, and is no change when the form opens", () => {
+    expect(buildPatch(specs, none, formOf(specs, none)).changed).toEqual([]);
+    const notes = buildPatch(specs, none, { ...formOf(specs, none), notes: "Dock B" });
+    expect(notes.body).toEqual({ row_version: 4, notes: "Dock B" });
+  });
+
+  it("sends the default beside the first fields of an address a record did not have", () => {
+    const built = buildPatch(specs, none, { ...formOf(specs, none), ship_city: "Springfield" });
+    expect(built.body).toEqual({ row_version: 4, ship_city: "Springfield", ship_country: "US" });
+  });
+
+  it("leaves a blank country of an address a record holds as it is, read as the default", () => {
+    // Sending it would have the server check the state held from before, which a change
+    // of anything else of the address lets be (P-321 (5)).
+    const held = { ...none, ship_city: "Springfield", ship_state: "Ilinois" };
+    expect(buildPatch(specs, held, formOf(specs, held)).changed).toEqual([]);
+    const city = buildPatch(specs, held, { ...formOf(specs, held), ship_city: "Shelbyville" });
+    expect(city.body).toEqual({ row_version: 4, ship_city: "Shelbyville" });
+    // The default chosen again after another is no change of a blank country.
+    const back = buildPatch(specs, held, { ...formOf(specs, held), ship_country: "US" });
+    expect(back.changed).toEqual([]);
+  });
+
+  it("sends the default chosen in place of another country, and blank where no other field is left", () => {
+    const canada = { ...none, ship_city: "Toronto", ship_country: "CA" };
+    const us = buildPatch(specs, canada, { ...formOf(specs, canada), ship_country: "US" });
+    expect(us.body).toEqual({ row_version: 4, ship_country: "US" });
+    // The address emptied, the United States chosen alone is no address: it is cleared.
+    const emptied = buildPatch(specs, canada, {
+      ...formOf(specs, canada),
+      ship_city: "",
+      ship_country: "US",
+    });
+    expect(emptied.body).toEqual({ row_version: 4, ship_city: null, ship_country: null });
+    // Held so alone from before, and left as it was, it is no change.
+    const alone = { ...none, ship_country: "US" };
+    expect(buildPatch(specs, alone, formOf(specs, alone)).changed).toEqual([]);
+  });
+
+  it("is cleared with the rest of the address as the tick is ticked, and not sent while it is", () => {
+    const own = { ...none, ship_city: "Toronto", ship_country: "CA" };
+    const ticked = buildPatch(specs, own, { ...formOf(specs, own), ship_same_as_address: true });
+    expect(ticked.body).toEqual({
+      row_version: 4,
+      ship_same_as_address: true,
+      ship_city: null,
+      ship_country: null,
+    });
+    const made = buildCreate(specs, {
+      ...formOf(specs),
+      ship_same_as_address: true,
+      ship_city: "typed before the tick",
+    });
+    expect(made.body).toEqual({ ship_same_as_address: true });
+  });
+
+  it("fills what follows it, given what the form held before the change", () => {
+    const values = { ...formOf(specs, none), ship_state: "TX" };
+    expect(changedValues(specs, values, "ship_country", "CA").ship_state).toBe("");
+    expect(changedValues(specs, values, "ship_country", "").ship_state).toBe("TX");
   });
 });
 

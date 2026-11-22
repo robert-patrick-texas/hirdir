@@ -303,15 +303,20 @@ export function mapLink(url: string | null | undefined): string | null {
   return url && isWebAddress(url) ? url : null;
 }
 
-/** An address as lines to read: the street, then the city with its state and code, then the country. */
+/**
+ * An address as lines to read: the street, then the city with its state and code, then
+ * the country. 0.9.18: the state and the country by their names, `state_name` and
+ * `country_name`, which the server reads from the lists, a blank country beside another
+ * field being the United States; the value as it is held where no name comes (P-321).
+ */
 export function addressLines(address: Partial<ShipAddress> | null | undefined): string[] {
   if (!address) return [];
-  const city = [address.city, address.state].filter(Boolean).join(", ");
+  const city = [address.city, address.state_name || address.state].filter(Boolean).join(", ");
   return [
     address.address1,
     address.address2,
     [city, address.postal_code].filter(Boolean).join(" "),
-    address.country,
+    address.country_name || address.country,
   ].filter((line): line is string => Boolean(line));
 }
 
