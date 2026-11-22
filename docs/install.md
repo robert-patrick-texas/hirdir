@@ -2358,7 +2358,10 @@ What an Admin sees changed:
   after a retirement, as an item its model. The preview says so of each such row. A
   file still never retires a record that is there. So Export everything, retired
   records and all, loads whole into an empty inventory. Device groups now load before
-  items, in the order of the import commands above.
+  items, in the order of the import commands above. From 0.9.18 a region, a site or a
+  location whose address holds a country or a state that no list holds is the
+  exception: its row is rejected at that field, so choose those values first, from the
+  unlisted addresses, before an inventory is moved (P-321).
 - **Exported times end with `Z`**, as the API writes them, where they ended `+00:00`; a
   file with either is read alike.
 - **A name another contact has** (P-315) is saved as before, and the contact's page and
