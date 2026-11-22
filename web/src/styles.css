@@ -3400,6 +3400,16 @@ fieldset.colour-picker > p {
   white-space: nowrap;
 }
 
+/* 0.9.17: beside the chip, a label as long as a label may be, 40 characters, breaks
+   within the sample rather than run past the picker, on a window 360 pixels wide, on
+   every form that has the picker (P-311). */
+.colour-typed .colour-sample {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .colour-part {
   display: flex;
   flex-direction: column;

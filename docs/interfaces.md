@@ -3797,6 +3797,11 @@ What 0.9.17 adds of contacts, a name that another contact has (P-315):
   contact is named so and that a file tells the person apart by their email or their
   HID, with the same link.
 
+And of the colour picker (P-311): beside the chip, a label as long as a label may be,
+40 characters, breaks within the sample on a window 360 pixels wide, rather than run
+past the picker and the page, wherever the picker is: New operator, the Details of an
+operator, the Profile and New user.
+
 ### The grid
 
 One grid component is used on every list page.
