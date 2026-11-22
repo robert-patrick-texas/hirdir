@@ -1052,9 +1052,13 @@ def add_members(
         if item is None:
             raise Invalid("there is no such item", {"item_hid": f"there is no item {item_hid}"})
         # A retired item is in no group, and keeps the memberships it had, which have
-        # ended: one entered with its `left_on` is that history, as a retired group takes
-        # one (P-311).
-        if item.record_status == "retired" and given.get("left_on") is None:
+        # ended: one entered by a file with its `left_on`, of an item a file made retired,
+        # is that history (P-311).
+        if item.record_status == "retired" and not (
+            given.get("left_on") is not None
+            and context.via == "import"
+            and records.made_retired_by_a_file(db, items.RECORD_TYPE, item)
+        ):
             raise Invalid(
                 f"{items.shown_name(item)} is retired", {"item_hid": "this item is retired"}
             )

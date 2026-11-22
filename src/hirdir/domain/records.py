@@ -7,10 +7,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
+from hirdir.db.models import AuditEvent
 from hirdir.domain import audit
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid, StaleVersion
@@ -36,6 +37,31 @@ def making_retired() -> Generator[None]:
 def is_making_retired() -> bool:
     """Say whether the record being made is one a file makes retired (P-311)."""
     return _MAKING_RETIRED.get()
+
+
+def made_retired_by_a_file(db: Session, record_type: str, record: Any) -> bool:
+    """Say whether a retired record was made retired by a row of a file, and is so still:
+    its first event is its creation from a file, which says `retired`, and no event after
+    changes its status. What stands on a retired record is taken from a file for such a
+    one alone, and not for one retired in the app (P-311)."""
+    if getattr(record, "record_status", None) != RETIRED:
+        return False
+    events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.record_type == record_type, AuditEvent.record_hid == record.hid)
+        .order_by(AuditEvent.at, AuditEvent.hid)
+    )
+    first = True
+    for event in events:
+        statuses = [one for one in event.changes or [] if one.get("field") == "record_status"]
+        if first:
+            made = event.action == "create" and event.via == "import"
+            if not made or not any(one.get("new") == RETIRED for one in statuses):
+                return False
+            first = False
+        elif statuses or event.action == "retire":
+            return False
+    return not first
 
 
 def refuses_retired(found: Any) -> bool:

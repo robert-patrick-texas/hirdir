@@ -155,3 +155,45 @@ def test_what_the_app_refuses_a_retired_record_a_file_refuses(
     # And the API gives a retired item no new address, as before: a file is the one door.
     item = make.get("/items", filter="name:eq:ex-retired", include_archived=True)["items"][0]
     make.post("/addresses", {"item_hid": item["hid"], "address": "198.51.100.11"}, 422)
+
+
+def test_what_stands_on_a_retired_record_is_taken_from_a_file_only_where_a_file_made_it(
+    files: Files, make: Maker
+) -> None:
+    """Review 6: a record retired in the app is given nothing new by a file; one a file
+    made retired is given what it kept, and the event of its address says that its
+    holder is retired, for a sync to read as nothing to add."""
+    kit = make.group("ex-kit", "custom")
+    old = make.item(name="ex-old")
+    old = make.post(f"/items/{old['hid']}/retire", {"row_version": old["row_version"]}, 200)
+    said = _reasons(files, "addresses", "item,address\nex-old,198.51.100.21\n")
+    assert said[0]["field"] == "item"
+    said = _reasons(
+        files,
+        "device_group_members",
+        "group,item,joined_on,left_on\nex-kit,ex-old,2026-01-05,2026-02-05\n",
+    )
+    assert said[0]["field"] == "item"
+
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-filed,retired\n")
+    files.load("addresses", "item,address\nex-filed,198.51.100.22\n")
+    files.load(
+        "device_group_members",
+        "group,item,joined_on,left_on\nex-kit,ex-filed,2026-01-05,2026-02-05\n",
+    )
+    (address,) = make.get("/addresses", filter="address:eq:198.51.100.22")["items"]
+    (made,) = make.audit(record_hid=address["hid"])
+    assert {"field": "holder_retired", "old": None, "new": True} in made["changes"]
+    # By the API, as before, a retired item takes neither, a file's or not.
+    filed = make.get("/items", filter="name:eq:ex-filed", include_archived=True)["items"][0]
+    make.post("/addresses", {"item_hid": filed["hid"], "address": "198.51.100.23"}, 422)
+    make.add(
+        kit, [{"item_hid": filed["hid"], "joined_on": "2026-03-01", "left_on": "2026-03-02"}], 422
+    )
+    # Brought back and retired again in the app, it is the app's retired record.
+    back = make.patch(
+        f"/items/{filed['hid']}", {"row_version": filed["row_version"], "record_status": "active"}
+    )
+    make.post(f"/items/{filed['hid']}/retire", {"row_version": back["row_version"]}, 200)
+    said = _reasons(files, "addresses", "item,address\nex-filed,198.51.100.24\n")
+    assert said[0]["field"] == "item"

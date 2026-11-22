@@ -1838,7 +1838,8 @@ it is, whichever way the change came: the API, the web, the CLI, a bulk edit or 
   with what it was. `delete` holds every field and the addresses as `old`, above. A
   record that a file makes retired (P-311) has its one `create` event, which holds
   `record_status` `retired` with its names and addresses as `new`, and no `retire`
-  event: a sync reads it as nothing to add.
+  event: a sync reads it as nothing to add. An address a file gives such a record,
+  as it kept it, holds `holder_retired`, true, in its `create`: nothing to add either.
 - **What a change was made by** is an entry of each event it made: `joining_group` and
   `leaving_group`, the group's HID (P-217, P-218); `replacing`, a replacement's HID,
   where an item that takes another's place gives up its name and addresses (P-242);
