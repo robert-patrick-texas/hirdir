@@ -1077,7 +1077,7 @@ and signing in shows the item at that address. Each scenario is a line of its ow
 the pass, read from Playwright's report of the run. The file keeps the rules of
 `support.ts`, so `--e2e` and `make browser` run it beside the others, at the root of a
 development server too. Measured on the four-core build host at 0.9.17, with the host
-busy: the pass in 75 to 121 seconds, the browser and its four scenarios in about half a
+busy: the pass in 69 to 121 seconds, the browser and its four scenarios in about half a
 minute of it, against about fifty minutes for `--e2e`. Seen to fail: with nginx made to
 add a policy that lets no script run, every request of curl passed and the first
 scenario failed; with the addresses of the items' pages under the prefix answered `404`
