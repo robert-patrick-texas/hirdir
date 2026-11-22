@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentsOfGroupLead,
   cappedWords,
   type Holder,
   kindName,
@@ -114,6 +115,13 @@ describe("the role an agent is held to (P-316)", () => {
   it("says nothing where nothing holds it lower, nor of a person", () => {
     expect(cappedWords({ ...agent, role_in_force: "inventory", role_capped_by: null })).toBeNull();
     expect(cappedWords({ ...agent, kind: "person", role_capped_by: null })).toBeNull();
+  });
+});
+
+describe("the agents a refusal of Admin to a group names (review 4)", () => {
+  it("are said as the group's", () => {
+    expect(agentsOfGroupLead(1)).toBe("The agent in the group:");
+    expect(agentsOfGroupLead(2)).toBe("The 2 agents in the group:");
   });
 });
 

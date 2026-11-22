@@ -115,6 +115,16 @@ export function cappedWords(user: Holding): string | null {
   }
 }
 
+/**
+ * What is said before the agents a refusal of Admin to a group names (review 4): the
+ * agents in the group, each to take out of it first.
+ */
+export function agentsOfGroupLead(count: number): string {
+  return count === 1
+    ? "The agent in the group:"
+    : `The ${count.toLocaleString("en-US")} agents in the group:`;
+}
+
 /** One role an account holds, and where it comes from: a grant of its own, or a group's. */
 export type Source = Schemas["UserGrant"];
 
