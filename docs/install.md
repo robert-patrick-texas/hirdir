@@ -2393,6 +2393,108 @@ Going back to 0.9.16 is by the backup the upgrade took, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the
 schema changed: what was entered since is lost, every agent made since among it.
 
+### From 0.9.17 to 0.9.18
+
+The schema goes from revision `0018` to `0019`. The upgrade takes its backup and stops
+and starts the service as every upgrade does. `/etc/hirdir/config.toml` gains no
+setting, so the upgrade says nothing of it. What the migration changes:
+
+- **A circuit's dates are its A side's** (P-317, P-320). `installed_on`, `activated_on`
+  and `disconnected_on` are renamed `a_installed_on`, `a_activated_on` and
+  `a_disconnected_on`, each holding what it held, and `z_installed_on`,
+  `z_activated_on` and `z_disconnected_on` are added beside them, blank for every
+  circuit. A blank date of the Z side is read as the A side's, never copied, so no
+  circuit's dates change, nor whether it is in service, nor the months its cost counts
+  in: a circuit whose `cost_side` is `z` reads its A side's dates, as it did.
+  `z_group_hid` is added, blank for every circuit: the network that a Z side reaches.
+- **Every circuit group is a collection** (P-319): `kind` is added, `collection` for
+  every group, and `carrier_hid`, blank. A group of the kind `network`, a carrier's
+  network that a Z side may name, is made by a person from 0.9.18; the upgrade makes
+  none.
+- **The lists of countries and states** (P-318, P-321) are made and loaded with every
+  country of the Americas, 55 of them, the United States first, and their 633 states
+  and other subdivisions, from the ISO 3166 data of `iso-codes` 4.20.1, as a new
+  installation has them.
+- **The addresses are turned into codes where they match exactly.** On the street
+  address and the shipping set of every region, site and location, a country written
+  as a listed code or name, in any case and with spaces before or after it, or as
+  `USA`, `U.S.`, `U.S.A.` or `United States of America`, is written as its code, `usa`
+  as `US` and ` Mexico ` as `MX`; and a state written as a code or a name of the
+  country in force, a blank country being read as the United States, is written as its
+  code, `texas` as `TX` and `Coahuila de Zaragoza` as `COA`. A blank country stays
+  blank. Anything else is kept as it was typed, and nothing is guessed: `Untied States`
+  stays `Untied States`, to be chosen by a person. Each place it changes is at its next
+  row version and has an audit event of the upgrade, an update by `system` with the
+  request ID `upgrade-0019` that holds each value before and after; the upgrade writes
+  no other event.
+
+Nothing else that is held is changed, and every other record is at the row version it
+had. **Nothing held is tidied by the input formats**: a telephone number, an email
+address and a name are kept as they were written, also where a format would write them
+otherwise now.
+
+What an Admin sees changed:
+
+- **Countries and States under Choices**, an Admin's to change and every role's to
+  read. The United States is first, however it is named, and is renamed but not
+  removed nor given another code; a country or a state that an address holds is not
+  removed, and removing a country removes its states. Both lists are files of the
+  Import page, `countries.csv` and `states.csv`, loaded before every other, and in
+  Export everything; a row of them that makes or changes a country or a state is an
+  Admin's to apply. `hirdir admin reset` keeps them, as it keeps the choices, and
+  `hirdir admin load-examples` leaves them as they are.
+- **An address takes its country and its state from the lists.** A form shows a blank
+  country as the United States, chosen, and offers the states of the chosen country,
+  or a box of text where it has none listed. The API, a file and the command line take
+  a country or a state by its code or its name and keep the code; a value that no list
+  holds is refused at its field. A value held from before that no list holds is shown
+  as it was typed, marked not in the list, and kept until the country or the state of
+  that address is changed; anything else of the place may be changed meanwhile.
+  `GET /places/unlisted-addresses` lists each such value, with the place and the field
+  that holds it.
+- **The Z side of a circuit has dates of its own** and may name a network, a circuit
+  group of the kind Network, in the place of a location. The dates of the side that
+  `cost_side` names decide whether a circuit is in service and the months its cost
+  counts in, a blank date of the Z side being the A side's.
+- **Input formats** (P-293, P-322), three settings of an Admin's under Settings.
+  `phone_formats` is empty, so no telephone number is formatted until an Admin chooses
+  a pattern, `###-###-####`, `+1 (###) ###-####` or one of their own.
+  `email_lower_case` is on: the email address of a contact, and `help_email`, are kept
+  in lower case wherever they come in, by the page, the API, a file and the command
+  line. `title_case_names` is on, and only the web page reads it: a person's name typed
+  there in lower case is given its capitals as the box is left, and a name sent by the
+  API, a file or the command line is kept as it is given. The formats are applied to
+  what comes in from now on, never to what is held, nor when a setting is changed: an
+  export loaded back is the way to tidy what is held, its preview showing each value a
+  format would write in another form beside the value in the file.
+
+Before the upgrade, look at the scripts and files that use `installed_on`,
+`activated_on` or `disconnected_on` of a circuit: from 0.9.18 they use
+`a_installed_on`, `a_activated_on` and `a_disconnected_on`, and no alias of the old
+names is kept. A request that sends an old name is a `422`, as a field the API does not
+know is, a file with a column of one is rejected, naming the column, and a filter or a
+sort by one is refused. Look also at any script that sends a country or a state that
+the lists do not hold, which is refused from 0.9.18, and at any that compares the email
+address of a contact it sent with capitals in it, which is answered in lower case.
+
+For a script that reads the API: a circuit answers `a_installed_on`, `a_activated_on`,
+`a_disconnected_on`, `z_installed_on`, `z_activated_on`, `z_disconnected_on` and
+`z_group_hid`, and in `effective` the Z side's dates in force, each with its source,
+`own`, `a_side` or `none`; a circuit group answers `kind` and `carrier_hid`, and each
+circuit of `GET /circuit-groups/{hid}/members` answers `z_side`. The circuits' file has
+the six dates and `z_group` among its columns, and the circuit groups' file `kind` and
+`carrier`. A site and a location answer `country_name`, `state_name`,
+`ship_country_name` and `ship_state_name` beside their fields, and a region the two of
+its shipping set. `GET /countries`, `GET /states` and `GET /places/unlisted-addresses`
+are new, and so are `POST`, `PATCH` and `DELETE` of a country and of a state, an
+Admin's. `GET /settings` has `phone_formats`, `email_lower_case` and
+`title_case_names`, and each change of a preview has `as_in_file`.
+
+Going back to 0.9.17 is by the backup the upgrade took, as
+[Going back to the release before](#going-back-to-the-release-before) says, since the
+schema changed: what was entered since is lost, every country and state added or
+changed since among it.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -2443,7 +2545,7 @@ installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
 goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
-0.9.4, 0.9.5, 0.9.6, 0.9.7, 0.9.9, 0.9.10 and 0.9.12 are such releases. The section of each release above says what its upgrade changed.
+0.9.4, 0.9.5, 0.9.6, 0.9.7, 0.9.9, 0.9.10, 0.9.12, 0.9.15 and 0.9.16 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 

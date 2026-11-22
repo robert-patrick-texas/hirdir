@@ -1104,7 +1104,7 @@ Docker and installs with apt, as an operator does.
 |---|---|
 | `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx; and, where the new version has the unit of the background work, both units are enabled and running once the upgrade is done, also from a release that had no such unit; and, where the upgrade runs migration `0015`, that a copy of the upgrade's backup, migrated where no service runs, holds `kept_answers` empty and every other table row for row as the backup has it, that the second process then fills the table, and that the four long reports answer as the previous release answered them. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below. An upgrade that stops leaves both units stopped, and going back to a release that has no unit of the background work leaves no process, no unit and no link of it |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; the long reports worked out ahead (P-275, P-276): the four listed as `ahead` before anybody has asked, a check that finds none differing, each worked out again after a change no sooner than `reports_ahead_after_seconds` says and within half a minute more, by the moments of the server's own events, none with the setting at 0, the server answering a report alone with `hirdir-worker` stopped, the four back when it starts, the rows as they were after a restart of the service, a reset that empties `kept_answers`, counted with both units stopped once the four were waited for, and a restore that brings its rows back with nothing worked out again; the kind of each account, an agent answerable to a person, held to that person's role, never Admin, in the audit trail for that person and handed over when that person is retired, each role of a user with where it comes from, and `hirdir admin create-user` refusing a person with no role unless `--no-role` (S61, S62); a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; the lists of countries and states, 55 and 633, the United States first, as the data file of migration `0019` in the package has them, a name that is not ASCII through nginx, and no address that no list holds (S64); a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; the two units of the service, enabled and running, the second process as the `hirdir` user, listening on nothing, holding its own lock and refusing a second of its kind; an import applied by the second process, and, with that unit stopped, the server answering alone and saying so in `GET /about/load` where the version has that route, an apply asked for then left `queued`, with nothing of it applied, and applied when the unit starts; `hirdir admin reset` refusing while the second process alone runs; the long reports worked out ahead (P-275, P-276): the four listed as `ahead` before anybody has asked, a check that finds none differing, each worked out again after a change no sooner than `reports_ahead_after_seconds` says and within half a minute more, by the moments of the server's own events, none with the setting at 0, the server answering a report alone with `hirdir-worker` stopped, the four back when it starts, the rows as they were after a restart of the service, a reset that empties `kept_answers`, counted with both units stopped once the four were waited for, and a restore that brings its rows back with nothing worked out again; the kind of each account, an agent answerable to a person, held to that person's role, never Admin, in the audit trail for that person and handed over when that person is retired, each role of a user with where it comes from, and `hirdir admin create-user` refusing a person with no role unless `--no-role` (S61, S62); a stop, a start and a restart of `hirdir` acting on both; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge, which leaves nothing of either unit |
 | `--browser-check` | The short browser check through nginx (P-305, P-309), about two minutes. Installs on a system that never had `hirdir` and sets it up as the fresh pass does, `hirdir-setup --self-signed --prefix /hirdir`, the health probe, the first Admin and signing in through nginx, the page and one of its scripts under the prefix; then the four browser scenarios of `web/e2e/browser-check.spec.ts`, described above, each a line of its own, as an Admin made for them, `e2e-admin`; and that no response set a cookie. A package with no web UI, or a tree with no such spec file, is a `SKIP` line. It makes no purge: the container is removed |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
@@ -1661,6 +1661,46 @@ before makes an agent whose token is refused, and refuses the retired one and a 
 account as the person; and the person from before is retired with the agent handed to
 the one who holds View-only through the group, to whose role it is then held.
 
+`migration-0019.sh` is the one that 0.9.18 brings, and what it looks for is what
+[install.md](install.md#from-0917-to-0918) tells an operator of that upgrade, and P-317
+to P-322 of [decisions.md](decisions.md). Under P-306 the upgrade to 0.9.18 is tested
+from 0.9.17 alone, so the file talks to that release in its own API, where a circuit's
+dates are `installed_on`, `activated_on` and `disconnected_on` and an address is text as
+it was typed. The migration renames the three dates `a_installed_on`, `a_activated_on`
+and `a_disconnected_on`, each in its place, and adds the Z side's three and
+`z_group_hid`, blank, with its foreign key, its index and the check that a Z side names a
+location or a network and never both; it adds `kind`, `collection` for every group, and
+`carrier_hid` to `circuit_groups`; it creates `countries` and `states` and loads them
+from `0019_iso3166_americas.json` beside it, which the package must carry; and it writes
+the codes of the countries and states that the lists hold into the addresses of the
+places, with an audit event of each, `upgrade-0019`. A file says a renamed column in
+`renamed_columns`, each as its name before and its name after: the table must have it
+in its place under its new name, and the rows are compared with what it held under the
+old one. With the previous release the file makes the places whose addresses test the
+mapping, a region whose shipping set is `usa` and `texas`, a site with no country and
+`tx`, a room in ` Mexico ` and `Coahuila de Zaragoza`, which 0.9.17 keeps without its
+spaces, and a room in `Untied States`; and a contact whose email address has capitals
+and whose number has ten digits, which no format is to tidy; and keeps the dates of
+the three circuits from before, which 0.9.17 refuses by their new names. It names the
+three places as rows and records meant to change, and the dates of each circuit by
+their old names. After the upgrade the backup holds the old names and no list; each
+circuit holds its dates under the A side's names, the Z side's blank and read as the A
+side's, and is in service as it was; the group is a collection; the lists are those of
+the data file in the package; the three places hold their codes at their next row
+version, with the events of the upgrade and nothing else changed, the fourth is kept and
+listed by `GET /places/unlisted-addresses`; and the contact is as it was typed. Since
+that contact, exported and loaded back, is an update of what a format writes
+otherwise, the file says so in `tidied`, and the check that every table loads back as
+nothing to change expects that one update and no other change. Last, a date by its old
+name is refused and the new names filter and sort; the Z side of the link from before
+takes its own dates; the internet circuit from before names a network of its carrier,
+which lists it by its Z side and is not retired while it does, and the collection from
+before takes no carrier and is named on no Z side; the room in `Untied States` is
+changed in its notes and keeps its country until the United States is chosen; and a
+pattern of a number set by an Admin tidies nothing held, until the contacts exported
+and loaded back change the one contact, its email address and its number each beside
+the value in the file.
+
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
@@ -1695,7 +1735,12 @@ columns: the pass looks for the three with the columns, the keys and the rows th
 For migration `0018` it comes when `users` has been made anew, `kind` written from
 `is_service_account` and that column dropped, and `for_hid` added to `audit_events`:
 the pass looks for `users` and the tables that name a user with the columns, the keys
-and the rows they had.
+and the rows they had. Migration `0019` creates `countries` and `states` before it
+writes the addresses of the places, so its file asks for the trigger: it fails when
+`circuits` and `circuit_groups` have been made anew, the two lists loaded and the
+addresses written with their audit events, and the pass looks for the tables with the
+columns, the keys and the rows they had, no list among them, and an audit trail with
+no event more.
 The
 trigger disturbs nothing else: the previous release serves with it in place, and the
 backup that the upgrade takes holds it. The file of a migration may ask for the trigger
@@ -1715,8 +1760,10 @@ what the fresh pass asks of this tree's. The failed-upgrade pass does nothing of
 fresh pass and runs whole for such a pair. Neither is the release check.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
-prefix. The thirty-three files of `examples/` are sent in load order to `POST /imports/preview`
-and applied: every row is created, and the lists of minor items, networks, device
+prefix. The thirty-five files of `examples/` are sent in load order to `POST /imports/preview`
+and applied: every row is created, but those of `countries.csv` and `states.csv`, the
+lists that every inventory holds from its install, each of which finds its record
+unchanged, and the lists of minor items, networks, device
 groups with their members, and addresses hold what the files hold, and so do those of
 regions, sites, locations, contacts, their assignments and the members of owners, and
 those of agreements, contracts, coverage, purchase requests and their lines, external
@@ -1965,7 +2012,9 @@ agreements, contracts, coverage, purchase requests and lines, external systems,
 registrations and capacity lines, and of the contacts of contracts, the targets of
 capacity lines, the records of the capacity balance and the renewal alerts that were
 seen among them, each of which holds rows before and none after, and keep the
-accounts. The examples hold no line that multiplies and nobody has seen the alert, so
+accounts and, from 0.9.18, the lists of countries and states, every row as it was;
+`hirdir admin load-examples` then loads every file of the examples but those two
+lists. The examples hold no line that multiplies and nobody has seen the alert, so
 two records of 0.7.0 are made beside them for the reset to find: a line of tools that
 multiplies the network engineers of the examples by one and a half, which counts 1.5
 units more under tools, and the alert as this Admin has seen it, which is then not

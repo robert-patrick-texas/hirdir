@@ -141,7 +141,9 @@ what the release is:
   leaves it out by name, and looks at it by itself after the upgrade. It names the
   columns, indexes and foreign keys that the migration adds to the tables of the
   inventory, which must then be there, and no other, and those it drops, which must
-  then be gone, as the two uniquenesses of `item_replacements` that `0013` drops. `migration-0006.sh` is the one to
+  then be gone, as the two uniquenesses of `item_replacements` that `0013` drops, and
+  the columns it renames, which must be in their places under their new names, holding
+  what they held, as the dates of `circuits` that `0019` renames. `migration-0006.sh` is the one to
   read first: for 0.4.1 it is the memberships of items that had left the team's hands,
   which the upgrade ends, each with an event in the audit trail. For 0.5.0 it is
   `migration-0007.sh`: the migration is to change no record and to write no event, so

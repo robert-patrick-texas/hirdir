@@ -997,3 +997,166 @@ def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_
     assert 'expect "S61 after the upgrade, ' in hook
     for function in ("before_0018", "changed_0018", "after_0018"):
         assert f"\n{function}() {{\n" in hook
+
+
+def test_the_install_page_and_the_package_test_say_of_circuit_sides_and_lists_as_the_code() -> None:
+    """The notes of the upgrade to 0.9.18, the newest, and what the package test asks for
+    it: migration 0019 renames the A side's dates in their places, adds the Z side's and
+    its network, gives every circuit group a kind and a carrier, and creates and loads the
+    lists of countries and states from the data file beside it, which the wheel carries,
+    before it writes the codes into the addresses with audit events of its own; the file
+    of the package test says each of these as the model and the migration do, and asks
+    for the trigger (P-317 to P-321); the formats' defaults are those of the settings and
+    tidy nothing held (P-322); and the package test looks for the lists, by the names the
+    code gives them, on the fresh install and after the upgrade."""
+    import json
+
+    from sqlalchemy import inspect
+    from sqlalchemy.dialects import sqlite
+
+    from hirdir.db.models import Circuit, CircuitGroup, Country, State
+    from hirdir.domain import settings
+    from hirdir.io import examples
+    from hirdir.io.entities import LISTS
+
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
+    assert revision == "0019"
+    (migration,) = versions.glob(f"{revision}_*.py")
+    source = migration.read_text(encoding="utf-8")
+    assert 'down_revision = "0018"' in source
+    hook = (PACKAGING / "package-test.d" / f"migration-{revision}.sh").read_text(encoding="utf-8")
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+
+    # Two tables, created before the addresses are written: the pass whose migration
+    # fails asks for the trigger, so that it fails with all of that done.
+    created = re.findall(r'op\.create_table\(\s*"(\w+)"', source)
+    assert created == [Country.__tablename__, State.__tablename__]
+    assert source.index("_lists(now)") < source.index("_addresses(now,")
+    assert "\nfail_by=trigger\n" in hook
+    (request,) = re.findall(r'"request_id": "([\w-]+)"', source)
+    assert f"\nupgrade_events={request}\n" in hook
+    assert "writes_no_event" not in hook
+
+    # The data file the migration reads, beside it, and in the wheel with it: the wheel
+    # takes the package's whole folder, and no pattern of the files left out of the
+    # repository, which the wheel leaves out too, names a data file of the migrations.
+    data_file = "0019_iso3166_americas.json"
+    assert f'Path(__file__).with_name("{data_file}")' in source
+    data = json.loads((versions / data_file).read_text(encoding="utf-8"))
+    assert data["source"] == "iso-codes 4.20.1"
+    assert len(data["countries"]) == 55
+    assert len(data["states"]) == 633
+    assert data["countries"][0] == ["US", "United States"]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    wheel = project["tool"]["hatch"]["build"]["targets"]["wheel"]
+    assert wheel["packages"] == ["src/hirdir"]
+    assert "exclude" not in wheel
+    left_out = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert not [line for line in left_out if "json" in line or "migrations" in line]
+    # The package test reads it from the installed package, after the upgrade and on the
+    # fresh install, where the migrations loaded the lists from it.
+    assert f"/site-packages/hirdir/db/migrations/versions/{data_file}" in hook
+    assert f"local data=src/hirdir/db/migrations/versions/{data_file} " in script
+    assert "\n    countries_and_states\n" in script
+
+    # The columns the migration renames, each in its place, and those it adds, as SQLite
+    # declares them from the model; and the indexes and foreign keys it adds.
+    def said(model: type, name: str) -> str:
+        column = inspect(model).columns[name]
+        declared = column.type.compile(dialect=sqlite.dialect())
+        return f"{column.name} {declared} {'NULL' if column.nullable else 'NOT NULL'} -"
+
+    dates = ("installed_on", "activated_on", "disconnected_on")
+    assert re.search(
+        r'^DATES = \("installed_on", "activated_on", "disconnected_on"\)$', source, re.M
+    )
+    assert 'alter_column(name, new_column_name=f"a_{name}", existing_type=sa.Date)' in source
+    circuits = Circuit.__tablename__
+    renamed = "\n".join(f"{name} a_{name}" for name in dates)
+    assert f"\nalso renamed_columns {circuits} '{renamed}'\n" in hook
+    for name in dates:
+        assert name not in inspect(Circuit).columns
+        assert said(Circuit, f"a_{name}") == f"a_{name} DATE NULL -"
+    added = "\n".join(said(Circuit, name) for name in [*(f"z_{d}" for d in dates), "z_group_hid"])
+    assert f"\nalso new_columns {circuits} '{added}'\n" in hook
+    groups = CircuitGroup.__tablename__
+    added = f"{said(CircuitGroup, 'kind')}\n{said(CircuitGroup, 'carrier_hid')}"
+    assert f"\nalso new_columns {groups} '{added}'\n" in hook
+    for column, target in (("z_group_hid", f"{groups}.hid"), ("carrier_hid", "vendors.hid")):
+        (index,) = re.findall(rf'create_index\("(\w+)", \["{column}"\], unique=False\)', source)
+        assert f"index {index} on {column} unique=0 origin=c partial=0" in hook
+        assert f"foreign key {column} to {target}" in hook
+    assert "z_location_hid IS NULL OR z_group_hid IS NULL" in source
+    assert "z_location_hid IS NULL OR z_group_hid IS NULL" in hook
+    # The package test reads a renamed column under its new name.
+    assert "renamed_columns[TABLE]" in script
+    assert '"$(columns_now "$table" "$(columns_then "$table")")"' in script
+
+    # The lists every inventory holds, which the files of the examples load as unchanged,
+    # a reset keeps and hirdir admin load-examples leaves out.
+    (held,) = re.findall(r"^held_lists=\((.+)\)$", script, re.M)
+    assert tuple(held.split()) == LISTS
+    assert not set(LISTS) & set(examples.LOADED)
+    assert set(LISTS) <= set(LOAD_ORDER)
+
+    # The notes.
+    assert "### From 0.9.17 to 0.9.18" in INSTALL
+    notes = INSTALL.split("### From 0.9.17 to 0.9.18\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    assert f"The schema goes from revision `0018` to `{revision}`." in page
+    for name in dates:
+        assert f"`{name}`" in page
+        assert f"`a_{name}`" in page
+        assert f"`z_{name}`" in page
+    assert "and no alias of the old names is kept" in page
+    assert "`kind` is added, `collection` for every group, and `carrier_hid`, blank" in page
+    assert "every country of the Americas, 55 of them, the United States first" in page
+    assert "their 633 states and other subdivisions" in page
+    package, release = data["source"].split()
+    assert f"from the ISO 3166 data of `{package}` {release}" in page
+    assert f"the request ID `{request}`" in page
+    assert "`Untied States` stays `Untied States`" in page
+    assert "Going back to 0.9.17 is by the backup the upgrade took" in page
+    # The formats, at the defaults the settings give them, and nothing held tidied.
+    assert settings.SPECS[settings.PHONE_FORMATS].default == []
+    assert f"`{settings.PHONE_FORMATS}` is empty, so no telephone number is formatted" in page
+    assert settings.SPECS[settings.EMAIL_LOWER_CASE].default is True
+    assert f"`{settings.EMAIL_LOWER_CASE}` is on" in page
+    assert settings.SPECS[settings.TITLE_CASE_NAMES].default is True
+    assert f"`{settings.TITLE_CASE_NAMES}` is on, and only the web page reads it" in page
+    assert "**Nothing held is tidied by the input formats**" in page
+
+    # The routes and the fields that the page names are the contract's.
+    contract = json.loads((ROOT / "contract" / "openapi.json").read_text(encoding="utf-8"))
+    for method, path in (
+        ("get", "/countries"),
+        ("get", "/states"),
+        ("get", "/places/unlisted-addresses"),
+        ("get", "/settings"),
+    ):
+        assert method in contract["paths"][f"/api/v1{path}"]
+        assert f"`{method.upper()} {path}`" in page
+    for path in ("/countries", "/states"):
+        assert "post" in contract["paths"][f"/api/v1{path}"]
+        assert {"patch", "delete"} <= set(contract["paths"][f"/api/v1{path}/{{hid}}"])
+    schemas = contract["components"]["schemas"]
+    for name in dates:
+        assert f"a_{name}" in schemas["CircuitOut"]["properties"]
+        assert name not in schemas["CircuitOut"]["properties"]
+    for field in ("country_name", "state_name", "ship_country_name", "ship_state_name"):
+        assert field in schemas["SiteOut"]["properties"]
+        assert field in schemas["LocationOut"]["properties"]
+        assert f"`{field}`" in page
+    assert "as_in_file" in schemas["RowChange"]["properties"]
+
+    # What the package test asks for it, by scenario, on the fresh install and after the
+    # upgrade, and in the words the API answers with.
+    for function in ("before_0019", "changed_0019", "after_0019"):
+        assert f"\n{function}() {{\n" in hook
+    assert 'expect "S64 GET $prefix/api/v1/countries ' in script
+    assert 'expect "S64 $when ' in hook
+    assert 'expect "S65 $when ' in hook
+    assert 'expect "S63 after the upgrade, ' in hook
+    assert "tidied[contacts]=1" in hook
+    assert "unset 'tidied[contacts]'" in hook
