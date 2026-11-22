@@ -16,7 +16,7 @@ from hirdir.api.idempotent import refused
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset
 from hirdir.api.problems import problem
 from hirdir.db import migrate
-from hirdir.db.models import AuditEvent, ServiceToken
+from hirdir.db.models import AuditEvent, ServiceToken, User
 from hirdir.domain import accounts, people, product, profile
 from hirdir.io import background, measures, tables
 
@@ -101,7 +101,8 @@ def me(principal: SignedIn, db: Db) -> schemas.MeOut:
     """Return the signed-in user, with the role they hold right now, the contact they
     are and the operators they are behind, each with the version it is changed at
     (P-294). Its `notes` are null: the notes on an account are answered by the routes of
-    users alone (P-281)."""
+    users alone (P-281). The token of an agent is answered with its kind, the person
+    answerable for it and the role its person holds it to (P-316)."""
     return views.me_out(db, principal.user)
 
 
@@ -225,13 +226,19 @@ def list_users(
             "`none` holds it (P-296)."
         ),
     ] = "no",
+    kind: Annotated[
+        schemas.UserKind | None,
+        Query(description="The accounts of one kind: `person`, `service` or `agent` (P-316)."),
+    ] = None,
     sort: Annotated[list[str] | None, Query(description=tables.USERS.help)] = None,
     limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.UserOut]:
     """List users, by username unless a sort says otherwise. `q` matches part of a
-    username or of the name of its contact; `contact` and `operator` find the gaps; and
-    the retired accounts are left out unless `retired` asks for them."""
+    username or of the name of its contact; `contact` and `operator` find the gaps;
+    `kind` keeps one kind; and the retired accounts are left out unless `retired` asks
+    for them. Each answers the roles it holds and where each comes from (P-307), read
+    for the whole page at once."""
     page, total = accounts.list_users(
         db,
         q,
@@ -241,6 +248,7 @@ def list_users(
         contact=contact,
         operator=operator,
         retired=retired,
+        kind=kind,
     )
     return schemas.Page(items=views.users_out(db, page), total=total, limit=limit, offset=offset)
 
@@ -250,13 +258,15 @@ def create_user(body: schemas.UserCreate, _: Admin, context: Audit, db: Db) -> r
     """Create a user, and in the same change the contact it is, the operator it works
     as, its role and its groups, each audited as if made by itself: where any part is
     refused, nothing is made (P-282, P-283). A person is made with a role, of its own or
-    through a group, or it is a `422` on `role` (P-299). The access code in the answer is
-    not shown again."""
+    through a group, or it is a `422` on `role` (P-299). An agent names the person
+    answerable for it and is never Admin (P-316). The access code in the answer is not
+    shown again."""
     made = accounts.onboard(
         db,
         context,
         username=body.username,
-        is_service_account=body.is_service_account,
+        kind=body.kind,
+        answerable_hid=body.answerable_hid,
         access_code=body.access_code,
         contact_hid=body.contact_hid,
         contact=body.contact.model_dump(exclude_unset=True) if body.contact else None,
@@ -282,19 +292,21 @@ def get_user(hid: str, _: Admin, db: Db) -> schemas.UserOut:
 def update_user(
     hid: str, body: schemas.UserPatch, _: Admin, context: Audit, db: Db
 ) -> schemas.UserOut:
-    """Change a user: its username, its contact, its notes, or whether it is disabled.
-    Disabling a user ends every session they have; a new username keeps them. The name,
-    email and numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`. Of
-    a retired account only the username, the notes and its contact taken off are
-    changed: anything else is a `409` (P-296)."""
+    """Change a user: its username, its contact, its notes, whether it is disabled, or
+    the person answerable for an agent, which hands it over (P-316). Disabling a user
+    ends every session they have; a new username keeps them. The name, email and numbers
+    it shows are its contact's, changed by `PATCH /contacts/{hid}`. The kind is not
+    changed. Of a retired account only the username, the notes and its contact taken
+    off are changed: anything else is a `409` (P-296)."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     return views.user_out(db, accounts.update_user(db, context, hid, body.row_version, fields))
 
 
 @users.get("/users/{hid}/linked")
 def user_linked(hid: str, _: Viewer, db: Db) -> schemas.Person:
-    """Return the person a user is: itself, its contact and the operators of that
-    contact, the retired among them, marked so (P-297). Every role reads it."""
+    """Return the person a user is: itself, its contact, the operators of that contact
+    and the agents answerable to it, the retired among them, marked so (P-297, P-316).
+    Every role reads it."""
     return views.person_out(db, people.of_user(db, hid))
 
 
@@ -304,9 +316,10 @@ def retire_user(
 ) -> schemas.UserOut:
     """Retire the account of somebody who has left (P-296): every session ends, the
     access code is erased, the account leaves each of its groups and loses each role of
-    its own, and a service account's tokens are revoked, each audited as when done by
-    itself. `linked` says what becomes of its contact and of the operators of that
-    contact (P-297). Refused where it would leave no Admin."""
+    its own, and the tokens of a service account or an agent are revoked, each audited
+    as when done by itself. `linked` says what becomes of its contact, of the operators
+    of that contact (P-297) and of the agents answerable to it (P-316). Refused where it
+    would leave no Admin."""
     people.retire(
         db,
         context,
@@ -325,7 +338,9 @@ def retire_user(
         409: {
             "model": schemas.Problem,
             "description": "The account is not retired; or its contact is retired and is "
-            "not brought back with it, the contact named on `linked.contact`.",
+            "not brought back with it, the contact named on `linked.contact`; or it is an "
+            "agent whose person is retired and no other is named, on `answerable_hid` "
+            "(P-316).",
         },
         422: {
             "model": schemas.Problem,
@@ -350,6 +365,7 @@ def bring_back_user(
         body.row_version,
         body.linked.model_dump() if body.linked else None,
         role=body.role,
+        answerable_hid=body.answerable_hid,
     )
     return schemas.UserBroughtBack(user=views.user_out(db, back.user), access_code=back.access_code)
 
@@ -373,7 +389,7 @@ def sign_out_user(hid: str, _: Admin, context: Audit, db: Db) -> None:
 
 @users.get("/users/{hid}/service-tokens")
 def list_service_tokens(hid: str, _: Admin, db: Db) -> list[schemas.ServiceTokenOut]:
-    """List the tokens of a service account."""
+    """List the tokens of a service account or an agent (P-316)."""
     return [
         schemas.ServiceTokenOut.model_validate(t) for t in accounts.list_service_tokens(db, hid)
     ]
@@ -383,7 +399,9 @@ def list_service_tokens(hid: str, _: Admin, db: Db) -> list[schemas.ServiceToken
 def create_service_token(
     hid: str, body: schemas.ServiceTokenCreate, _: Admin, context: Audit, db: Db
 ) -> schemas.ServiceTokenCreated:
-    """Create a token for a service account. The secret in the answer is not shown again."""
+    """Create a token for a service account or an agent (P-316). The secret in the
+    answer is not shown again. A token of an account that holds no role, or of an agent
+    whose person cannot answer for it, is made, and refused until it can (P-299)."""
     token, secret = accounts.create_service_token(
         db, context, hid, name=body.name, expires_at=body.expires_at
     )
@@ -436,7 +454,17 @@ def delete_group(hid: str, _: Admin, context: Audit, db: Db) -> None:
     accounts.delete_group(db, context, hid)
 
 
-@groups.put("/{hid}/members/{user_hid}", status_code=204)
+@groups.put(
+    "/{hid}/members/{user_hid}",
+    status_code=204,
+    responses={
+        409: {
+            "model": schemas.Problem,
+            "description": "The user is an agent and the group grants Admin: an agent is "
+            "never Admin (P-316). Or the user is retired.",
+        }
+    },
+)
 def add_member(hid: str, user_hid: str, _: Admin, context: Audit, db: Db) -> None:
     """Put a user in a group."""
     accounts.add_member(db, context, hid, user_hid)
@@ -457,9 +485,23 @@ def list_grants(_: Admin, db: Db) -> list[schemas.GrantOut]:
     return [views.grant_out(db, grant) for grant in accounts.list_grants(db)]
 
 
-@grants.post("", status_code=201)
+@grants.post(
+    "",
+    status_code=201,
+    responses={
+        409: {
+            "model": schemas.Problem,
+            "description": "Admin to a group that holds an agent, each agent in `depends_on`: "
+            "an agent is never Admin (P-316). Or the user is retired.",
+        },
+        422: {
+            "model": schemas.Problem,
+            "description": "Admin to an agent, on `role` (P-316); or a role there is not.",
+        },
+    },
+)
 def grant_role(body: schemas.GrantCreate, _: Admin, context: Audit, db: Db) -> schemas.GrantOut:
-    """Grant a role to one user or one group."""
+    """Grant a role to one user or one group. An agent is never Admin (P-316)."""
     grant = accounts.grant_role(
         db, context, role=body.role, user_hid=body.user_hid, group_hid=body.group_hid
     )
@@ -483,12 +525,24 @@ def list_audit_events(
     record_hid: str = "",
     action: str = "",
     actor_hid: str = "",
+    actor_kind: Annotated[
+        schemas.UserKind | None,
+        Query(
+            description="The events of the accounts of one kind: `agent` gives every change "
+            "made by an agent (P-316)."
+        ),
+    ] = None,
+    for_hid: Annotated[
+        str,
+        Query(description="The events made by agents for this person (P-316)."),
+    ] = "",
     request: str = Query(default="", alias="request_id"),
     sort: Annotated[list[str] | None, Query(description=tables.AUDIT_EVENTS.help)] = None,
     limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.AuditEventOut]:
-    """List audit events, newest first unless a sort says otherwise."""
+    """List audit events, newest first unless a sort says otherwise. Each answers the
+    kind of the account that acted and, for an agent's, the person it was for (P-316)."""
     arrange = tables.arrange(tables.AUDIT_EVENTS, sort)
     query = select(AuditEvent)
     for column, value in (
@@ -496,10 +550,15 @@ def list_audit_events(
         (AuditEvent.record_hid, record_hid),
         (AuditEvent.action, action),
         (AuditEvent.actor_hid, actor_hid),
+        (AuditEvent.for_hid, for_hid),
         (AuditEvent.request_id, request),
     ):
         if value:
             query = query.where(column == value)
+    if actor_kind:
+        query = query.where(
+            AuditEvent.actor_hid.in_(select(User.hid).where(User.kind == actor_kind))
+        )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     if arrange is not None:
         query = arrange(query)
@@ -507,7 +566,7 @@ def list_audit_events(
         query.order_by(AuditEvent.at.desc(), AuditEvent.hid.desc()).limit(limit).offset(offset)
     )
     return schemas.Page(
-        items=[views.audit_out(db, event) for event in page],
+        items=views.audit_events_out(db, list(page)),
         total=total,
         limit=limit,
         offset=offset,

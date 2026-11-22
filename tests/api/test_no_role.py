@@ -275,7 +275,7 @@ def test_a_service_account_with_no_role_has_its_tokens_refused(
     client: TestClient, admin: dict
 ) -> None:
     desk = Maker(client, admin)
-    robot = desk.post("/users", {"username": "robot", "is_service_account": True})["user"]
+    robot = desk.post("/users", {"username": "robot", "kind": "service"})["user"]
     # An Admin makes a token for it all the same: it works once a role is given.
     made = desk.post(f"/users/{robot['hid']}/service-tokens", {"name": "nightly"})
     token = {"Authorization": f"Bearer {made['secret']}"}
@@ -316,7 +316,7 @@ def test_a_person_is_made_with_a_role_and_a_service_account_may_have_none(
     assert desk.get("/contacts", limit=1)["total"] == contacts
     _grant(client, admin, group_hid=label["hid"])
     desk.post("/users", {"username": "klee", "group_hids": [label["hid"]]})
-    desk.post("/users", {"username": "robot", "is_service_account": True})
+    desk.post("/users", {"username": "robot", "kind": "service"})
 
 
 def _retired(client: TestClient, admin: dict, **more: Any) -> dict[str, Any]:
@@ -361,7 +361,7 @@ def test_a_person_is_brought_back_with_a_role(client: TestClient, admin: dict) -
 def test_a_service_account_is_brought_back_with_or_without_a_role(
     client: TestClient, admin: dict
 ) -> None:
-    user = _retired(client, admin, is_service_account=True)
+    user = _retired(client, admin, kind="service")
     desk = Maker(client, admin)
     back = desk.post(f"/users/{user['hid']}/bring-back", {"row_version": user["row_version"]}, 200)
     assert (back["user"]["role"], back["access_code"]) == (None, None)
