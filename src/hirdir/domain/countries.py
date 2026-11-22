@@ -201,13 +201,15 @@ def state_held(db: Session, state: State) -> tuple[int, str]:
     return _holders(db, holds)
 
 
-def _held_refusal(held: tuple[int, str], said: str, field: str) -> Conflict:
+def _held_refusal(held: tuple[int, str], said: str, field: str, kind: str) -> Conflict:
     """Return the refusal of a change that would leave an address with a value that no
-    list holds, naming the first place that holds it and how many more do."""
+    list holds, naming the first place that holds it, how many more do, and what to give
+    them first: another country, or another state."""
     count, first = held
     others = count - 1
     more = f" and {others:,} more address{'es' if others > 1 else ''}" if others else ""
-    return Conflict(said, {field: f"held by {first}{more}; give each another first"})
+    whom = "each" if others else "it"
+    return Conflict(said, {field: f"held by {first}{more}; give {whom} another {kind} first"})
 
 
 # --- the countries -------------------------------------------------------------------
@@ -255,7 +257,10 @@ def _checked_country(
         held = country_held(db, country.code)
         if held[0]:
             raise _held_refusal(
-                held, f"the code {country.code} is not changed: an address holds it", "code"
+                held,
+                f"the code {country.code} is not changed: an address holds it",
+                "code",
+                "country",
             )
     if code is not None and (country is None or code != country.code):
         twin = db.scalar(select(Country).where(Country.code == code))
@@ -336,7 +341,9 @@ def delete_country(db: Session, context: AuditContext, hid: str, role: Role | No
         )
     held = country_held(db, country.code)
     if held[0]:
-        raise _held_refusal(held, f"{country.name} is not removed: an address holds it", "code")
+        raise _held_refusal(
+            held, f"{country.name} is not removed: an address holds it", "code", "country"
+        )
     states = list(
         db.scalars(select(State).where(State.country == country.code).order_by(State.name_key))
     )
@@ -347,6 +354,7 @@ def delete_country(db: Session, context: AuditContext, hid: str, role: Role | No
                 held,
                 f"{country.name} is not removed: an address holds its state {state.name}",
                 "code",
+                "state",
             )
     for state in states:
         _delete_state(db, context, state)
@@ -409,7 +417,7 @@ def _checked_state(db: Session, fields: Mapping[str, Any], state: State | None) 
         held = state_held(db, state)
         if held[0]:
             raise _held_refusal(
-                held, f"the code {state.code} is not changed: an address holds it", "code"
+                held, f"the code {state.code} is not changed: an address holds it", "code", "state"
             )
     if code is not None and (state is None or code != state.code):
         twin = db.scalar(select(State).where(State.country == country, State.code == code))
@@ -486,7 +494,9 @@ def delete_state(db: Session, context: AuditContext, hid: str, role: Role | None
     state = get_state(db, hid)
     held = state_held(db, state)
     if held[0]:
-        raise _held_refusal(held, f"{state.name} is not removed: an address holds it", "code")
+        raise _held_refusal(
+            held, f"{state.name} is not removed: an address holds it", "code", "state"
+        )
     _delete_state(db, context, state)
 
 

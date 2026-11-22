@@ -461,13 +461,15 @@ def test_a_network_is_not_retired_while_a_circuit_reaches_it_nor_a_circuit_broug
     )
     # Brought back while its network is retired, a circuit is refused.
     now = desk.again(made)
-    assert "record_status" in errors(
+    said = errors(
         desk.patch(
             f"/circuits/{made['hid']}",
             {"row_version": now["row_version"], "record_status": "active"},
             422,
         )
     )
+    # It says to bring the network back first, since a retired circuit has no form.
+    assert said["record_status"].startswith(f"bring {network['name']} back first")
     back = desk.patch(
         f"/circuits/{made['hid']}",
         {

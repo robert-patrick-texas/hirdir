@@ -690,8 +690,11 @@ def _check_whole(db: Session, values: dict[str, Any], circuit: Circuit | None, f
         network = db.get(CircuitGroup, final("z_group_hid") or "")
         if network is not None and network.record_status == "retired":
             raise Invalid(
-                f"{network.name}, the network the Z side reaches, is retired",
-                {"record_status": "give the Z side another network, or none, with the change"},
+                f"{network.name}, the carrier network the Z side reaches, is retired",
+                {
+                    "record_status": f"bring {network.name} back first, or give the Z side "
+                    "another network, or none, with the change"
+                },
             )
 
 
