@@ -32,10 +32,21 @@ Labels = Annotated[
         "it goes to.",
     ),
 ]
+Agents = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--agent",
+        metavar="USERNAME=ACTION",
+        help="Where the user is retired: what becomes of an agent answerable to it, once "
+        "for each: USERNAME=retire, or USERNAME=hand_over:USER, the username or HID of the "
+        "person answerable for it from then on (P-316).",
+    ),
+]
 DryRun = Annotated[
     bool, typer.Option("--dry-run", help="Print what would be done, and send nothing.")
 ]
 ACTIONS = ("retire", "keep", "open", "hand_over")
+AGENT_ACTIONS = ("retire", "hand_over")
 WORDS = {
     "retire": "retire",
     "keep": "keep",
@@ -102,6 +113,31 @@ def _operators(
     return said
 
 
+def _agents(
+    target: Target, person: dict[str, Any], given: list[str] | None
+) -> list[dict[str, Any]]:
+    """Return what the options say of the agents of the user, each named by its username
+    or its HID, and the person each is handed to by theirs (P-316)."""
+    said = []
+    for text in given or []:
+        name, _, what = text.rpartition("=")
+        action, _, to = what.partition(":")
+        if not name or action not in AGENT_ACTIONS or (action == "hand_over") != bool(to):
+            raise client.fail(f"--agent {text}: USERNAME=retire or USERNAME=hand_over:USER", 2)
+        known = [
+            one
+            for one in person.get("agents", [])
+            if name == one["hid"] or one["username"].lower() == name.lower()
+        ]
+        # One that is not the user's is sent as it was typed, and the server says so.
+        entry: dict[str, Any] = {"hid": known[0]["hid"] if known else name, "action": action}
+        if to:
+            entry["user_hid"] = find_user(target, to)["hid"]
+            entry["to"] = to
+        said.append(entry)
+    return said
+
+
 def _lines(
     person: dict[str, Any], kind: str, hid: str, linked: dict[str, Any], own: str
 ) -> list[str]:
@@ -135,6 +171,14 @@ def _lines(
         role = f"role: {user['role'] or '-'}"
         said = WORDS.get(linked.get("user") or "")
         lines.append(f"  user      {user['username']:<24}{role:<28}{fate('user', user, said)}")
+    by_agent = {one["hid"]: one for one in linked.get("agents", [])}
+    for one in person.get("agents", []):
+        entry = by_agent.get(one["hid"])
+        said = None
+        if entry is not None:
+            said = WORDS[entry["action"]] + (f" to {entry['to']}" if entry.get("to") else "")
+        role = f"role: {one['role'] or '-'}"
+        lines.append(f"  agent     {one['username']:<24}{role:<28}{fate('agent', one, said)}")
     return lines
 
 
@@ -143,11 +187,12 @@ def _sent(linked: dict[str, Any]) -> dict[str, Any]:
     body: dict[str, Any] = {
         name: linked[name] for name in ("user", "contact") if linked.get(name) is not None
     }
-    if linked.get("operators"):
-        body["operators"] = [
-            {name: value for name, value in entry.items() if name != "to"}
-            for entry in linked["operators"]
-        ]
+    for part in ("operators", "agents"):
+        if linked.get(part):
+            body[part] = [
+                {name: value for name, value in entry.items() if name != "to"}
+                for entry in linked[part]
+            ]
     return body
 
 
@@ -164,6 +209,7 @@ def retire(
     dry_run: bool,
     find_contact: Any,
     done: str | None = None,
+    agents: list[str] | None = None,
 ) -> None:
     """Print what is linked to a record and what becomes of each, and retire it."""
     person = client.call(target, "GET", f"{path}/{record['hid']}/linked")
@@ -171,6 +217,7 @@ def retire(
         "user": _fate("user", user),
         "contact": _fate("contact", contact),
         "operators": _operators(target, person, operators, find_contact),
+        "agents": _agents(target, person, agents),
     }
     typer.echo(f"{kind} {known_as}, and what is linked to it:")
     for line in _lines(person, kind, record["hid"], linked, "retire"):
@@ -193,9 +240,12 @@ def bring_back(
     operators: list[str] | None,
     dry_run: bool,
     role: str | None = None,
+    answerable: str | None = None,
 ) -> None:
     """Print what is linked to a retired user, and bring it back with what is said and
-    the role given, which the server asks of a person (P-299)."""
+    the role given, which the server asks of a person (P-299), and an agent answerable
+    to the person `answerable` names, where it is given (P-316)."""
+    person_hid = find_user(target, answerable)["hid"] if answerable else None
     person = client.call(target, "GET", f"/users/{user['hid']}/linked")
     linked: dict[str, Any] = {"contact": "bring_back" if contact else None, "operators": []}
     for label in operators or []:
@@ -218,8 +268,9 @@ def bring_back(
     typer.echo(
         f"  user      {user['username']:<24}bring back"
         + (f", with the {role} role" if role else "")
+        + (f", answerable to {answerable}" if answerable else "")
     )
-    if dry_run and not role and not user["is_service_account"]:
+    if dry_run and not role and user["kind"] == "person":
         # What the server would refuse is not shown as what would be done: a person is
         # brought back with a role (P-299), and the run itself is refused at `role`.
         raise client.fail(
@@ -235,6 +286,8 @@ def bring_back(
         body["linked"] = _sent(linked)
     if role:
         body["role"] = role
+    if person_hid:
+        body["answerable_hid"] = person_hid
     back = client.call(target, "POST", f"/users/{user['hid']}/bring-back", body)
     held = back["user"]["role"]
     typer.echo(

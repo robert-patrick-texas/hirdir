@@ -213,9 +213,24 @@ def create_user(
     access_code: Annotated[
         str | None, typer.Option(help="Set this code instead of generating one.")
     ] = None,
-    service_account: Annotated[
-        bool, typer.Option("--service-account", help="An account that holds tokens.")
-    ] = False,
+    kind: Annotated[
+        str,
+        typer.Option(
+            "--kind",
+            metavar="person|service|agent",
+            help="A person, who signs in with an access code; a service account, which "
+            "does a fixed job; or an agent, answerable to the person --for names. A "
+            "service account and an agent hold tokens, made on their page.",
+        ),
+    ] = "person",
+    answerable: Annotated[
+        str | None,
+        typer.Option(
+            "--for",
+            metavar="USERNAME",
+            help="Of an agent, and needed by it: the person answerable for it (P-316).",
+        ),
+    ] = None,
     group: Annotated[
         list[str] | None,
         typer.Option(
@@ -224,16 +239,35 @@ def create_user(
             "that grants a role gives the user that role.",
         ),
     ] = None,
+    no_role: Annotated[
+        bool,
+        typer.Option(
+            "--no-role",
+            help="Make a person who holds no role, of its own or through a group: it cannot "
+            "sign in until an Admin gives it one (P-313).",
+        ),
+    ] = False,
 ) -> None:
     """Create a user and print the access code, which is not shown again.
 
     The person is a contact: --name, with --email, --phone and --phone2 where known,
     makes it with the user. Without them the user has no contact until an Admin gives
     it one, and is shown by its username. --group puts it in each group named, and a
-    group that grants a role gives it that role (P-304).
+    group that grants a role gives it that role (P-304). A person is made with a role,
+    by --role or a --group that grants one, or with --no-role (P-313). --kind service
+    and --kind agent make an account that holds tokens and no access code; an agent is
+    answerable to the person --for names, and is never Admin (P-316).
     """
     if role is not None and role not in [r.value for r in Role]:
         raise _fail("the role must be viewer, inventory or admin", 2)
+    if role is not None and no_role:
+        raise _fail("--role and --no-role are not given together", 2)
+    if kind not in accounts.KINDS:
+        raise _fail("the kind must be person, service or agent", 2)
+    if kind == accounts.AGENT and not answerable:
+        raise _fail("an agent is answerable to a person: name them with --for USERNAME", 2)
+    if kind != accounts.AGENT and answerable is not None:
+        raise _fail("--for names the person answerable for an agent: give it with --kind agent", 2)
     person = {"name": name, "email": email, "phone": phone, "phone2": phone2}
     if not name and (email or phone or phone2):
         raise _fail("--email, --phone and --phone2 are of the contact that --name makes", 2)
@@ -241,11 +275,23 @@ def create_user(
     with make_sessions(make_engine(config.database_url))() as db:
         try:
             groups = accounts.groups_named(db, group or [])
+            given = any(accounts.roles_of_groups(db, groups).values())
+            if kind == accounts.PERSON and role is None and not given and not no_role:
+                # An account with no role does not sign in, so a person is made with one,
+                # as New user does on the web page, unless --no-role says otherwise
+                # (P-313). Nothing is made.
+                raise _fail(NO_ROLE_REFUSED, 4)
+            responsible = None
+            if answerable is not None:
+                responsible = accounts.find_user(db, answerable)
+                if responsible is None:
+                    raise _fail(f"there is no user named {answerable}", 4)
             user, code = accounts.create_user(
                 db,
                 audit.SYSTEM,
                 username=username,
-                is_service_account=service_account,
+                kind=kind,
+                answerable_hid=responsible.hid if responsible is not None else None,
                 access_code=access_code,
                 contact={key: value for key, value in person.items() if value} if name else None,
             )
@@ -255,10 +301,15 @@ def create_user(
                 accounts.add_member(db, audit.SYSTEM, each.hid, user.hid)
             db.flush()
             held = accounts.effective_role(db, user)
+            force = accounts.in_force(db, [user])[user.hid]
             db.commit()
         except DomainError as error:
             raise _fail(str(error), 4) from error
-    typer.echo(f"created {user.username}" + (f" with the {role} role" if role else ""))
+    typer.echo(
+        f"created {user.username}"
+        + (f", an agent answerable to {responsible.username}," if responsible is not None else "")
+        + (f" with the {role} role" if role else "")
+    )
     if groups:
         typer.echo(
             f"in the group{'s' if len(groups) > 1 else ''} " + ", ".join(g.name for g in groups)
@@ -269,13 +320,27 @@ def create_user(
         typer.echo(f"access code: {code}")
     if held is None:
         # An account with no role does not sign in, and the tokens of a service account
-        # with none are refused (P-299).
-        held = (
-            "its tokens are refused until an Admin gives it one"
-            if service_account
-            else "cannot sign in until an Admin gives it one"
+        # or an agent with none are refused (P-299, P-313).
+        typer.echo(f"{user.username} holds no role, and {NO_ROLE_WARNING[kind]}", err=True)
+    elif responsible is not None and force.role is None:
+        # The tokens of an agent are refused while its person cannot answer for it.
+        why = "is disabled" if responsible.disabled else "holds no role"
+        typer.echo(
+            f"{user.username}'s tokens are refused while {responsible.username} {why}", err=True
         )
-        typer.echo(f"{user.username} holds no role, and {held}", err=True)
+
+
+# Why a person is not made with no role, and what to give (P-313).
+NO_ROLE_REFUSED = (
+    "a person is made with a role, since an account with no role does not sign in: give "
+    "--role, a --group that grants one, or --no-role to make it with none"
+)
+# What an account made with no role is told, by its kind (P-299, P-306).
+NO_ROLE_WARNING = {
+    accounts.PERSON: "cannot sign in until an Admin gives it one",
+    accounts.SERVICE: "its tokens are refused until an Admin gives it one",
+    accounts.AGENT: "its tokens are refused until an Admin gives it one",
+}
 
 
 @admin.command("reset-access-code")

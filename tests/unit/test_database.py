@@ -719,3 +719,65 @@ def test_going_back_from_0013_with_an_item_replaced_twice_is_refused_in_words(
     command.downgrade(migrate.alembic_config(url), "0012")
     with make_engine(url).connect() as connection:
         assert connection.execute(text("SELECT hid FROM item_replacements")).scalar() == "r-1"
+
+
+def test_the_upgrade_to_0018_gives_each_account_its_kind_and_no_agent(tmp_path: Path) -> None:
+    """P-316: a service account is `service`, every other account `person`, no account is
+    answerable to another, and no event is for anybody; nothing else of a row changes,
+    and no event is written. Going back, an agent is a service account again."""
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0017")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        for hid, username, service in (("u-1", "ada", 0), ("u-2", "sync", 1), ("u-3", "kim", 0)):
+            connection.execute(
+                text(
+                    "INSERT INTO users (hid, username, username_key, is_service_account,"
+                    " tokens_valid_after, disabled, record_status, created_at, updated_at,"
+                    " row_version) VALUES (:hid, :username, :username, :service, 0, 0,"
+                    " 'active', '2026-01-01', '2026-01-01', 4)"
+                ),
+                {"hid": hid, "username": username, "service": service},
+            )
+        connection.execute(
+            text(
+                "INSERT INTO audit_events (hid, at, actor_hid, via, request_id, action,"
+                " record_type, record_hid, changes) VALUES ('e-1', '2026-01-01', 'u-1', 'web',"
+                " '', 'update', 'user', 'u-3', '[]')"
+            )
+        )
+    engine.dispose()
+
+    command.upgrade(migrate.alembic_config(url), "0018")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text("SELECT hid, kind, answerable_hid, row_version FROM users ORDER BY hid")
+        ).all()
+        assert [tuple(row) for row in rows] == [
+            ("u-1", "person", None, 4),
+            ("u-2", "service", None, 4),
+            ("u-3", "person", None, 4),
+        ]
+        assert "is_service_account" not in {
+            column["name"] for column in inspect(connection).get_columns("users")
+        }
+        events = connection.execute(text("SELECT hid, for_hid FROM audit_events")).all()
+        assert [tuple(row) for row in events] == [("e-1", None)]
+        # An agent, as 0.9.17 makes one, to go back with.
+        connection.execute(
+            text(
+                "INSERT INTO users (hid, username, username_key, kind, answerable_hid,"
+                " tokens_valid_after, disabled, record_status, created_at, updated_at,"
+                " row_version) VALUES ('u-4', 'agent-reconcile', 'agent-reconcile', 'agent',"
+                " 'u-3', 0, 0, 'active', '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+    engine.dispose()
+
+    command.downgrade(migrate.alembic_config(url), "0017")
+    with make_engine(url).connect() as connection:
+        rows = connection.execute(
+            text("SELECT hid, is_service_account FROM users ORDER BY hid")
+        ).all()
+        assert [tuple(row) for row in rows] == [("u-1", 0), ("u-2", 1), ("u-3", 0), ("u-4", 1)]

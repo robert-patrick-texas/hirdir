@@ -103,11 +103,12 @@ class Bookkeeping:
 
 
 class User(Bookkeeping, Base):
-    """A person who signs in, or a service account that holds tokens.
+    """A person who signs in, a service account or an agent, which hold tokens.
 
     A user is a part that a person plays: the person is a contact, whose name, email
     and numbers the user shows, read when it is read. A service account is no person
-    and has no contact (P-172).
+    and has no contact (P-172), and nor has an agent, which is answerable to a person
+    (P-316).
     """
 
     __tablename__ = "users"
@@ -117,7 +118,13 @@ class User(Bookkeeping, Base):
     username: Mapped[str] = mapped_column(String(64))
     username_key: Mapped[str] = mapped_column(String(64), unique=True)
     contact_hid: Mapped[str | None] = mapped_column(ForeignKey("contacts.hid"), default=None)
-    is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    # `person`, `service` or `agent`, set when the account is made and not changed
+    # after (P-316).
+    kind: Mapped[str] = mapped_column(String(10), default="person")
+    # An agent's alone, and required of it: the person answerable for it (P-316).
+    answerable_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("users.hid"), default=None, index=True
+    )
     access_code_hash: Mapped[str | None] = mapped_column(Text, default=None)
     tokens_valid_after: Mapped[int] = mapped_column(BigInteger, default=0)
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -210,6 +217,9 @@ class AuditEvent(Base):
     hid: Mapped[str] = _hid()
     at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)
     actor_hid: Mapped[str | None] = mapped_column(String(36), default=None)
+    # Where the actor is an agent, the person it was answerable to when the event was
+    # made (P-316).
+    for_hid: Mapped[str | None] = mapped_column(String(36), default=None)
     via: Mapped[str] = mapped_column(String(10))
     request_id: Mapped[str] = mapped_column(String(64), default="")
     action: Mapped[str] = mapped_column(String(40))

@@ -110,6 +110,8 @@ def test_each_of_the_three_answers_the_person_it_belongs_to(
                 "uses": 0,
             },
         ],
+        # No agent is answerable to Kim (P-316).
+        "agents": [],
     }
     paths = (
         f"/users/{kim.user['hid']}/linked",

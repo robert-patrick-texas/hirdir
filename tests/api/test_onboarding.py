@@ -187,7 +187,7 @@ REFUSALS = [
         {"username": "ex-ops", "operator": {}}, 422, "operator", id="operator without contact"
     ),
     pytest.param(
-        {"username": "ex-bot", "is_service_account": True, "operator": {}},
+        {"username": "ex-bot", "kind": "service", "operator": {}},
         422,
         "operator",
         id="operator of a service account",
@@ -296,7 +296,7 @@ def test_the_users_are_narrowed_to_those_with_no_contact_and_no_operator(
     )
     desk.release(gone["operator"])
     desk.post("/users", {"role": "viewer", "username": "ex-none", "contact": {"name": "N"}})
-    desk.post("/users", {"username": "ex-bot", "is_service_account": True})
+    desk.post("/users", {"username": "ex-bot", "kind": "service"})
 
     everyone = ["ada", "ex-bot", "ex-gone", "ex-none", "ex-two", "ivy", "vic"]
     assert _usernames(desk) == _usernames(desk, contact="any", operator="any") == everyone
@@ -371,7 +371,7 @@ def test_a_retired_contact_is_as_no_contact_for_the_gaps_and_still_answered(
             "operator": {},
         },
     )
-    desk.post("/users", {"username": "ex-bot", "is_service_account": True})
+    desk.post("/users", {"username": "ex-bot", "kind": "service"})
     contact = desk.get(f"/contacts/{made['user']['contact_hid']}")
     left_retired(db, contact["hid"])
 

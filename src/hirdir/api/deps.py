@@ -53,9 +53,7 @@ def get_principal(request: Request, db: Db) -> Principal:
     # Who asks is left where the gateway reads it once the answer is sent, as the ID of
     # the request is kept: the server's own measures say what each account met (P-266).
     request.state.who = load.Who(
-        principal.user.hid,
-        principal.user.username,
-        load.SERVICE if principal.kind == "service" else load.PERSON,
+        principal.user.hid, principal.user.username, load.kind_of(principal.user.kind)
     )
     return principal
 
@@ -80,9 +78,13 @@ Admin = Annotated[Principal, Depends(require(Role.ADMIN))]
 
 
 def get_audit_context(request: Request, principal: SignedIn) -> AuditContext:
-    """Return the audit context of a signed-in request."""
+    """Return the audit context of a signed-in request: for an agent, with the person
+    it is answerable to now, which each event of the request keeps (P-316)."""
     return AuditContext(
-        actor_hid=principal.user.hid, via=via(request), request_id=request_id(request)
+        actor_hid=principal.user.hid,
+        via=via(request),
+        request_id=request_id(request),
+        for_hid=principal.for_hid,
     )
 
 

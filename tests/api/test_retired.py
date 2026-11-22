@@ -111,9 +111,7 @@ def test_retiring_an_account_takes_away_what_it_could_do_each_audited(
 
 def test_retiring_a_service_account_revokes_its_tokens(client: TestClient, admin: dict) -> None:
     desk = Maker(client, admin)
-    tool = desk.post(
-        "/users", {"username": "ex-tool", "is_service_account": True, "role": "viewer"}
-    )
+    tool = desk.post("/users", {"username": "ex-tool", "kind": "service", "role": "viewer"})
     made = desk.post(f"/users/{tool['user']['hid']}/service-tokens", {"name": "a tool"})
     old = desk.post(f"/users/{tool['user']['hid']}/service-tokens", {"name": "an old tool"})
     desk.post(f"/service-tokens/{old['token']['hid']}/revoke", {}, 200)
@@ -242,7 +240,7 @@ def test_what_is_changed_of_a_retired_account_and_what_it_is_not_given(
     group = desk.post("/user-groups", {"name": "Example East"})
     kim = person(desk, role="viewer")
     other = desk.contact("Sam Okafor")
-    tool = desk.post("/users", {"username": "ex-tool", "is_service_account": True})["user"]
+    tool = desk.post("/users", {"username": "ex-tool", "kind": "service"})["user"]
     retire(desk, tool)
     gone = retire(desk, kim, contact="keep")
     path = f"/users/{kim['hid']}"

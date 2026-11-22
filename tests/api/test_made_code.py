@@ -104,7 +104,7 @@ def test_a_made_code_is_as_long_as_the_setting_asks(
 def test_a_made_code_is_asked_for_with_a_role(client: TestClient, admin: dict) -> None:
     assert client.get(f"{API}/auth/new-access-code").status_code == 401
     desk = Maker(client, admin)
-    robot = desk.post("/users", {"username": "robot", "is_service_account": True})["user"]
+    robot = desk.post("/users", {"username": "robot", "kind": "service"})["user"]
     secret = desk.post(f"/users/{robot['hid']}/service-tokens", {"name": "nightly"})["secret"]
     token = {"Authorization": f"Bearer {secret}"}
     assert client.get(f"{API}/auth/new-access-code", headers=token).status_code == 401

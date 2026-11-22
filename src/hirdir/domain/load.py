@@ -118,17 +118,25 @@ KEPT: Final = "kept"
 APART: Final = "apart"
 
 
-# Who asked: a person, a service account, nobody that is known, or the rest together.
-WhoKind = Literal["person", "service", "unnamed", "others"]
+# Who asked: a person, a service account, an agent (P-316), nobody that is known, or
+# the rest together.
+WhoKind = Literal["person", "service", "agent", "unnamed", "others"]
 PERSON: Final = "person"
 SERVICE: Final = "service"
+AGENT: Final = "agent"
 UNNAMED: Final = "unnamed"
 OTHERS: Final = "others"
 
 
+def kind_of(account_kind: str) -> Literal["person", "service", "agent"]:
+    """Return how the measures name an account of a kind, as `users.kind` has it."""
+    return SERVICE if account_kind == SERVICE else AGENT if account_kind == AGENT else PERSON
+
+
 @dataclass(frozen=True)
 class Who:
-    """Who asked: an account, by its HID and its username, a person's or a service's."""
+    """Who asked: an account, by its HID and its username, a person's, a service's or an
+    agent's."""
 
     hid: str
     username: str

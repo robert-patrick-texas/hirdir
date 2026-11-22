@@ -287,7 +287,7 @@ def item_history(
     """
     page, total = items.history(db, hid, limit, offset, tables.arrange(tables.HISTORY, sort))
     return Page(
-        items=[views.audit_out(db, event) for event in page],
+        items=views.audit_events_out(db, list(page)),
         total=total,
         limit=limit,
         offset=offset,
