@@ -312,7 +312,9 @@ def test_s14_a_blank_leaves_a_clear_inherits_and_an_unknown_model_is_created_unr
     preview = desk.preview("items", text)
     known, unknown = preview["rows"]
     assert known["outcome"] == "update"
-    assert known["changes"] == [{"field": "est_value", "old": "36500.00", "new": None}]
+    assert known["changes"] == [
+        {"field": "est_value", "old": "36500.00", "new": None, "as_in_file": None}
+    ]
     assert unknown["outcome"] == "create"
     assert len(unknown["notes"]) == 2
     assert desk.apply(preview)["status"] == "applied"
