@@ -68,6 +68,9 @@ NEVER_ADMIN = "an agent is never Admin"
 # Why the role in force of an agent is lower than the role it holds (P-316).
 PERSON_ROLE, PERSON_NO_ROLE = "person_role", "person_no_role"
 PERSON_DISABLED, PERSON_RETIRED = "person_disabled", "person_retired"
+# And an agent that holds Admin all the same, which no route gives it: a database edited
+# by hand or restored from one. It acts as Inventory at the most (the lead's reading).
+NEVER_ADMIN_HELD = "never_admin"
 
 
 class NotSignedIn(Exception):
@@ -125,7 +128,9 @@ class InForce:
 
 def _capped(own: Role | None, person: User | None, held: Role | None) -> InForce:
     """Return the role in force of an agent that holds `own`, whose person holds `held`:
-    the lower of the two, or none where the person is retired, disabled or holds none."""
+    the lower of the two, or none where the person is retired, disabled or holds none.
+    An agent is never Admin, and is held at Inventory here too, where the role is read,
+    whatever it holds: so that a database edited by hand gives an agent no more."""
     if own is None:
         return InForce(None)
     if person is None or is_retired(person):
@@ -134,8 +139,10 @@ def _capped(own: Role | None, person: User | None, held: Role | None) -> InForce
         return InForce(None, PERSON_DISABLED)
     if held is None:
         return InForce(None, PERSON_NO_ROLE)
-    if held.rank < own.rank:
+    if held.rank < min(own.rank, Role.INVENTORY.rank):
         return InForce(held, PERSON_ROLE)
+    if own is Role.ADMIN:
+        return InForce(Role.INVENTORY, NEVER_ADMIN_HELD)
     return InForce(own)
 
 

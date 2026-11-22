@@ -9,7 +9,7 @@ from sqlalchemy import event, select
 
 from hirdir.api import views
 from hirdir.auth.roles import Role
-from hirdir.db.models import AuditEvent, User
+from hirdir.db.models import AuditEvent, RoleGrant, User
 from hirdir.domain import accounts, audit
 from hirdir.io import imports
 from tests.api.inventory import API, Maker, errors
@@ -321,6 +321,33 @@ def test_the_token_is_refused_while_the_person_cannot_answer_for_it(
     assert refused.json()["detail"] == (
         "the token is not accepted: the agent agent-reconcile holds no role"
     )
+
+
+def test_an_agent_that_holds_admin_all_the_same_acts_as_inventory(
+    client: TestClient, admin: dict, db
+) -> None:
+    """No route gives an agent Admin; a database edited by hand, or restored from one,
+    may. Its role in force is held at Inventory where it is read, beside its person's
+    (the lead's reading of never Admin, P-316)."""
+    desk = _desk(client, admin)
+    sam = desk.person("sam", role="admin")
+    agent = desk.agent("agent-reconcile", sam)
+    robot = desk.token(agent)
+    db.add(RoleGrant(role="admin", user_hid=agent["hid"]))
+    db.commit()
+    record = desk.user(agent)
+    assert (record["role"], record["role_in_force"], record["role_capped_by"]) == (
+        "admin",
+        "inventory",
+        "never_admin",
+    )
+    assert client.get(f"{API}/users", headers=robot).status_code == 403
+    assert client.get(f"{API}/auth/me", headers=robot).json()["role_in_force"] == "inventory"
+    # A person below Inventory holds it lower still, and is why.
+    desk.revoke(desk.grants(sam)[0])
+    desk.post("/role-grants", {"role": "viewer", "user_hid": sam["hid"]})
+    record = desk.user(agent)
+    assert (record["role_in_force"], record["role_capped_by"]) == ("viewer", "person_role")
 
 
 def test_an_agent_has_no_profile(client: TestClient, admin: dict) -> None:

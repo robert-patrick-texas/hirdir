@@ -620,7 +620,11 @@ requests are held to now, which is `role` for a person and a service account and
 agent, the lower of `role` and its person's, null where its tokens are refused for the
 person; and `role_capped_by`, of an agent whose `role_in_force` is lower than `role`, why:
 `person_role`, the person's role is lower, `person_no_role`, `person_disabled` or
-`person_retired`; null where nothing holds it lower, and for the other kinds.
+`person_retired`; null where nothing holds it lower, and for the other kinds. An agent
+that holds Admin all the same, which no route gives it but a database edited by hand or
+restored from one may, is held at Inventory wherever its role is read, beside its
+person's: `role` says `admin`, `role_in_force` `inventory`, and `role_capped_by`
+`never_admin`, unless its person's role is lower still, `person_role`.
 `GET /auth/me`, and the user in the answer of signing in, answer each field of this
 section as a user does, `kind`, `answerable_hid`, `answerable`, `agents`, `grants`,
 `role_in_force` and `role_capped_by`, so that the token of an agent reads its kind, its
