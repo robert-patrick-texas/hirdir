@@ -1889,8 +1889,10 @@ rejected, in both formats, for every table. A test holds it over all of them.
 `POST /users/export`, for an Admin, answers the users as CSV (P-288),
 `Example-Inventory-users-20261120T101500-0500.csv`: a row to each user, by username,
 with `username`, `name`, `email`, `phone`, `phone2`, the contact's, blank for a user
-with no contact, `role`, the role in force, granted to the user or to a group it is in,
-blank where it has none, `groups`, by name, `operators`, the labels of those behind
+with no contact, `role`, the role in force, what the account can do, granted to the
+user or to a group it is in, blank where it has none, and of an agent the lower of its
+own and its person's, as `role_in_force` of `GET /users` answers it, blank where its
+person cannot answer for it (P-316), `groups`, by name, `operators`, the labels of those behind
 which its contact stands and that are not retired, `kind`, `person`, `service` or
 `agent`, `answerable`, the username of the person answerable for an agent and blank for
 the others (P-316), `state`, `enabled` or `disabled`, `record_status`, `active` or `retired` (P-296), the

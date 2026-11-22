@@ -2,6 +2,8 @@
 agent, never Admin, the role in force capped by the person at each request, the mark
 of the audit trail, and an agent retired with its person or handed to another."""
 
+import csv
+import io
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -348,6 +350,26 @@ def test_an_agent_that_holds_admin_all_the_same_acts_as_inventory(
     desk.post("/role-grants", {"role": "viewer", "user_hid": sam["hid"]})
     record = desk.user(agent)
     assert (record["role_in_force"], record["role_capped_by"]) == ("viewer", "person_role")
+
+
+def test_the_users_file_writes_the_role_in_force_of_an_agent(
+    client: TestClient, admin: dict
+) -> None:
+    """The column `role` is the role in force, what the account can do: of an agent, the
+    lower of its own and its person's, blank where its person cannot answer for it."""
+    desk = _desk(client, admin)
+    sam = desk.person("sam", role="viewer")
+    desk.agent("agent-reconcile", sam)
+    kim = desk.person("klee")
+    desk.agent("agent-scan", kim)
+    desk.patch(
+        f"/users/{kim['hid']}", {"row_version": desk.user(kim)["row_version"], "disabled": True}
+    )
+    answer = client.post(f"{API}/users/export", headers=admin)
+    assert answer.status_code == 200, answer.text
+    rows = {row["username"]: row for row in csv.DictReader(io.StringIO(answer.text))}
+    assert (rows["agent-reconcile"]["role"], rows["sam"]["role"]) == ("viewer", "viewer")
+    assert (rows["agent-scan"]["role"], rows["klee"]["role"]) == ("", "inventory")
 
 
 def test_an_agent_has_no_profile(client: TestClient, admin: dict) -> None:
