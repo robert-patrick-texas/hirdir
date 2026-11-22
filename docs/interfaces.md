@@ -4303,14 +4303,23 @@ What 0.9.18 adds of the lists of countries and states (P-318, P-321):
   `&country=MX`, and a table of its states by name, each with its code. An Admin has New
   country and New state, of the country chosen, and on each row Edit, which opens the
   form of its code and its name beneath the row, and Remove, which asks first and says,
-  of a country, how many states go with it. The code of the United States is shown in
-  its form and not offered to change, and its row has no Remove: it is always first and
-  is not removed. Any other refusal is the server's, in its words, as a code that an
-  address holds, which names the first place that holds it. Beneath each table, the
+  of a country, how many states go with it; once a country or a state is added, the
+  keyboard is on its row's Edit. The code of the United States is shown in its form and
+  not offered to change, and its row has no Remove but the words Not removed, which wrap
+  within the width of the button, so that a window 360 pixels wide shows every row's
+  Remove without scrolling the table: it is always first and is not removed. Any other
+  refusal is the server's, in its words, as a code that an address holds, which names
+  the first place that holds it, by its kind and its name, and what to give it first;
+  the refusal gives no HID of the place, so the place is no link. A record that has the
+  value already, which has no page and which the words name, is not named again beneath
+  them: "The code CA is taken by Canada.", with "another country has it" at the code.
+  Beneath each table, the
   export of both lists, as CSV and as JSON, as Geography exports its three tables, and
   for an Admin a link to the Import page, where a file of either is loaded. Then, on
   both, Addresses not in the lists: each country and state of an address that no list
-  holds, from `GET /places/unlisted-addresses`, a hundred to a page, with the place by
+  holds, as it was typed before the lists were kept, or a state typed for a country with
+  no states listed once an Admin adds the first state of that country, from
+  `GET /places/unlisted-addresses`, a hundred to a page, with the place by
   its path, a link to its page, its kind, which address, the field and the value as it
   was typed; none says so. The Import page says beneath its list of tables that such a
   value is exported as it is held, changes nothing loaded back as it is, and is refused
@@ -4325,11 +4334,16 @@ What 0.9.18 adds of the lists of countries and states (P-318, P-321):
   address, and in a change only where that address held nothing before: so the
   default gives no place an address, nor a shipping address that would stop what it
   inherits, and changes no address a place holds. The United States chosen where no
-  other field of its address is filled is sent as blank. State or province is a list
+  other field of its address is filled is sent as blank. The country stands before State
+  or province, after the city, whose list it gives (review of the web, finding 9); an
+  address as it is shown keeps its order, the country last. State or province is a list
   of the states of the country chosen in the same form, by their names, with None, and
   sends the code, where that country has states listed; a box of text where it has
   none. It follows the country: a state of the country before is kept where the new
-  one has it, found by its code or its name, and is cleared where not. A country or a
+  one has it, found by its code or its name, and is cleared where not; and a country
+  changed back to the one the place holds, as it is in force, a blank being the United
+  States, brings back the state the place holds with it, listed or not, so that nothing
+  of it is lost and nothing of it is sent (finding 2). A country or a
   state held that no list holds is shown as it was typed, marked not in the list, with
   a word beneath it to choose one, until another is chosen; left as it is, it is not
   sent.

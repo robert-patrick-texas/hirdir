@@ -167,6 +167,9 @@ export function CountriesList({ mayEdit }: ListProps) {
           create={(body) => api.request("post", "/api/v1/countries", { body })}
           onCreated={(country) => {
             setAdding(false);
+            // The form is gone: the keyboard goes to the new row's Edit, once the list
+            // is read again and the row is there (review of the web, finding 10).
+            openers.closed(country.hid, true);
             changed(`${country.name} was added, as ${country.code}.`);
           }}
           onCancel={() => setAdding(false)}
@@ -187,7 +190,7 @@ export function CountriesList({ mayEdit }: ListProps) {
       )}
       {countries.data && (
         <div className="scroll">
-          <table data-testid="countries">
+          <table data-testid="countries" className="country-list">
             <caption className="visually-hidden">
               The countries, the United States first, then by name
             </caption>
@@ -245,8 +248,13 @@ export function CountriesList({ mayEdit }: ListProps) {
                             Edit
                           </button>
                           {country.code === US ? (
-                            <span className="muted" data-testid="us-stays">
-                              Always first, and not removed
+                            // No wider than Remove, so that a narrow window keeps the
+                            // buttons of every row in view (review of the web, finding 15).
+                            <span className="muted row-note" data-testid="us-stays">
+                              Not removed
+                              <span className="visually-hidden">
+                                : the United States is always first in the list
+                              </span>
                             </span>
                           ) : (
                             <ConfirmButton
@@ -410,6 +418,8 @@ export function StatesList({ mayEdit, country, onCountry }: StatesListProps) {
           }
           onCreated={(state) => {
             setAdding(false);
+            // The keyboard goes to the new row's Edit, as for a new country (finding 10).
+            openers.closed(state.hid, true);
             changed(`${state.name} was added to ${name}, as ${state.code}.`);
           }}
           onCancel={() => setAdding(false)}
@@ -424,7 +434,7 @@ export function StatesList({ mayEdit, country, onCountry }: StatesListProps) {
       {states.loading && !states.data && <p role="status">Loading…</p>}
       {states.data && (
         <div className="scroll">
-          <table data-testid="states" data-country={code}>
+          <table data-testid="states" data-country={code} className="country-list">
             <caption className="visually-hidden">The states of {name}, by name</caption>
             <thead>
               <tr>
@@ -605,10 +615,11 @@ export function UnlistedAddresses({ turn, ready }: { turn: number; ready: boolea
         Addresses not in the lists
       </h2>
       <p className="hint">
-        Each country and state of an address that no list holds, as it was typed before the lists
-        were kept: the retired places and the drafts among them. Open a place and choose the country
-        or the state it is from the lists in its Details. A value that a list holds once it is added
-        there leaves this list too.
+        Each country and state of an address that no list holds: as it was typed before the lists
+        were kept, or a state typed for a country with no states listed, once an Admin adds the
+        first state of that country. The retired places and the drafts are among them. Open a place
+        and choose the country or the state it is from the lists in its Details. A value that a list
+        holds once it is added there leaves this list too.
       </p>
       <Problem error={unlisted.error} />
       {unlisted.loading && !page && (
