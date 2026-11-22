@@ -22,7 +22,7 @@ import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { type Headers, make, session } from "./referenceSteps";
 import { region } from "./structure";
-import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
+import { createAccount, expectClean, mark, signIn, test, titled, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
@@ -31,7 +31,7 @@ const networkName = `${suffix}-network`;
 const serversName = `${suffix}-servers`;
 const engineer = {
   username: `e2e-${suffix}-eng`,
-  name: `Eng Example ${suffix}`,
+  name: titled(`Eng Example ${suffix}`),
   email: `eng.${suffix}@example.net`,
   notes: `For the network team, asked for by Example Person ${suffix}.`,
 };
@@ -346,7 +346,7 @@ test("P-283: each refusal is shown at its field, with nothing typed lost", async
   const username = `e2e-${suffix}-ref`;
   const person = form.getByTestId("new-person-new-user");
   await form.getByLabel("Username").fill(username);
-  await person.getByLabel("Name (required)").fill(`Ref Example ${suffix}`);
+  await person.getByLabel("Name (required)").fill(titled(`Ref Example ${suffix}`));
   await person.getByLabel("Email").fill(takenEmail);
   await form.getByLabel("Role").selectOption({ label: "View-only" });
   await groupBox(form, serversName).check();
@@ -355,7 +355,7 @@ test("P-283: each refusal is shown at its field, with nothing typed lost", async
   const create = form.getByRole("button", { name: "Create user" });
   const intact = async () => {
     await expect(form.getByLabel("Username")).toHaveValue(username);
-    await expect(person.getByLabel("Name (required)")).toHaveValue(`Ref Example ${suffix}`);
+    await expect(person.getByLabel("Name (required)")).toHaveValue(titled(`Ref Example ${suffix}`));
     await expect(form.getByLabel("Role")).toHaveValue("viewer");
     await expect(groupBox(form, serversName)).toBeChecked();
     await expect(form.getByLabel("Notes")).toHaveValue("Kept through every refusal.");

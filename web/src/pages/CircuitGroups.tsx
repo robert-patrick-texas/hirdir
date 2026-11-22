@@ -8,7 +8,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { CircuitsGrid } from "../components/CircuitsGrid";
-import { CIRCUIT_GROUP_COLUMNS } from "../components/grid/circuitColumns";
+import { CIRCUIT_GROUP_COLUMNS, howInColumn } from "../components/grid/circuitColumns";
 import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
@@ -17,18 +17,22 @@ import { findCircuits, type Offer, SearchPicker } from "../components/SearchPick
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import {
+  byZSide,
   type Circuit,
   type CircuitGroup,
   circuitGroupPath,
   circuitIsDimmed,
   circuitsInGroup,
+  GROUP_KINDS,
+  groupKindLabel,
   moneyText,
   ownerPath,
+  vendorPath,
 } from "../lib/circuits";
 import { plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
-import { EVERY, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
+import { EVERY, useOwnerOptions, useTags, useVendorOptions, withCurrent } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import type { FieldSpec, Option } from "../lib/patch";
@@ -38,12 +42,35 @@ import { CircuitsNav } from "./Circuits";
 
 function groupSpecs(
   owners: readonly Option[] | undefined,
+  vendors: readonly Option[] | undefined,
   tags: readonly string[],
   record: CircuitGroup | null,
 ): FieldSpec[] {
   const owner = record?.owner ? ownerOption(record.owner) : null;
+  const carrier = record?.carrier
+    ? { value: record.carrier.hid, label: record.carrier.name }
+    : null;
   return [
     { name: "name", label: "Name", kind: "text", required: true, maxLength: 200 },
+    // 0.9.18: a network, which a Z side may name, with its carrier; or a collection, a
+    // set looked at and costed together for the enterprise's own purpose (P-320 (5)).
+    {
+      name: "kind",
+      label: "Kind",
+      kind: "choice",
+      options: GROUP_KINDS,
+      hint: "A network is a carrier's: its private MPLS network, the internet, a Metro Ethernet region, a cloud on-ramp, which the Z side of a circuit may name. A collection is a set of circuits of the enterprise's own choosing.",
+    },
+    {
+      name: "carrier_hid",
+      label: "Carrier",
+      kind: "choice",
+      blank: "No carrier",
+      options: withCurrent(vendors, carrier),
+      hint: "The carrier whose network it is: a vendor.",
+      when: (values) => values.kind === "network",
+      clearedWhenNotAsked: true,
+    },
     { name: "description", label: "Description", kind: "longtext", maxLength: 10000 },
     {
       name: "owner_hid",
@@ -75,13 +102,15 @@ function groupSpecs(
 
 function useGroupLists() {
   const owners = useOwnerOptions();
+  const vendors = useVendorOptions();
   const tags = useTags();
   const labels = useMemo(() => (tags.data ?? []).map((tag) => tag.label), [tags.data]);
   return {
     owners: owners.data,
+    vendors: vendors.data,
     tags: labels,
-    error: owners.error ?? tags.error,
-    ready: !owners.loading && !tags.loading,
+    error: owners.error ?? vendors.error ?? tags.error,
+    ready: !owners.loading && !vendors.loading && !tags.loading,
   };
 }
 
@@ -95,8 +124,8 @@ export function CircuitGroups() {
   const [adding, setAdding] = useState(false);
   const lists = useGroupLists();
   const specs = useMemo(
-    () => groupSpecs(lists.owners, lists.tags, null),
-    [lists.owners, lists.tags],
+    () => groupSpecs(lists.owners, lists.vendors, lists.tags, null),
+    [lists.owners, lists.vendors, lists.tags],
   );
 
   return (
@@ -106,14 +135,16 @@ export function CircuitGroups() {
       <p>
         Circuits that may land at different sites, looked at and costed together: those of Internet
         access, or of a cloud on-ramp. A circuit may be in any number of groups. The cost of a group
-        is what its circuits in service cost today, each circuit once.
+        is what its circuits in service cost today, each circuit once. A group of the kind Network
+        is a carrier&apos;s network, which the Z side of a circuit may name: its circuits are those
+        put into it and those whose Z side names it.
       </p>
       <Problem error={lists.error} />
       {adding && lists.ready && (
         <CreateForm<Schemas["CircuitGroupCreate"], CircuitGroup>
           title="New circuit group"
           specs={specs}
-          start={{ record_status: "active" }}
+          start={{ record_status: "active", kind: "collection" }}
           create={(body) => api.request("post", "/api/v1/circuit-groups", { body })}
           onCreated={(group) => navigate(circuitGroupPath(group.hid))}
           onCancel={() => setAdding(false)}
@@ -209,6 +240,22 @@ export function CircuitGroupDetail() {
             in. The report of what circuits cost has the year, by group among the other groupings.
           </p>
           <dl className="facts">
+            <dt>Kind</dt>
+            <dd data-testid="group-kind" data-kind={record.kind}>
+              {groupKindLabel(record.kind)}
+            </dd>
+            {record.kind === "network" && (
+              <>
+                <dt>Carrier</dt>
+                <dd data-testid="group-carrier">
+                  {record.carrier ? (
+                    <Link to={vendorPath(record.carrier.hid)}>{record.carrier.name}</Link>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </dd>
+              </>
+            )}
             <dt>Description</dt>
             <dd>{record.description || <span className="muted">—</span>}</dd>
             <dt>Owner</dt>
@@ -236,7 +283,7 @@ export function CircuitGroupDetail() {
               <h2 id="details">Details</h2>
               <EditForm<CircuitGroup, Schemas["CircuitGroupPatch"]>
                 key={`${record.hid} ${record.row_version}`}
-                specs={groupSpecs(lists.owners, lists.tags, record)}
+                specs={groupSpecs(lists.owners, lists.vendors, lists.tags, record)}
                 record={record}
                 save={(body) =>
                   api.request("patch", "/api/v1/circuit-groups/{hid}", {
@@ -254,7 +301,11 @@ export function CircuitGroupDetail() {
               what="group"
               name={record.name}
               retired={record.record_status === "retired"}
-              about="A retired group takes no new circuit. Its circuits stay in it, and it can be brought back."
+              about={
+                record.kind === "network"
+                  ? "A retired group takes no new circuit. Its circuits stay in it, and it can be brought back. A network is not retired while a circuit that is not retired names it on its Z side."
+                  : "A retired group takes no new circuit. Its circuits stay in it, and it can be brought back."
+              }
               retiredAbout="This group is retired: its circuits stay listed in it, and it takes no new one."
               retire={() =>
                 api.request("post", "/api/v1/circuit-groups/{hid}/retire", {
@@ -278,7 +329,11 @@ export function CircuitGroupDetail() {
   );
 }
 
-/** Every membership of a group, by the HID of its circuit: what a circuit is taken out by. */
+/**
+ * Every membership of a group, by the HID of its circuit: what a circuit is taken out by.
+ * 0.9.18: a circuit in a network by its Z side alone has none, and is not taken out
+ * there (P-320 (7)).
+ */
 async function membershipsOf(groupHid: string): Promise<Map<string, string>> {
   const found = new Map<string, string>();
   for (let offset = 0; ; offset += EVERY) {
@@ -286,9 +341,19 @@ async function membershipsOf(groupHid: string): Promise<Map<string, string>> {
       path: { hid: groupHid },
       query: { limit: EVERY, offset },
     });
-    for (const member of page.items) if (member.hid) found.set(member.circuit_hid, member.hid);
+    for (const member of page.items) {
+      if (member.hid) found.set(member.circuit_hid, member.hid);
+    }
     if (offset + page.items.length >= page.total || page.items.length === 0) return found;
   }
+}
+
+/** What the take-out of circuits from a group says it did, and what stays by its Z side. */
+export function takenOutText(group: string, taken: number, stay: readonly string[]): string {
+  const said = `${plural(taken, "circuit")} ${taken === 1 ? "was" : "were"} taken out of ${group}.`;
+  if (stay.length === 0) return said;
+  const named = stay.length === 1 ? stay[0] : `${stay.length} circuits`;
+  return `${said} ${named} ${stay.length === 1 ? "stays" : "stay"} in it by ${stay.length === 1 ? "its" : "their"} Z side: a circuit leaves a network by a change of its Z side.`;
 }
 
 interface GroupCircuitsProps {
@@ -306,6 +371,7 @@ interface GroupCircuitsProps {
  */
 function GroupCircuits({ group, mayEdit, turn, onChanged }: GroupCircuitsProps) {
   const taking = useAction();
+  const network = group.kind === "network";
   const actions: GridAction<Circuit>[] = mayEdit
     ? [
         {
@@ -314,27 +380,38 @@ function GroupCircuits({ group, mayEdit, turn, onChanged }: GroupCircuitsProps) 
           run: async (_chosen, _view, rows) => {
             const result = await taking.run(async () => {
               const members = await membershipsOf(group.hid);
+              let taken = 0;
               for (const circuit of rows) {
                 const member = members.get(circuit.hid);
                 if (member === undefined) continue;
                 await api.request("delete", "/api/v1/circuit-groups/{hid}/members/{member_hid}", {
                   path: { hid: group.hid, member_hid: member },
                 });
+                taken += 1;
               }
-              return rows.length;
+              // 0.9.18: what its Z side brings stays (P-320 (7)).
+              const stay = rows.filter((circuit) => byZSide(circuit, group.hid));
+              return { taken, stay: stay.map((circuit) => circuit.name) };
             });
             if (result.ok) {
-              onChanged(
-                `${plural(result.value, "circuit")} ${result.value === 1 ? "was" : "were"} taken out of ${group.name}.`,
-              );
+              onChanged(takenOutText(group.name, result.value.taken, result.value.stay));
             }
           },
         },
       ]
     : [];
+  // 0.9.18: how each circuit is in a network, put into it or by its Z side (P-320 (7)).
+  const more = useMemo(() => (network ? [howInColumn(group.hid)] : []), [network, group.hid]);
   return (
     <section aria-labelledby="group-circuits" data-testid="group-circuits-section">
       <h2 id="group-circuits">Its circuits</h2>
+      {network && (
+        <p className="hint" data-testid="network-circuits-hint">
+          Those put into it here, and those whose Z side names it, each once: those its Z side
+          brings are marked By its Z side, and leave it by a change of the circuit&apos;s Z side,
+          not here.
+        </p>
+      )}
       <Problem error={taking.error} />
       <CircuitsGrid
         id="circuit-group-circuits"
@@ -343,7 +420,10 @@ function GroupCircuits({ group, mayEdit, turn, onChanged }: GroupCircuitsProps) 
           includeArchived: true,
           includeDrafts: true,
         }}
-        shown={["monthly_cost", "annual_cost"]}
+        shown={
+          network ? ["in_group", "monthly_cost", "annual_cost"] : ["monthly_cost", "annual_cost"]
+        }
+        more={more}
         reloadKey={turn}
         actions={actions}
       />

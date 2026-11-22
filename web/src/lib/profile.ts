@@ -13,6 +13,7 @@ export const DETAIL_SPECS: readonly FieldSpec[] = [
     required: true,
     maxLength: 200,
     hint: "Your name, as every list shows it.",
+    format: "person_name",
   },
   {
     name: "email",
@@ -20,9 +21,10 @@ export const DETAIL_SPECS: readonly FieldSpec[] = [
     kind: "text",
     maxLength: 254,
     hint: "Belongs to one contact only.",
+    format: "email",
   },
-  { name: "phone", label: "Phone", kind: "text", maxLength: 50 },
-  { name: "phone2", label: "Second phone", kind: "text", maxLength: 50 },
+  { name: "phone", label: "Phone", kind: "text", maxLength: 50, format: "phone" },
+  { name: "phone2", label: "Second phone", kind: "text", maxLength: 50, format: "phone" },
   { name: "organization", label: "Organization", kind: "text", maxLength: 200 },
 ];
 

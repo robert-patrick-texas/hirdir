@@ -37,6 +37,8 @@ LOCATIONS = (
     # A blank country is read as the United States, and not written so.
     ("l-1", "Room 1", {"city": "Austin", "state": "texas"}),
     ("l-2", "Room 2", {"country": "united states of america", "ship_country": "U.S.A."}),
+    # A country of spaces alone is blank, is written so, and its state is the US's.
+    ("l-3", "Room 3", {"country": "   ", "state": "tx"}),
 )
 
 
@@ -93,6 +95,7 @@ def test_the_upgrade_to_0019_turns_what_the_lists_hold_into_codes(tmp_path: Path
         assert held("sites", "s-5", *sets) == ("US", "TX", "CA", None, 3)
         assert held("locations", "l-1", *sets) == (None, "TX", None, None, 4)
         assert held("locations", "l-2", *sets) == ("US", None, "US", None, 4)
+        assert held("locations", "l-3", *sets) == (None, "TX", None, None, 4)
 
         # One event to each place it changed, by the system, with before and after.
         events = connection.execute(
@@ -114,6 +117,7 @@ def test_the_upgrade_to_0019_turns_what_the_lists_hold_into_codes(tmp_path: Path
                 "country": ("united states of america", "US"),
                 "ship_country": ("U.S.A.", "US"),
             },
+            ("location", "l-3"): {"country": ("   ", None), "state": ("tx", "TX")},
             ("region", "r-1"): {"ship_country": ("usa", "US"), "ship_state": ("tx", "TX")},
             ("site", "s-1"): {
                 "country": (" U.S. ", "US"),

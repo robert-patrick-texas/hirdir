@@ -75,7 +75,10 @@ export function circuitsOfCarrier(vendorHid: string): FilterNode {
   return { field: "carriers.vendor_hid", op: "eq", value: vendorHid };
 }
 
-/** The circuits of a group. */
+/**
+ * The circuits of a group. 0.9.18: of a network, those put into it and those whose Z side
+ * names it, each once (P-320 (7)).
+ */
 export function circuitsInGroup(groupHid: string): FilterNode {
   return { field: "groups.hid", op: "eq", value: groupHid };
 }
@@ -124,6 +127,8 @@ export const GRID_FIELDS: readonly string[] = [
   "z_location_hid",
   "z_note",
   "z_side",
+  "z_group_hid",
+  "z_group",
   "cost_side",
   "cost_site_hid",
   "cost_site_path",
@@ -136,6 +141,9 @@ export const GRID_FIELDS: readonly string[] = [
   "a_installed_on",
   "a_activated_on",
   "a_disconnected_on",
+  "z_installed_on",
+  "z_activated_on",
+  "z_disconnected_on",
   "production",
   "support_weight",
   "owner_hid",
@@ -149,6 +157,9 @@ export const GRID_FIELDS: readonly string[] = [
   "effective.support_weight",
   "effective.down_mbps",
   "effective.up_mbps",
+  "effective.z_installed_on",
+  "effective.z_activated_on",
+  "effective.z_disconnected_on",
   "tags",
   "record_status",
   "created_at",
@@ -172,31 +183,53 @@ export function switchesOf(params: URLSearchParams): { archived: boolean; drafts
 
 // --- the two sides ---------------------------------------------------------------------
 
+/** 0.9.18: the network a Z side reaches, as the circuit names it (P-320 (6)). */
+export type Network = NonNullable<Circuit["z_group"]>;
+
 /** What a side of a circuit is at, as the circuit has it. */
 export interface SideOf {
   side: Side;
   /** Its location, with the location's path, site and region; null where it has none. */
   at: CircuitSide | null;
+  /** 0.9.18: the network the Z side reaches, where it names one; the A side names none. */
+  network: Network | null;
   note: string | null;
 }
 
 export function sideOf(
-  circuit: Pick<Circuit, "a_side" | "a_note" | "z_side" | "z_note">,
+  circuit: Pick<Circuit, "a_side" | "a_note" | "z_side" | "z_note" | "z_group">,
   side: Side,
 ): SideOf {
   return side === "a"
-    ? { side, at: circuit.a_side, note: circuit.a_note }
-    : { side, at: circuit.z_side, note: circuit.z_note };
+    ? { side, at: circuit.a_side, network: null, note: circuit.a_note }
+    : { side, at: circuit.z_side, network: circuit.z_group ?? null, note: circuit.z_note };
 }
 
-/** A side in a cell of the grid: the name of its location, or its note where it has none. */
-export function sideCell(at: CircuitSide | null, note: string | null): string {
-  return at ? at.name : (note ?? "");
+/**
+ * A side in a cell of the grid: the name of its location, or of the network it reaches,
+ * or its note where it has neither.
+ */
+export function sideCell(
+  at: CircuitSide | null,
+  note: string | null,
+  network: Network | null = null,
+): string {
+  if (at) return at.name;
+  return network ? network.name : (note ?? "");
 }
 
-/** A side on hover: the path of its location and its note, or that it has no location. */
-export function sideHint(at: CircuitSide | null, note: string | null): string {
+/**
+ * A side on hover: the path of its location and its note, or the network it reaches, or
+ * that it has no location.
+ */
+export function sideHint(
+  at: CircuitSide | null,
+  note: string | null,
+  network: Network | null = null,
+): string {
   if (at) return note ? `${at.path} · ${note}` : at.path;
+  if (network)
+    return note ? `The network ${network.name} · ${note}` : `The network ${network.name}`;
   return note ? `No location: ${note}` : "";
 }
 
@@ -357,30 +390,151 @@ export function readMoney(typed: string): { value: string | null } | { error: st
   return { value: text };
 }
 
+// --- the dates of each side (P-317, P-320) ----------------------------------------------
+
+/** A date of a side, by its name after the letter of the side: `a_activated_on`. */
+export type SideDate = "installed_on" | "activated_on" | "disconnected_on";
+
+/** The three dates of a side, in order, as a page and a form name them. */
+export const SIDE_DATES: ReadonlyArray<{ name: SideDate; label: string; hint?: string }> = [
+  { name: "installed_on", label: "Installed on" },
+  { name: "activated_on", label: "Activated on", hint: "The carrier bills it from this day." },
+  { name: "disconnected_on", label: "Disconnected on", hint: "The last day it was in service." },
+];
+
+/** What a circuit holds of the dates of its sides, its own and those in force. */
+export type CircuitDates = Pick<
+  Circuit,
+  | "a_installed_on"
+  | "a_activated_on"
+  | "a_disconnected_on"
+  | "z_installed_on"
+  | "z_activated_on"
+  | "z_disconnected_on"
+> & {
+  effective: Pick<Circuit["effective"], "z_installed_on" | "z_activated_on" | "z_disconnected_on">;
+};
+
+/** A date of a side in force, with where it came from: `own`, `a_side` or `none`. */
+export interface DateInForce {
+  value: string | null;
+  source: string;
+}
+
+/**
+ * A date of a side in force (P-320 (2)): the A side's is its own; the Z side's is its
+ * own, or, where it is blank, the A side's, never copied, as the server answers it in
+ * `effective`.
+ */
+export function dateInForce(circuit: CircuitDates, side: Side, name: SideDate): DateInForce {
+  if (side === "a") {
+    const value = circuit[`a_${name}`] ?? null;
+    return { value, source: value === null ? "none" : "own" };
+  }
+  const held = circuit.effective[`z_${name}`];
+  return { value: typeof held.value === "string" ? held.value : null, source: held.source };
+}
+
+/**
+ * What a blank date of the Z side of a form is read as, said beneath it: the A side's
+ * date, as the form holds it now (P-320 (2)).
+ */
+export function zDateHint(typedZ: string, typedA: string): string | undefined {
+  if (typedZ.trim() !== "") return undefined;
+  const a = typedA.trim();
+  return a === ""
+    ? "Blank: the A side's is read in its place, and it has none."
+    : `Blank: the A side's, ${a}, is read in its place.`;
+}
+
 /**
  * Why a circuit costs nothing today, though its lines have their amounts: it is not in
  * service. One activated later than today is not yet in service; one disconnected, or
  * retired with no day it was disconnected, no longer is. A draft, an ordered circuit, is
  * read as a view of drafts reads it: in service, at what it will cost. Blank for a
- * circuit in service. `day` is today, as the application's time zone has it.
+ * circuit in service. `day` is today, as the application's time zone has it. 0.9.18: the
+ * dates are those of the side `cost_side` names, the Z side's in force where it is `z`,
+ * whether or not that side is a location (P-320 (4)).
  */
 export function notInServiceText(
-  circuit: Pick<Circuit, "in_service" | "record_status" | "a_activated_on" | "a_disconnected_on">,
+  circuit: CircuitDates & Pick<Circuit, "in_service" | "record_status" | "cost_side">,
   day: string,
 ): string {
   if (circuit.in_service) return "";
   const then =
     "Its lines keep their amounts, and its monthly and annual cost are 0.00 while it is not in service.";
-  if (circuit.a_activated_on && circuit.a_activated_on > day) {
-    return `It is not in service until it is activated on ${circuit.a_activated_on}. ${then}`;
+  const side: Side = circuit.cost_side === "z" ? "z" : "a";
+  const activated = dateInForce(circuit, side, "activated_on").value;
+  const disconnected = dateInForce(circuit, side, "disconnected_on").value;
+  const it = side === "z" ? "its Z side" : "it";
+  const It = side === "z" ? "Its Z side" : "It";
+  if (activated && activated > day) {
+    return `It is not in service until ${it} is activated on ${activated}. ${then}`;
   }
-  if (circuit.a_disconnected_on && circuit.a_disconnected_on < day) {
-    return `It was disconnected on ${circuit.a_disconnected_on}. ${then}`;
+  if (disconnected && disconnected < day) {
+    return `${It} was disconnected on ${disconnected}. ${then}`;
   }
   if (circuit.record_status === "retired") {
-    return `It was retired with no day it was disconnected: taken out, it is in service on no day. ${then}`;
+    return `It was retired with no day ${it} was disconnected: taken out, it is in service on no day. ${then}`;
   }
   return `It is not in service today. ${then}`;
+}
+
+/**
+ * What a retired circuit's page says of it (P-320 (4)): in service until the side its
+ * cost counts at was disconnected, or, with no such day, on no day.
+ */
+export function retiredText(circuit: CircuitDates & Pick<Circuit, "cost_side">): string {
+  const side: Side = circuit.cost_side === "z" ? "z" : "a";
+  const disconnected = dateInForce(circuit, side, "disconnected_on").value;
+  if (side === "a") {
+    return disconnected
+      ? `This circuit is retired. It was in service until ${disconnected}, and counts for that time in what circuits cost.`
+      : "This circuit is retired, with no day it was disconnected: it was taken out, and is in service on no day.";
+  }
+  return disconnected
+    ? `This circuit is retired. It was in service until ${disconnected}, when its Z side, where its cost counts, was disconnected, and counts for that time in what circuits cost.`
+    : "This circuit is retired, with no day its Z side, where its cost counts, was disconnected: it was taken out, and is in service on no day.";
+}
+
+// --- the network a Z side reaches (P-319, P-320) ----------------------------------------
+
+/** The two kinds of a circuit group, as a page offers them (P-320 (5)). */
+export const GROUP_KINDS: ReadonlyArray<Option & { value: "network" | "collection" }> = [
+  { value: "network", label: "Network" },
+  { value: "collection", label: "Collection" },
+];
+
+/** The kind of a group in words: Network, Collection. */
+export function groupKindLabel(kind: string): string {
+  return GROUP_KINDS.find((one) => one.value === kind)?.label ?? kind;
+}
+
+/** The circuit groups of the kind Network: the only ones a Z side may name. */
+export function networksOnly(): FilterNode {
+  return { field: "kind", op: "eq", value: "network" };
+}
+
+/** Whether a circuit is in a group by its Z side, which names the group as its network. */
+export function byZSide(circuit: Pick<Circuit, "z_group_hid">, groupHid: string): boolean {
+  return circuit.z_group_hid === groupHid;
+}
+
+/** The networks a vendor is the carrier of. */
+export function networksOfCarrier(vendorHid: string): FilterNode {
+  return { and: [networksOnly(), { field: "carrier_hid", op: "eq", value: vendorHid }] };
+}
+
+/** A network as a form offers it for a Z side: its name, with its carrier where it has one. */
+export function networkOption(group: {
+  hid: string;
+  name: string;
+  carrier?: { name: string } | null;
+}): Option {
+  return {
+    value: group.hid,
+    label: group.carrier ? `${group.name} (${group.carrier.name})` : group.name,
+  };
 }
 
 /** The carrier a cost line names, in words: blank is the circuit's primary carrier. */

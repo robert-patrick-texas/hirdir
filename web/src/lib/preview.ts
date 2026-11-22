@@ -118,6 +118,11 @@ export function changeText(change: Schemas["RowChange"]): string {
   if (change.field === "record_status" && change.new === "retired" && !change.old) {
     return `made retired, as the file says: ${said}`;
   }
+  // 0.9.18: a value a format writes again is said beside the file's, so that what an
+  // import would tidy is seen before it is applied (P-322 (5)).
+  if (change.as_in_file !== undefined && change.as_in_file !== null) {
+    return `${said} (in the file: ${valueText(change.as_in_file)})`;
+  }
   return said;
 }
 

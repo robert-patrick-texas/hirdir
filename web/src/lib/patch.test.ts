@@ -223,6 +223,28 @@ describe("buildCreate", () => {
       buildCreate(SPECS, { ...formOf(SPECS), est_value: "a lot" }).errors.est_value,
     ).toBeDefined();
   });
+
+  // 0.9.18: a paste is taken whole, and what is longer than the field takes is said (P-293).
+  it("says a value longer than its field takes before sending it", () => {
+    const specs: FieldSpec[] = [{ name: "phone", label: "Phone", kind: "text", maxLength: 10 }];
+    expect(buildCreate(specs, { phone: "555-010-0123" }).errors).toEqual({
+      phone: "At most 10 characters: this has 12.",
+    });
+    expect(buildCreate(specs, { phone: " 5550100123 " }).errors).toEqual({});
+  });
+});
+
+describe("a value held longer than its field takes", () => {
+  it("is no change while it is left as it was", () => {
+    const specs: FieldSpec[] = [{ name: "name", label: "Name", kind: "text", maxLength: 4 }];
+    const built = buildPatch(
+      specs,
+      { row_version: 1, name: "Ada Example" },
+      { name: "Ada Example" },
+    );
+    expect(built.errors).toEqual({});
+    expect(built.changed).toEqual([]);
+  });
 });
 
 describe("what is said beneath a field", () => {
