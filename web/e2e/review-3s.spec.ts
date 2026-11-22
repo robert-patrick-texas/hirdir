@@ -12,6 +12,7 @@
 
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { answer, queried } from "./answers";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -158,16 +159,36 @@ async function holdBack(page: Page, url: string, method: string) {
   };
 }
 
+/** A stack's page, from the list of groups, once the server has answered with the stack. */
 async function openStack(page: Page, name: string) {
   await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${name}`)}`);
+  const opened = answer(page, "GET", /\/api\/v1\/device-groups\/[^/]+$/);
   await page.getByTestId("grid-device-groups").getByRole("link", { name, exact: true }).click();
+  await opened;
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 }
 
+/** An item's page, from the list of items, once the server has answered with the item. */
 async function openItem(page: Page, name: string) {
   await page.goto(`./items?filter=${encodeURIComponent(name)}`);
+  const opened = answer(page, "GET", /\/api\/v1\/items\/[^/]+$/);
   await page.getByTestId("grid-items").getByRole("link", { name, exact: true }).click();
+  await opened;
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+}
+
+/** End a membership in the form of End, once the server has answered that it is ended. */
+async function endMembership(page: Page, ending: Locator) {
+  const ended = answer(page, "PATCH", /\/api\/v1\/device-groups\/[^/]+\/members\/[^/]+$/);
+  await ending.getByRole("button", { name: "End membership" }).click();
+  expect((await ended).status(), "the membership is ended").toBe(200);
+}
+
+/** Add the members of the form of Add members, and wait for the server's answer. */
+async function addMember(page: Page, form: Locator, status: number) {
+  const added = answer(page, "POST", `/device-groups/${made.stack}/members`);
+  await form.getByRole("button", { name: "Add member" }).click();
+  expect((await added).status(), "the server's answer to the members added").toBe(status);
 }
 
 function offers(page: Page): Locator {
@@ -193,7 +214,9 @@ test("the picker of members says where each switch stands, the spares first, and
   // The random part of the mark is in the host names and in the serial numbers.
   await form.getByLabel("Find an item to add", { exact: true }).fill(id.slice(-6));
   await expect.poll(held.asked).toBeGreaterThan(0);
+  const offered = queried(page, "/items/query", id.slice(-6));
   held.release();
+  await offered;
   await held.done();
   await expect(offers(page).first()).toContainText(spares[0] ?? "");
   await expect(offers(page).nth(1)).toContainText(spares[1] ?? "");
@@ -230,13 +253,18 @@ test("a stack is found by its name in Find an item, which names it above the row
   const held = await holdBack(page, "**/api/v1/device-groups/query", "POST");
   const find = page.getByRole("search", { name: "Find an item" });
   await find.getByRole("searchbox").fill(stack);
+  const listed = queried(page, "/items/query", stack);
   await find.getByRole("button", { name: "Find" }).click();
   const grid = page.getByTestId("grid-items");
+  await listed;
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   await expect.poll(held.asked).toBeGreaterThan(0);
   const before = await grid.boundingBox();
   await expect(page.getByTestId("groups-named")).toHaveText("");
+  // Let go, the stack is looked for by the server, as late as a busy one answers.
+  const looked = queried(page, "/device-groups/query", stack);
   held.release();
+  await looked;
   await held.done();
   const named = page.getByTestId("groups-named");
   await expect(named).toHaveText(`The words name the stack ${stack}, with 2 members.`);
@@ -252,14 +280,18 @@ test("a stack is found by its name in Find an item, which names it above the row
   );
 
   // The link opens the stack.
+  const opened = answer(page, "GET", `/device-groups/${made.stack}`);
   await named.getByRole("link", { name: stack }).click();
+  await opened;
   await expect(page.getByRole("heading", { level: 1, name: stack })).toBeVisible();
 
   // The list of groups finds the stack by a member's serial number.
   await page.goto("./groups");
   const filter = page.getByLabel("Filter", { exact: true });
   await filter.fill(members[1] ?? "");
+  const bySerial = queried(page, "/device-groups/query", members[1] ?? "");
   await filter.press("Enter");
+  await bySerial;
   await expect(page.getByTestId("grid-total")).toHaveText("1 group");
   await expect(
     page.getByTestId("grid-device-groups").getByRole("link", { name: stack, exact: true }),
@@ -277,12 +309,18 @@ test("a member's page says it is member 2 of its stack with the stack's names, a
   const seen = await watch(page.context());
   await signIn(page, account);
 
+  // The member's page reads its stack, for what it says of it.
+  const stackRead = () => answer(page, "GET", `/device-groups/${made.stack}`);
+  const ofStack = stackRead();
   await openItem(page, members[1] ?? "");
+  await ofStack;
   await expect(page.getByTestId("stack-member")).toHaveText(`Member 2 of ${stack}`);
   await expect(page.getByTestId("stack-hostname")).toContainText(`${stack} · the stack's`);
   await expect(page.getByTestId("stack-fqdn")).toHaveText(`${stack}.example.net`);
   await expect(page.getByTestId("stack-addresses")).toContainText(stackAddress);
+  const stackOpened = stackRead();
   await page.getByTestId("stack-member").getByRole("link", { name: stack }).click();
+  await stackOpened;
   await expect(page.getByRole("heading", { level: 1, name: stack })).toBeVisible();
 
   // A spare in no stack joins one from its own page: the stack searched by its name, the
@@ -293,14 +331,22 @@ test("a member's page says it is member 2 of its stack with the stack's names, a
   await fact.getByRole("button", { name: "Join a stack" }).click();
   const form = page.getByRole("region", { name: "Join a stack" });
   await form.getByLabel("Stack", { exact: true }).fill(stack);
+  const toJoin = stackRead();
   await form
     .getByRole("list", { name: "Stacks that match" })
     .getByRole("button", { name: stack })
     .click();
+  await toJoin;
   await expect(form.getByLabel("Position", { exact: true })).toHaveValue("3");
   // The box of the stack's name and place is there, ticked, as on the stack's page (P-217).
   await expect(form.getByLabel("It takes the stack's name and place")).toBeChecked();
+  // Joined: the item is read again, and the stack it is a member of now.
+  const joined = answer(page, "POST", `/device-groups/${made.stack}/members`);
+  const itemAgain = answer(page, "GET", /\/api\/v1\/items\/[^/]+$/);
+  const memberOf = stackRead();
   await form.getByRole("button", { name: "Join the stack" }).click();
+  expect((await joined).status(), "the spare joins the stack").toBe(201);
+  await Promise.all([itemAgain, memberOf]);
   await expect(page.getByText(`${spare} was added to ${stack} as member 3.`)).toBeInViewport();
   await expect(fact).toHaveText(`Member 3 of ${stack}`);
   await expectClean(page, seen);
@@ -332,7 +378,7 @@ test("a failed member is replaced from the stack's page: End, to be returned to 
   await expect(what.getByLabel("Lifecycle state")).toHaveValue("Pending-Removal");
   await expect(what.getByLabel("Reason")).toHaveValue("rma");
   await expect(what.getByLabel("Expected online")).toHaveValue("false");
-  await ending.getByRole("button", { name: "End membership" }).click();
+  await endMembership(page, ending);
   const said = page.locator(".alert-ok");
   await expect(said).toContainText(`The membership of ${failed} ended on`);
   await expect(said).toContainText("moved to Pending-Removal");
@@ -359,7 +405,7 @@ test("a failed member is replaced from the stack's page: End, to be returned to 
   );
   await expect(box.getByLabel("Disposition")).toHaveValue("Production");
   await expect(box.getByLabel("Expected online")).toHaveValue("true");
-  await form.getByRole("button", { name: "Add member" }).click();
+  await addMember(page, form, 201);
   await expect(said).toContainText(
     `${spare} was added to ${stack} as member 2. It takes the stack's name and place:`,
   );
@@ -368,7 +414,9 @@ test("a failed member is replaced from the stack's page: End, to be returned to 
   // What the server did: the failed switch is to go back; the spare has the stack's names.
   await openItem(page, failed);
   await expect(page.getByTestId("standing-fact")).toContainText("Pending-Removal");
+  const ofStack = answer(page, "GET", `/device-groups/${made.stack}`);
   await openItem(page, spareSerials[0] ?? "");
+  await ofStack;
   await expect(page.getByTestId("stack-member")).toHaveText(`Member 2 of ${stack}`);
   await expect(page.getByTestId("stack-hostname")).toContainText(stack);
   await expect(page.getByTestId("standing-fact")).toContainText("Production");
@@ -401,7 +449,7 @@ test("a position that a current member holds is refused beside its row, naming t
   await expect(form.getByRole("group", { name: standalone }).getByTestId("drops")).toHaveText(
     `${standalone} keeps its own name, addresses and place: nothing of it is changed.`,
   );
-  await form.getByRole("button", { name: "Add member" }).click();
+  await addMember(page, form, 409);
   const refused = form.getByTestId("member-error");
   await expect(refused).toBeVisible();
   await expect(refused.getByRole("link", { name: members[0] ?? "" })).toBeVisible();
@@ -450,10 +498,12 @@ test("a member leaves a stack to the spare pool with a new name and a place, in 
     .getByRole("button", { name: new RegExp(depot) })
     .first()
     .click();
-  await ending.getByRole("button", { name: "End membership" }).click();
+  await endMembership(page, ending);
   const said = page.locator(".alert-ok");
   await expect(said).toContainText(`named ${pooled}`);
+  const opened = answer(page, "GET", /\/api\/v1\/items\/[^/]+$/);
   await said.getByRole("link", { name: pooled }).click();
+  await opened;
   await expect(page.getByRole("heading", { level: 1, name: pooled })).toBeVisible();
   await expect(page.getByTestId("standing-fact")).toContainText("Spare");
   await expect(page.getByTestId("location")).toContainText(depot);

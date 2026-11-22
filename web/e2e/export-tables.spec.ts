@@ -22,7 +22,10 @@ import {
   type Request,
   type TestInfo,
 } from "@playwright/test";
-import { count, importFile, region, whenApplied } from "./structure";
+// P-309: each answer of the server is waited for before what the page shows of it is
+// expected, the Import page's counts, a preview and an apply among them (answers.ts).
+import { answer, appliedAnswer, importFile, openImport, previewFile } from "./answers";
+import { count, region, whenApplied } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -187,27 +190,33 @@ function unzip(zip: Buffer): Array<{ name: string; text: () => string }> {
   return files;
 }
 
-/** Load a file on the Import page and see its preview. */
+/** Load a file on the Import page and see its preview, once the server has answered. */
 async function preview(page: Page, name: string, content: string | Buffer, entity: string) {
-  await page.goto("./import");
-  await expect(page.getByRole("heading", { level: 1, name: "Import" })).toBeVisible();
-  await page.getByLabel("File", { exact: true }).setInputFiles({
-    name,
-    mimeType: name.endsWith(".json") ? "application/json" : "text/csv",
-    buffer: Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8"),
-  });
+  await openImport(page);
   // The name of the file says what it holds.
-  await expect(page.getByLabel("Records")).toHaveValue(entity);
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
-  await expect(page.getByTestId("import-job")).toHaveAttribute("data-status", "previewed", {
-    timeout: 20_000,
-  });
+  await previewFile(
+    page,
+    {
+      name,
+      mimeType: name.endsWith(".json") ? "application/json" : "text/csv",
+      buffer: Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8"),
+    },
+    entity,
+  );
+}
+
+/** The answer to how many each table holds, as the Import page reads it. */
+function tablesCounted(page: Page) {
+  return answer(page, "GET", "/exports/tables");
 }
 
 test("the Import page lists every table in the order of loading, and exports one before the list has come", async ({
   page,
   account,
 }, testInfo) => {
+  // P-309: what each step waits for is the server's answer, as long as it takes on a
+  // busy host, and the scenario is given the time for it, as the others are.
+  test.setTimeout(120_000);
   const seen = await watch(page.context());
   await signIn(page, account);
   // The list is held back: the buttons work from the start all the same.
@@ -219,7 +228,10 @@ test("the Import page lists every table in the order of loading, and exports one
     await held;
     await route.continue();
   });
+  // The page is there once it has asked for the list, which is held back.
+  const asking = page.waitForRequest((request) => request.url().endsWith("/api/v1/exports/tables"));
   await page.goto("./import");
+  await asking;
   const list = region(page, "What can be loaded and exported");
   await expect(list).toBeVisible();
   await expect(tableRow(page, "tags").getByTestId("table-count")).toHaveText("…");
@@ -234,7 +246,10 @@ test("the Import page lists every table in the order of loading, and exports one
   expect(tags.name).toMatch(serverName("tags", "csv"));
   expect(tags.content.toString("utf8").split("\n")[0]).toBe(HEADERS.tags);
   await expect(tableRow(page, "tags")).toContainText(/Exported to hirdir-tags-.*\.csv\./);
+  // Let go, the list is read from the server, as late as a busy one answers.
+  const counted = tablesCounted(page);
   release();
+  await counted;
 
   // Every table, in the order their files are loaded, each with how many it holds.
   await expect(tables(page).locator("tbody th")).toHaveText(TABLES.map(([label]) => label));
@@ -253,23 +268,30 @@ test("a table is exported as the list counts it, the header row alone where it c
   page,
   account,
 }, testInfo) => {
+  test.setTimeout(180_000);
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto("./import");
   const row = tableRow(page, "networks");
-  await expect(row).toHaveAttribute("data-count", /^\d+$/);
+  /** How many networks the list says there are, once the server has answered it. */
+  const counted = async (open: () => Promise<unknown>) => {
+    const read = tablesCounted(page);
+    await open();
+    await read;
+    await expect(row).toHaveAttribute("data-count", /^\d+$/);
+    return Number(await row.getAttribute("data-count"));
+  };
+  const words = (held: number) => (held === 0 ? "None" : held.toLocaleString("en-US"));
   // What the file holds is what the list says the table holds, whatever that is now:
   // the header row alone where it is none, which the words above the list call its
   // template; the header row and a row to each network where there are some (review X3).
-  // Every spec file works on the one inventory, and another may make a network between
-  // the count and the export: then both are read again, three times at the most.
-  let held = 0;
+  // Every spec file works on the one inventory, and another may make or remove a network
+  // between the count and the export (P-309): the file holds what the list counted just
+  // before it, or what the list counts just after it, read again then; where it holds
+  // neither, the table changed both times, and the next pair is taken.
+  let held = await counted(() => page.goto("./import"));
   let text = "";
-  for (let attempt = 1; ; attempt += 1) {
-    held = Number(await row.getAttribute("data-count"));
-    await expect(row.getByTestId("table-count")).toHaveText(
-      held === 0 ? "None" : held.toLocaleString("en-US"),
-    );
+  for (let pair = 1; ; pair += 1) {
+    await expect(row.getByTestId("table-count")).toHaveText(words(held));
     const file = await exported(
       page,
       row.getByRole("button", { name: "Export Networks as CSV" }),
@@ -277,10 +299,20 @@ test("a table is exported as the list counts it, the header row alone where it c
     );
     expect(file.name).toMatch(serverName("networks", "csv"));
     text = file.content.toString("utf8");
-    if (parseCsv(text).length - 1 === held || attempt === 3) break;
-    await page.reload();
-    await expect(row).toHaveAttribute("data-count", /^\d+$/);
+    const rows = parseCsv(text).length - 1;
+    if (rows === held) break;
+    const after = await counted(() => page.reload());
+    if (rows === after) {
+      held = after;
+      break;
+    }
+    expect(
+      pair,
+      `the networks changed around each export: ${held}, ${rows}, ${after}`,
+    ).toBeLessThan(10);
+    held = after;
   }
+  await expect(row.getByTestId("table-count")).toHaveText(words(held));
   await expect(page.getByTestId("export-tables-said")).toContainText(
     "A table that holds nothing gives its CSV template: its header row alone.",
   );
@@ -295,10 +327,18 @@ test("a table is exported as the list counts it, the header row alone where it c
   await preview(page, `networks-${id}.csv`, `${header}\n,${network},vrf\n`, "networks");
   await expect(count(page, "created")).toHaveText("1");
   await expect(count(page, "rejected")).toHaveText("0");
+  // Applied, as the page reads it, which may wait behind other files' imports; the page
+  // then reads what it made, and the counts again, each asked for once it has heard.
+  const applied = appliedAnswer(page);
   await page.getByRole("button", { name: "Apply 1 row" }).click();
+  await applied;
+  const made = answer(page, "GET", /\/api\/v1\/imports\/[^/]+\/created$/);
+  const recounted = tablesCounted(page);
   await whenApplied(page, 1);
+  await made;
   await expect(page.getByTestId("import-created")).toContainText(network);
   // The counts are read again once it is applied: the table holds something now.
+  await recounted;
   await expect(tableRow(page, "networks").getByTestId("table-count")).not.toHaveText("None");
   await expect(tableRow(page, "networks")).not.toHaveAttribute("data-count", "0");
   await expectClean(page, seen);
@@ -308,9 +348,10 @@ test("a table with records is exported and loaded back as nothing to change", as
   page,
   account,
 }, testInfo) => {
+  test.setTimeout(120_000);
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto("./import");
+  await openImport(page);
   const file = await exported(
     page,
     tableRow(page, "networks").getByRole("button", { name: "Export Networks as JSON" }),
@@ -345,7 +386,7 @@ test("everything is exported as one zip, a file to each table in the order of lo
   test.setTimeout(120_000);
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto("./import");
+  await openImport(page);
   const list = region(page, "What can be loaded and exported");
   for (const format of ["csv", "json"]) {
     const zip = await exported(
@@ -369,9 +410,10 @@ test("an export a busy server refuses says so beside its button, and is pressed 
   page,
   account,
 }, testInfo) => {
+  test.setTimeout(120_000);
   const seen = await watch(page.context());
   await signIn(page, account);
-  await page.goto("./import");
+  await openImport(page);
   // The next export is refused as a server past its ceiling refuses one (P-265).
   await page.route(
     "**/api/v1/exports",
@@ -407,10 +449,11 @@ test("a View-only person exports from the list, and has no upload", async ({
   page,
   request,
 }, testInfo) => {
+  test.setTimeout(120_000);
   const viewer = await createAccount(request, `e2e-${id}-viewer`, "viewer");
   const seen = await watch(page.context());
   await signIn(page, viewer);
-  await page.goto("./import");
+  await openImport(page);
   await expect(page.getByText("Importing needs the Inventory role.")).toBeVisible();
   await expect(page.getByLabel("File", { exact: true })).toHaveCount(0);
   const file = await exported(
@@ -439,7 +482,10 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
     sites.map((site) => ["", site, regionName, "100 Sample Street", "Riverton", "US"]),
   );
 
+  // The page is there once the server has answered with its tree of places.
+  const tree = answer(page, "GET", "/geography/tree");
   await page.goto("./geography");
+  await tree;
   await expect(page.getByRole("heading", { level: 1, name: "Geography" })).toBeVisible();
   const line = page.getByTestId("geography-export");
   // Each of the three, as CSV, in the columns its import reads, and as JSON, its envelope.
@@ -488,7 +534,9 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
   await expect(count(page, "updated")).toHaveText("2");
   await expect(count(page, "created")).toHaveText("0");
   await expect(count(page, "rejected")).toHaveText("0");
+  const applied = appliedAnswer(page);
   await page.getByRole("button", { name: "Apply 2 rows" }).click();
+  await applied;
   await whenApplied(page, 2);
 
   // In the same visit, the tags: exported from the list beside the upload, a row added,
@@ -511,10 +559,10 @@ test("Geography exports its three tables, and twenty shipping addresses are corr
   await expect(page.getByLabel("Records")).toHaveValue("tags");
   await expect(page).toHaveURL(/\/import$/);
   await expect(page.getByTestId("import-job")).toHaveCount(0);
+  const previewed = answer(page, "POST", "/imports/preview");
   await page.getByRole("button", { name: "Preview", exact: true }).click();
-  await expect(page.getByTestId("import-job")).toHaveAttribute("data-status", "previewed", {
-    timeout: 20_000,
-  });
+  expect((await previewed).status(), "the tags are previewed").toBe(201);
+  await expect(page.getByTestId("import-job")).toHaveAttribute("data-status", "previewed");
   await expect(count(page, "created")).toHaveText("1");
   await expect(count(page, "rejected")).toHaveText("0");
   // Records set by hand since the last file is kept for the next.
