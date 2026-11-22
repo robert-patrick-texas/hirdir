@@ -15,7 +15,7 @@ import { openUser, putAway, read } from "./retiredSteps";
 import { region } from "./structure";
 import { createAccount, expectClean, mark, signIn, test, watch } from "./support";
 
-const suffix = mark("roles-from");
+const suffix = mark("grant-sources");
 const madeAccounts: string[] = [];
 
 test.beforeEach(async ({ page }) => {
@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterAll(async ({ request, accounts }) => {
-  await putAway(request, await session(request, await accounts.of("roles-from")), madeAccounts);
+  await putAway(request, await session(request, await accounts.of("grant-sources")), madeAccounts);
 });
 
 /** The open dialog of the page: a closed one is not on show. */
