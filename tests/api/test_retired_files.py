@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from hirdir.ids import new_hid
 from tests.api.inventory import Maker
 from tests.api.test_files import Files
 
@@ -37,11 +38,13 @@ def test_a_row_that_makes_a_record_may_make_it_retired_in_one_event(
     files: Files, make: Maker, mode: str
 ) -> None:
     files.load(
-        "contacts", "name,email,record_status\nExample Left,left@example.net,retired\n", mode=mode
+        "contacts",
+        f"hid,name,email,record_status\n{new_hid()},Example Left,left@example.net,retired\n",
+        mode=mode,
     )
     files.load(
         "operators",
-        "label,contact,record_status\nex-left,left@example.net,retired\n",
+        f"hid,label,contact,record_status\n{new_hid()},ex-left,left@example.net,retired\n",
         mode=mode,
     )
     contact = make.get("/contacts", filter="name:eq:Example Left", include_archived=True)["items"][
@@ -62,17 +65,38 @@ def test_a_row_does_not_retire_a_record_that_is_there(files: Files, make: Maker)
     assert said[0]["field"] == "record_status"
 
 
+@pytest.mark.parametrize("mode", ["create", "upsert"])
+def test_a_row_makes_a_record_retired_only_with_its_hid(
+    files: Files, make: Maker, mode: str
+) -> None:
+    """A retired record is passed over by the keys of a file, so a row with no HID would
+    make a retired twin at each load: it is refused, as before 0.9.17 (review 5)."""
+    for text in (
+        "name,record_status\nex-gone,retired\n",
+        "hid,name,record_status\n,ex-gone,retired\n",
+    ):
+        said = _reasons(files, "items", text, mode=mode)
+        assert said[0]["field"] == "record_status"
+        assert "HID" in said[0]["message"]
+
+
 def test_what_stands_on_a_retired_record_is_taken_as_the_app_keeps_it(
     files: Files, make: Maker
 ) -> None:
-    files.load("regions", "name,record_status\nExample Old,retired\n")
-    files.load("sites", "name,region,record_status\nSite-8,Example Old,retired\n")
-    files.load("locations", "name,site,record_status\nCloset,Example Old > Site-8,retired\n")
+    files.load("regions", f"hid,name,record_status\n{new_hid()},Example Old,retired\n")
+    files.load("sites", f"hid,name,region,record_status\n{new_hid()},Site-8,Example Old,retired\n")
+    files.load(
+        "locations",
+        f"hid,name,site,record_status\n{new_hid()},Closet,Example Old > Site-8,retired\n",
+    )
     files.load(
         "items",
-        "name,location,record_status\nex-retired,Example Old > Site-8 > Closet,retired\n",
+        "hid,name,location,record_status\n"
+        f"{new_hid()},ex-retired,Example Old > Site-8 > Closet,retired\n",
     )
-    files.load("device_groups", "name,type,record_status\nex-old-kit,custom,retired\n")
+    files.load(
+        "device_groups", f"hid,name,type,record_status\n{new_hid()},ex-old-kit,custom,retired\n"
+    )
     files.load("addresses", "item,address\nex-retired,198.51.100.9\n")
     files.load("addresses", "group,address\nex-old-kit,198.51.100.10\n")
     files.load(
@@ -89,12 +113,20 @@ def test_what_stands_on_a_retired_record_is_taken_as_the_app_keeps_it(
 def test_what_the_app_refuses_a_retired_record_a_file_refuses(
     files: Files, make: Maker, client: TestClient, inventory: dict[str, str]
 ) -> None:
-    files.load("contacts", "name,email,record_status\nExample Left,left@example.net,retired\n")
-    files.load("regions", "name,record_status\nExample Old,retired\n")
-    files.load("sites", "name,region,record_status\nSite-8,Example Old,retired\n")
-    files.load("locations", "name,site,record_status\nCloset,Example Old > Site-8,retired\n")
-    files.load("items", "name,record_status\nex-retired,retired\n")
-    files.load("device_groups", "name,type,record_status\nex-old-kit,custom,retired\n")
+    files.load(
+        "contacts",
+        f"hid,name,email,record_status\n{new_hid()},Example Left,left@example.net,retired\n",
+    )
+    files.load("regions", f"hid,name,record_status\n{new_hid()},Example Old,retired\n")
+    files.load("sites", f"hid,name,region,record_status\n{new_hid()},Site-8,Example Old,retired\n")
+    files.load(
+        "locations",
+        f"hid,name,site,record_status\n{new_hid()},Closet,Example Old > Site-8,retired\n",
+    )
+    files.load("items", f"hid,name,record_status\n{new_hid()},ex-retired,retired\n")
+    files.load(
+        "device_groups", f"hid,name,type,record_status\n{new_hid()},ex-old-kit,custom,retired\n"
+    )
     make.group("ex-kit", "custom")
     make.item(name="ex-kept")
 

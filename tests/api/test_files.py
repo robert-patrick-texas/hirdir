@@ -402,8 +402,8 @@ def test_an_import_does_not_retire(files: Files, make: Maker) -> None:
     text = "label,record_status\nVoice Services,retired\nFacilities,retired\n"
     rows = files.preview("owners", text)["rows"]
     # One that is there is not retired by a file; one that a row makes may be made
-    # retired, since 0.9.17 (P-311).
-    assert [row["outcome"] for row in rows] == ["rejected", "create"]
+    # retired only with the HID it gives, since 0.9.17 (P-311).
+    assert [row["outcome"] for row in rows] == ["rejected", "rejected"]
     assert rows[0]["reasons"][0]["field"] == "record_status"
     make.post(f"/owners/{owner['hid']}/retire", {"row_version": 1}, expect=200)
     rows = files.preview("owners", text)["rows"]

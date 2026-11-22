@@ -532,13 +532,23 @@ OBSERVATION = (Column("observed_status", limit=12), Column("observed_at", "times
 
 def _status(values: Mapping[str, Any], record: Any) -> dict[str, Any]:
     """Return the record status a row sets. An import does not retire a record that is
-    there; a row that makes a record may make it retired (P-311)."""
+    there; a row that makes a record, with the HID it gives as every export writes one,
+    may make it retired (P-311). Without an HID, such a row would make a retired twin at
+    each load, the records that are retired being passed over by the keys of a file."""
     if "record_status" not in values:
         return {}
     wanted = values["record_status"]
     if wanted is not None and records.key(wanted) == records.RETIRED:
-        if record is None:
+        if record is None and values.get("hid"):
             return {"record_status": records.RETIRED}
+        if record is None:
+            raise Invalid(
+                "an import does not retire",
+                {
+                    "record_status": "a row makes a record retired with the HID it gives, "
+                    "as an export writes it; a file does not retire"
+                },
+            )
         if record.record_status == records.RETIRED:
             return {}
         raise Invalid(
