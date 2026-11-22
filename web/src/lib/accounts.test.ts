@@ -100,6 +100,17 @@ describe("the role an agent is held to (P-316)", () => {
     );
   });
 
+  it("says that an agent that holds Admin all the same is held lower, being never Admin", () => {
+    expect(
+      cappedWords({
+        ...agent,
+        role: "admin",
+        role_in_force: "inventory",
+        role_capped_by: "never_admin",
+      }),
+    ).toBe("held to Inventory: an agent is never Admin");
+  });
+
   it("says nothing where nothing holds it lower, nor of a person", () => {
     expect(cappedWords({ ...agent, role_in_force: "inventory", role_capped_by: null })).toBeNull();
     expect(cappedWords({ ...agent, kind: "person", role_capped_by: null })).toBeNull();

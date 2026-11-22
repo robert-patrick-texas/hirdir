@@ -12591,7 +12591,7 @@ export interface components {
       /** The highest role held directly or through a group. */
       role: string | null;
       /** Of an agent alone, where its person holds it lower than `role`, why, as on a user (P-316). */
-      role_capped_by: "person_role" | "person_no_role" | "person_disabled" | "person_retired" | null;
+      role_capped_by: "person_role" | "person_no_role" | "person_disabled" | "person_retired" | "never_admin" | null;
       /** The role the requests of this session or token are held to: `role`, or for an agent the lower of `role` and its person's (P-316). */
       role_in_force: string | null;
       row_version: number;
@@ -14617,8 +14617,8 @@ export interface components {
       record_status: "active" | "retired";
       /** The highest role held directly or through a group. */
       role: string | null;
-      /** Of an agent alone, where its person holds `role_in_force` lower than `role`, why: the person's role is lower, `person_role`, or the person holds none, is disabled or is retired. Null where nothing holds it lower. */
-      role_capped_by: "person_role" | "person_no_role" | "person_disabled" | "person_retired" | null;
+      /** Of an agent alone, where `role_in_force` is lower than `role`, why: the person's role is lower, `person_role`, or the person holds none, is disabled or is retired; or `never_admin`, an agent that holds Admin all the same, which no route gives it, held at Inventory. Null where nothing holds it lower. */
+      role_capped_by: "person_role" | "person_no_role" | "person_disabled" | "person_retired" | "never_admin" | null;
       /** The role the account's requests are held to now. For a person and a service account, `role`. For an agent, the lower of `role` and the role of the person answerable for it, and null where the person holds no role, is disabled or is retired, its tokens being refused then (P-316). */
       role_in_force: string | null;
       row_version: number;

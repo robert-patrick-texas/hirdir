@@ -4004,7 +4004,8 @@ P-314, P-316):
 - **An agent's page.** Kind is Agent; Answerable to names its person, a link, marked
   where retired; Role says the role it holds, where it comes from, and the role it is
   held to and why, `held to View-only by sam's role`, or that its tokens are refused
-  while sam holds no role, is disabled or is retired. Answerable to, a section of its
+  while sam holds no role, is disabled or is retired, or, of an agent that holds Admin
+  all the same, `held to Inventory: an agent is never Admin`. Answerable to, a section of its
   own, hands it to another person, by `PATCH /users/{hid}` with `answerable_hid`, the
   button naming them, `Hand agent-reconcile to Sam Roe`. Its tokens are made and
   revoked under Tokens as a service account's are, and a new one says, where it is

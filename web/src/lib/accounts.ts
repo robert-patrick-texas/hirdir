@@ -94,11 +94,25 @@ export function tokenRefused(user: Holding): string | null {
  */
 export function cappedWords(user: Holding): string | null {
   if (user.kind !== "agent") return null;
-  if (user.role_capped_by === "person_role") {
-    return `held to ${roleLabel(user.role_in_force)} by ${personOf(user)}'s role`;
+  const capped = user.role_capped_by;
+  switch (capped) {
+    case null:
+      return null;
+    case "person_role":
+      return `held to ${roleLabel(user.role_in_force)} by ${personOf(user)}'s role`;
+    // An agent that holds Admin all the same, as from a database edited by hand.
+    case "never_admin":
+      return `held to ${roleLabel(user.role_in_force)}: an agent is never Admin`;
+    case "person_no_role":
+    case "person_disabled":
+    case "person_retired":
+      return `its tokens are refused while ${personRefuses(user) ?? "its person cannot answer for it"}`;
+    default: {
+      // Every value the server answers has its words: a new one fails the type check.
+      const unknown: never = capped;
+      return unknown;
+    }
   }
-  const why = personRefuses(user);
-  return why === null ? null : `its tokens are refused while ${why}`;
 }
 
 /** One role an account holds, and where it comes from: a grant of its own, or a group's. */
