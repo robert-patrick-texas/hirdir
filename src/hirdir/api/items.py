@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
@@ -56,11 +56,20 @@ def create_item(body: r.ItemCreate, _: Inventory, context: Audit, db: Db) -> r.I
 
 @router.post("/bulk-update", status_code=201, tags=["Bulk"], responses=files.PREVIEWING)
 def bulk_update(
-    body: r.BulkUpdate, principal: Inventory, context: Audit, db: Db
+    body: r.BulkUpdate,
+    principal: Inventory,
+    context: Audit,
+    db: Db,
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
 ) -> r.ImportPreview:
     """Work out what one change would do to many items, and store that as a preview.
 
-    Nothing is changed. Each row comes back with what it was and what it would be.
+    Nothing is changed. Each row comes back with what it was and what it would be. A
+    change of more than a hundred items is checked, stored, and answered `202` at once:
+    the background work previews it, and `GET /imports/{hid}` follows it until it is
+    `previewed` (P-325).
     """
     job = bulk.preview(
         db,
@@ -74,8 +83,9 @@ def bulk_update(
         set_=body.set,
         add_tags=body.add_tags,
         remove_tags=body.remove_tags,
+        in_background=True,
     )
-    return shapes.preview_out(db, job)
+    return files.previewed(request, background_tasks, response, db, job)
 
 
 @router.post("/bulk-update/{hid}/apply", status_code=202, tags=["Bulk"], responses=files.APPLYING)

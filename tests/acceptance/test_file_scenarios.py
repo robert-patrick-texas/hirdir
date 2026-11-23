@@ -21,6 +21,9 @@ from tests.acceptance.conftest import ADMIN, HIRDIR, Server, configured, started
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
+# A file of more rows is previewed in the background, and its preview ends with an event
+# of its own (P-325).
+PREVIEWED_IN_THE_REQUEST = 100
 LOAD_ORDER = (
     "countries",
     "states",
@@ -136,14 +139,25 @@ class Desk:
         return response.json()
 
     def preview(self, entity: str, text: str, format_: str = "csv") -> dict[str, Any]:
+        """Preview a file, and return the preview. One of more than a hundred rows is
+        answered `202` and previewed by the process of the background work (P-325): it
+        is waited for, and its job and first rows read, as a preview in the request
+        answers them."""
         response = self.client.post(
             "/imports/preview",
             params={"entity": entity},
             content=text,
             headers={"Content-Type": "application/json" if format_ == "json" else "text/csv"},
         )
-        assert response.status_code == 201, response.text
-        return response.json()
+        assert response.status_code in (201, 202), response.text
+        answer = response.json()
+        if response.status_code == 201:
+            return answer
+        assert answer["job"]["status"] == "previewing", answer
+        job = self.wait(answer["job"]["hid"])
+        assert job["status"] == "previewed", job
+        rows = self.get(f"/imports/{job['hid']}/rows", limit=100)["items"]
+        return {"job": job, "rows": rows, "not_reported_first": job["not_reported_first"]}
 
     def apply(self, preview: dict[str, Any], expect: int = 202) -> dict[str, Any]:
         """Apply a preview, and return its job once the server has applied it."""
@@ -158,11 +172,11 @@ class Desk:
         return self.wait(begun["hid"])
 
     def wait(self, hid: str) -> dict[str, Any]:
-        """Return a job once it is no longer being applied."""
+        """Return a job once it is no longer being previewed or applied."""
         deadline = time.monotonic() + WAIT_FOR_JOB
         while True:
             job = self.get(f"/imports/{hid}")
-            if job["status"] not in ("queued", "applying"):
+            if job["status"] not in ("previewing", "queued", "applying"):
                 return job
             assert time.monotonic() < deadline, f"the job {hid} is still {job['status']}"
             time.sleep(0.05)
@@ -278,6 +292,8 @@ def test_s12_by_hirdir_admin_load_examples_and_a_reset_takes_them_again(tmp_path
 def test_s13_importing_the_same_files_again_changes_nothing(desk: Desk) -> None:
     desk.load_examples()
     events = desk.get("/audit-events", limit=1)["total"]
+    ended = desk.get("/audit-events", action="previewed", limit=1)["total"]
+    in_the_background = 0
     for format_ in ("csv", "json"):
         for entity in LOAD_ORDER:
             preview = desk.preview(entity, example(entity, format_).read_text(), format_)
@@ -286,10 +302,14 @@ def test_s13_importing_the_same_files_again_changes_nothing(desk: Desk) -> None:
             assert job["unchanged"] == job["row_count"] > 0, entity
             assert all(row["changes"] == [] for row in preview["rows"]), entity
             assert desk.apply(preview)["status"] == "applied"
+            in_the_background += job["row_count"] > PREVIEWED_IN_THE_REQUEST
     # The only events since are the previews and the applies themselves: each apply is
-    # begun and ends.
+    # begun and ends, and a preview of more than a hundred rows, worked in the
+    # background, ends with an event of its own (P-325).
     since = desk.get("/audit-events", limit=1)["total"] - events
-    assert since == 2 * 3 * len(LOAD_ORDER)
+    previewed = desk.get("/audit-events", action="previewed", limit=1)["total"] - ended
+    assert previewed == in_the_background > 0
+    assert since == 2 * 3 * len(LOAD_ORDER) + in_the_background
     assert desk.get("/audit-events", record_type="item", action="update")["total"] == 0
 
 
@@ -534,7 +554,8 @@ def test_s55_every_table_is_exported_as_its_template_or_whole_and_loads_back(des
             assert (job["created"], job["updated"], job["rejected"]) == (0, 0, 0), entity
             assert job["unchanged"] == job["row_count"] == seed[entity], entity
     # Two zips taken, two events; a table by itself and a preview that is not applied
-    # leave none that says the inventory changed.
+    # leave none that says the inventory changed, nor does the end of a preview in the
+    # background (P-325).
     taken_events = desk.get("/audit-events", action="export", record_type="inventory")
     assert taken_events["total"] == 2
     since = desk.get("/audit-events", limit=200)
@@ -542,4 +563,5 @@ def test_s55_every_table_is_exported_as_its_template_or_whole_and_loads_back(des
     assert {event["action"] for event in since["items"][: since["total"] - events]} <= {
         "export",
         "preview",
+        "previewed",
     }
