@@ -16,8 +16,8 @@ import { Problem } from "../components/Problem";
 import { SortTh } from "../components/SortTh";
 import { TableExports } from "../components/TableExports";
 import { Time } from "../components/Time";
-import { plural } from "../lib/format";
-import { toApiError, useLoad, useTitle } from "../lib/hooks";
+import { countText, plural } from "../lib/format";
+import { toApiError, useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { COMPLETE_HINT, notReportedText } from "../lib/hostFollows";
 import { Keys, withKey } from "../lib/idempotency";
 import {
@@ -43,6 +43,7 @@ import {
   isUnderWay,
   isWorking,
   type Job,
+  jobNoun,
   type Preview,
   previewFailed,
   previewingText,
@@ -348,6 +349,20 @@ interface OneJobProps {
  */
 function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
   const [turn, setTurn] = useState(0);
+  // 0.9.19: the answer of a file sent from this page takes the keyboard, and so the view,
+  // to its job, whether it is previewed at once or in the background: once, as the job
+  // comes, and not at each reading of it after (review R4). After the page has put the
+  // keyboard on its content, as it does on every move to another address.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const sentHere = sent !== null;
+  useEffect(() => {
+    if (!sentHere) return;
+    const frame = requestAnimationFrame(() => {
+      heading.current?.scrollIntoView({ block: "start" });
+      heading.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sentHere]);
   const followed = useJob(hid, {
     onEnded: () => {
       setTurn((count) => count + 1);
@@ -362,7 +377,7 @@ function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
 
   return (
     <section aria-labelledby="import-job" data-testid="import-job" data-status={job?.status}>
-      <h2 id="import-job">
+      <h2 id="import-job" ref={heading} tabIndex={-1} data-job-home="">
         {job ? (bulk ? "Bulk edit" : `Preview of ${job.file_name ?? "a file"}`) : "Preview"}
       </h2>
       <Problem error={followed.job ? null : followed.error} />
@@ -410,7 +425,6 @@ function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
           <NotReported job={job} />
           <ApplyPreview
             job={job}
-            noun={bulk ? ["item", "items"] : ["row", "rows"]}
             busy={busy}
             onStarted={(started) => {
               followed.started(started);
@@ -489,7 +503,7 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
   // header asks for the list in its order, from the first page.
   const sort = useServerSort<Job>({ fields: IMPORTS_SORT, onChange: () => setOffset(0) });
   const jobs = sort.held(
-    useLoad(`imports ${source} ${offset} ${turn} ${sort.param ?? ""}`, (signal) =>
+    useLoad(`imports ${source} ${offset} ${sort.param ?? ""}`, (signal) =>
       api.request("get", "/api/v1/imports", {
         query: {
           source,
@@ -508,6 +522,9 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
   // and after the answer of a busy server, no sooner than it says (P-265).
   const underWay = items.some(isUnderWay);
   const { loading, reload, error } = jobs;
+  // 0.9.19: a job that began or ended on the page is read again with the rest of the
+  // list, which stays on show meanwhile, and is not said to be loading (review P5).
+  useReloadOn(turn, reload);
   useEffect(() => {
     if (!underWay || loading) return;
     const timer = setTimeout(reload, waitAsTold(JOBS_POLL_MS, error));
@@ -614,7 +631,7 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                             className="job-progress"
                             max={Math.max(job.row_count, 1)}
                             value={job.rows_previewed}
-                            aria-label={previewingText(job)}
+                            aria-label={previewingText(job, jobNoun(job))}
                           />
                         </>
                       )}
@@ -625,14 +642,14 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                             className="job-progress"
                             max={Math.max(job.row_count, 1)}
                             value={job.rows_done}
-                            aria-label={progressText(job)}
+                            aria-label={progressText(job, jobNoun(job))}
                           />
                         </>
                       )}
                     </td>
                     <td data-testid="job-rows">
                       {isPreviewing(job) ? (
-                        previewingText(job)
+                        previewingText(job, jobNoun(job))
                       ) : hasPreview(job) ? (
                         countsText(job)
                       ) : (
@@ -643,14 +660,14 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                       {notAsked(job) ? (
                         <span className="muted">—</span>
                       ) : (
-                        `${job.rows_done} of ${job.row_count}`
+                        `${countText(job.rows_done)} of ${countText(job.row_count)}`
                       )}
                     </td>
                     <td className="number">
-                      {notAsked(job) ? <span className="muted">—</span> : job.applied}
+                      {notAsked(job) ? <span className="muted">—</span> : countText(job.applied)}
                     </td>
                     <td className="number">
-                      {notAsked(job) ? <span className="muted">—</span> : job.stale}
+                      {notAsked(job) ? <span className="muted">—</span> : countText(job.stale)}
                     </td>
                     <td>{job.created_by_name ?? <span className="muted">—</span>}</td>
                   </tr>

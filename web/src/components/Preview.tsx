@@ -9,7 +9,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { type ApiError, api } from "../api";
 import { useAuth } from "../auth";
-import { plural } from "../lib/format";
+import { countText, plural } from "../lib/format";
 import { toApiError, useLoad } from "../lib/hooks";
 import { Keys, withKey } from "../lib/idempotency";
 import {
@@ -17,35 +17,49 @@ import {
   appliedText,
   applyBegun,
   changeText,
+  failureText,
   firstPage,
   hasPreview,
   isOutcome,
   isPreviewing,
+  isUnderWay,
   isWorking,
   type Job,
+  jobAlarm,
+  jobNoun,
+  jobSaid,
   type LeftOut,
   leftOutCount,
   leftOutQuery,
+  NO_REASON,
+  NOT_APPLIED_LEAD,
+  OLD_FAILURE,
   type Outcome,
   outcomeLabel,
   outcomeOptions,
+  PREVIEW_FAILED_LEAD,
   type Preview,
   type PreviewRow,
-  previewedText,
   previewFailed,
   previewingText,
+  previewWaiting,
   progressText,
   ROWS_PAGE,
   reasonText,
   recordPath,
   refusedAtApply,
   rowsQuery,
+  STOPPED_LEAD,
   stoppedText,
+  waitsItsTurn,
+  workerNote,
 } from "../lib/preview";
 import { allows } from "../lib/roles";
+import { useSaid } from "../lib/said";
 import type { SortColumns } from "../lib/sort";
 import { PREVIEW_ROWS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
+import { useWorker } from "../lib/useWorker";
 import { SelectField } from "./Field";
 import { Pager } from "./Pager";
 import { Problem } from "./Problem";
@@ -83,13 +97,15 @@ export function JobCounts({ job }: { job: Job }) {
     ["rejected", "Rejected", job.rejected],
   ];
   const counts = job.source === "bulk" ? all.filter(([name]) => name !== "created") : all;
-  const said = counts.map(([, label, count]) => `${count} ${label.toLowerCase()}`).join(", ");
+  const said = counts
+    .map(([, label, count]) => `${countText(count)} ${label.toLowerCase()}`)
+    .join(", ");
   return (
     <dl className="counts" data-testid="preview-counts" aria-label={`As previewed: ${said}`}>
       {counts.map(([name, label, count]) => (
         <div key={name} data-count={name} className={count > 0 ? undefined : "muted"}>
           <dt>{label}</dt>
-          <dd>{count}</dd>
+          <dd>{countText(count)}</dd>
         </div>
       ))}
     </dl>
@@ -112,13 +128,13 @@ export function ApplyCounts({ job }: { job: Job }) {
       <div data-count="worked">
         <dt>Worked</dt>
         <dd>
-          {job.rows_done} <span className="muted">of {job.row_count}</span>
+          {countText(job.rows_done)} <span className="muted">of {countText(job.row_count)}</span>
         </dd>
       </div>
       {counts.map(([name, label, count]) => (
         <div key={name} data-count={name} className={count > 0 ? undefined : "muted"}>
           <dt>{label}</dt>
-          <dd>{count}</dd>
+          <dd>{countText(count)}</dd>
         </div>
       ))}
     </dl>
@@ -386,7 +402,7 @@ export function LeftOutRows({ job, outcome, turn = 0 }: LeftOutRowsProps) {
   return (
     <section aria-labelledby={id} data-testid={`left-out-${outcome}`}>
       <h3 id={id}>
-        {LEFT_OUT_TITLES[outcome]} ({count})
+        {LEFT_OUT_TITLES[outcome]} ({countText(count)})
       </h3>
       <p className="hint">{LEFT_OUT_ABOUT[outcome]}</p>
       <Problem error={rows.error} />
@@ -478,7 +494,8 @@ export function LeftOutOf({ job, turn = 0 }: { job: Job; turn?: number }) {
 /**
  * 0.9.19: a block that is shown while a preview or an apply goes on, and goes when it
  * ends. Where the keyboard was in it, on its link, it is not lost to the page with it:
- * it is put on the first button of the preview left, or on the preview itself (P-325).
+ * it is put on the first button of the preview left, or on the heading of the job, the
+ * element marked `data-job-home` in its section or panel (P-325, review R8).
  */
 function WhileUnderWay({ testId, children }: { testId: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -488,11 +505,14 @@ function WhileUnderWay({ testId, children }: { testId: string; children: ReactNo
     return () => {
       if (!block?.contains(document.activeElement)) return;
       const box = block.closest<HTMLElement>(".apply-preview");
+      const home = block.closest<HTMLElement>("section, .bulk-preview");
       requestAnimationFrame(() => {
         const now = document.activeElement;
         if (!box?.isConnected || (now !== null && now !== document.body)) return;
-        const next = box.querySelector<HTMLElement>("button:not(:disabled)") ?? box;
-        next.focus({ preventScroll: true });
+        const next =
+          box.querySelector<HTMLElement>("button:not(:disabled)") ??
+          home?.querySelector<HTMLElement>("[data-job-home]");
+        next?.focus({ preventScroll: true });
       });
     };
   }, []);
@@ -503,9 +523,34 @@ function WhileUnderWay({ testId, children }: { testId: string; children: ReactNo
   );
 }
 
+/**
+ * Where a job goes on, said beneath how far it has got. On the Import page it may be left
+ * and come back to; the panel of a bulk edit is not there again when the item list is,
+ * so there it says where the job is found: its page among the imports (review R6).
+ */
+function GoesOn({ followAt, previewing }: { followAt?: string | undefined; previewing: boolean }) {
+  const waits = previewing ? ", after what was asked for before it" : "";
+  const offered = previewing ? " Nothing is offered to apply until every row is previewed." : "";
+  return (
+    <p className="hint">
+      {followAt ? (
+        <>
+          It goes on in the background{waits}, and is found on{" "}
+          <Link to={followAt}>its page among the imports</Link>.{offered}
+        </>
+      ) : (
+        <>
+          It goes on in the background{waits}: this page may be left and come back to.
+          {offered}
+        </>
+      )}
+    </p>
+  );
+}
+
 interface ApplyPreviewProps {
   job: Job;
-  /** What the rows are, one and many: "row", "rows"; "item", "items". */
+  /** What the rows are, one and many: "row", "rows"; "item", "items". By the job, unless given. */
   noun?: [one: string, many: string];
   /** The server took the apply, or the resume: the job as it answered, to be followed. */
   onStarted: (job: Job) => void;
@@ -513,7 +558,10 @@ interface ApplyPreviewProps {
   again?: (() => void) | undefined;
   /** What to do for a new preview, when it cannot be made from here. */
   againHint: string;
-  /** Where else the preview and the apply can be followed, as the job's page among the imports. */
+  /**
+   * The job's page among the imports, where it is found: given in the panel of a bulk
+   * edit, which is not there again once the item list is left.
+   */
   followAt?: string | undefined;
   busy?: boolean;
 }
@@ -525,9 +573,14 @@ interface ApplyPreviewProps {
  * why it stopped, with the button that resumes it. 0.9.19: a preview in the background
  * is followed here too, with nothing to apply until it has come, and a preview that
  * failed says why and is made again (P-325).
+ *
+ * What is heard is apart from what is on show (review R1, R2, D1): two live regions,
+ * empty as they come, say each change of state, how far by the quarter, that the
+ * background work is not running, and a stop or a failure at once; the blocks on show
+ * move at every reading and hold the buttons, and are read by whoever goes to them.
  */
 export function ApplyPreview(props: ApplyPreviewProps) {
-  const { job, noun = ["row", "rows"], onStarted, again, againHint, followAt } = props;
+  const { job, noun = jobNoun(job), onStarted, again, againHint, followAt } = props;
   const { user } = useAuth();
   const keys = useRef(new Keys());
   const [busy, setBusy] = useState(false);
@@ -535,14 +588,9 @@ export function ApplyPreview(props: ApplyPreviewProps) {
   const working = busy || props.busy === true;
   const rest = job.row_count - job.rejected;
   const mayApply = allows(user.role, "inventory");
-  // Whether the preview was followed here to its end, which is then said, once, to
-  // whoever listens: the status before is kept, and the change seen as it renders.
-  const [before, setBefore] = useState(job.status);
-  const [arrived, setArrived] = useState(false);
-  if (before !== job.status) {
-    setBefore(job.status);
-    setArrived(before === "previewing");
-  }
+  const note = workerNote(job, useWorker(waitsItsTurn(job)));
+  const said = useSaid([jobSaid(job, noun), note].filter(Boolean).join(" "), isUnderWay(job));
+  const alarm = useSaid(jobAlarm(job), false);
 
   /** Ask for the apply, or for a stopped one to go on: the answer is the job, at once. */
   async function apply(skipRejected: boolean) {
@@ -580,36 +628,46 @@ export function ApplyPreview(props: ApplyPreviewProps) {
     ) : null;
 
   return (
-    <div className="apply-preview" data-testid="apply" data-status={job.status} tabIndex={-1}>
+    <div className="apply-preview" data-testid="apply" data-status={job.status}>
       <Problem error={error} />
-      <div className="live" role="status" aria-live="polite">
+      <p className="visually-hidden" role="status" aria-live="polite" data-testid="job-said">
+        {said}
+      </p>
+      <p
+        className="visually-hidden"
+        aria-live="assertive"
+        aria-atomic="true"
+        data-testid="job-alarm"
+      >
+        {alarm}
+      </p>
+      <div className="live">
         {isPreviewing(job) && (
           <WhileUnderWay testId="preview-progress">
             <p>
-              <strong>Being previewed.</strong>{" "}
-              <span data-testid="preview-progress-text">{previewingText(job, noun)}</span>.
+              {previewWaiting(job) ? (
+                <strong data-testid="preview-progress-state">
+                  Waiting to be previewed, in its turn.
+                </strong>
+              ) : (
+                <>
+                  <strong data-testid="preview-progress-state">Being previewed.</strong>{" "}
+                  <span data-testid="preview-progress-text">{previewingText(job, noun)}</span>.
+                </>
+              )}
             </p>
+            {note && (
+              <p data-testid="worker-note">
+                <strong>{note}</strong>
+              </p>
+            )}
             <progress
               max={Math.max(job.row_count, 1)}
               value={job.rows_previewed}
               aria-label="How far the preview has got"
             />
-            <p className="hint">
-              It goes on in the background, after what was asked for before it: this page may be
-              left and come back to. Nothing is offered to apply until every row is previewed.
-              {followAt && (
-                <>
-                  {" "}
-                  It is also followed on <Link to={followAt}>its page among the imports</Link>.
-                </>
-              )}
-            </p>
+            <GoesOn followAt={followAt} previewing />
           </WhileUnderWay>
-        )}
-        {arrived && job.status === "previewed" && (
-          <p className="visually-hidden" data-testid="preview-arrived">
-            {previewedText(job)}.
-          </p>
         )}
         {isWorking(job) && (
           <WhileUnderWay testId="apply-progress">
@@ -619,20 +677,17 @@ export function ApplyPreview(props: ApplyPreviewProps) {
               </strong>{" "}
               <span data-testid="apply-progress-text">{progressText(job, noun)}</span>.
             </p>
+            {note && (
+              <p data-testid="worker-note">
+                <strong>{note}</strong>
+              </p>
+            )}
             <progress
               max={Math.max(job.row_count, 1)}
               value={job.rows_done}
               aria-label="How far the apply has got"
             />
-            <p className="hint">
-              It goes on in the background: this page may be left and come back to.
-              {followAt && (
-                <>
-                  {" "}
-                  It is also followed on <Link to={followAt}>its page among the imports</Link>.
-                </>
-              )}
-            </p>
+            <GoesOn followAt={followAt} previewing={false} />
           </WhileUnderWay>
         )}
         {job.status === "applied" && (
@@ -656,15 +711,11 @@ export function ApplyPreview(props: ApplyPreviewProps) {
             )}
           </div>
         )}
-      </div>
-      <div className="live" aria-live="assertive" aria-atomic="true">
         {job.status === "stopped" && (
           <div className="alert alert-error" data-testid="preview-stopped">
             <p>
-              <strong>The apply stopped partway.</strong>{" "}
-              <span data-testid="apply-failure">
-                {job.failure || "The server did not say why."}
-              </span>
+              <strong>{STOPPED_LEAD}</strong>:{" "}
+              <span data-testid="apply-failure">{failureText(job.failure, NO_REASON)}</span>
             </p>
             <p>
               {stoppedText(job, noun)}. What was applied stays applied. Resumed, it goes on from the
@@ -695,15 +746,12 @@ export function ApplyPreview(props: ApplyPreviewProps) {
             {previewFailed(job) ? (
               // 0.9.19: a preview that failed in the background kept nothing (P-325).
               <p>
-                <strong>The preview failed, and nothing was applied.</strong>{" "}
-                <span data-testid="preview-failure">
-                  {job.failure || "The server did not say why."}
-                </span>
+                <strong>{PREVIEW_FAILED_LEAD}</strong>:{" "}
+                <span data-testid="preview-failure">{failureText(job.failure, NO_REASON)}</span>
               </p>
             ) : (
               <p>
-                <strong>Nothing was applied.</strong>{" "}
-                {job.failure || "A record was changed after this preview was made."}
+                <strong>{NOT_APPLIED_LEAD}</strong>: {failureText(job.failure, OLD_FAILURE)}
               </p>
             )}
             {mayApply && <p>{againButton("Preview again") ?? againHint}</p>}

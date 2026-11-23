@@ -3,8 +3,10 @@ import {
   appliedLabel,
   appliedText,
   applyBegun,
+  bulkIntro,
   changeText,
   countsText,
+  failureText,
   firstPage,
   hasPreview,
   isOutcome,
@@ -12,6 +14,9 @@ import {
   isUnderWay,
   isWorking,
   type Job,
+  jobAlarm,
+  jobNoun,
+  jobSaid,
   kindPath,
   leftOutCount,
   leftOutQuery,
@@ -23,7 +28,9 @@ import {
   previewedText,
   previewFailed,
   previewingText,
+  previewWaiting,
   progressText,
+  quarterOf,
   ROWS_PAGE,
   reasonText,
   recordPath,
@@ -32,7 +39,9 @@ import {
   statusLabel,
   stoppedText,
   valueText,
+  waitsItsTurn,
   whatEnded,
+  workerNote,
 } from "./preview";
 
 function job(more: Partial<Job> = {}): Job {
@@ -346,6 +355,158 @@ describe("a preview in the background (P-325)", () => {
     expect(whatEnded("applying", "applied")).toBe("apply");
     expect(whatEnded("queued", "stopped")).toBe("apply");
     expect(whatEnded("stopped", "queued"), "a resume ends nothing").toBeNull();
+  });
+});
+
+describe("the review of the preview in the background (0.9.19)", () => {
+  const big = (more: Partial<Job> = {}) =>
+    job({
+      status: "previewing",
+      row_count: 10_000,
+      rows_previewed: 0,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      rejected: 0,
+      ...more,
+    });
+
+  it("R1: a preview that waits its turn says so, and how far once it moves", () => {
+    expect(previewWaiting(big())).toBe(true);
+    expect(previewWaiting(big({ rows_previewed: 50 }))).toBe(false);
+    expect(previewWaiting(job({ status: "queued" }))).toBe(false);
+    expect(jobSaid(big())).toBe("Waiting to be previewed, in its turn.");
+    expect(jobSaid(big({ rows_previewed: 50 }))).toBe("Being previewed.");
+    expect(waitsItsTurn(big())).toBe(true);
+    expect(waitsItsTurn(job({ status: "queued" }))).toBe(true);
+    expect(waitsItsTurn(big({ rows_previewed: 50 }))).toBe(false);
+    expect(waitsItsTurn(job({ status: "applying" }))).toBe(false);
+  });
+
+  it("R1: says once that the background work is not running, of a job that waits for it", () => {
+    expect(workerNote(big(), "not_running")).toBe(
+      "The background work is not running: the preview waits for it to be started.",
+    );
+    expect(workerNote(job({ status: "queued" }), "not_running")).toBe(
+      "The background work is not running: the apply waits for it to be started.",
+    );
+    for (const worker of ["running", "in_process", undefined, "anything"]) {
+      expect(workerNote(big(), worker)).toBe("");
+    }
+    // A job under way is being worked, whatever was last read of the work.
+    expect(workerNote(big({ rows_previewed: 50 }), "not_running")).toBe("");
+    expect(workerNote(job({ status: "applying" }), "not_running")).toBe("");
+  });
+
+  it("R2: what is said aloud moves only by the quarter, however often the job is read", () => {
+    expect(quarterOf(0, 10_000)).toBe(0);
+    expect(quarterOf(2_499, 10_000)).toBe(0);
+    expect(quarterOf(2_500, 10_000)).toBe(1);
+    expect(quarterOf(9_999, 10_000)).toBe(3);
+    expect(quarterOf(10_000, 10_000)).toBe(4);
+    expect(quarterOf(5, 0)).toBe(0);
+    // A preview of 10,000 rows read every 300 rows, and its apply: a handful of words each.
+    const readings = Array.from({ length: 35 }, (_, at) => Math.min(10_000, at * 300));
+    const previewing = new Set(readings.map((done) => jobSaid(big({ rows_previewed: done }))));
+    expect([...previewing]).toEqual([
+      "Waiting to be previewed, in its turn.",
+      "Being previewed.",
+      "A quarter of the 10,000 rows previewed.",
+      "Half of the 10,000 rows previewed.",
+      "Three quarters of the 10,000 rows previewed.",
+      "All 10,000 rows previewed.",
+    ]);
+    const applying = new Set(
+      readings.map((done) =>
+        jobSaid(job({ status: "applying", row_count: 10_000, rows_done: done })),
+      ),
+    );
+    expect(applying.size).toBe(5);
+    expect(applying).toContain("All 10,000 rows worked.");
+    expect(applying).toContain("Half of the 10,000 rows worked.");
+    expect(jobSaid(job({ status: "queued" }))).toBe("Waiting to be applied, in its turn.");
+    expect(
+      jobSaid(job({ status: "applying", source: "bulk", row_count: 8_000, rows_done: 4_000 })),
+    ).toBe("Half of the 8,000 items worked.");
+  });
+
+  it("R2: the end of each is said, a stop and a failure apart, at once", () => {
+    expect(jobSaid(job())).toBe("Previewed: 2 to create, 3 to update, 3 unchanged, 1 rejected.");
+    expect(jobSaid(job({ status: "applied", rows_done: 9, applied: 9 }))).toBe(
+      "Applied: 9 rows applied, none left out as changed since the preview, none refused.",
+    );
+    for (const status of ["stopped", "failed"] as const) {
+      expect(jobSaid(job({ status }))).toBe("");
+    }
+    expect(jobAlarm(job())).toBe("");
+    expect(
+      jobAlarm(
+        job({ status: "stopped", failure: "who asked for it no longer holds the Inventory role" }),
+      ),
+    ).toBe("The apply stopped partway: who asked for it no longer holds the Inventory role.");
+    expect(jobAlarm(big({ status: "failed", failure: "an error nobody foresaw ended it" }))).toBe(
+      "The preview failed, and nothing was applied: an error nobody foresaw ended it.",
+    );
+    expect(jobAlarm(job({ status: "failed" }))).toBe(
+      "Nothing was applied: a record was changed after this preview was made.",
+    );
+  });
+
+  it("P3: the server's reason follows a colon, ending in one full stop", () => {
+    expect(
+      failureText("who asked no longer holds the role; anybody may send the file again", "x"),
+    ).toBe("who asked no longer holds the role; anybody may send the file again.");
+    expect(failureText("it ended (request 0000).", "x")).toBe("it ended (request 0000).");
+    expect(failureText("  ", "the server did not say why.")).toBe("the server did not say why.");
+    expect(failureText(null, "the server did not say why.")).toBe("the server did not say why.");
+  });
+
+  it("P3: a bulk edit's preview opens with what is true of it", () => {
+    const of = (more: Partial<Job>) => {
+      const { before, after } = bulkIntro(job({ source: "bulk", ...more }));
+      return `${before}all 160 items${after}`;
+    };
+    expect(of({ status: "previewed" })).toBe(
+      "What the change would do to all 160 items, row by row. Nothing has been changed yet.",
+    );
+    expect(of({ status: "previewing", rows_previewed: 0, row_count: 160 })).toBe(
+      "What the change would do to all 160 items, row by row, once it is previewed. Nothing has been changed yet.",
+    );
+    expect(
+      of({
+        status: "failed",
+        row_count: 160,
+        rows_previewed: 0,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+        rejected: 0,
+      }),
+    ).toBe("The change to all 160 items could not be previewed. Nothing has been changed.");
+    expect(of({ status: "applied" })).toBe(
+      "What the change would do to all 160 items, row by row.",
+    );
+  });
+
+  it("P1, P2: the rows of a bulk edit are items, and every count has its thousands marked", () => {
+    expect(jobNoun(job({ source: "bulk" }))).toEqual(["item", "items"]);
+    expect(jobNoun(job())).toEqual(["row", "rows"]);
+    expect(
+      previewingText(big({ source: "bulk", row_count: 101 }), jobNoun(job({ source: "bulk" }))),
+    ).toBe("Previewing 0 of 101 items");
+    const many = job({ row_count: 10_000, created: 10_000, updated: 0, unchanged: 0, rejected: 0 });
+    expect(countsText(many)).toBe("10,000 to create, 0 to update, 0 unchanged, 0 rejected");
+    expect(outcomeOptions(many)[0]?.label).toBe("All rows (10,000)");
+    expect(outcomeOptions(many)[1]?.label).toBe("Create (10,000)");
+    expect(progressText(job({ row_count: 10_000, rows_done: 200 }))).toBe(
+      "200 of 10,000 rows worked",
+    );
+    expect(appliedText(job({ rows_done: 10_000, applied: 9_000, stale: 1_000 }))).toBe(
+      "9,000 rows applied, 1,000 left out as changed since the preview, none refused",
+    );
+    expect(stoppedText(job({ row_count: 10_000, rows_done: 1_500 }))).toBe(
+      "1,500 of 10,000 rows had been worked",
+    );
   });
 });
 

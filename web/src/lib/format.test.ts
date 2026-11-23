@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appZone,
+  countText,
   DEFAULT_ZONE,
   formatChange,
   formatChanges,
@@ -163,6 +164,15 @@ describe("a moment in an audit change", () => {
     expect(shown).not.toContain("T19");
     expect(formatValue("2026-01-31")).toBe("2026-01-31");
     expect(formatValue("site2-sw-access-01")).toBe("site2-sw-access-01");
+  });
+});
+
+describe("countText", () => {
+  it("is the one way a count is written, with the separator of thousands (P-195)", () => {
+    expect(countText(0)).toBe("0");
+    expect(countText(999)).toBe("999");
+    expect(countText(10000)).toBe("10,000");
+    expect(countText(1234567)).toBe("1,234,567");
   });
 });
 

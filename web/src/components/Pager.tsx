@@ -1,3 +1,5 @@
+import { countText } from "../lib/format";
+
 interface PagerProps {
   total: number;
   limit: number;
@@ -13,7 +15,12 @@ export function Pager({ total, limit, offset, noun, onChange }: PagerProps) {
   const last = Math.min(offset + limit, total);
   return (
     <nav className="pager" aria-label={`Pages of ${noun}`}>
-      <p>{total === 0 ? `No ${noun}` : `${first}–${last} of ${total} ${noun}`}</p>
+      {/* 0.9.19: every count with the separator of thousands (P-195). */}
+      <p>
+        {total === 0
+          ? `No ${noun}`
+          : `${countText(first)}–${countText(last)} of ${countText(total)} ${noun}`}
+      </p>
       <button
         type="button"
         disabled={offset <= 0}

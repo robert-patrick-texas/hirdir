@@ -6,7 +6,7 @@
 // time.
 
 import type { Schemas } from "../api/client";
-import { plural } from "./format";
+import { countText, plural } from "./format";
 import { optionLabel } from "./options";
 import type { Option } from "./patch";
 import { REGISTRATION_STATUSES } from "./systems";
@@ -50,10 +50,10 @@ export function outcomeCount(job: Job, outcome: Outcome | ""): number {
 /** The choices of the filter over a preview's rows, each with its count. */
 export function outcomeOptions(job: Job): Option[] {
   return [
-    { value: "", label: `All rows (${job.row_count})` },
+    { value: "", label: `All rows (${countText(job.row_count)})` },
     ...OUTCOMES.map((outcome) => ({
       value: outcome,
-      label: `${OUTCOME_LABELS[outcome]} (${outcomeCount(job, outcome)})`,
+      label: `${OUTCOME_LABELS[outcome]} (${countText(outcomeCount(job, outcome))})`,
     })),
   ];
 }
@@ -133,13 +133,16 @@ export function reasonText(reason: Schemas["RowReason"]): string {
   return reason.field ? `${reason.field}: ${reason.message}` : reason.message;
 }
 
-/** The counts of a preview in a sentence: "2 to create, 1 to update, 5 unchanged, 0 rejected". */
+/**
+ * The counts of a preview in a sentence: "2 to create, 1 to update, 5 unchanged, 0
+ * rejected". 0.9.19: each with the separator of thousands (P-195).
+ */
 export function countsText(job: Job): string {
   return [
-    `${job.created} to create`,
-    `${job.updated} to update`,
-    `${job.unchanged} unchanged`,
-    `${job.rejected} rejected`,
+    `${countText(job.created)} to create`,
+    `${countText(job.updated)} to update`,
+    `${countText(job.unchanged)} unchanged`,
+    `${countText(job.rejected)} rejected`,
   ].join(", ");
 }
 
@@ -215,7 +218,7 @@ export function previewingText(
   job: Pick<Job, "rows_previewed" | "row_count">,
   noun: [one: string, many: string] = ["row", "rows"],
 ): string {
-  return `Previewing ${job.rows_previewed.toLocaleString("en-US")} of ${plural(job.row_count, noun[0], noun[1])}`;
+  return `Previewing ${countText(job.rows_previewed)} of ${plural(job.row_count, noun[0], noun[1])}`;
 }
 
 /**
@@ -233,7 +236,7 @@ export function previewedText(
     [job.rejected, "rejected"],
   ];
   const said = (job.source === "bulk" ? counts.slice(1) : counts).map(
-    ([count, what]) => `${count.toLocaleString("en-US")} ${what}`,
+    ([count, what]) => `${countText(count)} ${what}`,
   );
   return `Previewed: ${said.join(", ")}`;
 }
@@ -251,6 +254,133 @@ export function whatEnded(
   if (before === "previewing" && after !== "previewing") return "preview";
   if (WORKING.includes(before) && !WORKING.includes(after)) return "apply";
   return null;
+}
+
+/** What the rows of a job are, one and many: the items of a bulk edit, the rows of a file. */
+export function jobNoun(job: Pick<Job, "source">): [one: string, many: string] {
+  return job.source === "bulk" ? ["item", "items"] : ["row", "rows"];
+}
+
+/**
+ * A preview in the background that waits its turn, behind another job or for the
+ * background work to be running: none of its rows has been worked yet (review R1).
+ */
+export function previewWaiting(job: Pick<Job, "status" | "rows_previewed">): boolean {
+  return isPreviewing(job) && job.rows_previewed <= 0;
+}
+
+/** Whether a job waits for the background work to take it up: a preview or an apply. */
+export function waitsItsTurn(job: Pick<Job, "status" | "rows_previewed">): boolean {
+  return previewWaiting(job) || job.status === "queued";
+}
+
+/**
+ * What is said of a job that waits where the background work is not running, as
+ * `worker` of `GET /about/load` says (P-267): nothing where it runs, or is not known.
+ */
+export function workerNote(job: Pick<Job, "status" | "rows_previewed">, worker: unknown): string {
+  if (worker !== "not_running" || !waitsItsTurn(job)) return "";
+  const what = isPreviewing(job) ? "preview" : "apply";
+  return `The background work is not running: the ${what} waits for it to be started.`;
+}
+
+/** How far a job has got, in quarters, from 0 to 4: none until a row is done. */
+export function quarterOf(done: number, count: number): number {
+  if (!(count > 0) || !(done > 0)) return 0;
+  return Math.min(4, Math.floor((done / count) * 4));
+}
+
+const QUARTERS = ["", "A quarter of", "Half of", "Three quarters of"] as const;
+
+/** "Half of the 10,000 rows previewed.", "All 10,000 rows worked.", or "" before a quarter. */
+function quarterText(
+  done: number,
+  count: number,
+  noun: [one: string, many: string],
+  did: string,
+): string {
+  const quarter = quarterOf(done, count);
+  const rows = plural(count, noun[0], noun[1]);
+  if (quarter === 0) return "";
+  return quarter === 4 ? `All ${rows} ${did}.` : `${QUARTERS[quarter]} the ${rows} ${did}.`;
+}
+
+/**
+ * What the page says aloud of a job, politely: each change of its state, and between,
+ * how far it has got by the quarter, so that a preview or an apply of 10,000 rows is not
+ * read out at every reading of it, while its numbers on show move at each (review R2).
+ * A stop and a failure are said by `jobAlarm`.
+ */
+export function jobSaid(job: Job, noun: [one: string, many: string] = jobNoun(job)): string {
+  switch (job.status) {
+    case "previewing":
+      if (previewWaiting(job)) return "Waiting to be previewed, in its turn.";
+      return (
+        quarterText(job.rows_previewed, job.row_count, noun, "previewed") || "Being previewed."
+      );
+    case "previewed":
+      return `${previewedText(job)}.`;
+    case "queued":
+      return "Waiting to be applied, in its turn.";
+    case "applying":
+      return quarterText(job.rows_done, job.row_count, noun, "worked") || "Being applied.";
+    case "applied":
+      return `Applied: ${appliedText(job, noun)}.`;
+    default:
+      return "";
+  }
+}
+
+/**
+ * Why a job stopped or failed, as the server says it, to follow a colon: its words as
+ * they are, ending in one full stop; `none` where it says nothing (review P3).
+ */
+export function failureText(failure: string | null | undefined, none: string): string {
+  const said = (failure ?? "").trim().replace(/[\s.;:,]+$/u, "");
+  return said === "" ? none : `${said}.`;
+}
+
+/** The first words of a stop, and of each kind of failure, before why. */
+export const STOPPED_LEAD = "The apply stopped partway";
+export const PREVIEW_FAILED_LEAD = "The preview failed, and nothing was applied";
+export const NOT_APPLIED_LEAD = "Nothing was applied";
+export const NO_REASON = "the server did not say why.";
+/** Why a job of a release before 0.7.0 failed, where it does not say. */
+export const OLD_FAILURE = "a record was changed after this preview was made.";
+
+/** What the page says at once of a job that stopped or failed, and nothing of another. */
+export function jobAlarm(job: Job): string {
+  if (job.status === "stopped") return `${STOPPED_LEAD}: ${failureText(job.failure, NO_REASON)}`;
+  if (job.status !== "failed") return "";
+  return previewFailed(job)
+    ? `${PREVIEW_FAILED_LEAD}: ${failureText(job.failure, NO_REASON)}`
+    : `${NOT_APPLIED_LEAD}: ${failureText(job.failure, OLD_FAILURE)}`;
+}
+
+/**
+ * The sentence that opens the preview of a bulk edit, before and after the items it
+ * changes, as is true of the job: being previewed, previewed, failed, or applied.
+ */
+export function bulkIntro(job: Job): { before: string; after: string } {
+  if (previewFailed(job)) {
+    return {
+      before: "The change to ",
+      after: " could not be previewed. Nothing has been changed.",
+    };
+  }
+  if (isPreviewing(job)) {
+    return {
+      before: "What the change would do to ",
+      after: ", row by row, once it is previewed. Nothing has been changed yet.",
+    };
+  }
+  if (!applyBegun(job)) {
+    return {
+      before: "What the change would do to ",
+      after: ", row by row. Nothing has been changed yet.",
+    };
+  }
+  return { before: "What the change would do to ", after: ", row by row." };
 }
 
 // --- the apply, in the background -----------------------------------------------------
@@ -285,8 +415,7 @@ export function progressText(
   job: Pick<Job, "rows_done" | "row_count">,
   noun: [one: string, many: string] = ["row", "rows"],
 ): string {
-  const of = job.row_count === 1 ? noun[0] : noun[1];
-  return `${job.rows_done} of ${job.row_count} ${of} worked`;
+  return `${countText(job.rows_done)} of ${plural(job.row_count, noun[0], noun[1])} worked`;
 }
 
 /**
@@ -299,9 +428,9 @@ export function appliedText(
 ): string {
   const refused = refusedAtApply(job);
   return [
-    `${job.applied} ${job.applied === 1 ? noun[0] : noun[1]} applied`,
-    `${job.stale === 0 ? "none" : job.stale} left out as changed since the preview`,
-    `${refused === 0 ? "none" : refused} refused`,
+    `${plural(job.applied, noun[0], noun[1])} applied`,
+    `${job.stale === 0 ? "none" : countText(job.stale)} left out as changed since the preview`,
+    `${refused === 0 ? "none" : countText(refused)} refused`,
   ].join(", ");
 }
 
@@ -310,7 +439,7 @@ export function stoppedText(
   job: Pick<Job, "rows_done" | "row_count">,
   noun: [one: string, many: string] = ["row", "rows"],
 ): string {
-  return `${job.rows_done} of ${job.row_count} ${job.row_count === 1 ? noun[0] : noun[1]} had been worked`;
+  return `${countText(job.rows_done)} of ${plural(job.row_count, noun[0], noun[1])} had been worked`;
 }
 
 export type AppliedOutcome = NonNullable<PreviewRow["applied_outcome"]>;

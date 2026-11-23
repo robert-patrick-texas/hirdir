@@ -15,7 +15,7 @@ import {
   parseFilter,
   sentFilter,
 } from "./filter";
-import { plural } from "./format";
+import { countText, plural } from "./format";
 import { groupTypeLabel } from "./groups";
 import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
 import { CATALOG_KINDS, choiceLabel, optionLabel } from "./options";
@@ -406,10 +406,8 @@ export const COUNTED_COUNTS: CountColumns<Counted> = {
   },
 };
 
-/** A whole number with its thousands marked, for a count on a page. */
-export function countText(count: number): string {
-  return count.toLocaleString("en-US");
-}
+/** A whole number with its thousands marked, for a count on a page: `countText` of format.ts. */
+export { countText };
 
 /**
  * A decimal as the server sent it, with its thousands marked. The digits are those of
