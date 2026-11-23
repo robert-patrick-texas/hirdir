@@ -998,6 +998,9 @@ FIRST_ROWS = 100
 # at the longest, in seconds. A small file is done before a person would notice.
 FIRST_LOOK = 0.05
 LOOK_AT_MOST = 1.0
+# How long nothing of a job may move before the command asks whether the background
+# work is being done, in seconds: a job waits for it, and without it waits on and on.
+STILL_FOR = 10.0
 
 
 def _apply_job(
@@ -1029,16 +1032,36 @@ def _wait(target: Target, job: dict[str, Any], *, quiet: bool = False) -> dict[s
     on with.
     """
     pause = FIRST_LOOK
-    said = None
+    said = seen = None
+    still_since, warned = time.monotonic(), False
     while job["status"] in BEING_WORKED:
         now = (job["status"], job["rows_previewed"], job["rows_done"])
         if not quiet and now != said:
             typer.echo(_how_far(job), err=True)
             said = now
+        if now != seen:
+            seen, still_since = now, time.monotonic()
+        elif not warned and time.monotonic() - still_since >= STILL_FOR:
+            # Nothing has moved for a while: the background work may not be running, and
+            # the job waits for it. Asked again after as long, until it has been said.
+            still_since = time.monotonic()
+            if _not_worked(target):
+                warned = True
+                what = "preview" if job["status"] == PREVIEWING else "apply"
+                typer.echo(
+                    f"the background work is not running: the {what} waits for it, and is "
+                    "worked once it runs; stopping this command leaves it to the server",
+                    err=True,
+                )
         time.sleep(pause)
         pause = min(pause * 2, LOOK_AT_MOST)
         job = client.call(target, "GET", f"/imports/{job['hid']}")
     return job
+
+
+def _not_worked(target: Target) -> bool:
+    """Say whether the server knows that no process does its background work (P-267)."""
+    return client.call(target, "GET", "/about/load")["worker"] == "not_running"
 
 
 def _previewed(target: Target, job: dict[str, Any], *, quiet: bool) -> dict[str, Any]:

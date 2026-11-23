@@ -531,17 +531,22 @@ def _worked(
     system_hid: str | None = None,
     complete: bool = False,
     progress: Callable[[int], None] | None = None,
-) -> tuple[list[Result], int]:
-    """Work the rows without keeping anything. Return what each would do, and how many
-    items a file read from an external system that is everything it reports would mark
-    `not_reported`: none where a row is rejected (P-248).
+) -> tuple[Sequence[Row], list[Result], int]:
+    """Work the rows without keeping anything. Return the rows as they were worked, what
+    each would do, and how many items a file read from an external system that is
+    everything it reports would mark `not_reported`: none where a row is rejected
+    (P-248).
 
-    `progress` is told how far the rows have got, where they are worked on a copy of the
-    database: worked in place, in the caller's own session, they say nothing until they
-    end, since what `progress` stored in that session would be undone with them.
+    The rows of a bulk edit are first put to the records as they stand in what the rows
+    are worked on (`_as_now`), so that what is read of them and what is worked are of
+    one moment. `progress` is told how far the rows have got, where they are worked on
+    a copy of the database: worked in place, in the caller's own session, they say
+    nothing until they end, since what `progress` stored there would be undone with
+    them.
     """
     working = replace(context, via="import") if source == "file" else context
     with engine.trial(db, in_place=len(rows) <= IN_PLACE_UP_TO) as trying:
+        rows = _as_now(trying, source, rows)
         told = progress if trying is not db else None
         results = _work(
             trying, working, role, which, mode, rows, system_hid=system_hid, progress=told
@@ -554,7 +559,19 @@ def _worked(
     ):
         named = {result.record_hid for result in results if result.row_version is not None}
         marks = len(systems.not_named(db, system_hid, {hid for hid in named if hid}))
-    return results, marks
+    return rows, results, marks
+
+
+def _as_now(db: Session, source: str, rows: Sequence[Row]) -> Sequence[Row]:
+    """Return the rows of a preview as they are to be worked in `db`. A file's are as
+    they were read. A bulk edit's tags are put to each item's labels as they stand there
+    (`bulk.as_now`), whenever it is previewed (P-325)."""
+    if source != "bulk":
+        return rows
+    # The bulk edit builds on this module, so it is imported where it is needed.
+    from hirdir.io import bulk
+
+    return bulk.as_now(db, rows)
 
 
 def _job(
@@ -667,6 +684,8 @@ def preview_rows(
         complete=complete,
     )
     if in_background and len(rows) > IN_PLACE_UP_TO:
+        # Stored as they were read, or as a bulk edit asked: what it adds to each item's
+        # tags is put to them as they stand when the background work previews it.
         db.add(job)
         db.flush()
         db.execute(
@@ -685,7 +704,7 @@ def preview_rows(
         )
         _sent(db, context, job)
         return job
-    results, marks = _worked(
+    rows, results, marks = _worked(
         db,
         context,
         role,
@@ -1848,6 +1867,10 @@ def work_preview(db: Session, hid: str, stop: threading.Event | None = None) -> 
             return "failed"
         which = entity(job.entity)
         rows = _waiting_rows(db, hid)
+        # The rows that could not be read are rejected without being worked: they are
+        # counted as previewed from the first, so that how far it has got runs to
+        # `row_count` (`_work` tells of the rows it works).
+        unread = sum(1 for row in rows if row.reasons)
         db.rollback()
 
         def told(done: int) -> None:
@@ -1855,7 +1878,9 @@ def work_preview(db: Session, hid: str, stop: threading.Event | None = None) -> 
                 raise _Cut
             try:
                 db.execute(
-                    update(ImportJob).where(ImportJob.hid == hid).values(rows_previewed=done)
+                    update(ImportJob)
+                    .where(ImportJob.hid == hid)
+                    .values(rows_previewed=unread + done)
                 )
                 db.commit()
             except OperationalError as error:
@@ -1865,7 +1890,7 @@ def work_preview(db: Session, hid: str, stop: threading.Event | None = None) -> 
                 if not dialect.is_busy(error):
                     raise
 
-        results, marks = _worked(
+        rows, results, marks = _worked(
             db,
             context,
             role,

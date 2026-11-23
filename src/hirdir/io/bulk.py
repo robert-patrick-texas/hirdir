@@ -6,6 +6,7 @@ import, with the same preview, the same rules and the same refusal of a stale co
 """
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -24,6 +25,9 @@ from hirdir.io.files import Row
 
 PIECE = 500
 ITEM = ENTITIES["items"]
+# The column of the tags. Until a bulk edit is previewed, its rows hold there what it
+# asks, `{"add": [...], "remove": [...]}`, in place of the labels (P-325).
+TAGS = "tags"
 
 
 def _change(set_: dict[str, Any], one_item: bool) -> dict[str, Any]:
@@ -64,6 +68,32 @@ def _labels(db: Session, given: Sequence[str], name: str) -> dict[str, str]:
     if unknown:
         raise Invalid("a tag is not known", {name: f"there is no tag {', '.join(unknown)}"})
     return {records.key(label): known[records.key(label)] for label in given}
+
+
+def as_now(db: Session, rows: Sequence[Row]) -> list[Row]:
+    """Return the rows of a bulk edit with the tags it adds and takes off put to each
+    item's labels as they stand now, when it is previewed: in its request, or by the
+    background work later (P-325), so that a tag somebody put on or took off while it
+    waited stays as they left it, and what is applied is what the edit asked. A row
+    that changes no tags is returned as it is."""
+    found: list[Row] = []
+    for start in range(0, len(rows), PIECE):
+        piece = rows[start : start + PIECE]
+        asked = [row.values["hid"] for row in piece if isinstance(row.values.get(TAGS), dict)]
+        current = tags.labels_of(db, "item", asked)
+        for row in piece:
+            wanted = row.values.get(TAGS)
+            if not isinstance(wanted, dict):
+                found.append(row)
+                continue
+            removing = {records.key(label) for label in wanted["remove"]}
+            kept = {records.key(label): label for label in current[row.values["hid"]]}
+            kept.update({records.key(label): label for label in wanted["add"]})
+            labels = sorted(
+                (label for key, label in kept.items() if key not in removing), key=records.key
+            )
+            found.append(replace(row, values={**row.values, TAGS: labels}))
+    return found
 
 
 def preview(
@@ -127,20 +157,13 @@ def preview(
             "an item is not known",
             {"hids": f"{len(set(hids)) - len(found)} of the HIDs are not items the filter keeps"},
         )
-    rows = []
-    for start in range(0, len(found), PIECE):
-        piece = found[start : start + PIECE]
-        current = tags.labels_of(db, "item", piece) if adding or removing else {}
-        for hid in piece:
-            values = {"hid": hid, **change}
-            if adding or removing:
-                kept = {records.key(label): label for label in current[hid]}
-                kept.update(adding)
-                values["tags"] = sorted(
-                    (label for key, label in kept.items() if key not in removing),
-                    key=records.key,
-                )
-            rows.append(Row(values=values))
+    # The tags are held as asked, and put to each item's labels when it is previewed.
+    asked = (
+        {TAGS: {"add": list(adding.values()), "remove": list(removing.values())}}
+        if adding or removing
+        else {}
+    )
+    rows = [Row(values={"hid": hid, **change, **asked}) for hid in found]
     return imports.preview_rows(
         db,
         context,

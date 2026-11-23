@@ -1965,7 +1965,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewing` while a preview of more than a hundred rows is worked in the background (P-325), and `previewed` once every row is; `queued` and `applying` while it is being applied in the background; `applied` once every row has been worked; `stopped` when it stopped partway, to be resumed; and `failed`, a preview that an error nobody foresaw or a role that was lost ended, or a job of a release before 0.7.0, applied as one transaction and undone because a record had changed: neither is applied |
-| `rows_previewed` | integer | how many rows the preview has worked, while it works in the background, and `row_count` once it is previewed (P-325) |
+| `rows_previewed` | integer | how many rows the preview has worked, while it works in the background, the rows that could not be read, which are rejected unworked, counted from the first; and `row_count` once it is previewed (P-325) |
 | `rows_done` | integer | how many rows the apply has worked, while it works and after |
 | `applied`, `stale` | integer | how many rows the apply applied, and how many it did not because their record had changed since the preview |
 | `row_count`, `created`, `updated`, `unchanged`, `rejected` | integer | the counts of rows by what the preview found |
@@ -1982,7 +1982,7 @@ holds the Inventory role may apply it. Its rows are kept one to a record in `imp
 | Field | Type | Notes |
 |---|---|---|
 | `job_hid`, `row` | reference, integer | rows are numbered from 1, in the order of the file |
-| `outcome` | choice | `create`, `update`, `unchanged` or `rejected`. While its job is `previewing`, every row holds `waiting`, which no answer gives, and the rows as they were read: what each would do is stored in their place once the preview ends (P-325) |
+| `outcome` | choice | `create`, `update`, `unchanged` or `rejected`. While its job is `previewing`, every row holds `waiting`, which no answer gives, and the rows as they were read, or for a bulk edit the change as it was asked, the tags it adds and takes off among it: what each would do is stored in their place once the preview ends (P-325) |
 | `record_hid` | reference | the record the row matched, or created once applied |
 | `row_version` | integer | the version that record was previewed at |
 | `key` | text | how the row names its record, for people |
