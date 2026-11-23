@@ -1898,6 +1898,72 @@ def left_while_running(coverage: Any, contract: Any) -> ColumnElement[bool]:
     )
 
 
+# --- what is in force today, worked out once for a statement ---------------------------
+
+
+def _held_today() -> Any:
+    """Return what is in force today for each contract, one row to a contract, as a table
+    of the statement's own (D-166, P-326).
+
+    Its term, its status, its number, the day its period starts and the last day that
+    is known of it are worked out from the contract and its agreement once, and every
+    coverage of every item reads them from here, where it would otherwise work them out
+    again for itself. SQLite works the table out once, before the statement reads it.
+    It is no record: nothing is kept of it after the statement, and nothing inherited
+    is copied down.
+    """
+    number = term_value(Contract, "number")
+    return dialect.materialized(
+        select(
+            Contract.hid.label("hid"),
+            (Contract.record_status == "active").label("active"),
+            contract_covers(Contract).label("covers"),
+            number.label("number"),
+            dialect.folded(number).label("number_key"),
+            status_value(Contract).label("status"),
+            last_status_value(Contract).label("last_status"),
+            last_end_of(Contract).label("last_end"),
+            in_force_of(Contract, "starts_on").label("starts_on"),
+        ),
+        "contract_today",
+    )
+
+
+# One table, so that the fields of a list that read it share it within a statement.
+HELD_TODAY: Any = _held_today()
+
+
+def coverage_in_force_today(coverage: Any, held: Any = HELD_TODAY) -> ColumnElement[bool]:
+    """Return `coverage_in_force` for today, of a coverage joined to what is in force
+    for its contract today (`HELD_TODAY`)."""
+    day = dialect.today()
+    return and_(
+        held.c.covers.is_(True),
+        or_(coverage.starts_on.is_(None), coverage.starts_on <= day),
+        or_(coverage.ends_on.is_(None), coverage.ends_on >= day),
+    )
+
+
+def last_day_today(coverage: Any, held: Any = HELD_TODAY) -> ColumnElement[Any]:
+    """Return `last_day_value` of a coverage joined to what is in force for its contract
+    today (`HELD_TODAY`)."""
+    return case(
+        (held.c.last_status == RENEWAL_PENDING, coverage.ends_on),
+        else_=_least(coverage.ends_on, held.c.last_end),
+    )
+
+
+def left_while_running_today(coverage: Any, held: Any = HELD_TODAY) -> ColumnElement[bool]:
+    """Return `left_while_running` of a coverage joined to what is in force for its
+    contract today (`HELD_TODAY`)."""
+    starts_on = held.c.starts_on
+    return and_(
+        coverage.left_service.is_(True),
+        held.c.covers.is_(True),
+        or_(starts_on.is_(None), coverage.ends_on.is_(None), coverage.ends_on >= starts_on),
+    )
+
+
 # --- coverage ------------------------------------------------------------------------
 
 
