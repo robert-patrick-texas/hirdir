@@ -300,12 +300,14 @@ upload, by its extension and by its first bytes.
 - **Previewing in the background.** A preview that the worker takes up (P-325) is
   worked as the person who sent it, under the request ID of the preview, whose role
   is looked at again first: one that is lost ends it `failed`. It makes the copy of the
-  database, ends its own read of the live one, and works every row on the copy through
-  the same functions as a preview in the request, `preview_rows` in `io/imports.py`.
-  Every 50 rows it writes how far it has got, `rows_previewed`, to the live database
-  in a transaction of a moment of its own, never in the copy. At the end it throws the
-  copy away and stores the rows, the counts and `previewed` in one transaction, with
-  its event, and nothing of a preview is kept before then. So a stop of the process,
+  database and works every row on the copy through the same functions as a preview in
+  the request, those of `preview_rows` in `io/imports.py`. Every 50 rows it writes how
+  far it has got, `rows_previewed`, to the live database in a transaction of a moment
+  of its own, never in the copy; one that another change holds up past `busy_timeout`
+  is passed over, and said at the next 50. At the end it throws the copy away and
+  stores the rows, the counts and `previewed` in one transaction, with its event,
+  tried again a tenth of a second later where it is held up so, and nothing of a
+  preview is kept before then. So a stop of the process,
   which the worker looks for at those writes, leaves the job `previewing`, its
   `rows_previewed` set back to 0, and it is worked again from its first row when the
   process starts; a job found `previewing` as the process starts is so too, whatever
