@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -572,7 +572,7 @@ def test_work_settles_before_any_thread_of_the_work_starts(installed: Config, mo
         pass
 
     @contextlib.contextmanager
-    def working(config: Config) -> Iterator[None]:
+    def working(config: Config) -> Generator[None]:
         order.append("working")
         raise Stopped
         yield
