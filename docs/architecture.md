@@ -312,8 +312,12 @@ upload, by its extension and by its first bytes.
   worked as the person who sent it, under the request ID of the preview, whose role
   is looked at again first: one that is lost ends it `failed`. It makes the copy of the
   database and works every row on the copy through the same functions as a preview in
-  the request, those of `preview_rows` in `io/imports.py`. Every 50 rows it writes how
-  far it has got, `rows_previewed`, to the live database in a transaction of a moment
+  the request, those of `preview_rows` in `io/imports.py`. A bulk edit holds the tags
+  it adds and takes off as it was asked, and they are put to each item's tags as the
+  copy has them before its rows are worked, so that a tag put on or taken off while it
+  waited is not undone by it (after the review of 0.9.19). Every 50 rows it writes how
+  far it has got, `rows_previewed`, the rows that could not be read, which are rejected
+  unworked, counted from the first, to the live database in a transaction of a moment
   of its own, never in the copy; one that another change holds up past `busy_timeout`
   is passed over, and said at the next 50. At the end it throws the copy away and
   stores the rows, the counts and `previewed` in one transaction, with its event,

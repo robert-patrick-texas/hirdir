@@ -300,6 +300,36 @@ def test_a_preview_in_the_background_leaves_the_kept_answers_good(
     assert kept._newest(db) == newest
 
 
+def test_how_far_a_preview_has_got_counts_the_rows_that_could_not_be_read(
+    make: Maker, client: TestClient, catalog: dict, config, monkeypatch
+) -> None:
+    """The rows that cannot be read are rejected without being worked: they are counted
+    as previewed from the first, so that how far it has got runs to `row_count`, and
+    does not jump to it at the end."""
+    unreadable = [
+        f"Cisco,C9300-48P,FCW0000U{number:03d},site2-sw-u{number:03d},,not a day"
+        for number in range(80)
+    ]
+    seen: list[int] = []
+    work = imports._work
+
+    def watched(*arguments: Any, progress: Any = None, **more: Any) -> Any:
+        def told(done: int) -> None:
+            progress(done)
+            with make_sessions(make_engine(config.database_url))() as another:
+                seen.append(another.scalar(select(ImportJob.rows_previewed)) or 0)
+
+        return work(*arguments, progress=told if progress else None, **more)
+
+    monkeypatch.setattr(imports, "_work", watched)
+    answer = send(make, csv([*unreadable, *switches(70)]))
+    assert answer.status_code == 202, answer.text
+    done = wait_for_job(client, make.headers, answer.json()["job"]["hid"])
+    # 50 rows worked of the 70 that could be read, then all of them: and the 80 beside.
+    assert seen == [130, 150]
+    assert (done["status"], done["rows_previewed"], done["rejected"]) == ("previewed", 150, 80)
+
+
 # --- what ends a preview in the background ---------------------------------------------
 
 
@@ -558,6 +588,47 @@ def test_a_bulk_edit_of_more_than_a_hundred_items_is_previewed_in_the_background
     assert {item["comments"] for item in make.get("/items", limit=200)["items"]} == {"x"}
 
 
+def test_a_bulk_tag_edit_in_the_background_puts_its_tags_to_the_tags_as_they_stand(
+    make: Maker, client: TestClient, catalog: dict, hold
+) -> None:
+    """What a bulk edit of tags asks, add these and take those off, is put to each
+    item's tags as they stand when the background work previews it: a tag somebody put
+    on while it waited is left as they left it, and nothing of their change is undone
+    (after the review of 0.9.19)."""
+    loaded = previewed(client, make.headers, send(make, csv(switches(101))).json())
+    assert make.apply(f"/imports/{loaded['job']['hid']}/apply")["status"] == "applied"
+    make.tag("alpha")
+    make.tag("beta")
+    first, second = make.get("/items", limit=200, sort="hostname")["items"][:2]
+
+    taken, go_on = hold()
+    response = client.post(
+        f"{API}/items/bulk-update",
+        json={"all_rows": True, "add_tags": ["alpha"]},
+        headers=make.headers,
+    )
+    assert response.status_code == 202, response.text
+    job = response.json()["job"]
+    assert taken.wait(30)
+    # Somebody tags one of the items while the bulk edit waits for the worker.
+    now = make.get(f"/items/{first['hid']}")
+    make.patch(f"/items/{first['hid']}", {"tags": ["beta"], "row_version": now["row_version"]})
+    go_on.set()
+    done = wait_for_job(client, make.headers, job["hid"])
+    assert (done["status"], done["updated"]) == ("previewed", 101)
+    found = {row["record_hid"]: row for row in all_rows(make, job["hid"])}
+    assert [
+        (entry["field"], entry["old"], entry["new"]) for entry in found[first["hid"]]["changes"]
+    ] == [("tags", ["beta"], ["alpha", "beta"])]
+    # A change made after the preview is stale at the apply, as ever, and left alone.
+    later = make.get(f"/items/{second['hid']}")
+    make.patch(f"/items/{second['hid']}", {"tags": ["beta"], "row_version": later["row_version"]})
+    applied = make.apply(f"/items/bulk-update/{job['hid']}/apply")
+    assert (applied["status"], applied["applied"], applied["stale"]) == ("applied", 100, 1)
+    assert make.get(f"/items/{first['hid']}")["tags"] == ["alpha", "beta"]
+    assert make.get(f"/items/{second['hid']}")["tags"] == ["beta"]
+
+
 # --- the command line ----------------------------------------------------------------
 
 
@@ -611,3 +682,43 @@ def test_a_preview_that_failed_exits_6_with_why(
     assert "the preview failed: an error nobody foresaw ended it (RuntimeError)" in failed.stderr
     monkeypatch.setattr(imports, "_one", one)
     assert make.get("/items", limit=1)["total"] == 0
+
+
+def test_a_wait_says_once_that_the_background_work_is_not_running(
+    run, make: Maker, client: TestClient, catalog: dict, tmp_path, monkeypatch
+) -> None:
+    """A preview waits for the background work. Where nothing of it has moved for a
+    while and that work is not running, the command says so once, and waits on."""
+    from hirdir.cli import inventory
+
+    file = tmp_path / "switches.csv"
+    file.write_text(csv(switches(101)))
+    monkeypatch.setattr(inventory, "STILL_FOR", 0.0)
+    # The work runs: nothing is said, however still the job is between two looks.
+    running = run("import", str(file), "--entity", "items")
+    assert "not running" not in running.stderr
+
+    worker = cast(FastAPI, client.app).state.worker
+    worker.stop()
+    asked = inventory._not_worked
+    answers: list[bool] = []
+
+    def asked_then_started(target: Any) -> bool:
+        answer = asked(target)
+        answers.append(answer)
+        # The process of the background work is started again, as a person would.
+        if not worker.running:
+            worker.start()
+        return answer
+
+    monkeypatch.setattr(inventory, "_not_worked", asked_then_started)
+    waited = run("import", str(file), "--entity", "items")
+    assert (
+        waited.stderr.count(
+            "the background work is not running: the preview waits for it, and is worked once "
+            "it runs; stopping this command leaves it to the server"
+        )
+        == 1
+    )
+    assert answers[0] is True
+    assert "preview: 101 created" in waited.stderr
