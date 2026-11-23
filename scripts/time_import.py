@@ -28,7 +28,8 @@ What the apply spends its time on is told by wrapping, in this process only, the
 of `hirdir.io.imports.work_job`: taking the job (`_take`), working out the order of the
 rows (`_plan`), each batch (`_apply_waiting`, with each try of it, `_apply_batch`) and the
 end (`_complete`). The time between two batches is the pause in which the one writer's
-place is let go, `PAUSE_BETWEEN_BATCHES`, with what little the loop does besides.
+place is let go while somebody else changes something, `engine.wait_for_changes`, with
+what little the loop does besides.
 Nothing of the application is changed.
 
 The host is shared, so the load average is printed beside every number.
@@ -442,7 +443,7 @@ def run(base: str, data: bytes, rows: int, facts: dict[str, Any], spans: Spans) 
     )
 
 
-def report(found: Measured, pause: float) -> str:
+def report(found: Measured) -> str:
     """Return what was measured, against the quality of docs/requirements.md."""
     batches, pauses = found.batches, found.pauses
     in_batches = sum(batches)
@@ -469,8 +470,8 @@ def report(found: Measured, pause: float) -> str:
         f"{statistics.median(batches) * 1000:.0f} ms, 95th percentile "
         f"{percentile(batches, 0.95) * 1000:.0f} ms, longest {max(batches) * 1000:.0f} ms, "
         f"{found.tries - len(batches)} tried again",
-        f"  {len(pauses)} pauses between them: {paused:.1f} s in all "
-        f"({len(pauses)} x {pause} s = {len(pauses) * pause:.1f} s)",
+        f"  {len(pauses)} pauses between them: {paused:.1f} s in all, the longest "
+        f"{max(pauses, default=0) * 1000:.0f} ms",
         f"  the end of the job: {found.complete_s * 1000:.0f} ms; the rest: {rest:.1f} s",
         f"sign-in with nothing going on: median {idle:.0f} ms, 95th percentile "
         f"{percentile(found.idle_sign_ins_ms, 0.95):.0f} ms ({len(found.idle_sign_ins_ms)} "
@@ -519,7 +520,7 @@ def main(argv: list[str] | None = None) -> int:
         app.state.engine.dispose()
     print(f"after: load average {load():.2f}")
     print()
-    print(report(found, imports.PAUSE_BETWEEN_BATCHES))
+    print(report(found))
     if given.save:
         given.save.write_text(json.dumps(found.__dict__, indent=2) + "\n", encoding="utf-8")
     return 0

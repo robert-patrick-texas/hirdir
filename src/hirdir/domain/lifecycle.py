@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.auth.roles import Role
 from hirdir.db.models import LifecycleRule
-from hirdir.domain import records
+from hirdir.domain import held, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotAllowed, NotFound
 
@@ -60,8 +60,13 @@ def list_rules(db: Session) -> list[LifecycleRule]:
 
 
 def rule_of(db: Session, state: str) -> LifecycleRule:
-    """Return the rule of one state."""
-    rule = db.scalar(select(LifecycleRule).where(LifecycleRule.state == state))
+    """Return the rule of one state: read once while a file of items is worked, which
+    changes no rule (P-324)."""
+    rule = held.kept(
+        db,
+        ("lifecycle_rule", state),
+        lambda: db.scalar(select(LifecycleRule).where(LifecycleRule.state == state)),
+    )
     if rule is None:
         raise NotFound(f"there is no lifecycle rule for {state}")
     return rule

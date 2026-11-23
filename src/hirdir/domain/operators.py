@@ -19,7 +19,7 @@ from hirdir import ids
 from hirdir.auth.roles import Role
 from hirdir.db import dialect
 from hirdir.db.models import Contact, DeviceGroup, Item, Location, Operator, Region, Site, User
-from hirdir.domain import descent, geography, records, tags
+from hirdir.domain import descent, geography, held, records, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotAllowed, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
@@ -259,7 +259,12 @@ def uses(db: Session, hids: Sequence[str]) -> dict[str, int]:
 
 
 def released(db: Session) -> set[str]:
-    """Return the operators that are retired, and so stand for nothing."""
+    """Return the operators that are retired, and so stand for nothing: read once while a
+    file of items is worked, which retires no operator (P-324)."""
+    return held.kept(db, "released_operators", lambda: _released(db))
+
+
+def _released(db: Session) -> set[str]:
     return set(db.scalars(select(Operator.hid).where(Operator.record_status == "retired")))
 
 
@@ -284,9 +289,20 @@ def from_places(
     db: Session, location_hids: Sequence[str], gone: set[str] | None = None
 ) -> dict[str, Effective]:
     """Return the operator that what is at each location has from its place: that of
-    the location, of the locations above it, of its site, or of a region outward."""
-    gone = released(db) if gone is None else gone
-    atlas = geography.Atlas(db)
+    the location, of the locations above it, of its site, or of a region outward. While a
+    file of items is worked, what each location gives is worked out once (P-324)."""
+    if held.of(db) is not None and (gone is None or gone is released(db)):
+        return held.kept_many(
+            db,
+            "operators_from_places",
+            {hid for hid in location_hids if hid},
+            lambda missing: _from_places(db, sorted(missing), released(db)),
+        ) | {hid: NOTHING for hid in location_hids if not hid}
+    return _from_places(db, location_hids, released(db) if gone is None else gone)
+
+
+def _from_places(db: Session, location_hids: Sequence[str], gone: set[str]) -> dict[str, Effective]:
+    atlas = geography.atlas(db)
     atlas.read_locations(location_hids)
     found: dict[str, Effective] = {}
     for hid in location_hids:

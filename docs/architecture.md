@@ -258,10 +258,21 @@ upload, by its extension and by its first bytes.
   order of the rows once for the whole job, then works them 50 to a batch
   (`io/imports.py`), each batch a transaction that takes the one writer's place before
   it looks, as a small preview does, and stores with its rows what it did with each
-  one and how far the job has got. Between two batches it leaves the writer's place
-  free for 0.12 seconds: SQLite tells a change that waits for the place to try again
-  every tenth of a second at the longest, so such a change is sure to get it there,
-  and a sign-in waits a batch, a fraction of a second, at most. A batch that waits
+  one and how far the job has got. Between two batches it takes the writer's place
+  again at once, unless a change by somebody else is under way (P-143, P-324). Every
+  connection that writes to a database in a file holds a shared lock on `writing.lock`
+  beside it, from its first change until its transaction ends, each connection a lock
+  of its own (`db/engine.py`): a request, a job of the clock and a command of `hirdir
+  admin` alike, in whichever process, and nothing is written for it. Between two
+  batches the worker asks for that lock alone, without waiting. Granted, nobody is
+  changing anything, and the next batch begins; refused, a change is under way, which
+  may be waiting for the place, and the worker looks again every 5 ms until it is
+  done, a second at the most, and then goes on. So a change that waited for a batch, a
+  sign-in among them, gets the place as the batch ends, and waits a batch, a fraction
+  of a second, at most, while an apply that nobody writes beside never stops between
+  its batches. Where the file cannot be opened, the worker leaves the place free for
+  0.12 seconds instead, as before 0.9.19: SQLite tells a change that waits for the
+  place to try again every tenth of a second at the longest. A batch that waits
   longer than `busy_timeout` itself is tried again from its start. The rows of one
   group, which are checked together, are kept in one batch whatever its size, and a
   group of thousands of members therefore holds others up for as long as it takes.
@@ -289,6 +300,36 @@ upload, by its extension and by its first bytes.
   /about/load`: `running`, `not_running`, or `in_process` where one process does both.
   Such a question holds the file for an instant, so a process that starts asks for
   its lock for two seconds before it takes another to be running.
+- **What a row of a file costs** (P-324). A preview and an apply work every row
+  through the functions of any other change, and then say what the row changed, from
+  its record as a file holds it, read before the row and after it. A preview on a copy
+  is one transaction, each row a savepoint within it, as a preview in place is: the
+  copy takes the writer's place before its first row, so that storing a row's
+  savepoint is no transaction stored on the disk. The records of a file of items are
+  read back 50 rows at a time, after the last of them, and not each after its own
+  row: what a row changed is what its record reads as right after its own write, so
+  before a row is written, the rows of the batch whose records it may change the read
+  of are read back first. Of other items, the read of an item shows the texts the item
+  it is in, its host and the item it was seen on are written as, which another item
+  that comes to answer to the same text changes; what it has from the items and the
+  groups its walk goes up through, and whether its host has left the team's hands;
+  how many items run on it; and, for a context with no host, the item that has its
+  serial number. A row that changes one of those items, names this one as its host, or
+  makes or renames an item that answers to one of those texts has the rows before it
+  read first (`Items.shown` and `Items.reach` in `io/entities.py`). In an apply, a row
+  that would no longer do what was previewed shows only once its batch is read; the
+  batch is then undone and worked again a row at a time, each read after its own
+  write, so that the row is left out as stale before the rows after it are worked, as
+  it always was. Every other entity reads each row back after its own write. What a
+  file of items cannot change is looked up once for it and not for each row
+  (`domain/held.py`): the places and their paths, the operators the places give and
+  those retired, the settings, the time zone and the weights in force, the lifecycle
+  rules and the kinds of the models. It is held while the rows are worked, a preview
+  letting go of it with the records every 500 rows, and an apply holding it for one
+  batch alone, since another request may change any of it between two batches; it is
+  no record, and nothing inherited is copied down. A value a row leaves blank is not
+  looked up, and the items that have the serial numbers of a file are read together
+  when the order of its rows is worked out, which writes nothing.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,

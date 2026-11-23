@@ -29,7 +29,7 @@ from hirdir import clock, ids
 from hirdir.auth.roles import Role
 from hirdir.db import dialect, engine
 from hirdir.db.models import AuditEvent, ImportJob, ImportRow, User
-from hirdir.domain import accounts, audit, deleted, items, records, systems
+from hirdir.domain import accounts, audit, deleted, held, items, records, systems
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Deleted, Existing, Invalid, NotAllowed, NotFound
 from hirdir.io import columns as cells
@@ -57,11 +57,11 @@ LET_GO_EVERY = 500
 IN_PLACE_UP_TO = 100
 # An apply in the background works this many rows to a transaction (D-185).
 BATCH_ROWS = 50
-# Between two batches the one writer's place is left free this long, in seconds. A
-# change that waits for it is told by SQLite to try again every tenth of a second at
-# the longest, so in this time it is sure to try, and gets the place. It is fixed: it
-# is what keeps a sign-in from waiting behind a large file.
-PAUSE_BETWEEN_BATCHES = 0.12
+# Between two batches the one writer's place is let go only while a change by somebody
+# else is under way, until it is done, a second at the most (P-143, P-324): see
+# `engine.wait_for_changes`. A batch that waited longer than `busy_timeout` for the
+# place is tried again after this long, in seconds.
+AGAIN_AFTER_BUSY = 0.12
 REFUSALS = (Invalid, Conflict, NotFound, NotAllowed)
 log = logging.getLogger("hirdir")
 
@@ -207,11 +207,135 @@ def _as_in_file(which: Entity, values: dict[str, Any], entry: dict[str, Any]) ->
     return {**entry, "as_in_file": given}
 
 
+def _tell(
+    which: Entity,
+    values: dict[str, Any],
+    result: Result,
+    record: Any,
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+    new: bool,
+) -> None:
+    """Say in result what a row changed, from its record as it read before the row and
+    as it reads after it: the changes, and for a record that was there, whether the row
+    updated it or left it unchanged."""
+    result.changes = [
+        _as_in_file(which, values, change)
+        for change in _differences(which, before, after)
+        if change["field"] not in which.restated
+        and (change["field"] not in which.by_the_clock or values.get(change["field"]) is not None)
+    ]
+    if not new:
+        changed = result.changes or record.row_version != result.row_version
+        result.outcome = "update" if changed else "unchanged"
+
+
+@dataclass
+class _Waiting:
+    """A row whose record is still to be read back, to say what the row changed."""
+
+    result: Result
+    record: Any
+    before: dict[str, Any] | None
+    values: dict[str, Any]
+    new: bool
+    shown: Any
+
+
+class _Later:
+    """The rows of a batch whose records are read back together, once the batch is
+    worked, and not each after its own write (P-324).
+
+    What a row changed is what its record reads as right after its own write. So before
+    a row is written, the rows waiting whose reads it may change are read first, as the
+    entity's `reach` and `shown` say; a row that is refused is never waiting, since it
+    is added only once it is written. Reading the rest together reads what each would
+    have read after its own row.
+
+    The records that the rows of a batch name by their HID, or that an apply's preview
+    found for them, are read before the batch, together, as they read before any row of
+    it: each is what its row reads it as before its write, unless a row before it in the
+    batch may have changed what it reads as, which drops it, and its row reads it then.
+    """
+
+    def __init__(self, run: Run, which: Entity) -> None:
+        self.run, self.which = run, which
+        self.waiting: list[_Waiting] = []
+        self.befores: dict[str, tuple[dict[str, Any], Any]] = {}
+
+    def read_before(self, found: Sequence[Any]) -> None:
+        """Read, together, the records that rows of the batch are to change."""
+        wanted = list({one.hid: one for one in found if one.hid not in self.befores}.values())
+        if not wanted:
+            return
+        read = self.which.read_for(self.run, wanted)
+        for record, before in zip(wanted, read, strict=True):
+            self.befores[record.hid] = (before, self.which.shown(self.run, record))
+
+    def before(self, record: Any) -> dict[str, Any] | None:
+        """Return a record as it read before its row, where it was read with the batch
+        and nothing since may have changed it; None where it is to be read now."""
+        found = self.befores.pop(record.hid, None)
+        return None if found is None else found[0]
+
+    def before_write(self, record: Any | None, values: dict[str, Any]) -> None:
+        """Read back the rows waiting, and forget the records read before the batch,
+        where the write of a row may change what they read as."""
+        if not self.waiting and not self.befores:
+            return
+        reach = self.which.reach(self.run, record, values)
+        if any(reach.touches(one.shown) for one in self.waiting):
+            self.read()
+        for hid in [hid for hid, (_, shown) in self.befores.items() if reach.touches(shown)]:
+            del self.befores[hid]
+
+    def add(
+        self,
+        result: Result,
+        record: Any,
+        before: dict[str, Any] | None,
+        values: dict[str, Any],
+        new: bool,
+    ) -> None:
+        """Keep a row that is written, to be read back with the rest of its batch."""
+        shown = self.which.shown(self.run, record)
+        self.waiting.append(_Waiting(result, record, before, values, new, shown))
+
+    def drop(self, result: Result) -> None:
+        """Forget a row that was undone after it was written: it is read back never."""
+        self.waiting = [one for one in self.waiting if one.result is not result]
+
+    def read(self) -> None:
+        """Read back every row waiting, and say in each result what it changed."""
+        waiting, self.waiting = self.waiting, []
+        if not waiting:
+            return
+        after = self.which.read_for(self.run, [one.record for one in waiting])
+        for one, read in zip(waiting, after, strict=True):
+            _tell(self.which, one.values, one.result, one.record, one.before, read, one.new)
+
+    def end_batch(self) -> None:
+        """Read back every row of the batch, and forget what was read before it."""
+        self.read()
+        self.befores.clear()
+
+
+def _records_of(which: Entity, db: Session, hids: Sequence[str | None]) -> list[Any]:
+    """Return the records of some HIDs that there are, read together."""
+    wanted = sorted({hid for hid in hids if hid})
+    found: list[Any] = []
+    for start in range(0, len(wanted), 500):
+        piece = wanted[start : start + 500]
+        found += db.scalars(select(which.model).where(which.model.hid.in_(piece)))
+    return found
+
+
 def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> None:
     """Work one row: find its record, write it, and say in result what that changed.
 
     The result is filled in as the row goes, so that a row which is refused part-way
-    still says which record it was about.
+    still says which record it was about. Where the run reads its rows back together
+    (`run.later`), what the row changed is said once its batch is read back (P-324).
     """
     db = run.db
     hid = values.get("hid")
@@ -245,8 +369,11 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     elif run.mode == "update":
         raise Invalid("there is no such record", {"hid": "a bulk edit changes records that exist"})
     new = record is None or claimed
-    before = None
-    if record is not None and not claimed:
+    later: _Later | None = run.later
+    before = later.before(record) if later is not None and not new else None
+    if later is not None:
+        later.before_write(None if new else record, values)
+    if before is None and record is not None and not claimed:
         before = which.read_for(run, [record])[0]
     if claimed:
         run.claim(record.hid)
@@ -273,16 +400,11 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     else:
         run.notes.extend([MADE_RETIRED, *linked])
     db.flush()
-    result.changes = [
-        _as_in_file(which, values, change)
-        for change in _differences(which, before, which.read_for(run, [record])[0])
-        if change["field"] not in which.restated
-        and (change["field"] not in which.by_the_clock or values.get(change["field"]) is not None)
-    ]
-    if not new:
-        changed = result.changes or record.row_version != result.row_version
-        result.outcome = "update" if changed else "unchanged"
+    if later is not None:
+        later.add(result, record, before, values, new)
     else:
+        _tell(which, values, result, record, before, which.read_for(run, [record])[0], new)
+    if new:
         result.record_hid = record.hid
         run.made.add(record.hid)
     result.notes = list(run.notes)
@@ -310,6 +432,8 @@ def _work(
     """
     run = Run(db, context, role, mode)
     run.system_hid = system_hid
+    # The records of every BATCH_ROWS rows are read back together (P-324).
+    later = run.later = _Later(run, which) if which.reads_together else None
     results: list[Result] = []
     workable = [
         number for number, row in enumerate(rows, start=1) if number not in skip and not row.reasons
@@ -327,27 +451,41 @@ def _work(
     # Most files are worked in their own order. An entity whose rows lean on one another
     # says in which order they are to be worked: an item before what is in it.
     typed = {number: _typed(which, rows[number - 1].values) for number in workable}
-    places = which.order(run, [typed[number] for number in workable])
-    for worked, place in enumerate(places, start=1):
-        number = workable[place - 1]
-        row = rows[number - 1]
-        run.start_row(number)
-        result = Result(row=number, outcome="create", key=which.key(row.values, None))
-        savepoint = db.begin_nested()
-        try:
-            _one(run, which, typed[number], result)
-            savepoint.commit()
-        except REFUSALS as error:
-            savepoint.rollback()
-            run.forget_row()
-            # What the row would have done is undone. Which record it named is kept.
-            result.outcome, result.changes, result.notes = "rejected", [], []
-            result.reasons = _reasons(which, error)
-        results.append(result)
-        if worked % LET_GO_EVERY == 0:
-            run.let_go()
-        if progress is not None and worked % BATCH_ROWS == 0:
-            progress(worked)
+    # What a file of items cannot change is looked up once for it (P-324).
+    with held.holding(db) if which.holds else nullcontext():
+        places = which.order(run, [typed[number] for number in workable])
+        for worked, place in enumerate(places, start=1):
+            number = workable[place - 1]
+            row = rows[number - 1]
+            if later is not None and worked % BATCH_ROWS == 1:
+                # What the rows of the batch name by their HID is read before them.
+                coming = places[worked - 1 : worked - 1 + BATCH_ROWS]
+                named = [typed[workable[one - 1]].get("hid") for one in coming]
+                later.read_before(_records_of(which, db, named))
+            run.start_row(number)
+            result = Result(row=number, outcome="create", key=which.key(row.values, None))
+            savepoint = db.begin_nested()
+            try:
+                _one(run, which, typed[number], result)
+                savepoint.commit()
+            except REFUSALS as error:
+                savepoint.rollback()
+                run.forget_row()
+                if later is not None:
+                    later.drop(result)
+                # What the row would have done is undone. Which record it named is kept.
+                result.outcome, result.changes, result.notes = "rejected", [], []
+                result.reasons = _reasons(which, error)
+            results.append(result)
+            if later is not None and (worked % BATCH_ROWS == 0 or worked % LET_GO_EVERY == 0):
+                later.end_batch()
+            if worked % LET_GO_EVERY == 0:
+                run.let_go()
+            if progress is not None and worked % BATCH_ROWS == 0:
+                progress(worked)
+        if later is not None:
+            later.end_batch()
+            run.later = None
     results.sort(key=lambda result: result.row)
     # What is right or wrong only once every row is in: the members of a stack.
     wrong = which.finish(run)
@@ -896,6 +1034,20 @@ class _Done:
     outcome: str
     reasons: list[dict[str, str]] = field(default_factory=list)
     record_hid: str | None = None
+    # A row kept while its record waits to be read back with its batch (P-324): what it
+    # did, and what the preview said it would, to be compared once the batch is read.
+    waiting: tuple[Result, _Stored] | None = None
+
+    def agrees(self) -> bool:
+        """Say whether a row kept while it waited does what was previewed, now that its
+        batch is read back, and settle what it did."""
+        if self.waiting is None:
+            return True
+        now, was = self.waiting
+        if (now.outcome, now.changes) != (was.outcome, was.changes):
+            return False
+        self.outcome, self.waiting = now.outcome, None
+        return True
 
 
 def _stale(was: _Stored, now: Result) -> str | None:
@@ -919,11 +1071,14 @@ def _apply_row(run: Run, which: Entity, was: _Stored, values: dict[str, Any]) ->
     run.start_row(was.row)
     result = Result(row=was.row, outcome="create", key=was.key)
     savepoint = run.db.begin_nested()
+    later: _Later | None = run.later
     try:
         _one(run, which, values, result)
     except REFUSALS as error:
         savepoint.rollback()
         run.forget_row()
+        if later is not None:
+            later.drop(result)
         # Refused now: stale when its record has moved on, and otherwise rejected.
         moved = _stale(
             was, replace(result, outcome=was.outcome, changes=was.changes, notes=was.notes)
@@ -934,16 +1089,24 @@ def _apply_row(run: Run, which: Entity, was: _Stored, values: dict[str, Any]) ->
         if moved is not None:
             return _Done("stale", [reason("", moved)])
         return _Done("rejected", _reasons(which, error))
-    why = _stale(was, result)
+    # A row whose record waits to be read back is held now to what is known of it, and
+    # to what it changed once its batch is read (P-324).
+    known = result if later is None else replace(result, outcome=was.outcome, changes=was.changes)
+    why = _stale(was, known)
     if why is not None:
         savepoint.rollback()
         run.forget_row()
+        if later is not None:
+            later.drop(result)
         if result.record_hid is not None and run.seen.get(result.record_hid) == was.row:
             del run.seen[result.record_hid]
             run.made.discard(result.record_hid)
         return _Done("stale", [reason("", why)])
     savepoint.commit()
-    return _Done(result.outcome, record_hid=result.record_hid)
+    done = _Done(result.outcome, record_hid=result.record_hid)
+    if later is not None:
+        done.waiting = (result, was)
+    return done
 
 
 class RoleLost(Exception):
@@ -964,9 +1127,16 @@ def _apply_batch(
     stored. What it did with each row is stored with it, so that a job resumed after a
     stop never applies a row twice. Rows that cannot stand together once all of them
     are in, as `finish` says, are rejected, and the batch is worked again without them.
+
+    Where the entity reads its rows back together (P-324), the records of the batch are
+    read once it is worked. Should a row then no longer do what was previewed, the batch
+    is undone and worked again a row at a time, each read back after its own write, so
+    that the row is left out as stale before the rows after it are worked, as it always
+    was.
     """
     numbers = {was.row for was in batch}
     refused: dict[int, list[dict[str, str]]] = {}
+    together = which.reads_together
     while True:
         run.start_batch()
         try:
@@ -978,31 +1148,62 @@ def _apply_batch(
             if now is None or not now.allows(Role.INVENTORY):
                 raise RoleLost
             run.role = now
-            done = {
-                was.row: _Done("rejected", refused[was.row])
-                if was.row in refused
-                else _apply_row(run, which, was, typed[was.row])
-                for was in batch
-            }
-            wrong = {
-                number: why
-                for number, why in which.finish(run).items()
-                if number in numbers and done[number].outcome in COUNTED
-            }
-            if not wrong:
+            run.later = _Later(run, which) if together else None
+            # What a file of items cannot change is looked up once for the batch, which
+            # holds the writer's place, and again for the next: another request may
+            # change any of it between two batches (P-324).
+            with held.holding(db) if which.holds else nullcontext():
+                if run.later is not None:
+                    # The records the preview found for the rows are read before them.
+                    found = [was.record_hid for was in batch if was.row not in refused]
+                    run.later.read_before(_records_of(which, db, found))
+                done = {
+                    was.row: _Done("rejected", refused[was.row])
+                    if was.row in refused
+                    else _apply_row(run, which, was, typed[was.row])
+                    for was in batch
+                }
+                disagrees = not _read_back(run, done)
+            wrong = (
+                {}
+                if disagrees
+                else {
+                    number: why
+                    for number, why in which.finish(run).items()
+                    if number in numbers and done[number].outcome in COUNTED
+                }
+            )
+            if not disagrees and not wrong:
                 _store_batch(db, hid, batch, done)
                 break
         except BaseException:
             _undo_batch(db, run, numbers)
             raise
         _undo_batch(db, run, numbers)
-        refused.update(wrong)
+        if disagrees:
+            # A row would no longer do what was previewed: the batch is worked again a row
+            # at a time, which leaves that row out before the rows after it are worked.
+            together = False
+        else:
+            refused.update(wrong)
     run.let_go()
     return done
 
 
+def _read_back(run: Run, done: Mapping[int, _Done]) -> bool:
+    """Read back the rows of a batch whose records wait, and say whether every row does
+    what was previewed (P-324). True where none waits."""
+    later: _Later | None = run.later
+    if later is None:
+        return True
+    later.end_batch()
+    run.later = None
+    return all(one.agrees() for one in done.values())
+
+
 def _undo_batch(db: Session, run: Run, numbers: set[int]) -> None:
     """Undo a batch that was not stored, and forget what its rows taught the run."""
+    run.later = None
     db.rollback()
     run.forget_batch()
     for record_hid, number in list(run.seen.items()):
@@ -1097,8 +1298,11 @@ def _plan(
     waiting = [_Stored(*row[:7]) for row in found]
     typed = {row.row: _typed(which, row.values) for row in found}
     values = [typed[was.row] for was in waiting]
-    places = which.order(run, values)
-    keys = which.together(run, values)
+    # Within the one transaction that reads, what a file of items cannot change is looked
+    # up once (P-324).
+    with held.holding(db) if which.holds else nullcontext():
+        places = which.order(run, values)
+        keys = which.together(run, values)
     ordered = [waiting[place - 1].row for place in places]
     together = {was.row: key for was, key in zip(waiting, keys, strict=True)}
     by_number = {was.row: was for was in waiting}
@@ -1230,7 +1434,8 @@ def work_job(
     """Apply a job a batch at a time, until every row is worked or it stops.
 
     This is the worker's part, beside the requests. Between two batches the one
-    writer's place is let go for long enough that a change which waits for it gets it.
+    writer's place is let go while a change by somebody else is under way, until it is
+    done, so that a change which waits for it gets it (P-324).
     When `stop` is set, the job stops after the batch it is in, to be resumed. An error
     nobody foresaw undoes the batch it happened in, keeps the batches before it, and
     stops the job. Return the status the job ends in, or "" when it was not to apply.
@@ -1275,7 +1480,7 @@ def work_job(
         }
         cut, typed = _plan(db, hid, run, which)
         for number, batch in enumerate(cut):
-            if number and stop.wait(PAUSE_BETWEEN_BATCHES):
+            if number and engine.wait_for_changes(db, stop):
                 _stop(db, hid, CUT_SHORT)
                 db.commit()
                 return "stopped"
@@ -1321,7 +1526,7 @@ def _apply_waiting(
         try:
             _apply_batch(db, run, which, hid, batch, typed)
         except OperationalError as error:
-            if not dialect.is_busy(error) or stop.wait(PAUSE_BETWEEN_BATCHES):
+            if not dialect.is_busy(error) or stop.wait(AGAIN_AFTER_BUSY):
                 raise
         else:
             return

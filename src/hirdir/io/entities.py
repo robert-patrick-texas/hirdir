@@ -9,6 +9,7 @@ them, such as a vendor's name for a vendor.
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, ClassVar, Final
 
@@ -73,6 +74,7 @@ from hirdir.domain import (
     geography,
     groups,
     health,
+    held,
     hosting,
     inheritance,
     items,
@@ -217,6 +219,14 @@ class Run:
         # The external system a file of items was read from, whose identifier of each
         # row, `external_id`, finds its item first (P-248). None for any other file.
         self.system_hid: str | None = None
+        # While the order of the rows is worked out, which writes nothing: the items that
+        # have a serial number a row gives, read together, by their model and the key of
+        # the number (P-324). None at any other time.
+        self.by_serial: dict[tuple[str | None, str | None], Item] | None = None
+        # The rows whose records wait to be read back together, to say what each row
+        # changed, where the entity reads them so (P-324): see `hirdir.io.imports`. None
+        # where each is read back after its own write.
+        self.later: Any = None
 
     def start_row(self, number: int = 0) -> None:
         """Begin a row: nothing noted yet, nothing to forget."""
@@ -255,10 +265,14 @@ class Run:
         self._held.clear()
 
     def let_go(self) -> None:
-        """Let the session forget the records worked on so far."""
+        """Let the session forget the records worked on so far, and what is held for the
+        file with them (P-324)."""
         self.db.flush()
         self.db.expunge_all()
         self._held.clear()
+        holding = held.of(self.db)
+        if holding is not None:
+            holding.drop()
 
     def _get(self, model: Any, hid: str) -> Any:
         record = self._held.get(hid)
@@ -387,8 +401,14 @@ class Run:
         self._learn(self.moved, (group_hid, member_hid), self.row)
 
     def place(self, text: str, field: str, level: str | None = None) -> geography.Place:
-        """Return the region, site or location a row names, by its HID or its path."""
-        return geography.the_place(self.db, text, field, level)
+        """Return the region, site or location a row names, by its HID or its path: found
+        once for the text while a file of items is worked, which changes no place
+        (P-324). A text that names none is refused each time it is given."""
+        return held.kept(
+            self.db,
+            ("place", text, level),
+            lambda: geography.the_place(self.db, text, field, level),
+        )
 
     def contact(self, text: str, field: str = "contact") -> Contact:
         """Return the one contact a row names: by HID, email address or name."""
@@ -424,6 +444,64 @@ class Run:
         if found is None:
             raise Invalid("there is no such group", {field: f"there is no device group {text}"})
         return found
+
+
+# --- what the read of a record shows of others (P-324) ---------------------------------
+
+
+def _forms(*texts: Any) -> frozenset[str]:
+    """Return the forms in which texts name an item, as each rule that finds one by a text
+    compares them: by its key, and by the name without case."""
+    found: set[str] = set()
+    for text in texts:
+        if isinstance(text, str) and text.strip():
+            found.add(records.key(text))
+            found.add(text.strip().lower())
+    return frozenset(found)
+
+
+@dataclass
+class Shown:
+    """What the read of a record shows of other records than itself (P-324): so that a
+    row of the same batch that may change any of it has the record read first, as it
+    stood after its own row, and what is read of it before a row stays true."""
+
+    hid: str
+    # The texts it is known by, which a row may name it by as a host, and those it
+    # names other records by, which a record that a row makes or renames may come to
+    # answer to as well.
+    texts: frozenset[str]
+    # Works out the records whose own state it shows, itself among them: asked only
+    # where a row changes a record that is there.
+    walked: Callable[[], frozenset[str]]
+    _records: frozenset[str] | None = None
+
+    def records(self) -> frozenset[str]:
+        """Return the records whose own state the read shows, worked out once."""
+        if self._records is None:
+            self._records = self.walked()
+        return self._records
+
+
+@dataclass(frozen=True)
+class Reach:
+    """What the write of a row may change of other records than its own (P-324)."""
+
+    # The record it changes, where there is one already.
+    record: str | None
+    # The hosts the record runs on, whose count of what runs on them its write may change.
+    hosts: frozenset[str]
+    # The texts its record is known by before and after the write, and those it names
+    # other records by.
+    texts: frozenset[str]
+
+    def touches(self, shown: Shown) -> bool:
+        """Say whether the write may change what a read shows."""
+        return (
+            shown.hid in self.hosts
+            or bool(self.texts & shown.texts)
+            or (self.record is not None and self.record in shown.records())
+        )
 
 
 # The columns that set a primary management address, and the family each is of: an
@@ -610,6 +688,24 @@ class Entity:
     # The columns whose values an input format may write in another form than the file
     # gives them (P-322): what a row changes of one says the file's value beside it.
     formatted: ClassVar[frozenset[str]] = frozenset()
+    # Whether the records of a batch of rows are read back together, after the batch, to
+    # say what each row changed, and not each after its own write (P-324). An entity that
+    # does says, in `shown` and `reach`, what of other records a read shows and a row may
+    # change, so that a record is read first where a later row may change what it shows.
+    reads_together: ClassVar[bool] = False
+    # Whether a run of a file of this entity holds what it cannot change, looked up once
+    # for the file and not for each row (`hirdir.domain.held`, P-324): the places, the
+    # operators, the settings, the lifecycle rules and the kinds of the models. An entity
+    # whose rows write any of them holds nothing.
+    holds: ClassVar[bool] = False
+
+    def shown(self, run: Run, record: Any) -> Shown:
+        """Return what the read of a record shows of other records (P-324)."""
+        raise NotImplementedError
+
+    def reach(self, run: Run, record: Any | None, values: Mapping[str, Any]) -> Reach:
+        """Return what the write of a row may change of other records than its own."""
+        raise NotImplementedError
 
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
@@ -2097,13 +2193,13 @@ class Items(Entity):
             entry = run.entry(vendor, pid)
             if entry is None:
                 return None
-            return self._by_serial(db, entry.hid, serial, values)
+            return self._by_serial(run, entry.hid, serial, values)
         # A row that names a line and no model is of the line's model (D-161): its
         # serial number finds the item as the vendor and PID would. Where it finds
         # none, the rules that follow are tried, as for any row with no model.
         line_model = self._line_model(run, None, values)
         if line_model is not None and serial:
-            found = self._by_serial(db, line_model, serial, values)
+            found = self._by_serial(run, line_model, serial, values)
             if found is not None:
                 return found
             # What 0.6.0 let onto the line, of another model or of none, with that
@@ -2213,15 +2309,37 @@ class Items(Entity):
         return None
 
     def _by_serial(
-        self, db: Session, model: str, serial: str, values: Mapping[str, Any]
+        self, run: Run, model: str, serial: str, values: Mapping[str, Any]
     ) -> Any | None:
         """Return the item of a model with a serial number, or the one that arrived as a
-        count that the row gives it to."""
-        return db.scalar(
-            select(Item).where(
-                Item.catalog_entry_hid == model, Item.serial_key == records.key(serial)
+        count that the row gives it to. While the order of the rows is worked out, the
+        first is among those read together for every row (P-324)."""
+        db = run.db
+        key = records.key(serial)
+        if run.by_serial is not None:
+            found = run.by_serial.get((model, key))
+        else:
+            found = db.scalar(
+                select(Item).where(Item.catalog_entry_hid == model, Item.serial_key == key)
             )
-        ) or self._received_as_a_count(db, values)
+        return found or self._received_as_a_count(db, values)
+
+    @staticmethod
+    def _serials_of(
+        db: Session, rows: Sequence[Mapping[str, Any]]
+    ) -> dict[tuple[str | None, str | None], Item]:
+        """Return the items that have a serial number a row gives, by their model and the
+        key of the number: one at most of each, as the unique rule holds."""
+        keys = sorted(
+            {records.key(row["serial_number"]) for row in rows if row.get("serial_number")}
+        )
+        found: dict[tuple[str | None, str | None], Item] = {}
+        for start in range(0, len(keys), 500):
+            for item in db.scalars(
+                select(Item).where(Item.serial_key.in_(keys[start : start + 500]))
+            ):
+                found[(item.catalog_entry_hid, item.serial_key)] = item
+        return found
 
     @staticmethod
     def _received_as_a_count(db: Session, values: Mapping[str, Any]) -> Any | None:
@@ -2359,11 +2477,19 @@ class Items(Entity):
         ):
             return sorted(plain, key=lambda number: (later[number - 1], number))
         named: dict[int, Item | None] = {}
-        for number, row in zip(plain, rows, strict=True):
-            try:
-                named[number] = db.get(Item, row["hid"]) if row.get("hid") else self.find(run, row)
-            except DomainError:
-                named[number] = None
+        # Nothing is written while the rows are found: the items of their serial numbers
+        # are read together, and not a statement for each row (P-324).
+        run.by_serial = self._serials_of(db, rows)
+        try:
+            for number, row in zip(plain, rows, strict=True):
+                try:
+                    named[number] = (
+                        db.get(Item, row["hid"]) if row.get("hid") else self.find(run, row)
+                    )
+                except DomainError:
+                    named[number] = None
+        finally:
+            run.by_serial = None
         lines = items.lines_above(db, [item for item in named.values() if item is not None])
         depths: dict[int, int] = {}
         for number, row in zip(plain, rows, strict=True):
@@ -2387,7 +2513,9 @@ class Items(Entity):
     def _above(run: Run, record: Any | None, given: Mapping[str, Any]) -> list[Item]:
         """Return the items the item will be in, the nearest first."""
         current = record.parent_item_hid if record is not None else None
-        parent = run.db.get(Item, given.get("parent_item_hid", current) or "")
+        hid = given.get("parent_item_hid", current)
+        # An item in nothing is in nothing: no HID is looked up for it (P-324).
+        parent = run.db.get(Item, hid) if hid else None
         return [] if parent is None else [parent, *items.ancestors(run.db, parent)]
 
     @staticmethod
@@ -2670,6 +2798,63 @@ class Items(Entity):
         if run.system_hid is not None and given:
             systems.reported(run.db, run.context, run.system_hid, record.hid, given)
 
+    # --- read back a batch at a time (P-324) ---
+
+    reads_together = True
+    holds = True
+    # How a row names an item, and the item it names as its host, its parent or what it
+    # was seen on.
+    _CALLED = ("hid", "serial_number", "asset_tag", "name", "hostname")
+    _NAMING = ("host", "observed_host", "parent")
+
+    def shown(self, run: Run, record: Any) -> Shown:
+        """Return what the read of an item shows of other records than itself.
+
+        Of other items it shows: the texts the item it is in, its host and the item it
+        was seen on are written as, each its own unless another item answers to the
+        same; what it has from the items and groups its walk goes up through (P-175,
+        P-246), and whether its host has left the team's hands; how many items run on
+        it; and, for a context with no host, the one item that has its serial number
+        and may host it (P-251). What it shows of its model, its owner, its operator,
+        its places, its purchase line and the settings is nothing a file of items
+        changes; its tags, addresses, coverage and registrations are its own.
+        """
+        db = run.db
+        named = [
+            db.get(Item, hid)
+            for hid in (record.parent_item_hid, record.host_item_hid, record.observed_host_hid)
+            if hid
+        ]
+        texts = _forms(
+            *(getattr(record, name) for name in self._CALLED),
+            *(items.reference_text(one) for one in named if one is not None),
+        )
+
+        def walked() -> frozenset[str]:
+            walk = items.walks_above(db, [record])[record.hid]
+            return frozenset(
+                {
+                    record.hid,
+                    *(hid for hid in (record.observed_host_hid,) if hid),
+                    *(step.record.hid for step in walk if isinstance(step.record, Item)),
+                }
+            )
+
+        return Shown(record.hid, texts, walked)
+
+    def reach(self, run: Run, record: Any | None, values: Mapping[str, Any]) -> Reach:
+        """Return what a row of items may change of other items: the item itself, which
+        the reads of what is in it, runs on it or was seen on it show; the count of what
+        runs on its host, by its host before the row and the one the row names; and who
+        answers to the texts it is known by, before and after, and that it names others
+        by, which a reference to another item is written as."""
+        texts = _forms(*(values.get(name) for name in (*self._CALLED, *self._NAMING)))
+        if record is None:
+            return Reach(None, frozenset(), texts)
+        texts |= _forms(*(getattr(record, name) for name in self._CALLED))
+        hosts = frozenset({record.host_item_hid} if record.host_item_hid else ())
+        return Reach(record.hid, hosts, texts)
+
     def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
         rows = self.read(run.db, found)
         if run.system_hid is not None:
@@ -2696,7 +2881,7 @@ class Items(Entity):
         primaries = _primaries(db, "item_hid", hids)
         parents = items.reference_texts(db, [line[0] for line in lines.values() if line])
         on_hosts = _hosting_cells(db, found)
-        atlas = geography.Atlas(db)
+        atlas = geography.atlas(db)
         atlas.read_locations(
             {item.location_hid for item in found}
             | {item.planned_location_hid for item in found}
