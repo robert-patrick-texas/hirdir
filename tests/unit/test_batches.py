@@ -1,6 +1,5 @@
 """How an apply in the background cuts the rows of a file into batches (D-185)."""
 
-from hirdir.io import imports
 from hirdir.io.imports import BATCH_ROWS, batches
 
 
@@ -33,9 +32,3 @@ def test_groups_that_overlap_make_one_batch_however_many_rows_that_is() -> None:
     together = {number: "a" if number % 2 else "b" for number in order}
     assert [len(batch) for batch in batches(order, together)] == [200]
     assert batches([], {}) == []
-
-
-def test_the_pause_between_batches_is_longer_than_sqlite_waits_between_tries() -> None:
-    # SQLite's busy handler tries again every tenth of a second at the longest. A pause
-    # shorter than that could pass by a change that waits for the writer's place.
-    assert imports.PAUSE_BETWEEN_BATCHES > 0.1

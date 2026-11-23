@@ -16,16 +16,39 @@ WAIT_FOR_JOB = 60.0
 
 
 def wait_for_job(client: TestClient, headers: dict[str, str], hid: str) -> dict[str, Any]:
-    """Return the job of an import or a bulk edit once it is no longer being applied."""
+    """Return the job of an import or a bulk edit once it is no longer being previewed in
+    the background (P-325) or applied."""
     deadline = time.monotonic() + WAIT_FOR_JOB
     while True:
         response = client.get(f"{API}/imports/{hid}", headers=headers)
         assert response.status_code == 200, response.text
         job = response.json()
-        if job["status"] not in ("queued", "applying"):
+        if job["status"] not in ("previewing", "queued", "applying"):
             return job
         assert time.monotonic() < deadline, f"the job {hid} is still {job['status']}"
         time.sleep(0.01)
+
+
+def previewed(
+    client: TestClient, headers: dict[str, str], answer: dict[str, Any]
+) -> dict[str, Any]:
+    """Return a preview as a request answers one it works itself: the job, its first
+    hundred rows and the first items it would mark not reported. One of more than a
+    hundred rows, answered `202` and previewed in the background (P-325), is waited for
+    and read so; one answered whole is returned as it is."""
+    if answer["job"]["status"] != "previewing":
+        return answer
+    job = wait_for_job(client, headers, answer["job"]["hid"])
+    assert job["status"] == "previewed", job
+    response = client.get(
+        f"{API}/imports/{job['hid']}/rows", params={"limit": 100}, headers=headers
+    )
+    assert response.status_code == 200, response.text
+    return {
+        "job": job,
+        "rows": response.json()["items"],
+        "not_reported_first": job["not_reported_first"],
+    }
 
 
 class Maker:

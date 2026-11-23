@@ -102,6 +102,9 @@ UNKEPT_ACTIONS = (
     "sign_in_failed",
     "alert_seen",
     "preview",
+    # The end of a preview in the background, which changes no record either (P-325).
+    "previewed",
+    "preview_failed",
     "download",
     "export",
     CHECKED,

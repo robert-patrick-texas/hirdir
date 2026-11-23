@@ -1193,6 +1193,14 @@ tr[aria-current="true"] {
   margin: 0.75rem 0;
 }
 
+/* 0.9.19: a preview that takes the keyboard where what held it went, the form of a bulk
+   edit or the block of a preview under way, is no control, and is not ringed as one
+   (P-325). */
+.apply-preview:focus,
+.bulk-preview:focus {
+  outline: none;
+}
+
 fieldset.bulk-line {
   max-width: none;
   margin: 0 0 0.75rem;

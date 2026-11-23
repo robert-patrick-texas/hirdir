@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
 from hirdir.db.models import WEIGHT_PLACES, CatalogEntry, Circuit, Item, Scaled, Site
-from hirdir.domain import inheritance, records, settings
+from hirdir.domain import held, inheritance, records, settings
 from hirdir.domain.inheritance import Effective
 
 Kind = Literal["item", "site", "circuit"]
@@ -99,7 +99,12 @@ def _decimal(value: Any) -> Decimal | None:
 
 
 def in_force(db: Session) -> Figures:
-    """Return the figures as the settings have them."""
+    """Return the figures as the settings have them: worked out once while a file of
+    items is worked (P-324)."""
+    return held.kept(db, "weights", lambda: _figures(db))
+
+
+def _figures(db: Session) -> Figures:
     weights = {key: _decimal(settings.value(db, key)) for key in WEIGHT_SETTINGS}
     return Figures(
         **weights,

@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.api.inventory import API, Maker, errors, wait_for_job
+from tests.api.inventory import API, Maker, errors, previewed, wait_for_job
 
 ITEM_HEAD = "vendor,pid,serial_number,asset_tag,name,lifecycle_state,owner,est_value,tags"
 
@@ -23,6 +23,9 @@ class Files:
     def preview(
         self, entity: str | None, text: str | dict, expect: int = 201, **params: Any
     ) -> dict[str, Any]:
+        """Preview a file, and return the preview. A file of more than a hundred rows,
+        previewed in the background and answered `202` (P-325), is waited for where a
+        preview is expected, `201`, and returned as a request answers one."""
         is_json = isinstance(text, dict)
         response = self.client.post(
             f"{API}/imports/preview",
@@ -33,6 +36,8 @@ class Files:
                 "Content-Type": "application/json" if is_json else "text/csv",
             },
         )
+        if expect == 201 and response.status_code == 202:
+            return previewed(self.client, self.headers, response.json())
         assert response.status_code == expect, response.text
         return response.json()
 

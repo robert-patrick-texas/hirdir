@@ -4,9 +4,10 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from functools import cache
 from typing import Any, Literal
 
-from sqlalchemy import func, literal, or_, select
+from sqlalchemy import ColumnElement, Select, and_, bindparam, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
@@ -552,7 +553,12 @@ def _checked(
             "an item needs something to know it by",
             {"serial_number": "or a catalog entry with it, an asset tag, a name or a hostname"},
         )
-    _check_unique(db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item)
+    # A change that gives an item none of the keys that tell it apart keeps the ones it
+    # has, which the unique rules of the table hold already: no twin is looked for (P-324).
+    if item is None or {"catalog_entry_hid", "serial_key", "asset_tag_key"} & set(values):
+        _check_unique(
+            db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item
+        )
     return values
 
 
@@ -692,6 +698,27 @@ def _check_still_there(db: Session, location_hid: str | None) -> None:
         )
 
 
+@cache
+def _twins(by_serial: bool, by_tag: bool, other_than: bool) -> Select[Any]:
+    """Return the statement that looks for the twins of an item, built once for each of
+    its shapes and given its values as parameters: the statement built anew for every
+    item cost more than the look itself (P-324)."""
+    wanted: list[ColumnElement[bool]] = []
+    if by_serial:
+        wanted.append(
+            and_(
+                Item.catalog_entry_hid == bindparam("model"),
+                Item.serial_key == bindparam("serial"),
+            )
+        )
+    if by_tag:
+        wanted.append(Item.asset_tag_key == bindparam("tag"))
+    query = select(Item).where(or_(*wanted))
+    if other_than:
+        query = query.where(Item.hid != bindparam("own"))
+    return query.limit(2)
+
+
 def _check_unique(
     db: Session,
     catalog_entry_hid: str | None,
@@ -699,15 +726,28 @@ def _check_unique(
     asset_tag_key: str | None,
     item: Item | None,
 ) -> None:
-    """Refuse a second item with the same model and serial number, or the same asset tag."""
-    own = item.hid if item is not None else None
-    if catalog_entry_hid and serial_key:
-        twin = db.scalar(
-            select(Item).where(
-                Item.catalog_entry_hid == catalog_entry_hid,
-                Item.serial_key == serial_key,
-                Item.hid != own,
-            )
+    """Refuse a second item with the same model and serial number, or the same asset tag.
+
+    Each is one item at most, as the unique rules of the table hold: both are looked for
+    with one statement, and a twin by the serial number is refused before one by the tag.
+    """
+    by_serial = bool(catalog_entry_hid and serial_key)
+    if not (by_serial or asset_tag_key):
+        return
+    given = {
+        **({"model": catalog_entry_hid, "serial": serial_key} if by_serial else {}),
+        **({"tag": asset_tag_key} if asset_tag_key else {}),
+        **({"own": item.hid} if item is not None else {}),
+    }
+    twins = list(db.scalars(_twins(by_serial, bool(asset_tag_key), item is not None), given))
+    if by_serial:
+        twin = next(
+            (
+                one
+                for one in twins
+                if one.catalog_entry_hid == catalog_entry_hid and one.serial_key == serial_key
+            ),
+            None,
         )
         if twin is not None:
             raise Conflict(
@@ -717,7 +757,7 @@ def _check_unique(
                 existing_item(twin),
             )
     if asset_tag_key:
-        twin = db.scalar(select(Item).where(Item.asset_tag_key == asset_tag_key, Item.hid != own))
+        twin = next((one for one in twins if one.asset_tag_key == asset_tag_key), None)
         if twin is not None:
             raise Conflict(
                 f"there is already an item with the asset tag {twin.asset_tag}: {twin.hid}",
@@ -813,7 +853,8 @@ def create_item(db: Session, context: AuditContext, fields: dict[str, Any]) -> I
         RECORD_TYPE,
         item,
         FIELDS,
-        then=lambda: tags.set_labels(db, RECORD_TYPE, item.hid, labels),
+        # A new item has no tags: with none given there is nothing to look up (P-324).
+        then=(lambda: tags.set_labels(db, RECORD_TYPE, item.hid, labels)) if labels else None,
     )
     _settle_line(db, context, item.purchase_line_hid)
     return item
