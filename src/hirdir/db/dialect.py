@@ -35,6 +35,7 @@ from sqlalchemy import (
     Numeric,
     String,
     cast,
+    event,
     func,
     literal,
     literal_column,
@@ -42,6 +43,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import FunctionElement
 
 from hirdir import clock
@@ -213,11 +215,34 @@ def hold_other_writers(db: Any) -> None:
     SQLite gives the place to whoever writes first: a statement that writes nothing
     takes it. PostgreSQL holds a lock of this name until the transaction ends. One
     that waits longer than `busy_timeout` is refused, as any change is.
+
+    A session that took the place outside any savepoint holds it until its transaction
+    ends, and is not given it again: each row of a file, a savepoint within the batch
+    that took it, would ask for it once more (P-324).
     """
+    if isinstance(db, Session):
+        holding = db.info.get(_HOLDS)
+        if holding is not None and holding is db.get_transaction():
+            return
     if db.get_bind().dialect.name == "sqlite":
         db.execute(text("UPDATE settings SET row_version = row_version WHERE 0"))
     else:
         db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": WRITER_LOCK})
+    if isinstance(db, Session) and not db.in_nested_transaction():
+        db.info[_HOLDS] = db.get_transaction()
+
+
+# --- the writer's place held until the transaction ends (P-324) ---
+
+# The transaction of a session that holds the writer's place, taken outside a savepoint.
+_HOLDS = "hirdir.holds_the_writer"
+
+
+@event.listens_for(Session, "after_commit")
+@event.listens_for(Session, "after_rollback")
+def _place_let_go(session: Session) -> None:
+    if not session.in_nested_transaction():
+        session.info.pop(_HOLDS, None)
 
 
 def stored_last(db: Any, model: Any) -> ColumnElement[Any]:

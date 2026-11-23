@@ -458,10 +458,13 @@ def _work(
             number = workable[place - 1]
             row = rows[number - 1]
             if later is not None and worked % BATCH_ROWS == 1:
-                # What the rows of the batch name by their HID is read before them.
-                coming = places[worked - 1 : worked - 1 + BATCH_ROWS]
-                named = [typed[workable[one - 1]].get("hid") for one in coming]
-                later.read_before(_records_of(which, db, named))
+                # What the rows of the batch name by their HID is read before them, and
+                # what they look up, together.
+                coming = [
+                    typed[workable[one - 1]] for one in places[worked - 1 : worked - 1 + BATCH_ROWS]
+                ]
+                later.read_before(_records_of(which, db, [values.get("hid") for values in coming]))
+                which.ready(run, coming)
             run.start_row(number)
             result = Result(row=number, outcome="create", key=which.key(row.values, None))
             savepoint = db.begin_nested()
@@ -1154,9 +1157,11 @@ def _apply_batch(
             # change any of it between two batches (P-324).
             with held.holding(db) if which.holds else nullcontext():
                 if run.later is not None:
-                    # The records the preview found for the rows are read before them.
+                    # The records the preview found for the rows are read before them,
+                    # and what the rows look up, together.
                     found = [was.record_hid for was in batch if was.row not in refused]
                     run.later.read_before(_records_of(which, db, found))
+                    which.ready(run, [typed[was.row] for was in batch])
                 done = {
                     was.row: _Done("rejected", refused[was.row])
                     if was.row in refused

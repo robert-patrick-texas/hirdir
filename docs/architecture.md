@@ -327,9 +327,14 @@ upload, by its extension and by its first bytes.
   rules and the kinds of the models. It is held while the rows are worked, a preview
   letting go of it with the records every 500 rows, and an apply holding it for one
   batch alone, since another request may change any of it between two batches; it is
-  no record, and nothing inherited is copied down. A value a row leaves blank is not
-  looked up, and the items that have the serial numbers of a file are read together
-  when the order of its rows is worked out, which writes nothing.
+  no record, and nothing inherited is copied down. Before each batch of 50, the
+  models, the owners and the locations its rows name are read together, as each row
+  would find them: no row of items makes or renames any of them but a model made for
+  a reference, which is looked for again. A value a row leaves blank is not looked up;
+  the items that have the serial numbers of a file are read together when the order
+  of its rows is worked out, which writes nothing; and a transaction that took the
+  writer's place outside a savepoint holds it until it ends, and is not given it again
+  for each row (`dialect.hold_other_writers`).
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,

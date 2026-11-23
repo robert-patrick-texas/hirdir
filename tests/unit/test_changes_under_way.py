@@ -14,9 +14,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, event, text
 from sqlalchemy.orm import Session
 
+from hirdir.db import dialect
 from hirdir.db import engine as engines
 from hirdir.io import imports
 
@@ -141,3 +142,35 @@ def test_a_batch_that_waited_too_long_for_the_writer_is_tried_again_after_a_paus
     # SQLite's busy handler tries again every tenth of a second at the longest: a batch
     # tried again sooner than that could take the place from a change that waits for it.
     assert imports.AGAIN_AFTER_BUSY > 0.1
+
+
+def test_a_transaction_that_holds_the_writers_place_is_not_given_it_again(
+    database: Engine,
+) -> None:
+    taken: list[str] = []
+
+    @event.listens_for(database, "before_cursor_execute")
+    def _seen(_conn, _cursor, statement, *_rest) -> None:
+        if statement.startswith("UPDATE settings"):
+            taken.append(statement)
+
+    with Session(database) as db:
+        db.execute(text("CREATE TABLE settings (row_version INTEGER)"))
+        db.commit()
+        dialect.hold_other_writers(db)
+        dialect.hold_other_writers(db)
+        # Each row of a file is a savepoint within the transaction that holds it.
+        with db.begin_nested():
+            dialect.hold_other_writers(db)
+        assert len(taken) == 1
+        db.commit()
+        # A new transaction takes it anew; one taken within a savepoint alone is not
+        # held by the transaction, and is taken again outside it.
+        with db.begin_nested():
+            dialect.hold_other_writers(db)
+        dialect.hold_other_writers(db)
+        dialect.hold_other_writers(db)
+        assert len(taken) == 3
+        db.rollback()
+        dialect.hold_other_writers(db)
+        assert len(taken) == 4

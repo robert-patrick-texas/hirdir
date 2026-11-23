@@ -707,6 +707,11 @@ class Entity:
         """Return what the write of a row may change of other records than its own."""
         raise NotImplementedError
 
+    def ready(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Before a batch of rows is worked: read together what its rows will look up
+        one by one, where nothing a row of the batch does can change what is found
+        (P-324). Most entities read nothing ahead."""
+
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
         wanted = records.key(name)
@@ -2854,6 +2859,60 @@ class Items(Entity):
         texts |= _forms(*(getattr(record, name) for name in self._CALLED))
         hosts = frozenset({record.host_item_hid} if record.host_item_hid else ())
         return Reach(record.hid, hosts, texts)
+
+    def ready(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Read together, before a batch of rows of items, the models, the owners and the
+        locations they name: each is then found by its row in what the run holds, as a
+        row would find it, since no row of items makes or renames any of them but the
+        models made for a reference, which are looked for again. Vendors, which are few,
+        are found as before."""
+        db = run.db
+        wanted: dict[str, set[str]] = {}
+        for row in rows:
+            vendor, pid = row.get("vendor"), row.get("pid")
+            if vendor and pid:
+                found = run.vendor(vendor)
+                if found is not None and (found.hid, records.key(pid)) not in run._entries:
+                    wanted.setdefault(found.hid, set()).add(records.key(pid))
+        keys = sorted({key for listed in wanted.values() for key in listed})
+        for start in range(0, len(keys), 500):
+            for entry in db.scalars(
+                select(CatalogEntry).where(
+                    CatalogEntry.vendor_hid.in_(sorted(wanted)),
+                    CatalogEntry.pid_key.in_(keys[start : start + 500]),
+                )
+            ):
+                if entry.pid_key in wanted.get(entry.vendor_hid, ()):
+                    run._learn(run._entries, (entry.vendor_hid, entry.pid_key), entry.hid)
+                    run._held[entry.hid] = entry
+        labels = sorted(
+            {
+                records.key(row["owner"])
+                for row in rows
+                if row.get("owner") and not ids.is_hid(row["owner"])
+            }
+            - set(run._owners)
+        )
+        for start in range(0, len(labels), 500):
+            for owner in db.scalars(
+                select(Owner).where(Owner.label_key.in_(labels[start : start + 500]))
+            ):
+                run._learn(run._owners, owner.label_key, owner.hid)
+                run._held[owner.hid] = owner
+        places = sorted(
+            {
+                text.strip()
+                for row in rows
+                for name in ("location", "planned_location")
+                if isinstance(text := row.get(name), str) and ids.is_hid(text.strip())
+            }
+        )
+        for start in range(0, len(places), 500):
+            # Held, so that the session keeps them for the rows that find them by HID.
+            for location in db.scalars(
+                select(Location).where(Location.hid.in_(places[start : start + 500]))
+            ):
+                run._held[location.hid] = location
 
     def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
         rows = self.read(run.db, found)
