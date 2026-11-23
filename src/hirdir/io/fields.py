@@ -774,85 +774,116 @@ MINOR_ITEMS: ColumnElement[Any] = func.nullif(
 )
 
 
-# The coverages of an item, each with its contract: what covers it today, and the last
-# day its cover runs to, as `hirdir.domain.contracts` works them out.
+# The coverages of an item, each with what is in force for its contract today: what
+# covers it today, and the last day its cover runs to, as `hirdir.domain.contracts`
+# works them out. What is in force for each contract is worked out once for a
+# statement, in a table of its own (`contracts.HELD_TODAY`), and every coverage of every
+# item reads it there (D-166, P-326).
 _COVER: Any = aliased(ContractCoverage, name="item_coverage")
-_COVERING: Any = aliased(Contract, name="item_contract")
-_ITS_COVER = select(_COVER.hid).join(_COVERING, _COVERING.hid == _COVER.contract_hid)
-_COVERS_TODAY = (_COVER.item_hid == Item.hid, contracts.coverage_in_force(_COVER, _COVERING))
-_ITEM_CONTRACTS = _one_of(_ITS_COVER, *_COVERS_TODAY)
-COVERED: ColumnElement[Any] = _ITS_COVER.where(*_COVERS_TODAY).correlate(Item).exists()
-# How many contracts cover it today: more than one is worth a look before a renewal.
-CONTRACT_COUNT: ColumnElement[Any] = (
-    select(func.count(func.distinct(_COVERING.hid)))
-    .select_from(_COVER)
-    .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
-    .where(*_COVERS_TODAY)
-    .correlate(Item)
-    .scalar_subquery()
-)
+_HELD = contracts.HELD_TODAY
+_ITS_COVER = select(_COVER.item_hid).join(_HELD, _HELD.c.hid == _COVER.contract_hid)
+_IN_FORCE = contracts.coverage_in_force_today(_COVER, _HELD)
+
+
+def _covering(*where: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Return the test that an item has a coverage that meets every condition.
+
+    It is asked as one set of the items that have such a coverage, which the database
+    works out once for a statement and looks each item up in, where a test of each item
+    by itself would read its coverages and their contracts again for every item.
+    """
+    return Item.hid.in_(_ITS_COVER.where(*where))
+
+
+def _item_contracts(condition: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Return the test that a contract that covers an item today meets a condition."""
+    return _covering(_IN_FORCE, condition)
+
+
+COVERED: ColumnElement[Any] = _covering(_IN_FORCE)
 # The last day a coverage runs to: its own, or the end of the last term of its contract
 # that is known. Under a contract whose renewal is pending no day is known to end it.
-_LAST_STATUS = contracts.last_status_value(_COVERING)
-_COVER_END = contracts.last_day_value(_COVER, _COVERING)
-COVERED_UNTIL: ColumnElement[Any] = type_coerce(
-    select(
-        case((func.count(case((_COVER_END.is_(None), 1))) > 0, None), else_=func.max(_COVER_END))
-    )
-    .select_from(_COVER)
-    .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
-    .where(
-        _COVER.item_hid == Item.hid,
-        _COVERING.record_status == "active",
-        _LAST_STATUS.in_(contracts.COVERING),
-        or_(_COVER_END.is_(None), dialect.today() <= _COVER_END),
-    )
-    .correlate(Item)
-    .scalar_subquery(),
-    Date,
+_COVER_END = contracts.last_day_today(_COVER, _HELD)
+# A coverage the last day of an item's cover is of: under a contract that covers or is
+# to cover, and not ended.
+_NOT_ENDED = and_(
+    _HELD.c.active.is_(True),
+    _HELD.c.last_status.in_(contracts.COVERING),
+    or_(_COVER_END.is_(None), dialect.today() <= _COVER_END),
 )
 # Out of service, and a contract still counts it: its cover goes on, or its coverage was
 # ended because it left while the term of its contract still runs. A coverage that ends
 # today asks for nothing more: the cover that goes on is what counts. An item that was
 # brought back is in service again, whatever a coverage of it says.
 # `hirdir.domain.contracts.still_counts` is the same test for a page of records.
+_COUNTING = or_(
+    and_(_IN_FORCE, or_(_COVER_END.is_(None), dialect.today() < _COVER_END)),
+    contracts.left_while_running_today(_COVER, _HELD),
+)
+
+
+def _of_items(name: str, where: ColumnElement[bool], value: Any) -> ColumnElement[Any]:
+    """Return what the coverages of an item that meet a condition come to, as a value
+    for each item.
+
+    It is read from a table of the statement's own, one row to each item that has such
+    a coverage, which the database works out once for a statement, as `HELD_TODAY` is,
+    and looks each item up in: an item with none has no row, and the value is blank.
+    Each value has a table of its own, so that a statement works out only those it
+    reads.
+    """
+    table = dialect.materialized(
+        select(_COVER.item_hid.label("item_hid"), value.label("value"))
+        .select_from(_COVER)
+        .join(_HELD, _HELD.c.hid == _COVER.contract_hid)
+        .where(where)
+        .group_by(_COVER.item_hid),
+        name,
+    )
+    return (
+        select(table.c.value).where(table.c.item_hid == Item.hid).correlate(Item).scalar_subquery()
+    )
+
+
+# How many contracts cover it today: more than one is worth a look before a renewal.
+CONTRACT_COUNT: ColumnElement[Any] = func.coalesce(
+    _of_items("item_contract_count", _IN_FORCE, func.count(func.distinct(_COVER.contract_hid))),
+    0,
+    type_=Integer(),
+)
+# The last day its cover runs to, which is none where one of them names no end.
+COVERED_UNTIL: ColumnElement[Any] = type_coerce(
+    _of_items(
+        "item_covered_until",
+        _NOT_ENDED,
+        case((func.count(case((_COVER_END.is_(None), 1))) > 0, None), else_=func.max(_COVER_END)),
+    ),
+    Date,
+)
+# The least status and number of the contracts that cover it today, which a column of
+# them is sorted by.
+_FIRST_STATUS = _of_items("item_contract_status", _IN_FORCE, func.min(_HELD.c.status))
+_FIRST_NUMBER = _of_items("item_contract_number", _IN_FORCE, func.min(_HELD.c.number_key))
 # An item with no state is not out of service: the test is false, and never unknown,
 # so that its negation finds the item too.
 _ITEM_OUT = or_(
     Item.record_status == "retired",
     and_(STATE_IN_FORCE.is_not(None), STATE_IN_FORCE.in_(contracts.OUT_OF_SERVICE)),
 )
-_COUNTING = (
-    _COVER.item_hid == Item.hid,
-    or_(
-        and_(
-            contracts.coverage_in_force(_COVER, _COVERING),
-            or_(_COVER_END.is_(None), dialect.today() < _COVER_END),
-        ),
-        contracts.left_while_running(_COVER, _COVERING),
-    ),
-)
-OUT_OF_SERVICE_COVER: ColumnElement[Any] = and_(
-    _ITEM_OUT, _ITS_COVER.where(*_COUNTING).correlate(Item).exists()
-)
+OUT_OF_SERVICE_COVER: ColumnElement[Any] = and_(_ITEM_OUT, _covering(_COUNTING))
 
 
 def _item_counting(condition: ColumnElement[bool]) -> ColumnElement[bool]:
     """Return the test that a contract that still counts an item out of service meets a
     condition."""
-    return and_(_ITEM_OUT, _ITS_COVER.where(*_COUNTING, condition).exists())
+    return and_(_ITEM_OUT, _covering(_COUNTING, condition))
 
 
 # The first number among the contracts that still count it, for a column to be sorted by.
 _FIRST_COUNTING = case(
     (
         _ITEM_OUT,
-        select(func.min(dialect.folded(contracts.term_value(_COVERING, "number"))))
-        .select_from(_COVER)
-        .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
-        .where(*_COUNTING)
-        .correlate(Item)
-        .scalar_subquery(),
+        _of_items("item_counting_number", _COUNTING, func.min(_HELD.c.number_key)),
     ),
     else_=None,
 )
@@ -1202,37 +1233,25 @@ ITEMS = Listing(
         "covered_until": Field("date", COVERED_UNTIL),
         "contract_count": Field("integer", CONTRACT_COUNT),
         "out_of_service_cover": Field("boolean", OUT_OF_SERVICE_COVER),
-        "out_of_service_contract.hid": Field("reference", _COVERING.hid, among=_item_counting),
+        "out_of_service_contract.hid": Field("reference", _HELD.c.hid, among=_item_counting),
         "out_of_service_contract.number": Field(
-            "text",
-            contracts.term_value(_COVERING, "number"),
-            among=_item_counting,
-            ordered_by=_FIRST_COUNTING,
+            "text", _HELD.c.number, among=_item_counting, ordered_by=_FIRST_COUNTING
         ),
         # On a line of another model, which 0.6.0 let in: to be put right.
         "purchase_line_mismatch": Field("boolean", PURCHASE_LINE_MISMATCH),
-        "contract.hid": Field("reference", _COVERING.hid, among=_ITEM_CONTRACTS),
+        # The contracts that cover it today, sorted by the least of each.
+        "contract.hid": Field("reference", _HELD.c.hid, among=_item_contracts),
         "contract.status": Field(
             "choice",
-            contracts.status_value(_COVERING),
-            among=_ITEM_CONTRACTS,
-            ordered_by=select(func.min(contracts.status_value(_COVERING)))
-            .select_from(_COVER)
-            .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
-            .where(*_COVERS_TODAY)
-            .correlate(Item)
-            .scalar_subquery(),
+            _HELD.c.status,
+            among=_item_contracts,
+            ordered_by=_FIRST_STATUS,
         ),
         "contract.number": Field(
             "text",
-            contracts.term_value(_COVERING, "number"),
-            among=_ITEM_CONTRACTS,
-            ordered_by=select(func.min(dialect.folded(contracts.term_value(_COVERING, "number"))))
-            .select_from(_COVER)
-            .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
-            .where(*_COVERS_TODAY)
-            .correlate(Item)
-            .scalar_subquery(),
+            _HELD.c.number,
+            among=_item_contracts,
+            ordered_by=_FIRST_NUMBER,
         ),
         **_registered(
             or_(Registration.item_hid == Item.hid, Registration.group_hid.in_(_ONE_DEVICE)), Item

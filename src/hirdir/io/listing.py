@@ -4,7 +4,7 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import DBAPIError, OperationalError, StatementError
 from sqlalchemy.orm import Session
 
@@ -95,17 +95,53 @@ def page(
     The filter may be a decoded tree, JSON text or the short form. Blank values sort
     last, and records that tie are kept in a steady order by their HIDs, so that paging
     never repeats or skips one.
+
+    The records the filter matches are matched once, with what each sorts by, and both
+    the page and the total are read from them, in one statement (P-326). A page with
+    nothing on it has nothing to carry the total: from the first record, the filter
+    matches none, and past the last, or with no room for one, they are counted by
+    themselves.
     """
     model = listing.model
     where = where_of(db, listing, filter_, include_archived, include_drafts, also)
     keys = filters.parse_sort(sort, listing.fields) or filters.parse_sort(
         list(listing.default_sort), listing.fields
     )
-    order = [*filters.order_by(keys, listing.fields), model.hid.asc()]
+    sorted_on = [
+        value.label(f"sorted_on_{place}")
+        for place, value in enumerate(filters.sorted_on(keys, listing.fields))
+    ]
+    # The joins are made from the record of the list, whatever else a value to sort by
+    # reads.
+    matched = dialect.materialized(
+        listing.joined(select(model.hid.label("hid")).select_from(model))
+        .add_columns(*sorted_on)
+        .where(*where),
+        "matched",
+    )
+
+    def order(rows: Any) -> list[Any]:
+        values = [rows.c[one.name] for one in sorted_on]
+        return [*filters.ordered(keys, values), rows.c.hid.asc()]
+
+    total = select(func.count()).select_from(matched).scalar_subquery()
+    chosen = (
+        select(matched, total.label("total"))
+        .order_by(*order(matched))
+        .limit(limit)
+        .offset(offset)
+        .subquery("chosen")
+    )
     reading = (
-        listing.joined(select(model)).where(*where).order_by(*order).limit(limit).offset(offset)
+        select(model, chosen.c.total)
+        .select_from(chosen)
+        .join(model, model.hid == chosen.c.hid)
+        .order_by(*order(chosen))
     )
     with _answered():
-        total = db.scalar(_counting(listing, where)) or 0
-        rows = list(db.scalars(reading))
-    return rows, total
+        found = db.execute(reading).all()
+        if found:
+            return [row[0] for row in found], found[0][1]
+        if offset == 0 and limit > 0:
+            return [], 0
+        return [], db.scalar(select(func.count()).select_from(matched)) or 0

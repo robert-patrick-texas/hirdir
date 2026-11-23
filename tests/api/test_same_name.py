@@ -98,8 +98,14 @@ def test_a_list_reads_the_names_of_a_page_in_one_statement(client: TestClient, m
     def read(limit: int) -> tuple[int, list[int]]:
         statements.clear()
         page = make.get("/contacts", limit=limit)
+        # The page itself is read by joining the records it matched to the contacts
+        # (P-326): that statement is the page's, and not the names'.
         joined = [
-            one for one in statements if one.count("FROM contacts") and "JOIN contacts" in one
+            one
+            for one in statements
+            if one.count("FROM contacts")
+            and "JOIN contacts" in one
+            and "AS chosen JOIN contacts" not in one
         ]
         return len(joined), [one["same_name"] for one in page["items"]]
 

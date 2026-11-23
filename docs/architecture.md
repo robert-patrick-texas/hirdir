@@ -2594,6 +2594,130 @@ works out the four long reports anew one after another, 4.3 s.
 A run on a host that other work shares is not a measurement: S36 at 1.0.0 is run with
 the host to itself.
 
+**Measured at 0.9.19: the item list (P-326).** Two changes, with every answer as it
+was, page for page and total for total, and the coverage report's, the renewal
+worklist's and a vendor's portfolio with them, which read the same fields:
+
+- What is in force for each contract today, its term, its status, its number, the day
+  its period starts and the last day that is known of it, is worked out once for a
+  statement, in a table of the statement's own, `contract_today`
+  (`contracts.HELD_TODAY`), from the contract and its agreement, and every coverage of
+  every item reads it there, as D-166 and D-184 say of the coverage report; before, each
+  coverage of each item worked them out again, some twenty look-ups of its agreement
+  each. A test of an item, `covered`, `out_of_service_cover`, and one of several,
+  `contract.*` and `out_of_service_contract.*`, is asked as one set of the items that
+  have such a coverage, `items.hid IN (...)`, which the database works out once for the
+  statement and looks each item up in. A value of an item, `contract_count`,
+  `covered_until`, and the least status and number that a sort by `contract.status`,
+  `contract.number` or `out_of_service_contract.number` reads, is read from a table of
+  its own for each, one row to an item that has such a coverage, so that a statement
+  works out only those it reads. SQLite works each table out once (`MATERIALIZED`, by
+  `dialect.materialized`) and builds an index of its own for the look-ups;
+  PostgreSQL plans them as it will. None of it is a record or kept.
+- The records a filter matches are matched once, with what each is sorted by, and the
+  page and the total are read from them in one statement (`listing.page`), where the
+  filter was worked out twice, for the count and for the page. A page with nothing on
+  it past the first record counts them by itself.
+
+The statements of `listing.page` alone, in milliseconds of processor time, median of 7
+after one (the harness of lane G; the host shared with the other lanes of 0.9.19, 1 to
+3 of its 4 cores busy with other work):
+
+| Request | Before | After | Matched |
+|---|--:|--:|--:|
+| No filter, by name | 118, 131 | 73, 84 | 47,110 |
+| `is_major:eq:true`, by name (the grid's first page) | 72, 72 | 51, 52 | 34,778 |
+| `covered:eq:true`, by name | 284, 299 | 105, 99 | 15,140 |
+| `covered:eq:true`, by `covered_until` | 385, 378 | 146, 159 | 15,140 |
+| `covered:eq:false`, by name | 345, 344 | 123, 136 | 31,970 |
+| `covered:eq:false`, by `covered_until` | 431, 446 | 190, 170 | 31,970 |
+| `contract_count:gt:1`, by name | 277, 293 | 88, 96 | 592 |
+| `contract_count:gt:1`, by `-contract_count` | 359, 353 | 91, 99 | 592 |
+| No filter, by `-contract_count` | 219, 237 | 123, 152 | 47,110 |
+| `out_of_service_cover:eq:true`, by name | 171, 175 | 81, 84 | 1,258 |
+| `out_of_service_contract.number:eq:<one>`, by name | 545, 523 | 19, 19 | 37 |
+| `out_of_service_contract.number:eq:<one>`, by it | 590, 595 | 47, 47 | 37 |
+| No filter, by `out_of_service_contract.number` | 144, 143 | 106, 103 | 47,110 |
+| `out_of_service_contract.hid:eq:<one>`, by name | 216, 213 | 18, 19 | 37 |
+| `contract.number:eq:<one>`, by name | 282, 320 | 16, 15 | 364 |
+| `contract.number:eq:<one>`, by `contract.number` | 344, 348 | 59, 51 | 364 |
+| No filter, by `contract.number` | 253, 237 | 123, 117 | 47,110 |
+| `contract.status:eq:renewal_pending`, by name | 304, 305 | 30, 27 | 2,421 |
+| `purchase_line_mismatch:eq:true`, by name | 68, 71 | 37, 39 | 121 |
+| `effective.do_not_renew:eq:true`, by name | 128, 131 | 73, 68 | 2,134 |
+| `covered:eq:false effective.do_not_renew:eq:true`, by name | 360, 349 | 130, 123 | 1,629 |
+| No filter, by `-effective.support_weight` | 125, 125 | 85, 92 | 47,110 |
+
+The requests of `make time-filters`, from the request to the last byte of the answer,
+median and 95th percentile of 15 runs after 2 warm-ups, two runs before and two after,
+one after the other, with the load average of the host over the minute of each in
+brackets. The other lanes of 0.9.19 were running their tests: the load average was 6.6
+to 9.4 on 4 cores, and a request before took a quarter to a half longer at the median
+than the same request timed on the idle host at the start of 0.9.19 (P-326), so the two
+columns are to be read against each other and not against D-165, which the timing
+alone on the host holds them to:
+
+| Request | Before | After | Answered |
+|---|--:|--:|--:|
+| no filter, by name | 279 / 396 (6.65); 294 / 702 (6.61) | 212 / 284 (6.99); 276 / 396 (9.12) | 47,110 |
+| is_major:eq:true, by name (the grid's first page) | 205 / 489 (6.68); 233 / 643 (6.64) | 224 / 633 (7.15); 237 / 651 (9.27) | 34,778 |
+| covered:eq:true, by name | 463 / 816 (6.71); 488 / 1016 (6.85) | 316 / 829 (7.06); 311 / 638 (9.41) | 15,140 |
+| covered:eq:true, by covered_until | 599 / 676 (6.70); 847 / 1072 (7.04) | 369 / 502 (6.97); 317 / 542 (9.14) | 15,140 |
+| covered:eq:false, by name | 562 / 1016 (6.68); 721 / 970 (7.47) | 400 / 790 (6.90); 345 / 710 (9.05) | 31,970 |
+| covered:eq:false, by covered_until | 678 / 996 (6.65); 767 / 1059 (7.63) | 431 / 799 (6.91); 486 / 970 (8.89) | 31,970 |
+| contract_count:gt:1, by name | 505 / 836 (6.63); 675 / 868 (8.16) | 341 / 597 (6.76); 286 / 706 (8.82) | 592 |
+| contract_count:gt:1, by -contract_count | 786 / 1362 (7.06); 596 / 1119 (8.29) | 292 / 420 (6.78); 266 / 357 (8.75) | 592 |
+| no filter, by -contract_count | 503 / 809 (7.20); 420 / 524 (8.19) | 316 / 576 (6.64); 422 / 874 (8.64) | 47,110 |
+| out_of_service_cover:eq:true, by name | 375 / 735 (7.09); 383 / 557 (7.85) | 320 / 742 (6.70); 277 / 667 (8.59) | 1,258 |
+| out_of_service_contract.number:eq:&lt;one&gt;, by name | 753 / 1334 (7.31); 728 / 969 (7.88) | 100 / 161 (6.70); 81 / 123 (8.59) | 37 |
+| out_of_service_contract.number:eq:&lt;one&gt;, by out_of_service_contract.number | 831 / 1093 (7.54); 741 / 949 (7.84) | 121 / 272 (6.70); 152 / 253 (8.70) | 37 |
+| no filter, by out_of_service_contract.number | 371 / 651 (7.30); 311 / 748 (7.69) | 304 / 664 (6.82); 310 / 821 (8.56) | 47,110 |
+| out_of_service_contract.hid:eq:&lt;one&gt;, by name | 314 / 413 (7.28); 394 / 654 (7.88) | 85 / 209 (6.82); 114 / 173 (8.56) | 37 |
+| contract.number:eq:&lt;one&gt;, by name | 464 / 979 (7.40); 544 / 988 (7.67) | 143 / 170 (6.82); 187 / 291 (8.52) | 364 |
+| contract.number:eq:&lt;one&gt;, by contract.number | 568 / 705 (7.33); 643 / 858 (7.49) | 205 / 343 (6.83); 205 / 376 (8.40) | 364 |
+| no filter, by contract.number | 431 / 889 (7.23); 534 / 911 (7.49) | 348 / 830 (6.86); 349 / 1029 (8.20) | 47,110 |
+| contract.status:eq:renewal_pending, by name | 534 / 933 (7.27); 542 / 811 (7.50) | 240 / 956 (6.79); 179 / 596 (8.11) | 2,421 |
+| purchase_line_mismatch:eq:true, by name | 261 / 623 (7.33); 228 / 629 (7.62) | 235 / 265 (6.79); 209 / 334 (8.11) | 121 |
+| effective.do_not_renew:eq:true, by name | 333 / 730 (7.47); 416 / 667 (7.73) | 252 / 625 (6.81); 327 / 801 (7.86) | 2,134 |
+| covered:eq:false effective.do_not_renew:eq:true, by name | 534 / 612 (7.17); 804 / 1279 (7.81) | 286 / 580 (6.74); 403 / 675 (7.71) | 1,629 |
+| contracts, no filter | 186 / 330 (7.07); 278 / 402 (8.30) | 192 / 254 (7.00); 290 / 405 (7.57) | 314 |
+| contracts, to_review:eq:true | 33 / 64 (7.07); 34 / 68 (8.30) | 32 / 63 (7.00); 29 / 34 (7.57) | 6 |
+| contracts, renewal_overdue:eq:true | 37 / 79 (7.07); 38 / 106 (8.30) | 46 / 77 (7.00); 44 / 95 (7.57) | 15 |
+| is_major:eq:true, by name (the grid's first page), no weight set | 253 / 346 (7.23); 314 / 1083 (8.42) | 203 / 598 (6.92); 281 / 780 (7.60) | 34,778 |
+| no filter, by -effective.support_weight, no weight set | 344 / 815 (7.13); 349 / 499 (8.31) | 314 / 618 (6.85); 261 / 584 (7.56) | 47,110 |
+| is_major:eq:true, by name (the grid's first page), the item weights set | 220 / 271 (7.04); 331 / 652 (8.52) | 211 / 246 (6.78); 183 / 239 (7.35) | 34,778 |
+| no filter, by -effective.support_weight, the item weights set | 313 / 658 (7.11); 449 / 679 (8.99) | 264 / 653 (6.64); 245 / 584 (7.08) | 47,110 |
+
+The coverage report reads the same fields, and is faster with them, with the same
+counts, on the same host at a load average of 4.8 to 6.0: worked out anew, whole, 1527 /
+1825 before and 869 / 975 after; narrowed to a region 2062 / 2173 and 1164 / 1297; a page
+of `uncovered` 2021 / 2309 and 1142 / 1931. The renewal worklist and the alert anew, 219
+/ 285 and 185 / 228 before, 162 / 226 and 155 / 292 after, move by less than the runs
+do. Kept, each is answered as before, in 10 to 35 ms.
+
+What was looked at and left, with what it costs now:
+
+- The sort by name calls the Python function that folds text for each record matched,
+  some 15 ms for the 47,110 of the list with no filter. SQLite's own `lower()`, for text
+  that is all ASCII, with the test that it is, costs as much. A column of the folded
+  name with an index would not, and is a migration.
+- The default view leaves out what is archived by the state in force, which reads up
+  to three items above each item: some 30 ms of the 50 ms that counting the list with
+  no filter takes.
+- Each coverage value that a request reads costs some 30 to 60 ms over the 47,110
+  items: its table, some 20 to 30 ms, and a look-up of each item in it. A request that
+  reads two of them, a filter by one and a sort by another, pays for both.
+- SQLite joins the coverages to `contract_today` from the contracts that cover, and
+  reads each coverage by the index of its contract. Reading the coverages in their own
+  order, as a join that SQLite may not reorder (`CROSS JOIN`) has it, saves some 10 ms
+  of a test such as `covered`; PostgreSQL takes no such join with a condition, so it
+  would be one more thing that differs between the two.
+- Shaping a page of 100 items in Python takes some 90 ms of every request, whatever its
+  filter: the operators, the groups and the places in force of each item and its
+  coverages, read and worked out for the page. With the collector of Python's memory
+  turned off, or the objects of the application's start frozen out of it, a request was
+  no faster that the runs could tell, and the slowest of fifteen as slow.
+
 ## Configuration
 
 `/etc/hirdir/config.toml`, every key optional:
