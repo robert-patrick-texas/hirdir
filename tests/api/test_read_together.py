@@ -9,12 +9,19 @@ two answer the same row for row; and the apply, which reads its batches back tog
 does what the preview of 0.9.18 said, row for row, with no row stale.
 """
 
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from hirdir.io import entities, imports
+from hirdir.config import Config
+from hirdir.db.engine import make_engine, make_sessions
+from hirdir.db.models import Item
+from hirdir.domain import audit, catalog, groups, items
+from hirdir.io import entities, examples, imports
 from tests.api.inventory import API, Maker
 from tests.api.test_files import Files
 from tests.api.test_hosting import Lab
@@ -209,3 +216,63 @@ def test_what_a_batch_holds_is_looked_up_again_for_the_next_batch(
     found = make.get(f"/imports/{job['hid']}/rows", limit=100)["items"]
     assert {row["applied_outcome"] for row in found[50:]} == {"rejected"}
     assert {row["applied_reasons"][0]["field"] for row in found[50:]} == {"location"}
+
+
+@pytest.fixture(scope="module")
+def with_examples(tmp_path_factory: pytest.TempPathFactory, migrated: Path) -> Path:
+    """A database with the examples loaded, and items run on hosts and in a stack."""
+    folder = tmp_path_factory.mktemp("compared")
+    made = Config(state_dir=folder)
+    assert made.database_path is not None
+    shutil.copyfile(migrated, made.database_path)
+    engine = make_engine(made.database_url)
+    with make_sessions(engine)() as db:
+        examples.load(db, examples.folder())
+        hosts = list(db.scalars(select(Item).where(Item.parent_item_hid.is_(None)).limit(2)))
+        vendor = catalog.create_vendor(db, audit.SYSTEM, {"name": "Example Virtual"})
+        model = catalog.create_entry(
+            db, audit.SYSTEM, {"vendor_hid": vendor.hid, "pid": "VM", "kind": "virtual_machine"}
+        )
+        cluster = groups.create_group(db, audit.SYSTEM, {"type": "cluster", "name": "ex-hosts"})
+        db.flush()
+        groups.add_members(db, audit.SYSTEM, cluster.hid, [{"item_hid": hosts[1].hid}])
+        on = (
+            {"host_item_hid": hosts[0].hid, "observed_host_hid": hosts[1].hid},
+            {"host_group_hid": cluster.hid},
+        )
+        for number, host in enumerate(on):
+            items.create_item(
+                db,
+                audit.SYSTEM,
+                {"catalog_entry_hid": model.hid, "name": f"ex-vm-{number}", **host},
+            )
+        db.commit()
+    engine.dispose()
+    return made.database_path
+
+
+def test_an_item_read_as_a_row_compares_it_reads_as_it_always_did_in_what_a_row_sets(
+    with_examples: Path,
+) -> None:
+    # A row's changes are made of the columns a row sets, read as they are stored: the
+    # read for a file leaves out what is worked out in force and beside them, and reads
+    # each of those columns as the whole read does, for every item of the examples.
+    engine = make_engine(f"sqlite:///{with_examples}")
+    which = entities.Items()
+    try:
+        with make_sessions(engine)() as db:
+            found = list(db.scalars(select(Item).order_by(Item.hid)))
+            whole = which.read(db, found)
+            compared = which.read(db, found, compared=True)
+    finally:
+        engine.dispose()
+    assert len(found) > 30
+    names = [column.name for column in which.settable] + ["hid", "row_version", "updated_at"]
+    assert any(row["parent"] for row in whole)
+    assert any(row["host"] for row in whole)
+    assert any(row["observed_host"] for row in whole)
+    assert any(row["host_group"] for row in whole)
+    for one, other in zip(whole, compared, strict=True):
+        assert {name: one[name] for name in names} == {name: other[name] for name in names}
+    assert "covered" not in compared[0]
+    assert "owner_source" not in compared[0]

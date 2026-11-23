@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, ClassVar, Final
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, bindparam, func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import ids
@@ -1974,6 +1974,13 @@ def _weight_in_force(
     return value == in_force.value and (in_force.defaulted or in_force.raised)
 
 
+# The item of a model with the key of a serial number: built once, and given the two as
+# parameters, since building it anew for each row cost more than the look (P-324).
+_BY_SERIAL = select(Item).where(
+    Item.catalog_entry_hid == bindparam("model"), Item.serial_key == bindparam("key")
+)
+
+
 # What an item runs on, as a file names it (P-246): an item as `parent` names one, a
 # stack or a cluster by its name, and the item it was seen on with the moment.
 HOSTING = (
@@ -2324,9 +2331,7 @@ class Items(Entity):
         if run.by_serial is not None:
             found = run.by_serial.get((model, key))
         else:
-            found = db.scalar(
-                select(Item).where(Item.catalog_entry_hid == model, Item.serial_key == key)
-            )
+            found = db.scalar(_BY_SERIAL, {"model": model, "key": key})
         return found or self._received_as_a_count(db, values)
 
     @staticmethod
@@ -2899,6 +2904,15 @@ class Items(Entity):
             ):
                 run._learn(run._owners, owner.label_key, owner.hid)
                 run._held[owner.hid] = owner
+        # The models of the items that rows name by their HID, which their writes read.
+        named = sorted({row["hid"] for row in rows if row.get("hid")})
+        for start in range(0, len(named), 500):
+            for entry in db.scalars(
+                select(CatalogEntry)
+                .join(Item, Item.catalog_entry_hid == CatalogEntry.hid)
+                .where(Item.hid.in_(named[start : start + 500]))
+            ):
+                run._held[entry.hid] = entry
         places = sorted(
             {
                 text.strip()
@@ -2915,7 +2929,8 @@ class Items(Entity):
                 run._held[location.hid] = location
 
     def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
-        rows = self.read(run.db, found)
+        # As a row is compared: what a row sets, and none of what is in force (P-324).
+        rows = self.read(run.db, found, compared=True)
         if run.system_hid is not None:
             known = systems.of_system(run.db, run.system_hid, [item.hid for item in found])
             for item, row in zip(found, rows, strict=True):
@@ -2925,12 +2940,21 @@ class Items(Entity):
                 row["registration"] = registration.status if registration else None
         return rows
 
-    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+    def read(
+        self, db: Session, found: list[Any], own: bool = True, compared: bool = False
+    ) -> list[dict[str, Any]]:
+        """Return the columns of each item, typed. With own, stored values and not the
+        ones in force. With `compared`, as a row of a file is compared with it, to say
+        what the row changes (P-324): the columns a row sets, each as `own` reads it,
+        which is all the changes of a row are made of, and none of what is worked out
+        in force or beside them, the sources, the coverage, the health, the review and
+        what runs on it, which cost the most to read."""
+        own = own or compared
         hids = [item.hid for item in found]
         lines = items.lines_above(db, found)
         entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in found})
         vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
-        owned = descent.of_items(db, found, lines, "owner_hid")
+        owned = {} if compared else descent.of_items(db, found, lines, "owner_hid")
         its_owners = _by_hid(
             db,
             Owner,
@@ -2939,28 +2963,95 @@ class Items(Entity):
         labels = tags.labels_of(db, self.record_type, hids)
         primaries = _primaries(db, "item_hid", hids)
         parents = items.reference_texts(db, [line[0] for line in lines.values() if line])
-        on_hosts = _hosting_cells(db, found)
+        on_hosts = _hosting_cells(db, found, compared)
         atlas = geography.atlas(db)
         atlas.read_locations(
             {item.location_hid for item in found}
             | {item.planned_location_hid for item in found}
             | {one.location_hid for line in lines.values() for one in line}
         )
-        looked_after = operators.of_items(db, found, lines)
-        placed = descent.of_items(db, found, lines, "location_hid")
-        going = descent.of_items(db, found, lines, "planned_location_hid")
-        atlas.read_locations(
-            {one.value for one in placed.values()} | {one.value for one in going.values()}
-        )
+        looked_after: Mapping[str, inheritance.Effective] = {}
+        placed: Mapping[str, inheritance.Effective] = {}
+        going: Mapping[str, inheritance.Effective] = {}
+        if not compared:
+            looked_after = operators.of_items(db, found, lines)
+            placed = descent.of_items(db, found, lines, "location_hid")
+            going = descent.of_items(db, found, lines, "planned_location_hid")
+            atlas.read_locations(
+                {one.value for one in placed.values()} | {one.value for one in going.values()}
+            )
         marks = _by_hid(
             db,
             Operator,
             {item.operator_hid for item in found} | {one.value for one in looked_after.values()},
         )
         called = {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
+        arrived_on = _line_names(db, {item.purchase_line_hid for item in found})
+        in_force_of = (
+            {}
+            if compared
+            else self._in_force_cells(db, found, lines, entries, its_owners, owned, placed, atlas)
+        )
+        rows = []
+        for item in found:
+            entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
+            line = lines[item.hid]
+            in_force = inheritance.of_item(item, entry, line)
+            row: dict[str, Any] = {
+                **_kept(item),
+                "vendor": vendors[entry.vendor_hid].name if entry else None,
+                "pid": entry.pid if entry else None,
+                **{name: getattr(item, name) for name in self._direct if name != "tags"},
+                "parent": parents[line[0].hid] if line else None,
+                **on_hosts[item.hid],
+                "state_reason": item.state_reason,
+                **primaries.get(item.hid, NO_MGMT),
+                "record_status": item.record_status,
+                "tags": labels[item.hid],
+                # Known only to the system a file is read from: see `read_for`.
+                "external_id": None,
+                "purchase_line": arrived_on.get(item.purchase_line_hid or ""),
+                **in_force_of.get(item.hid, {}),
+            }
+            if not compared:
+                in_force = row.pop("_in_force")
+            operator = item.operator_hid if own else looked_after[item.hid].value
+            row["operator"] = called[operator] if operator else None
+            plan = item.planned_location_hid if own else going[item.hid].value
+            row["planned_location"] = atlas.location_path(plan) or None
+            if not compared:
+                row["operator_source"] = looked_after[item.hid].source
+                row["planned_location_source"] = going[item.hid].source
+            for name, effective in in_force.items():
+                column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
+                value = getattr(item, name) if own else effective.value
+                if name == "owner_hid":
+                    value = items.name_or_hid(its_owners[value].label, value) if value else None
+                elif name == "location_hid":
+                    value = atlas.location_path(value) if value else None
+                row[column] = value
+                if not compared:
+                    row[f"{column}_source"] = effective.source
+            rows.append(row)
+        return rows
+
+    def _in_force_cells(
+        self,
+        db: Session,
+        found: list[Any],
+        lines: Mapping[str, list[Item]],
+        entries: Mapping[str, CatalogEntry],
+        its_owners: Mapping[str, Owner],
+        owned: Mapping[str, inheritance.Effective],
+        placed: Mapping[str, inheritance.Effective],
+        atlas: geography.Atlas,
+    ) -> dict[str, dict[str, Any]]:
+        """Return, for each item, the columns that are worked out of what is in force or
+        beside it, which no row of a file sets, and under `_in_force` what is in force
+        of each field it inherits."""
+        hids = [item.hid for item in found]
         today = contracts.today(db)
         cover = contracts.of_items(db, hids)
-        arrived_on = _line_names(db, {item.purchase_line_hid for item in found})
         models_of = {
             line.hid: line.catalog_entry_hid
             for line in _by_hid(
@@ -2968,7 +3059,7 @@ class Items(Entity):
             ).values()
         }
         figures = weights.in_force(db)
-        rows = []
+        cells: dict[str, dict[str, Any]] = {}
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
@@ -2994,19 +3085,8 @@ class Items(Entity):
             site = atlas.site(where.site_hid) if where is not None else None
             owner_in_force = its_owners.get(in_force["owner_hid"].value or "")
             outside = owner_in_force is not None and owner_in_force.is_external
-            row: dict[str, Any] = {
-                **_kept(item),
-                "vendor": vendors[entry.vendor_hid].name if entry else None,
-                "pid": entry.pid if entry else None,
-                **{name: getattr(item, name) for name in self._direct if name != "tags"},
-                "parent": parents[line[0].hid] if line else None,
-                **on_hosts[item.hid],
-                "state_reason": item.state_reason,
-                **primaries.get(item.hid, NO_MGMT),
-                "record_status": item.record_status,
-                "tags": labels[item.hid],
-                # Known only to the system a file is read from: see `read_for`.
-                "external_id": None,
+            cells[item.hid] = {
+                "_in_force": in_force,
                 "model_name": entry.model_name if entry else None,
                 "kind": entry.kind if entry else None,
                 "type": entry.type if entry else None,
@@ -3021,7 +3101,6 @@ class Items(Entity):
                 "region": atlas.regions[site.region_hid].name if site is not None else None,
                 "owner_exception": outside,
                 "owner_exception_reason": owner_in_force.exception_reason if outside else None,
-                "purchase_line": arrived_on.get(item.purchase_line_hid or ""),
                 "covered": bool(covering),
                 "covered_until": contracts.covered_until(cover[item.hid], today),
                 "contracts": sorted(set(covering), key=records.key),
@@ -3035,28 +3114,14 @@ class Items(Entity):
                     item.catalog_entry_hid, models_of[item.purchase_line_hid]
                 ),
             }
-            operator = item.operator_hid if own else looked_after[item.hid].value
-            row["operator"] = called[operator] if operator else None
-            row["operator_source"] = looked_after[item.hid].source
-            plan = item.planned_location_hid if own else going[item.hid].value
-            row["planned_location"] = atlas.location_path(plan) or None
-            row["planned_location_source"] = going[item.hid].source
-            for name, effective in in_force.items():
-                column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
-                value = getattr(item, name) if own else effective.value
-                if name == "owner_hid":
-                    value = items.name_or_hid(its_owners[value].label, value) if value else None
-                elif name == "location_hid":
-                    value = atlas.location_path(value) if value else None
-                row[column] = value
-                row[f"{column}_source"] = effective.source
-            rows.append(row)
-        return rows
+        return cells
 
 
-def _hosting_cells(db: Session, found: list[Any]) -> dict[str, dict[str, Any]]:
+def _hosting_cells(
+    db: Session, found: list[Any], compared: bool = False
+) -> dict[str, dict[str, Any]]:
     """Return the cells of what each item runs on, was seen on, has running on it and is
-    to be looked at for."""
+    to be looked at for. With `compared`, those a row of a file sets alone."""
     named = _by_hid(
         db,
         Item,
@@ -3064,6 +3129,18 @@ def _hosting_cells(db: Session, found: list[Any]) -> dict[str, dict[str, Any]]:
     )
     texts = items.reference_texts(db, list(named.values()))
     its_groups = _by_hid(db, DeviceGroup, {item.host_group_hid for item in found})
+    if compared:
+        return {
+            item.hid: {
+                "host": texts.get(item.host_item_hid or ""),
+                "host_group": items.name_or_hid(group.name, group.hid)
+                if (group := its_groups.get(item.host_group_hid or "")) is not None
+                else None,
+                "observed_host": texts.get(item.observed_host_hid or ""),
+                "host_observed_at": item.host_observed_at,
+            }
+            for item in found
+        }
     hosts = hosting.hosts_of(db, found)
     kinds = hosting.kinds_of(db, {item.catalog_entry_hid for item in found})
     marks = hosting.reviews(db, found, kinds, hosts)

@@ -320,7 +320,11 @@ upload, by its extension and by its first bytes.
   that would no longer do what was previewed shows only once its batch is read; the
   batch is then undone and worked again a row at a time, each read after its own
   write, so that the row is left out as stale before the rows after it are worked, as
-  it always was. Every other entity reads each row back after its own write. What a
+  it always was. Every other entity reads each row back after its own write. What an
+  item is read as, to be compared, is the columns a row sets, read as they are stored,
+  which are all a row's changes are made of: what is worked out in force or beside
+  them, the sources, the coverage, the health, the review and the count of what runs
+  on it, is left out of that read, and is the export's alone. What a
   file of items cannot change is looked up once for it and not for each row
   (`domain/held.py`): the places and their paths, the operators the places give and
   those retired, the settings, the time zone and the weights in force, the lifecycle

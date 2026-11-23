@@ -4,9 +4,10 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from functools import cache
 from typing import Any, Literal
 
-from sqlalchemy import and_, func, literal, or_, select
+from sqlalchemy import ColumnElement, Select, and_, bindparam, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
@@ -552,7 +553,12 @@ def _checked(
             "an item needs something to know it by",
             {"serial_number": "or a catalog entry with it, an asset tag, a name or a hostname"},
         )
-    _check_unique(db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item)
+    # A change that gives an item none of the keys that tell it apart keeps the ones it
+    # has, which the unique rules of the table hold already: no twin is looked for (P-324).
+    if item is None or {"catalog_entry_hid", "serial_key", "asset_tag_key"} & set(values):
+        _check_unique(
+            db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item
+        )
     return values
 
 
@@ -692,6 +698,27 @@ def _check_still_there(db: Session, location_hid: str | None) -> None:
         )
 
 
+@cache
+def _twins(by_serial: bool, by_tag: bool, other_than: bool) -> Select[Any]:
+    """Return the statement that looks for the twins of an item, built once for each of
+    its shapes and given its values as parameters: the statement built anew for every
+    item cost more than the look itself (P-324)."""
+    wanted: list[ColumnElement[bool]] = []
+    if by_serial:
+        wanted.append(
+            and_(
+                Item.catalog_entry_hid == bindparam("model"),
+                Item.serial_key == bindparam("serial"),
+            )
+        )
+    if by_tag:
+        wanted.append(Item.asset_tag_key == bindparam("tag"))
+    query = select(Item).where(or_(*wanted))
+    if other_than:
+        query = query.where(Item.hid != bindparam("own"))
+    return query.limit(2)
+
+
 def _check_unique(
     db: Session,
     catalog_entry_hid: str | None,
@@ -704,19 +731,15 @@ def _check_unique(
     Each is one item at most, as the unique rules of the table hold: both are looked for
     with one statement, and a twin by the serial number is refused before one by the tag.
     """
-    own = item.hid if item is not None else None
     by_serial = bool(catalog_entry_hid and serial_key)
-    wanted = [
-        *(
-            [and_(Item.catalog_entry_hid == catalog_entry_hid, Item.serial_key == serial_key)]
-            if by_serial
-            else []
-        ),
-        *([Item.asset_tag_key == asset_tag_key] if asset_tag_key else []),
-    ]
-    if not wanted:
+    if not (by_serial or asset_tag_key):
         return
-    twins = list(db.scalars(select(Item).where(or_(*wanted), Item.hid != own).limit(2)))
+    given = {
+        **({"model": catalog_entry_hid, "serial": serial_key} if by_serial else {}),
+        **({"tag": asset_tag_key} if asset_tag_key else {}),
+        **({"own": item.hid} if item is not None else {}),
+    }
+    twins = list(db.scalars(_twins(by_serial, bool(asset_tag_key), item is not None), given))
     if by_serial:
         twin = next(
             (
