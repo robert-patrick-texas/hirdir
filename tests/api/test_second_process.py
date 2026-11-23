@@ -8,6 +8,7 @@ The server applies nothing: here it is the application built with `work=False`, 
 with a signal.
 """
 
+import contextlib
 import fcntl
 import os
 import signal
@@ -560,6 +561,27 @@ def test_serve_with_work_is_refused_beside_a_process_of_the_background_work(
         refused = runner.invoke(command, ["admin", "work"])
         assert refused.exit_code == 1
         assert "another process of the background work is running on" in refused.output
+
+
+def test_work_settles_before_any_thread_of_the_work_starts(installed: Config, monkeypatch) -> None:
+    """What is under way when the collector is told to leave the rest alone would be kept
+    from it for good: the work settles first (P-326)."""
+    order: list[str] = []
+
+    class Stopped(Exception):
+        pass
+
+    @contextlib.contextmanager
+    def working(config: Config) -> Iterator[None]:
+        order.append("working")
+        raise Stopped
+        yield
+
+    monkeypatch.setattr(admin, "settle", lambda: order.append("settled"))
+    monkeypatch.setattr(background, "working", working)
+    result = runner.invoke(command, ["admin", "work"])
+    assert isinstance(result.exception, Stopped)
+    assert order == ["settled", "working"]
 
 
 # --- the commands that need the service stopped ---------------------------------------

@@ -186,8 +186,10 @@ def work() -> None:
     for asked in (signal.SIGTERM, signal.SIGINT):
         signal.signal(asked, lambda *_: stop.set())
     try:
+        # Before any thread of the work starts, so that nothing under way is kept
+        # out of the collector with what the process was made with (P-326).
+        settle()
         with background.working(config):
-            settle()
             typer.echo(f"hirdir: the background work of {config.state_dir} is under way", err=True)
             stop.wait()
         typer.echo(f"hirdir: the background work of {config.state_dir} is stopped", err=True)

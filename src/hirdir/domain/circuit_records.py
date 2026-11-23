@@ -371,7 +371,7 @@ def connections_of(
             select(CircuitDevice, Circuit)
             .join(Circuit, Circuit.hid == CircuitDevice.circuit_hid)
             .where(column.in_(wanted[start : start + 500]))
-            .order_by(Circuit.name_key, Circuit.hid)
+            .order_by(Circuit.name_key, Circuit.hid, CircuitDevice.hid)
         )
         for link, circuit in rows:
             found[getattr(link, field)].append((link, circuit))
@@ -402,7 +402,7 @@ def connections_listed(
             .select_from(CircuitDevice)
             .join(Circuit, Circuit.hid == CircuitDevice.circuit_hid)
             .where(column.in_(wanted[start : start + 500]))
-            .order_by(Circuit.name_key, Circuit.hid)
+            .order_by(Circuit.name_key, Circuit.hid, CircuitDevice.hid)
         )
         for holder, hid, name, enterprise_id, side, link_hid, status in rows:
             found[holder].append(
