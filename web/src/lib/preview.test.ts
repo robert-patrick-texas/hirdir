@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   appliedLabel,
   appliedText,
+  applyBegun,
   changeText,
   countsText,
   firstPage,
+  hasPreview,
   isOutcome,
+  isPreviewing,
+  isUnderWay,
   isWorking,
   type Job,
   kindPath,
@@ -16,6 +20,9 @@ import {
   outcomeOptions,
   type Preview,
   type PreviewRow,
+  previewedText,
+  previewFailed,
+  previewingText,
   progressText,
   ROWS_PAGE,
   reasonText,
@@ -25,6 +32,7 @@ import {
   statusLabel,
   stoppedText,
   valueText,
+  whatEnded,
 } from "./preview";
 
 function job(more: Partial<Job> = {}): Job {
@@ -246,7 +254,111 @@ describe("countsText and statusLabel", () => {
   });
 });
 
+describe("a preview in the background (P-325)", () => {
+  // As the server answers a file of more than a hundred rows with 202: the job, being
+  // previewed, none of its rows worked yet, no counts and no rows.
+  const sent = (more: Partial<Job> = {}) =>
+    job({
+      status: "previewing",
+      row_count: 10_000,
+      rows_previewed: 0,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      rejected: 0,
+      ...more,
+    });
+
+  it("is under way while the job is previewing, and is read again as an apply is", () => {
+    expect(isPreviewing(sent())).toBe(true);
+    expect(isUnderWay(sent())).toBe(true);
+    expect(isWorking(sent()), "it is no apply").toBe(false);
+    for (const status of ["queued", "applying"] as const) {
+      expect(isUnderWay(job({ status }))).toBe(true);
+    }
+    for (const status of ["previewed", "applied", "stopped", "failed"] as const) {
+      expect(isPreviewing(job({ status }))).toBe(false);
+      expect(isUnderWay(job({ status }))).toBe(false);
+    }
+  });
+
+  it("says how far it has got, with the separator of thousands", () => {
+    expect(previewingText(sent({ rows_previewed: 3200 }))).toBe("Previewing 3,200 of 10,000 rows");
+    expect(previewingText(sent({ row_count: 8000 }), ["item", "items"])).toBe(
+      "Previewing 0 of 8,000 items",
+    );
+    expect(statusLabel(sent())).toBe("Being previewed");
+  });
+
+  it("holds no counts and no rows to show until it is previewed", () => {
+    expect(hasPreview(sent({ rows_previewed: 9_999 }))).toBe(false);
+    // Previewed, it is a preview as one answered at once is: its counts add up to its rows.
+    const done = sent({
+      status: "previewed",
+      rows_previewed: 10_000,
+      created: 9_990,
+      rejected: 10,
+    });
+    expect(hasPreview(done)).toBe(true);
+    expect(statusLabel(done)).toBe("Previewed, not applied");
+    expect(applyBegun(sent())).toBe(false);
+    expect(applyBegun(done)).toBe(false);
+  });
+
+  it("failed, it was never whole, says so, and is not taken for a failed apply", () => {
+    // Cut short partway, or ended by a role that was lost as it was taken up.
+    for (const rows_previewed of [0, 4_000]) {
+      const failed = sent({ status: "failed", rows_previewed, failure: "An error." });
+      expect(previewFailed(failed)).toBe(true);
+      expect(hasPreview(failed)).toBe(false);
+      expect(statusLabel(failed)).toBe("Preview failed");
+      expect(applyBegun(failed)).toBe(false);
+    }
+    // Every row worked, and the preview not stored: nothing of it is counted.
+    expect(previewFailed(sent({ status: "failed", rows_previewed: 10_000 }))).toBe(true);
+    // A job of a release before 0.7.0 that failed to apply was previewed whole: its
+    // counts and rows are still shown, and it says nothing was applied.
+    const old = job({ status: "failed" });
+    expect(previewFailed(old)).toBe(false);
+    expect(hasPreview(old)).toBe(true);
+    expect(statusLabel(old)).toBe("Failed: nothing was applied");
+  });
+
+  it("says what it found once it has come, a bulk edit nothing to create", () => {
+    const done = sent({ status: "previewed", created: 9_990, rejected: 10 });
+    expect(previewedText(done)).toBe(
+      "Previewed: 9,990 to create, 0 to update, 0 unchanged, 10 rejected",
+    );
+    expect(
+      previewedText({ ...done, source: "bulk", created: 0, updated: 7_995, unchanged: 5 }),
+    ).toBe("Previewed: 7,995 to update, 5 unchanged, 10 rejected");
+  });
+
+  it("is seen to end once, when the job is read previewed or failed after previewing", () => {
+    expect(whatEnded(undefined, "previewing")).toBeNull();
+    expect(whatEnded(undefined, "previewed"), "a job come back to ended nothing here").toBeNull();
+    expect(whatEnded("previewing", "previewing")).toBeNull();
+    expect(whatEnded("previewing", "previewed")).toBe("preview");
+    expect(whatEnded("previewing", "failed")).toBe("preview");
+    expect(whatEnded("previewed", "previewed")).toBeNull();
+    expect(whatEnded("previewed", "queued"), "an apply asked for ends nothing").toBeNull();
+    expect(whatEnded("queued", "applying")).toBeNull();
+    expect(whatEnded("applying", "applied")).toBe("apply");
+    expect(whatEnded("queued", "stopped")).toBe("apply");
+    expect(whatEnded("stopped", "queued"), "a resume ends nothing").toBeNull();
+  });
+});
+
 describe("an apply in the background", () => {
+  it("has begun once it is asked for, and not while previewed or failed", () => {
+    for (const status of ["queued", "applying", "applied", "stopped"] as const) {
+      expect(applyBegun(job({ status }))).toBe(true);
+    }
+    for (const status of ["previewing", "previewed", "failed"] as const) {
+      expect(applyBegun(job({ status }))).toBe(false);
+    }
+  });
+
   it("is under way while the job is queued or applying, and not before or after", () => {
     expect(isWorking(job({ status: "queued" }))).toBe(true);
     expect(isWorking(job({ status: "applying" }))).toBe(true);

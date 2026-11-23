@@ -41,7 +41,11 @@ async function signedIn(api: APIRequestContext, account: Account): Promise<Heade
   return { Authorization: `Bearer ${token}` };
 }
 
-/** Preview a file of contacts, as the person whose headers these are. */
+/**
+ * Preview a file of contacts, as the person whose headers these are. 0.9.19: a file of
+ * more than a hundred rows is answered at once, being previewed in the background, and
+ * is waited for until it is previewed (P-325).
+ */
 async function preview(
   api: APIRequestContext,
   headers: Headers,
@@ -56,8 +60,21 @@ async function preview(
     headers: { ...headers, "Content-Type": "text/csv" },
     data: Buffer.from(`${["name,email", ...rows].join("\n")}\n`, "utf8"),
   });
-  expect(answer.status(), await answer.text()).toBe(201);
-  return ((await answer.json()) as { job: Job }).job;
+  expect(answer.status(), await answer.text()).toBe(people.length > 100 ? 202 : 201);
+  const job = ((await answer.json()) as { job: Job }).job;
+  if (job.status !== "previewing") return job;
+  const path = `./api/v1/imports/${encodeURIComponent(job.hid)}`;
+  let previewed = job;
+  await expect
+    .poll(
+      async () => {
+        previewed = (await (await api.get(path, { headers })).json()) as Job;
+        return previewed.status;
+      },
+      { message: `${name} is previewed in the background`, timeout: 120_000 },
+    )
+    .toBe("previewed");
+  return previewed;
 }
 
 /** Ask for a preview to be applied: the answer is at once, the job. */

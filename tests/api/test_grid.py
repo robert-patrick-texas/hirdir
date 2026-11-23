@@ -299,15 +299,25 @@ def test_what_a_sort_needs_is_in_the_statement_only_when_it_is_asked_for(db: Ses
     asked = [one for one in statements if of_the_list(one)]
     event.remove(db.get_bind(), "before_cursor_execute", note)
 
+    # The records are matched once, and the page and the total are read from them in
+    # one statement (P-326).
+    (page,), (sorted_page,) = plain, asked
     # The list as it is asked for by default reads no tag and no address, and counts
     # no minor item: a sort that nobody asked for costs it nothing.
-    (count, page), (count_when_sorted, sorted_page) = plain, asked
     for part in ("tag_links", "addresses", "hirdir_address_key", "minor_item"):
         assert part not in page, part
         assert part in sorted_page, part
-    # And a sorted list is counted as an unsorted one is: the sort is in the ORDER BY.
-    assert count_when_sorted == count
-    assert sorted_page.split("ORDER BY")[0] == page.split("ORDER BY")[0]
+
+    def matching(statement: str) -> str:
+        # What the records are matched by: what follows the last value they are sorted
+        # by, up to the reading of the page.
+        matched = statement.split("\n SELECT items.hid", 1)[0]
+        return matched.split(" AS sorted_on_")[-1].split("\nFROM items ", 1)[1]
+
+    # And a sorted list matches the records an unsorted one does: the sort adds what
+    # each is sorted by, and nothing to what is matched.
+    assert "WHERE" in matching(page)
+    assert matching(sorted_page) == matching(page)
 
 
 def test_pattern_that_backtracks_without_end_is_refused_in_time(make: Maker) -> None:

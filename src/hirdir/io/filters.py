@@ -10,7 +10,7 @@ against them and turns it into SQL.
 import difflib
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -570,16 +570,30 @@ def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[So
     return keys
 
 
-def order_by(keys: list[SortKey], fields: Mapping[str, Field]) -> list[ColumnElement[Any]]:
-    """Return the ORDER BY terms of a sort. Text sorts without regard to case."""
-    terms: list[ColumnElement[Any]] = []
+def sorted_on(keys: list[SortKey], fields: Mapping[str, Field]) -> list[ColumnElement[Any]]:
+    """Return what each key of a sort sorts by, in order. Text sorts without regard to
+    case."""
+    found: list[ColumnElement[Any]] = []
     for key in keys:
         field = fields[key.field]
         if field.ordered_by is not None:
-            expression = field.ordered_by
+            found.append(field.ordered_by)
         elif _is_text(field):
-            expression = dialect.folded(field.expression)
+            found.append(dialect.folded(field.expression))
         else:
-            expression = field.expression
-        terms += dialect.blanks_last(expression, key.descending)
+            found.append(field.expression)
+    return found
+
+
+def order_by(keys: list[SortKey], fields: Mapping[str, Field]) -> list[ColumnElement[Any]]:
+    """Return the ORDER BY terms of a sort. Text sorts without regard to case."""
+    return ordered(keys, sorted_on(keys, fields))
+
+
+def ordered(keys: list[SortKey], values: Sequence[Any]) -> list[ColumnElement[Any]]:
+    """Return the ORDER BY terms that sort by each value, one to a key of a sort, in the
+    direction of its key, blank values last."""
+    terms: list[ColumnElement[Any]] = []
+    for key, value in zip(keys, values, strict=True):
+        terms += dialect.blanks_last(value, key.descending)
     return terms
