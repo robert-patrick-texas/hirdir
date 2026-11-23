@@ -266,10 +266,21 @@ upload, by its extension and by its first bytes.
   order of the rows once for the whole job, then works them 50 to a batch
   (`io/imports.py`), each batch a transaction that takes the one writer's place before
   it looks, as a small preview does, and stores with its rows what it did with each
-  one and how far the job has got. Between two batches it leaves the writer's place
-  free for 0.12 seconds: SQLite tells a change that waits for the place to try again
-  every tenth of a second at the longest, so such a change is sure to get it there,
-  and a sign-in waits a batch, a fraction of a second, at most. A batch that waits
+  one and how far the job has got. Between two batches it takes the writer's place
+  again at once, unless a change by somebody else is under way (P-143, P-324). Every
+  connection that writes to a database in a file holds a shared lock on `writing.lock`
+  beside it, from its first change until its transaction ends, each connection a lock
+  of its own (`db/engine.py`): a request, a job of the clock and a command of `hirdir
+  admin` alike, in whichever process, and nothing is written for it. Between two
+  batches the worker asks for that lock alone, without waiting. Granted, nobody is
+  changing anything, and the next batch begins; refused, a change is under way, which
+  may be waiting for the place, and the worker looks again every 5 ms until it is
+  done, a second at the most, and then goes on. So a change that waited for a batch, a
+  sign-in among them, gets the place as the batch ends, and waits a batch, a fraction
+  of a second, at most, while an apply that nobody writes beside never stops between
+  its batches. Where the file cannot be opened, the worker leaves the place free for
+  0.12 seconds instead, as before 0.9.19: SQLite tells a change that waits for the
+  place to try again every tenth of a second at the longest. A batch that waits
   longer than `busy_timeout` itself is tried again from its start. The rows of one
   group, which are checked together, are kept in one batch whatever its size, and a
   group of thousands of members therefore holds others up for as long as it takes.
@@ -314,6 +325,48 @@ upload, by its extension and by its first bytes.
   stopped it. An error nobody foresaw throws the copy away, makes the job `failed`
   with the reason and the request ID in `failure`, and is logged with its traceback;
   the rows that it held for the work are removed with it, and the file is sent again.
+- **What a row of a file costs** (P-324). A preview and an apply work every row
+  through the functions of any other change, and then say what the row changed, from
+  its record as a file holds it, read before the row and after it. A preview on a copy
+  is one transaction, each row a savepoint within it, as a preview in place is: the
+  copy takes the writer's place before its first row, so that storing a row's
+  savepoint is no transaction stored on the disk. The records of a file of items are
+  read back 50 rows at a time, after the last of them, and not each after its own
+  row: what a row changed is what its record reads as right after its own write, so
+  before a row is written, the rows of the batch whose records it may change the read
+  of are read back first. Of other items, the read of an item shows the texts the item
+  it is in, its host and the item it was seen on are written as, which another item
+  that comes to answer to the same text changes; what it has from the items and the
+  groups its walk goes up through, and whether its host has left the team's hands;
+  how many items run on it; and, for a context with no host, the item that has its
+  serial number. A row that changes one of those items, names this one as its host, or
+  makes or renames an item that answers to one of those texts has the rows before it
+  read first (`Items.shown` and `Items.reach` in `io/entities.py`). In an apply, a row
+  that would no longer do what was previewed shows only once its batch is read; the
+  batch is then undone and worked again a row at a time, each read after its own
+  write, so that the row is left out as stale before the rows after it are worked, as
+  it always was. Every other entity reads each row back after its own write. What an
+  item is read as, to be compared, is the columns a row sets, read as they are stored,
+  which are all a row's changes are made of: what is worked out in force or beside
+  them, the sources, the coverage, the health, the review and the count of what runs
+  on it, is left out of that read, and is the export's alone. What a
+  file of items cannot change is looked up once for it and not for each row
+  (`domain/held.py`): the places and their paths, the operators the places give and
+  those retired, the settings, the time zone and the weights in force, the lifecycle
+  rules and the kinds of the models. It is held while the rows are worked, a preview
+  letting go of it with the records every 500 rows, and an apply holding it for one
+  batch alone, since another request may change any of it between two batches; it is
+  no record, and nothing inherited is copied down. Before each batch of 50, the
+  models, the owners and the locations its rows name are read together, as each row
+  would find them: no row of items makes or renames any of them but a model made for
+  a reference, which is looked for again. So are the items that have the serial
+  numbers its rows give: an item a row finds by its model and serial number is the one
+  read so, unless a row before it in the batch gave that number or took it from an
+  item, and then it is looked for as it stands. A value a row leaves blank is not
+  looked up; the items that have the serial numbers of a file are read together when
+  the order of its rows is worked out, which writes nothing; and a transaction that
+  took the writer's place outside a savepoint holds it until it ends, and is not given
+  it again for each row (`dialect.hold_other_writers`).
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
@@ -2345,6 +2398,64 @@ percentile and 970 ms at the longest: they waited beyond the idle median 374 ms,
 and 877 ms. A sign-in waits for the batch that holds the one writer to end, so how long
 it waits is how long a batch takes, under a second (D-185: "a fraction of a second at
 most") only while 50 rows take under a second.
+
+**An import at 0.9.19, each row made cheaper** (P-324), measured while other work shared
+the host, so that each number stands beside the load it was taken at and is no
+measurement of the quality: S36 and the final timing are run with the host to itself.
+Each step was measured on a preview and an apply of 1,000 new items, in one process on
+a copy of the fixture, by the processor time of a row and the statements it sends:
+
+| After | Preview, ms a row | statements | Apply, ms a row | statements | Load |
+|---|--:|--:|--:|--:|--:|
+| 0.9.18 | 15.3 | 38.6 | 16.2 | 41.7 | 6.8 |
+| the copy one transaction | 14.6 ¹ | 38.6 | | | 0.9 |
+| records read back 50 at a time | 8.1 | 20.8 | 9.0 | 23.9 | 5.7 |
+| what a file cannot change held | 7.8 | 15.7 | 8.9 | 19.6 | 7.7 |
+| no blank value looked up | 5.7 | 13.7 | 7.3 | 17.6 | 9.5 |
+| serial numbers read together for the order, places by HID, one look for a twin | 5.1 | 8.7 | 7.8 | 12.7 | 6.0 |
+| no pause where nobody else writes, records read before their batch | 4.4 | 8.7 | 5.8 | 12.7 | 2.9 |
+| models, owners and locations read ahead of each batch | 4.2 | 7.7 | 4.9 | 8.6 | 5.7 |
+| the writer's place not taken again | 3.7 | 6.7 | 4.1 | 7.5 | 6.2 |
+| the read a row is compared with, two statements built once | 3.3 | 6.5 | 3.8 | 7.4 | 8.0 |
+| the items of a batch's serial numbers read ahead of it, on a quiet host | 3.0 | 5.6 | 3.5 | 6.4 | 1.3 |
+
+¹ The time of the whole row, not its processor time alone, against 17.1 ms for 0.9.18
+on the same quiet host: the copy that stored each row by itself waited on the disk.
+
+Until the step that ends the pause, an apply also left the writer's place free for
+0.12 s after every batch, 2.3 s in 1,000 rows, which its processor time does not show.
+A file of 1,000 updates by HID, `hid,comments`, went from 27.0 ms a row and 62.6
+statements to 2.4 ms and 5.6 to preview, and from 25.5 ms to 2.2 ms to apply. Every row
+of both files, and every audit event, came out as 0.9.18 made them.
+
+What a new item's row costs now, profiled over a preview of 10,000: its record and its
+audit event stored by the session, one after the other, a third of the time; finding
+its record, an eighth; the look for a twin of its serial number or asset tag, a tenth;
+its savepoint, a tenth; reading the batch back, an eighth; SQLite itself, a tenth of the
+whole. A row sends six or seven statements: its savepoint and the end of it, the find,
+the look for a twin, and the two inserts.
+
+`make time-import`, 10,000 new items, the two run one after the other on the shared
+host:
+
+| | 0.9.18, load 5.1 to 5.5 | 0.9.19, load 7.7 to 9.4 |
+|---|--:|--:|
+| Preview | 209.4 s | 44.2 s |
+| Apply, from the request to the job applied | 227.3 s | 73.0 s |
+| the order of the rows | 4.5 s | 1.5 s |
+| 200 batches | 198.5 s, median 941 ms | 69.7 s, median 343 ms |
+| 199 pauses between them | 24.1 s | 1.7 s, the longest 98 ms |
+| a sign-in with nothing going on, median | 239 ms | 227 ms |
+| what a sign-in waited during the apply, median / 95th / longest | 799 / 1210 / 2200 ms | 196 / 499 / 525 ms |
+
+With the last step, a preview of more than a hundred rows worked in the background
+(P-325), and the host quiet but for the timing itself, load 1.0 to 1.4, two runs: the
+preview 28.6 s and 30.6 s from the request to the job previewed, the request answered
+in 1.1 s; the apply 40.7 s and 40.2 s, its 200 batches 187 and 190 ms at the median and
+252 and 265 ms at the 95th percentile, the 199 pauses 0.4 s in all; a sign-in 85 ms
+with nothing going on, and during the apply it waited 138 and 141 ms beyond that at the
+median, 281 and 290 ms at the 95th percentile and 324 and 290 ms at the longest. The
+preview stands at its 30 s, and the apply well within its minute.
 
 **Measured at 0.8.0.** On the same host, median and 95th percentile in milliseconds of
 15 runs after 2 warm-ups, with the host otherwise quiet: its load average over the

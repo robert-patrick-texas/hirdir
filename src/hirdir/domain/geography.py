@@ -35,7 +35,7 @@ from hirdir.db.models import (
     Region,
     Site,
 )
-from hirdir.domain import addresses, choices, countries, records, settings, tags
+from hirdir.domain import addresses, choices, countries, held, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -355,6 +355,12 @@ class Atlas:
         return found
 
 
+def atlas(db: Session) -> Atlas:
+    """Return an atlas of the places: a new one, or while a file of items is worked, which
+    changes no place, the one held for it, so that each place is read once (P-324)."""
+    return held.kept(db, ("atlas", _BY_CODES.get()), lambda: Atlas(db))
+
+
 def _parts(text: str) -> list[str]:
     return [part.strip() for part in text.split(SEPARATOR)]
 
@@ -368,7 +374,17 @@ def find_place(db: Session, text: str, within: Place | None = None) -> Place | N
     """
     text = text.strip()
     if ids.is_hid(text):
+        # While a file of items is worked, which makes no place, the HIDs of the regions
+        # and the sites, which are few, are read once: an HID that is neither's is not
+        # looked for among them, each a statement of its own (P-324).
+        known = (
+            held.kept(db, "region_and_site_hids", lambda: _region_and_site_hids(db))
+            if held.of(db) is not None
+            else None
+        )
         for level in LEVELS:
+            if known is not None and level != LOCATION and text not in known[level]:
+                continue
             record = db.get(MODELS[level], text)
             if record is not None:
                 return Place(level, record)
@@ -379,6 +395,13 @@ def find_place(db: Session, text: str, within: Place | None = None) -> Place | N
     if found is None and within is not None:
         found = _walk(db, parts, within)
     return found
+
+
+def _region_and_site_hids(db: Session) -> dict[str, set[str]]:
+    return {
+        REGION: set(db.scalars(select(Region.hid))),
+        SITE: set(db.scalars(select(Site.hid))),
+    }
 
 
 def find_within(

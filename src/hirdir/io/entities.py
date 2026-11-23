@@ -9,10 +9,11 @@ them, such as a vendor's name for a vendor.
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, ClassVar, Final
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, bindparam, func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import ids
@@ -73,6 +74,7 @@ from hirdir.domain import (
     geography,
     groups,
     health,
+    held,
     hosting,
     inheritance,
     items,
@@ -217,6 +219,19 @@ class Run:
         # The external system a file of items was read from, whose identifier of each
         # row, `external_id`, finds its item first (P-248). None for any other file.
         self.system_hid: str | None = None
+        # While the order of the rows is worked out, which writes nothing: the items that
+        # have a serial number a row gives, read together, by their model and the key of
+        # the number (P-324). None at any other time.
+        self.by_serial: dict[tuple[str | None, str | None], Item] | None = None
+        # Before each batch of a file of items, the same for the rows of the batch, and
+        # the keys of the serial numbers that its rows have given or changed since, which
+        # are looked up again as they stand (P-324). None outside a batch.
+        self.batch_serials: dict[tuple[str | None, str | None], Item] | None = None
+        self.touched_serials: set[str] = set()
+        # The rows whose records wait to be read back together, to say what each row
+        # changed, where the entity reads them so (P-324): see `hirdir.io.imports`. None
+        # where each is read back after its own write.
+        self.later: Any = None
 
     def start_row(self, number: int = 0) -> None:
         """Begin a row: nothing noted yet, nothing to forget."""
@@ -255,10 +270,15 @@ class Run:
         self._held.clear()
 
     def let_go(self) -> None:
-        """Let the session forget the records worked on so far."""
+        """Let the session forget the records worked on so far, and what is held for the
+        file with them (P-324)."""
         self.db.flush()
         self.db.expunge_all()
         self._held.clear()
+        self.batch_serials, self.touched_serials = None, set()
+        holding = held.of(self.db)
+        if holding is not None:
+            holding.drop()
 
     def _get(self, model: Any, hid: str) -> Any:
         record = self._held.get(hid)
@@ -387,8 +407,14 @@ class Run:
         self._learn(self.moved, (group_hid, member_hid), self.row)
 
     def place(self, text: str, field: str, level: str | None = None) -> geography.Place:
-        """Return the region, site or location a row names, by its HID or its path."""
-        return geography.the_place(self.db, text, field, level)
+        """Return the region, site or location a row names, by its HID or its path: found
+        once for the text while a file of items is worked, which changes no place
+        (P-324). A text that names none is refused each time it is given."""
+        return held.kept(
+            self.db,
+            ("place", text, level),
+            lambda: geography.the_place(self.db, text, field, level),
+        )
 
     def contact(self, text: str, field: str = "contact") -> Contact:
         """Return the one contact a row names: by HID, email address or name."""
@@ -424,6 +450,64 @@ class Run:
         if found is None:
             raise Invalid("there is no such group", {field: f"there is no device group {text}"})
         return found
+
+
+# --- what the read of a record shows of others (P-324) ---------------------------------
+
+
+def _forms(*texts: Any) -> frozenset[str]:
+    """Return the forms in which texts name an item, as each rule that finds one by a text
+    compares them: by its key, and by the name without case."""
+    found: set[str] = set()
+    for text in texts:
+        if isinstance(text, str) and text.strip():
+            found.add(records.key(text))
+            found.add(text.strip().lower())
+    return frozenset(found)
+
+
+@dataclass
+class Shown:
+    """What the read of a record shows of other records than itself (P-324): so that a
+    row of the same batch that may change any of it has the record read first, as it
+    stood after its own row, and what is read of it before a row stays true."""
+
+    hid: str
+    # The texts it is known by, which a row may name it by as a host, and those it
+    # names other records by, which a record that a row makes or renames may come to
+    # answer to as well.
+    texts: frozenset[str]
+    # Works out the records whose own state it shows, itself among them: asked only
+    # where a row changes a record that is there.
+    walked: Callable[[], frozenset[str]]
+    _records: frozenset[str] | None = None
+
+    def records(self) -> frozenset[str]:
+        """Return the records whose own state the read shows, worked out once."""
+        if self._records is None:
+            self._records = self.walked()
+        return self._records
+
+
+@dataclass(frozen=True)
+class Reach:
+    """What the write of a row may change of other records than its own (P-324)."""
+
+    # The record it changes, where there is one already.
+    record: str | None
+    # The hosts the record runs on, whose count of what runs on them its write may change.
+    hosts: frozenset[str]
+    # The texts its record is known by before and after the write, and those it names
+    # other records by.
+    texts: frozenset[str]
+
+    def touches(self, shown: Shown) -> bool:
+        """Say whether the write may change what a read shows."""
+        return (
+            shown.hid in self.hosts
+            or bool(self.texts & shown.texts)
+            or (self.record is not None and self.record in shown.records())
+        )
 
 
 # The columns that set a primary management address, and the family each is of: an
@@ -610,6 +694,29 @@ class Entity:
     # The columns whose values an input format may write in another form than the file
     # gives them (P-322): what a row changes of one says the file's value beside it.
     formatted: ClassVar[frozenset[str]] = frozenset()
+    # Whether the records of a batch of rows are read back together, after the batch, to
+    # say what each row changed, and not each after its own write (P-324). An entity that
+    # does says, in `shown` and `reach`, what of other records a read shows and a row may
+    # change, so that a record is read first where a later row may change what it shows.
+    reads_together: ClassVar[bool] = False
+    # Whether a run of a file of this entity holds what it cannot change, looked up once
+    # for the file and not for each row (`hirdir.domain.held`, P-324): the places, the
+    # operators, the settings, the lifecycle rules and the kinds of the models. An entity
+    # whose rows write any of them holds nothing.
+    holds: ClassVar[bool] = False
+
+    def shown(self, run: Run, record: Any) -> Shown:
+        """Return what the read of a record shows of other records (P-324)."""
+        raise NotImplementedError
+
+    def reach(self, run: Run, record: Any | None, values: Mapping[str, Any]) -> Reach:
+        """Return what the write of a row may change of other records than its own."""
+        raise NotImplementedError
+
+    def ready(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Before a batch of rows is worked: read together what its rows will look up
+        one by one, where nothing a row of the batch does can change what is found
+        (P-324). Most entities read nothing ahead."""
 
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
@@ -1873,6 +1980,13 @@ def _weight_in_force(
     return value == in_force.value and (in_force.defaulted or in_force.raised)
 
 
+# The item of a model with the key of a serial number: built once, and given the two as
+# parameters, since building it anew for each row cost more than the look (P-324).
+_BY_SERIAL = select(Item).where(
+    Item.catalog_entry_hid == bindparam("model"), Item.serial_key == bindparam("key")
+)
+
+
 # What an item runs on, as a file names it (P-246): an item as `parent` names one, a
 # stack or a cluster by its name, and the item it was seen on with the moment.
 HOSTING = (
@@ -2097,13 +2211,13 @@ class Items(Entity):
             entry = run.entry(vendor, pid)
             if entry is None:
                 return None
-            return self._by_serial(db, entry.hid, serial, values)
+            return self._by_serial(run, entry.hid, serial, values)
         # A row that names a line and no model is of the line's model (D-161): its
         # serial number finds the item as the vendor and PID would. Where it finds
         # none, the rules that follow are tried, as for any row with no model.
         line_model = self._line_model(run, None, values)
         if line_model is not None and serial:
-            found = self._by_serial(db, line_model, serial, values)
+            found = self._by_serial(run, line_model, serial, values)
             if found is not None:
                 return found
             # What 0.6.0 let onto the line, of another model or of none, with that
@@ -2213,15 +2327,38 @@ class Items(Entity):
         return None
 
     def _by_serial(
-        self, db: Session, model: str, serial: str, values: Mapping[str, Any]
+        self, run: Run, model: str, serial: str, values: Mapping[str, Any]
     ) -> Any | None:
         """Return the item of a model with a serial number, or the one that arrived as a
-        count that the row gives it to."""
-        return db.scalar(
-            select(Item).where(
-                Item.catalog_entry_hid == model, Item.serial_key == records.key(serial)
-            )
-        ) or self._received_as_a_count(db, values)
+        count that the row gives it to. While the order of the rows is worked out, the
+        first is among those read together for every row (P-324)."""
+        db = run.db
+        key = records.key(serial)
+        if run.by_serial is not None:
+            found = run.by_serial.get((model, key))
+        elif run.batch_serials is not None and key not in run.touched_serials:
+            # No row of the batch has given an item this number or taken it from one.
+            found = run.batch_serials.get((model, key))
+        else:
+            found = db.scalar(_BY_SERIAL, {"model": model, "key": key})
+        return found or self._received_as_a_count(db, values)
+
+    @staticmethod
+    def _serials_of(
+        db: Session, rows: Sequence[Mapping[str, Any]]
+    ) -> dict[tuple[str | None, str | None], Item]:
+        """Return the items that have a serial number a row gives, by their model and the
+        key of the number: one at most of each, as the unique rule holds."""
+        keys = sorted(
+            {records.key(row["serial_number"]) for row in rows if row.get("serial_number")}
+        )
+        found: dict[tuple[str | None, str | None], Item] = {}
+        for start in range(0, len(keys), 500):
+            for item in db.scalars(
+                select(Item).where(Item.serial_key.in_(keys[start : start + 500]))
+            ):
+                found[(item.catalog_entry_hid, item.serial_key)] = item
+        return found
 
     @staticmethod
     def _received_as_a_count(db: Session, values: Mapping[str, Any]) -> Any | None:
@@ -2359,11 +2496,19 @@ class Items(Entity):
         ):
             return sorted(plain, key=lambda number: (later[number - 1], number))
         named: dict[int, Item | None] = {}
-        for number, row in zip(plain, rows, strict=True):
-            try:
-                named[number] = db.get(Item, row["hid"]) if row.get("hid") else self.find(run, row)
-            except DomainError:
-                named[number] = None
+        # Nothing is written while the rows are found: the items of their serial numbers
+        # are read together, and not a statement for each row (P-324).
+        run.by_serial = self._serials_of(db, rows)
+        try:
+            for number, row in zip(plain, rows, strict=True):
+                try:
+                    named[number] = (
+                        db.get(Item, row["hid"]) if row.get("hid") else self.find(run, row)
+                    )
+                except DomainError:
+                    named[number] = None
+        finally:
+            run.by_serial = None
         lines = items.lines_above(db, [item for item in named.values() if item is not None])
         depths: dict[int, int] = {}
         for number, row in zip(plain, rows, strict=True):
@@ -2387,7 +2532,9 @@ class Items(Entity):
     def _above(run: Run, record: Any | None, given: Mapping[str, Any]) -> list[Item]:
         """Return the items the item will be in, the nearest first."""
         current = record.parent_item_hid if record is not None else None
-        parent = run.db.get(Item, given.get("parent_item_hid", current) or "")
+        hid = given.get("parent_item_hid", current)
+        # An item in nothing is in nothing: no HID is looked up for it (P-324).
+        parent = run.db.get(Item, hid) if hid else None
         return [] if parent is None else [parent, *items.ancestors(run.db, parent)]
 
     @staticmethod
@@ -2489,6 +2636,17 @@ class Items(Entity):
     _HOST_WORDS = frozenset({*hosting.FIELDS, "parent_item_hid"})
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        # The serial numbers this row may give or take, which later rows of its batch find
+        # their items by as they stand, and not as they were read before it (P-324).
+        given = values.get("serial_number")
+        run.touched_serials |= {
+            key
+            for key in (
+                records.key(given) if isinstance(given, str) else None,
+                record.serial_key if record is not None else None,
+            )
+            if key
+        }
         try:
             written = self._write(run, record, values)
             self._stack_noted(run, written, values)
@@ -2670,8 +2828,132 @@ class Items(Entity):
         if run.system_hid is not None and given:
             systems.reported(run.db, run.context, run.system_hid, record.hid, given)
 
+    # --- read back a batch at a time (P-324) ---
+
+    reads_together = True
+    holds = True
+    # How a row names an item, and the item it names as its host, its parent or what it
+    # was seen on.
+    _CALLED = ("hid", "serial_number", "asset_tag", "name", "hostname")
+    _NAMING = ("host", "observed_host", "parent")
+
+    def shown(self, run: Run, record: Any) -> Shown:
+        """Return what the read of an item shows of other records than itself.
+
+        Of other items it shows: the texts the item it is in, its host and the item it
+        was seen on are written as, each its own unless another item answers to the
+        same; what it has from the items and groups its walk goes up through (P-175,
+        P-246), and whether its host has left the team's hands; how many items run on
+        it; and, for a context with no host, the one item that has its serial number
+        and may host it (P-251). What it shows of its model, its owner, its operator,
+        its places, its purchase line and the settings is nothing a file of items
+        changes; its tags, addresses, coverage and registrations are its own.
+        """
+        db = run.db
+        named = [
+            db.get(Item, hid)
+            for hid in (record.parent_item_hid, record.host_item_hid, record.observed_host_hid)
+            if hid
+        ]
+        texts = _forms(
+            *(getattr(record, name) for name in self._CALLED),
+            *(items.reference_text(one) for one in named if one is not None),
+        )
+
+        def walked() -> frozenset[str]:
+            walk = items.walks_above(db, [record])[record.hid]
+            return frozenset(
+                {
+                    record.hid,
+                    *(hid for hid in (record.observed_host_hid,) if hid),
+                    *(step.record.hid for step in walk if isinstance(step.record, Item)),
+                }
+            )
+
+        return Shown(record.hid, texts, walked)
+
+    def reach(self, run: Run, record: Any | None, values: Mapping[str, Any]) -> Reach:
+        """Return what a row of items may change of other items: the item itself, which
+        the reads of what is in it, runs on it or was seen on it show; the count of what
+        runs on its host, by its host before the row and the one the row names; and who
+        answers to the texts it is known by, before and after, and that it names others
+        by, which a reference to another item is written as."""
+        texts = _forms(*(values.get(name) for name in (*self._CALLED, *self._NAMING)))
+        if record is None:
+            return Reach(None, frozenset(), texts)
+        texts |= _forms(*(getattr(record, name) for name in self._CALLED))
+        hosts = frozenset({record.host_item_hid} if record.host_item_hid else ())
+        return Reach(record.hid, hosts, texts)
+
+    def ready(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Read together, before a batch of rows of items, the items of the serial numbers
+        they give, and the models, the owners and the locations they name: each is then
+        found by its row in what the run holds, as a row would find it, since no row of
+        items makes or renames any of them but the models made for a reference, which are
+        looked for again, and the items of the serial numbers that an earlier row of the
+        batch gave or changed, which are looked for again too. Vendors, which are few,
+        are found as before."""
+        db = run.db
+        run.batch_serials, run.touched_serials = self._serials_of(db, rows), set()
+        wanted: dict[str, set[str]] = {}
+        for row in rows:
+            vendor, pid = row.get("vendor"), row.get("pid")
+            if vendor and pid:
+                found = run.vendor(vendor)
+                if found is not None and (found.hid, records.key(pid)) not in run._entries:
+                    wanted.setdefault(found.hid, set()).add(records.key(pid))
+        keys = sorted({key for listed in wanted.values() for key in listed})
+        for start in range(0, len(keys), 500):
+            for entry in db.scalars(
+                select(CatalogEntry).where(
+                    CatalogEntry.vendor_hid.in_(sorted(wanted)),
+                    CatalogEntry.pid_key.in_(keys[start : start + 500]),
+                )
+            ):
+                if entry.pid_key in wanted.get(entry.vendor_hid, ()):
+                    run._learn(run._entries, (entry.vendor_hid, entry.pid_key), entry.hid)
+                    run._held[entry.hid] = entry
+        labels = sorted(
+            {
+                records.key(row["owner"])
+                for row in rows
+                if row.get("owner") and not ids.is_hid(row["owner"])
+            }
+            - set(run._owners)
+        )
+        for start in range(0, len(labels), 500):
+            for owner in db.scalars(
+                select(Owner).where(Owner.label_key.in_(labels[start : start + 500]))
+            ):
+                run._learn(run._owners, owner.label_key, owner.hid)
+                run._held[owner.hid] = owner
+        # The models of the items that rows name by their HID, which their writes read.
+        named = sorted({row["hid"] for row in rows if row.get("hid")})
+        for start in range(0, len(named), 500):
+            for entry in db.scalars(
+                select(CatalogEntry)
+                .join(Item, Item.catalog_entry_hid == CatalogEntry.hid)
+                .where(Item.hid.in_(named[start : start + 500]))
+            ):
+                run._held[entry.hid] = entry
+        places = sorted(
+            {
+                text.strip()
+                for row in rows
+                for name in ("location", "planned_location")
+                if isinstance(text := row.get(name), str) and ids.is_hid(text.strip())
+            }
+        )
+        for start in range(0, len(places), 500):
+            # Held, so that the session keeps them for the rows that find them by HID.
+            for location in db.scalars(
+                select(Location).where(Location.hid.in_(places[start : start + 500]))
+            ):
+                run._held[location.hid] = location
+
     def read_for(self, run: Run, found: list[Any]) -> list[dict[str, Any]]:
-        rows = self.read(run.db, found)
+        # As a row is compared: what a row sets, and none of what is in force (P-324).
+        rows = self.read(run.db, found, compared=True)
         if run.system_hid is not None:
             known = systems.of_system(run.db, run.system_hid, [item.hid for item in found])
             for item, row in zip(found, rows, strict=True):
@@ -2681,12 +2963,21 @@ class Items(Entity):
                 row["registration"] = registration.status if registration else None
         return rows
 
-    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+    def read(
+        self, db: Session, found: list[Any], own: bool = True, compared: bool = False
+    ) -> list[dict[str, Any]]:
+        """Return the columns of each item, typed. With own, stored values and not the
+        ones in force. With `compared`, as a row of a file is compared with it, to say
+        what the row changes (P-324): the columns a row sets, each as `own` reads it,
+        which is all the changes of a row are made of, and none of what is worked out
+        in force or beside them, the sources, the coverage, the health, the review and
+        what runs on it, which cost the most to read."""
+        own = own or compared
         hids = [item.hid for item in found]
         lines = items.lines_above(db, found)
         entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in found})
         vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
-        owned = descent.of_items(db, found, lines, "owner_hid")
+        owned = {} if compared else descent.of_items(db, found, lines, "owner_hid")
         its_owners = _by_hid(
             db,
             Owner,
@@ -2695,28 +2986,95 @@ class Items(Entity):
         labels = tags.labels_of(db, self.record_type, hids)
         primaries = _primaries(db, "item_hid", hids)
         parents = items.reference_texts(db, [line[0] for line in lines.values() if line])
-        on_hosts = _hosting_cells(db, found)
-        atlas = geography.Atlas(db)
+        on_hosts = _hosting_cells(db, found, compared)
+        atlas = geography.atlas(db)
         atlas.read_locations(
             {item.location_hid for item in found}
             | {item.planned_location_hid for item in found}
             | {one.location_hid for line in lines.values() for one in line}
         )
-        looked_after = operators.of_items(db, found, lines)
-        placed = descent.of_items(db, found, lines, "location_hid")
-        going = descent.of_items(db, found, lines, "planned_location_hid")
-        atlas.read_locations(
-            {one.value for one in placed.values()} | {one.value for one in going.values()}
-        )
+        looked_after: Mapping[str, inheritance.Effective] = {}
+        placed: Mapping[str, inheritance.Effective] = {}
+        going: Mapping[str, inheritance.Effective] = {}
+        if not compared:
+            looked_after = operators.of_items(db, found, lines)
+            placed = descent.of_items(db, found, lines, "location_hid")
+            going = descent.of_items(db, found, lines, "planned_location_hid")
+            atlas.read_locations(
+                {one.value for one in placed.values()} | {one.value for one in going.values()}
+            )
         marks = _by_hid(
             db,
             Operator,
             {item.operator_hid for item in found} | {one.value for one in looked_after.values()},
         )
         called = {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
+        arrived_on = _line_names(db, {item.purchase_line_hid for item in found})
+        in_force_of = (
+            {}
+            if compared
+            else self._in_force_cells(db, found, lines, entries, its_owners, owned, placed, atlas)
+        )
+        rows = []
+        for item in found:
+            entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
+            line = lines[item.hid]
+            in_force = inheritance.of_item(item, entry, line)
+            row: dict[str, Any] = {
+                **_kept(item),
+                "vendor": vendors[entry.vendor_hid].name if entry else None,
+                "pid": entry.pid if entry else None,
+                **{name: getattr(item, name) for name in self._direct if name != "tags"},
+                "parent": parents[line[0].hid] if line else None,
+                **on_hosts[item.hid],
+                "state_reason": item.state_reason,
+                **primaries.get(item.hid, NO_MGMT),
+                "record_status": item.record_status,
+                "tags": labels[item.hid],
+                # Known only to the system a file is read from: see `read_for`.
+                "external_id": None,
+                "purchase_line": arrived_on.get(item.purchase_line_hid or ""),
+                **in_force_of.get(item.hid, {}),
+            }
+            if not compared:
+                in_force = row.pop("_in_force")
+            operator = item.operator_hid if own else looked_after[item.hid].value
+            row["operator"] = called[operator] if operator else None
+            plan = item.planned_location_hid if own else going[item.hid].value
+            row["planned_location"] = atlas.location_path(plan) or None
+            if not compared:
+                row["operator_source"] = looked_after[item.hid].source
+                row["planned_location_source"] = going[item.hid].source
+            for name, effective in in_force.items():
+                column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
+                value = getattr(item, name) if own else effective.value
+                if name == "owner_hid":
+                    value = items.name_or_hid(its_owners[value].label, value) if value else None
+                elif name == "location_hid":
+                    value = atlas.location_path(value) if value else None
+                row[column] = value
+                if not compared:
+                    row[f"{column}_source"] = effective.source
+            rows.append(row)
+        return rows
+
+    def _in_force_cells(
+        self,
+        db: Session,
+        found: list[Any],
+        lines: Mapping[str, list[Item]],
+        entries: Mapping[str, CatalogEntry],
+        its_owners: Mapping[str, Owner],
+        owned: Mapping[str, inheritance.Effective],
+        placed: Mapping[str, inheritance.Effective],
+        atlas: geography.Atlas,
+    ) -> dict[str, dict[str, Any]]:
+        """Return, for each item, the columns that are worked out of what is in force or
+        beside it, which no row of a file sets, and under `_in_force` what is in force
+        of each field it inherits."""
+        hids = [item.hid for item in found]
         today = contracts.today(db)
         cover = contracts.of_items(db, hids)
-        arrived_on = _line_names(db, {item.purchase_line_hid for item in found})
         models_of = {
             line.hid: line.catalog_entry_hid
             for line in _by_hid(
@@ -2724,7 +3082,7 @@ class Items(Entity):
             ).values()
         }
         figures = weights.in_force(db)
-        rows = []
+        cells: dict[str, dict[str, Any]] = {}
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
@@ -2750,19 +3108,8 @@ class Items(Entity):
             site = atlas.site(where.site_hid) if where is not None else None
             owner_in_force = its_owners.get(in_force["owner_hid"].value or "")
             outside = owner_in_force is not None and owner_in_force.is_external
-            row: dict[str, Any] = {
-                **_kept(item),
-                "vendor": vendors[entry.vendor_hid].name if entry else None,
-                "pid": entry.pid if entry else None,
-                **{name: getattr(item, name) for name in self._direct if name != "tags"},
-                "parent": parents[line[0].hid] if line else None,
-                **on_hosts[item.hid],
-                "state_reason": item.state_reason,
-                **primaries.get(item.hid, NO_MGMT),
-                "record_status": item.record_status,
-                "tags": labels[item.hid],
-                # Known only to the system a file is read from: see `read_for`.
-                "external_id": None,
+            cells[item.hid] = {
+                "_in_force": in_force,
                 "model_name": entry.model_name if entry else None,
                 "kind": entry.kind if entry else None,
                 "type": entry.type if entry else None,
@@ -2777,7 +3124,6 @@ class Items(Entity):
                 "region": atlas.regions[site.region_hid].name if site is not None else None,
                 "owner_exception": outside,
                 "owner_exception_reason": owner_in_force.exception_reason if outside else None,
-                "purchase_line": arrived_on.get(item.purchase_line_hid or ""),
                 "covered": bool(covering),
                 "covered_until": contracts.covered_until(cover[item.hid], today),
                 "contracts": sorted(set(covering), key=records.key),
@@ -2791,28 +3137,14 @@ class Items(Entity):
                     item.catalog_entry_hid, models_of[item.purchase_line_hid]
                 ),
             }
-            operator = item.operator_hid if own else looked_after[item.hid].value
-            row["operator"] = called[operator] if operator else None
-            row["operator_source"] = looked_after[item.hid].source
-            plan = item.planned_location_hid if own else going[item.hid].value
-            row["planned_location"] = atlas.location_path(plan) or None
-            row["planned_location_source"] = going[item.hid].source
-            for name, effective in in_force.items():
-                column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
-                value = getattr(item, name) if own else effective.value
-                if name == "owner_hid":
-                    value = items.name_or_hid(its_owners[value].label, value) if value else None
-                elif name == "location_hid":
-                    value = atlas.location_path(value) if value else None
-                row[column] = value
-                row[f"{column}_source"] = effective.source
-            rows.append(row)
-        return rows
+        return cells
 
 
-def _hosting_cells(db: Session, found: list[Any]) -> dict[str, dict[str, Any]]:
+def _hosting_cells(
+    db: Session, found: list[Any], compared: bool = False
+) -> dict[str, dict[str, Any]]:
     """Return the cells of what each item runs on, was seen on, has running on it and is
-    to be looked at for."""
+    to be looked at for. With `compared`, those a row of a file sets alone."""
     named = _by_hid(
         db,
         Item,
@@ -2820,6 +3152,18 @@ def _hosting_cells(db: Session, found: list[Any]) -> dict[str, dict[str, Any]]:
     )
     texts = items.reference_texts(db, list(named.values()))
     its_groups = _by_hid(db, DeviceGroup, {item.host_group_hid for item in found})
+    if compared:
+        return {
+            item.hid: {
+                "host": texts.get(item.host_item_hid or ""),
+                "host_group": items.name_or_hid(group.name, group.hid)
+                if (group := its_groups.get(item.host_group_hid or "")) is not None
+                else None,
+                "observed_host": texts.get(item.observed_host_hid or ""),
+                "host_observed_at": item.host_observed_at,
+            }
+            for item in found
+        }
     hosts = hosting.hosts_of(db, found)
     kinds = hosting.kinds_of(db, {item.catalog_entry_hid for item in found})
     marks = hosting.reviews(db, found, kinds, hosts)

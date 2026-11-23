@@ -93,6 +93,14 @@ def _after_a_flush(session: Session, _: Any) -> None:
 
 
 @event.listens_for(Session, "after_commit")
+def _after_a_commit(session: Session) -> None:
+    # A savepoint stored is no end of the transaction it is in, which nobody else's
+    # change comes into: what was found holds, as it does for each row of a file, which
+    # is a savepoint (P-324).
+    if not session.in_nested_transaction():
+        _after_a_transaction(session)
+
+
 @event.listens_for(Session, "after_rollback")
 def _after_a_transaction(session: Session) -> None:
     # Somebody else may have named a host since: the next transaction asks again.
