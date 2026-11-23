@@ -378,6 +378,46 @@ def connections_of(
     return found
 
 
+def connections_listed(
+    db: Session, field: str, hids: Collection[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Return what a page lists of the circuits each item, or each device group, is
+    connected to, in the order of `connections_of`: the circuit's HID, name, enterprise
+    circuit ID and status, and the side and HID of the connection. Only those are read,
+    and no record is made of each, where a page names some hundreds of them (P-326)."""
+    found: dict[str, list[dict[str, Any]]] = {hid: [] for hid in hids}
+    wanted = sorted(set(hids))
+    column = getattr(CircuitDevice, field)
+    for start in range(0, len(wanted), 500):
+        rows = db.execute(
+            select(
+                column,
+                Circuit.hid,
+                Circuit.name,
+                Circuit.enterprise_circuit_id,
+                CircuitDevice.side,
+                CircuitDevice.hid,
+                Circuit.record_status,
+            )
+            .select_from(CircuitDevice)
+            .join(Circuit, Circuit.hid == CircuitDevice.circuit_hid)
+            .where(column.in_(wanted[start : start + 500]))
+            .order_by(Circuit.name_key, Circuit.hid)
+        )
+        for holder, hid, name, enterprise_id, side, link_hid, status in rows:
+            found[holder].append(
+                {
+                    "hid": hid,
+                    "name": name,
+                    "enterprise_circuit_id": enterprise_id,
+                    "side": side,
+                    "link_hid": link_hid,
+                    "record_status": status,
+                }
+            )
+    return found
+
+
 # --- checking a circuit --------------------------------------------------------------
 
 

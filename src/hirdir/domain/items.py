@@ -34,6 +34,7 @@ from hirdir.domain import (
     deleted,
     geography,
     health,
+    held,
     hosting,
     lifecycle,
     not_renewed,
@@ -161,7 +162,21 @@ def walks_above(
     runs on. `lines` are the items above each, by `lines_above`, where they are read.
 
     An inventory in which nothing runs on a host reads nothing more than the lines.
+    While a page is shaped, the walk of each item is worked out once (P-326).
     """
+    wanted = {item.hid for item in found}
+    walks = held.kept_many_while_reading(
+        db,
+        "walks_above",
+        wanted,
+        lambda missing: _walks_above(db, [one for one in found if one.hid in missing], lines),
+    )
+    return {item.hid: walks[item.hid] for item in found}
+
+
+def _walks_above(
+    db: Session, found: Sequence[Item], lines: Mapping[str, Sequence[Item]] | None
+) -> dict[str, list[Above]]:
     lines = lines if lines is not None else lines_above(db, found)
 
     def top(item: Item) -> Item:

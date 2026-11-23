@@ -2721,11 +2721,62 @@ What was looked at and left, with what it costs now:
   order, as a join that SQLite may not reorder (`CROSS JOIN`) has it, saves some 10 ms
   of a test such as `covered`; PostgreSQL takes no such join with a condition, so it
   would be one more thing that differs between the two.
-- Shaping a page of 100 items in Python takes some 90 ms of every request, whatever its
+- Shaping a page of 100 items in Python took some 90 ms of every request, whatever its
   filter: the operators, the groups and the places in force of each item and its
-  coverages, read and worked out for the page. With the collector of Python's memory
-  turned off, or the objects of the application's start frozen out of it, a request was
-  no faster that the runs could tell, and the slowest of fifteen as slow.
+  coverages, read and worked out for the page. The owner chose to make it cheaper for
+  every page (P-326), below.
+
+**The shaping of a page, made cheaper (P-326).** What the parts of a page of items read
+again, each for itself, is read once while the page is shaped, `shapes.items_out`, and
+let go when it is: the memberships of each item in its groups, which each value in
+force that an item has from its groups read again, five times for a page; the walk up
+from each item, through what it is installed in and what it runs on; what each item has
+in force in a field, which the operator in force read again for the location; and one
+atlas of the places for the paths, the operators the places give and the locations a
+page names. It is the holder that an import of items opens for what a file cannot
+change (`domain/held.py`), opened by `held.reading` for the length of the shaping, so
+that it is never another request's or another session's; what a row of a file may
+change, the groups and the walks, is held only while a page is shaped, which writes
+nothing, and inside a run that holds already the run's holder stands with its own
+rules. What is in force for each contract that a page's coverages are under is worked
+out once for the page (`contracts.Standing`), as `contract_today` is for a statement,
+and every coverage under it reads it. The circuits each item is connected to are read
+as the columns the page lists, and not as a record of each circuit and each link, where
+a page of routers names some hundreds. And what an item answers as its record holds it
+is found once and not again for each item. Every answer is as it was, page for page and
+report for report.
+
+Shaping alone, `shapes.items_out` of a page of 100 items, in milliseconds of processor
+time with the collector of Python's memory held off, median and least of 20, two runs
+of each one after the other (2.4 of the host's 4 cores busy with other work):
+
+| Page | Before | After |
+|---|--:|--:|
+| The grid's first page, `is_major:eq:true` by name | 73.5 / 60.9, 70.7 / 62.6 | 56.1 / 49.2, 59.5 / 57.3 |
+| `covered:eq:false`, by `covered_until` | 91.6 / 78.9, 89.4 / 79.1 | 62.9 / 55.1, 64.1 / 54.0 |
+| No filter, by `-effective.support_weight` | 86.4 / 76.6, 91.9 / 80.7 | 57.9 / 52.9, 54.5 / 51.3 |
+
+A page sends 33 statements where it sent 41. Whole requests, which the other lanes'
+work made too slow to tell apart in wall time, are some 10 to 20 ms cheaper at the
+median in processor time: the grid's first page 159 against 142, `covered:eq:false` by
+`covered_until` 304 against 289, by `-effective.support_weight` 213 against 196, the
+list with no filter 180 against 175, a page of one contract's items 131 against 122
+(the same host, one after the other). The rest of what shaping costs is the reading
+of the records themselves, a statement for each kind of what an item refers to, and
+the shapes made of them.
+
+The slowest of fifteen runs is slower by the collector of Python's memory: the full
+collection of the process, which a request sets off once in some ten, takes 140 to
+340 ms with the objects of the application's start in it. With those frozen
+out of the collector once the application is made (`gc.freeze()` after
+`create_app`), on the same host one after the other: `covered:eq:false`, by
+`covered_until`, 326 / 726 without and 311 / 371 with; by
+`-effective.support_weight` with the item weights set 260 / 650 and 255 / 288; the
+list with no filter 211 / 285 and 199 / 224 (load average 1.4 to 2.2). Freezing them is
+a choice of how the application starts, and is not made here. Nor is the level at which
+an answer is compressed: a page of 100 items is some 500 KB of JSON, which gzip's level
+9, the middleware's own, compresses in 10 to 12 ms, and level 6 in 5 to 8 ms, 3 per cent
+larger.
 
 ## Configuration
 

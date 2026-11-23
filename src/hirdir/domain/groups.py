@@ -29,6 +29,7 @@ from hirdir.domain import (
     deleted,
     geography,
     health,
+    held,
     items,
     lifecycle,
     records,
@@ -221,7 +222,18 @@ def masters(db: Session, group_hids: Sequence[str]) -> dict[str, Item]:
 def memberships_of(
     db: Session, item_hids: Sequence[str]
 ) -> dict[str, list[tuple[DeviceGroupMember, DeviceGroup]]]:
-    """Return the current memberships of each item, in groups that are not retired."""
+    """Return the current memberships of each item, in groups that are not retired: each
+    item's read once while a page is shaped, which reads them for each value in force
+    that an item has from its groups (P-326)."""
+    held_ = held.kept_many_while_reading(
+        db, "memberships", set(item_hids), lambda missing: _memberships_of(db, sorted(missing))
+    )
+    return {hid: held_[hid] for hid in item_hids}
+
+
+def _memberships_of(
+    db: Session, item_hids: Sequence[str]
+) -> dict[str, list[tuple[DeviceGroupMember, DeviceGroup]]]:
     found: dict[str, list[tuple[DeviceGroupMember, DeviceGroup]]] = {hid: [] for hid in item_hids}
     if not item_hids:
         return found
@@ -308,9 +320,9 @@ def controllers(
         )
         for cluster_hid, item in nested:
             members.setdefault(cluster_hid, []).append(item)
-    for domain_hid, held in clusters.items():
+    for domain_hid, its_clusters in clusters.items():
         listed = found[domain_hid]
-        for cluster in held:
+        for cluster in its_clusters:
             for item in members.get(cluster.hid, []):
                 if all(item.hid != other.hid for other, _ in listed):
                     listed.append((item, cluster))

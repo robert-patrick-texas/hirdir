@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir.db.models import DeviceGroup, Item
-from hirdir.domain import groups, items
+from hirdir.domain import groups, held, items
 from hirdir.domain.inheritance import NOTHING, Effective
 
 # Which of an item's groups decides, the first that has a value: the stack before the
@@ -108,7 +108,28 @@ def of_items(
     where an item it runs on, or an item above that, holds it, and `device_group` where a
     group does, the stack or the cluster it runs on among them: `host` names an item
     always, and `device_group` a group.
+
+    While a page is shaped, what each item has in force in a field is worked out once,
+    however many parts of the page ask for it (P-326).
     """
+    in_force = held.kept_many_while_reading(
+        db,
+        ("in_force", field, frozenset(skip)),
+        {item.hid for item in found},
+        lambda missing: _of_items(
+            db, [one for one in found if one.hid in missing], lines, field, skip
+        ),
+    )
+    return {item.hid: in_force[item.hid] for item in found}
+
+
+def _of_items(
+    db: Session,
+    found: Sequence[Item],
+    lines: Mapping[str, Sequence[Item]],
+    field: str,
+    skip: Collection[str],
+) -> dict[str, Effective]:
     walks = items.walks_above(db, found, lines)
     # Only the groups of the records that the walk reaches before a value of its own.
     wanted: set[str] = set()
@@ -133,9 +154,9 @@ def of_items(
         for step in steps:
             one = step.record
             if isinstance(one, DeviceGroup):
-                held = by_host.get(one.hid, NOTHING)
-                if held.value is not None:
-                    result = Effective(held.value, SOURCE_GROUP, held.source_hid)
+                given = by_host.get(one.hid, NOTHING)
+                if given.value is not None:
+                    result = Effective(given.value, SOURCE_GROUP, given.source_hid)
                 break
             value = _held(one, field, skip)
             if value is not None:

@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+from functools import cached_property
 from types import SimpleNamespace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -1527,25 +1528,64 @@ def span_of(starts_on: date | None, ends_on: date | None, within: Span) -> Span:
     return Span(_later(starts_on, within.starts_on), _sooner(ends_on, within.ends_on))
 
 
+class Standing:
+    """What is in force for a contract on a day: its period, whether it covers, and the
+    status and the period of the last term that is known, each worked out the first
+    time it is asked for and kept. A page of records makes one for each contract it
+    reads, which every coverage under the contract reads, as `HELD_TODAY` is for a
+    statement (P-326); `span`, `covers`, `in_force`, `still_counts`, `last_day` and
+    `covered_until` make one of their own."""
+
+    def __init__(self, contract: Contract, day: date) -> None:
+        self.contract = contract
+        self.day = day
+
+    @cached_property
+    def period(self) -> Span:
+        return period(self.contract, self.day)
+
+    @cached_property
+    def covers(self) -> bool:
+        if self.contract.record_status != "active":
+            return False
+        status, its = status_of(self.contract, self.day), self.period
+        if status == RENEWAL_PENDING:
+            return its.starts_on is None or its.starts_on <= self.day
+        return status == ACTIVE and its.holds(self.day)
+
+    @cached_property
+    def last_status(self) -> str:
+        return last_status(self.contract)
+
+    @cached_property
+    def last_period(self) -> Span:
+        return last_period(self.contract)
+
+
 def span(coverage: ContractCoverage, contract: Contract, day: date) -> Span:
     """Return the days in force of a coverage, in the period that is in force on a day."""
-    return span_of(coverage.starts_on, coverage.ends_on, period(contract, day))
+    return span_by(coverage, Standing(contract, day))
+
+
+def span_by(coverage: ContractCoverage, standing: Standing) -> Span:
+    """Return `span` of a coverage, from what is in force for its contract."""
+    return span_of(coverage.starts_on, coverage.ends_on, standing.period)
 
 
 def covers(contract: Contract, day: date) -> bool:
     """Say whether a contract covers on a day: active in both senses and in date, or
     past its period with its renewal pending."""
-    if contract.record_status != "active":
-        return False
-    status, its = status_of(contract, day), period(contract, day)
-    if status == RENEWAL_PENDING:
-        return its.starts_on is None or its.starts_on <= day
-    return status == ACTIVE and its.holds(day)
+    return Standing(contract, day).covers
 
 
 def in_force(coverage: ContractCoverage, contract: Contract, day: date) -> bool:
     """Say whether a coverage is in force on a day."""
-    return covers(contract, day) and Span(coverage.starts_on, coverage.ends_on).holds(day)
+    return in_force_by(coverage, Standing(contract, day))
+
+
+def in_force_by(coverage: ContractCoverage, standing: Standing) -> bool:
+    """Return `in_force` of a coverage, from what is in force for its contract."""
+    return standing.covers and Span(coverage.starts_on, coverage.ends_on).holds(standing.day)
 
 
 def out_of_service(record_status: str, state: str | None) -> bool:
@@ -1559,14 +1599,19 @@ def still_counts(coverage: ContractCoverage, contract: Contract, day: date) -> b
     was ended because the item left, in a term of the contract that still runs. A
     coverage that ends today, by its own end or its contract's, asks nothing more of the
     vendor (D-162). `_COUNTING` of `hirdir.io.fields` is the same test as SQL."""
-    if in_force(coverage, contract, day):
-        end = last_day(coverage, contract)
-        if end is None or day < end:
+    return still_counts_by(coverage, Standing(contract, day))
+
+
+def still_counts_by(coverage: ContractCoverage, standing: Standing) -> bool:
+    """Return `still_counts` of a coverage, from what is in force for its contract."""
+    if in_force_by(coverage, standing):
+        end = last_day_by(coverage, standing)
+        if end is None or standing.day < end:
             return True
-    starts_on = period(contract, day).starts_on
+    starts_on = standing.period.starts_on
     return (
         coverage.left_service
-        and covers(contract, day)
+        and standing.covers
         and (starts_on is None or coverage.ends_on is None or coverage.ends_on >= starts_on)
     )
 
@@ -1614,16 +1659,30 @@ def last_day(coverage: ContractCoverage, contract: Contract) -> date | None:
     return _sooner(coverage.ends_on, last_period(contract).ends_on)
 
 
+def last_day_by(coverage: ContractCoverage, standing: Standing) -> date | None:
+    """Return `last_day` of a coverage, from what is in force for its contract."""
+    if standing.last_status == RENEWAL_PENDING:
+        return coverage.ends_on
+    return _sooner(coverage.ends_on, standing.last_period.ends_on)
+
+
 def covered_until(found: Sequence[tuple[ContractCoverage, Contract]], day: date) -> date | None:
     """Return the last day the cover of an item runs to: of its coverages that have
     not ended, under contracts that cover or are to cover, to the end of the last term
     that is known. None when one of them names no end, and when there is none."""
+    return covered_until_by(
+        [(coverage, Standing(contract, day)) for coverage, contract in found], day
+    )
+
+
+def covered_until_by(found: Sequence[tuple[ContractCoverage, Standing]], day: date) -> date | None:
+    """Return `covered_until` of an item's coverages, each with what is in force for
+    its contract."""
     ends_: list[date] = []
-    for coverage, contract in found:
-        status = last_status(contract)
-        if contract.record_status != "active" or status not in COVERING:
+    for coverage, standing in found:
+        if standing.contract.record_status != "active" or standing.last_status not in COVERING:
             continue
-        end = last_day(coverage, contract)
+        end = last_day_by(coverage, standing)
         if end is None:
             return None
         if end >= day:
