@@ -223,6 +223,11 @@ class Run:
         # have a serial number a row gives, read together, by their model and the key of
         # the number (P-324). None at any other time.
         self.by_serial: dict[tuple[str | None, str | None], Item] | None = None
+        # Before each batch of a file of items, the same for the rows of the batch, and
+        # the keys of the serial numbers that its rows have given or changed since, which
+        # are looked up again as they stand (P-324). None outside a batch.
+        self.batch_serials: dict[tuple[str | None, str | None], Item] | None = None
+        self.touched_serials: set[str] = set()
         # The rows whose records wait to be read back together, to say what each row
         # changed, where the entity reads them so (P-324): see `hirdir.io.imports`. None
         # where each is read back after its own write.
@@ -270,6 +275,7 @@ class Run:
         self.db.flush()
         self.db.expunge_all()
         self._held.clear()
+        self.batch_serials, self.touched_serials = None, set()
         holding = held.of(self.db)
         if holding is not None:
             holding.drop()
@@ -2330,6 +2336,9 @@ class Items(Entity):
         key = records.key(serial)
         if run.by_serial is not None:
             found = run.by_serial.get((model, key))
+        elif run.batch_serials is not None and key not in run.touched_serials:
+            # No row of the batch has given an item this number or taken it from one.
+            found = run.batch_serials.get((model, key))
         else:
             found = db.scalar(_BY_SERIAL, {"model": model, "key": key})
         return found or self._received_as_a_count(db, values)
@@ -2627,6 +2636,17 @@ class Items(Entity):
     _HOST_WORDS = frozenset({*hosting.FIELDS, "parent_item_hid"})
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        # The serial numbers this row may give or take, which later rows of its batch find
+        # their items by as they stand, and not as they were read before it (P-324).
+        given = values.get("serial_number")
+        run.touched_serials |= {
+            key
+            for key in (
+                records.key(given) if isinstance(given, str) else None,
+                record.serial_key if record is not None else None,
+            )
+            if key
+        }
         try:
             written = self._write(run, record, values)
             self._stack_noted(run, written, values)
@@ -2866,12 +2886,15 @@ class Items(Entity):
         return Reach(record.hid, hosts, texts)
 
     def ready(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> None:
-        """Read together, before a batch of rows of items, the models, the owners and the
-        locations they name: each is then found by its row in what the run holds, as a
-        row would find it, since no row of items makes or renames any of them but the
-        models made for a reference, which are looked for again. Vendors, which are few,
+        """Read together, before a batch of rows of items, the items of the serial numbers
+        they give, and the models, the owners and the locations they name: each is then
+        found by its row in what the run holds, as a row would find it, since no row of
+        items makes or renames any of them but the models made for a reference, which are
+        looked for again, and the items of the serial numbers that an earlier row of the
+        batch gave or changed, which are looked for again too. Vendors, which are few,
         are found as before."""
         db = run.db
+        run.batch_serials, run.touched_serials = self._serials_of(db, rows), set()
         wanted: dict[str, set[str]] = {}
         for row in rows:
             vendor, pid = row.get("vendor"), row.get("pid")

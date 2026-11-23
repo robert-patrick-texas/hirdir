@@ -359,11 +359,14 @@ upload, by its extension and by its first bytes.
   no record, and nothing inherited is copied down. Before each batch of 50, the
   models, the owners and the locations its rows name are read together, as each row
   would find them: no row of items makes or renames any of them but a model made for
-  a reference, which is looked for again. A value a row leaves blank is not looked up;
-  the items that have the serial numbers of a file are read together when the order
-  of its rows is worked out, which writes nothing; and a transaction that took the
-  writer's place outside a savepoint holds it until it ends, and is not given it again
-  for each row (`dialect.hold_other_writers`).
+  a reference, which is looked for again. So are the items that have the serial
+  numbers its rows give: an item a row finds by its model and serial number is the one
+  read so, unless a row before it in the batch gave that number or took it from an
+  item, and then it is looked for as it stands. A value a row leaves blank is not
+  looked up; the items that have the serial numbers of a file are read together when
+  the order of its rows is worked out, which writes nothing; and a transaction that
+  took the writer's place outside a savepoint holds it until it ends, and is not given
+  it again for each row (`dialect.hold_other_writers`).
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
@@ -2414,6 +2417,7 @@ a copy of the fixture, by the processor time of a row and the statements it send
 | models, owners and locations read ahead of each batch | 4.2 | 7.7 | 4.9 | 8.6 | 5.7 |
 | the writer's place not taken again | 3.7 | 6.7 | 4.1 | 7.5 | 6.2 |
 | the read a row is compared with, two statements built once | 3.3 | 6.5 | 3.8 | 7.4 | 8.0 |
+| the items of a batch's serial numbers read ahead of it, on a quiet host | 3.0 | 5.6 | 3.5 | 6.4 | 1.3 |
 
 ¹ The time of the whole row, not its processor time alone, against 17.1 ms for 0.9.18
 on the same quiet host: the copy that stored each row by itself waited on the disk.
@@ -2443,6 +2447,15 @@ host:
 | 199 pauses between them | 24.1 s | 1.7 s, the longest 98 ms |
 | a sign-in with nothing going on, median | 239 ms | 227 ms |
 | what a sign-in waited during the apply, median / 95th / longest | 799 / 1210 / 2200 ms | 196 / 499 / 525 ms |
+
+With the last step, a preview of more than a hundred rows worked in the background
+(P-325), and the host quiet but for the timing itself, load 1.0 to 1.4, two runs: the
+preview 28.6 s and 30.6 s from the request to the job previewed, the request answered
+in 1.1 s; the apply 40.7 s and 40.2 s, its 200 batches 187 and 190 ms at the median and
+252 and 265 ms at the 95th percentile, the 199 pauses 0.4 s in all; a sign-in 85 ms
+with nothing going on, and during the apply it waited 138 and 141 ms beyond that at the
+median, 281 and 290 ms at the 95th percentile and 324 and 290 ms at the longest. The
+preview stands at its 30 s, and the apply well within its minute.
 
 **Measured at 0.8.0.** On the same host, median and 95th percentile in milliseconds of
 15 runs after 2 warm-ups, with the host otherwise quiet: its load average over the

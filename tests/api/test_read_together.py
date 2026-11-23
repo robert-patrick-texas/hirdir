@@ -276,3 +276,33 @@ def test_an_item_read_as_a_row_compares_it_reads_as_it_always_did_in_what_a_row_
         assert {name: one[name] for name in names} == {name: other[name] for name in names}
     assert "covered" not in compared[0]
     assert "owner_source" not in compared[0]
+
+
+def test_an_item_a_row_finds_by_its_serial_number_is_as_the_rows_before_it_left_it(
+    lab: Lab, files: Files, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The items of the serial numbers of a batch are read before it: one that an earlier
+    # row of the batch gives a serial number, or takes one from, is looked for as it
+    # stands, as each row found it when it was looked for row by row.
+    text = (
+        "hid,vendor,pid,serial_number,name,comments\n"
+        ",Cisco,N7K-C7010,DUP0001,site2-dup-a,\n"
+        ",Cisco,N7K-C7010,DUP0001,,the same again\n"
+        f"{lab.n7k['hid']},Cisco,N7K-C7010,MOVED001,site2-n7k-01,\n"
+        ",Cisco,N7K-C7010,JAF0000X001,site2-new,the number it gave up\n"
+        ",Cisco,N7K-C7010,MOVED001,,the number it took\n"
+    )
+    then = preview_one_at_a_time(files, text, monkeypatch)
+    now = files.preview("items", text)
+    said = rows_of(files, now)
+    assert as_said(said) == as_said(rows_of(files, then))
+    assert [row["outcome"] for row in said] == [
+        "create",
+        "rejected",
+        "update",
+        "create",
+        "rejected",
+    ]
+    assert said[1]["reasons"][0]["message"] == "row 1 of the file names the same record"
+    job = files.apply(then, skip_rejected=True)
+    assert (job["status"], job["applied"], job["stale"]) == ("applied", 3, 0)
