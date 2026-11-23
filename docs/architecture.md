@@ -20,13 +20,14 @@ integrations ────┘   terminates TLS,      ──▶    one Python proc
 Two processes of the one package work one database, from 0.9.10 (P-263, P-267). **The
 server**, `hirdir admin serve`, serves both the API and the built web UI, and answers
 people. **The process of the background work**, `hirdir admin work`, does what no
-person waits for: it applies the imports and bulk edits that were asked for, and
-records the capacity balance of the week by the clock. It answers nothing on the
-network, so it has a processor of its own and the answers to people are not slowed by
-it. The two share the database and the state directory and nothing else: no signal
-passes between them, and the jobs that wait to be applied are rows of the database,
-which the second process looks for every second. See "Applying in the background" and
-"What is done by the clock" below. nginx does TLS and nothing else of ours. There is
+person waits for: it previews the imports and bulk edits of more than a hundred rows
+(P-325), applies those that were asked for, and records the capacity balance of the
+week by the clock. It answers nothing on the network, so it has a processor of its own
+and the answers to people are not slowed by it. The two share the database and the
+state directory and nothing else: no signal passes between them, and the jobs that
+wait to be previewed or applied are rows of the database, which the second process
+looks for every second. See "Applying in the background" and "What is done by the
+clock" below. nginx does TLS and nothing else of ours. There is
 no queue and no cache in the MVP.
 
 `hirdir admin serve --work` is one process that does both, as the server did before
@@ -230,11 +231,16 @@ upload, by its extension and by its first bytes.
   writer up until it ends, also when it ends by being undone. A preview of more than a
   hundred rows is therefore worked on a copy of the database, made with SQLite's
   online backup in the service's private temporary directory and thrown away
-  afterwards, so that nobody waits for a preview. A smaller preview is worked in
-  place, and takes the one writer's place before it reads anything: SQLite refuses at
-  once, with no waiting, a transaction that has read and then wants to write after
-  another has written in between, and a preview that took its turn first waits for it
-  like any other change. An apply cannot be spared the same
+  afterwards, so that nobody waits for a preview. Since 0.9.19 such a preview is worked
+  in the background as well (P-325), since a preview of 10,000 rows took minutes and
+  nginx gives up on a request after one: the request reads and checks the file, or the
+  change of a bulk edit, stores it as a job that is `previewing`, with its rows, and
+  answers `202`; the worker of the second process works it on the copy, as the next
+  point says, and stores what each row would do at the end. A smaller preview is
+  worked in place, in the request, and takes the one writer's place before it reads
+  anything: SQLite refuses at once, with no waiting, a transaction that has read and
+  then wants to write after another has written in between, and a preview that took
+  its turn first waits for it like any other change. An apply cannot be spared the same
   way, since what it does is kept, so it is worked a batch at a time beside the
   requests, as the next point says. A change that waits longer than `busy_timeout` for
   another is answered `503` with `Retry-After`, and nothing of it was done. Reading is
@@ -242,9 +248,11 @@ upload, by its extension and by its first bytes.
 - **Applying in the background.** `POST /imports/{hid}/apply`, and the apply of a bulk
   edit, store the job as `queued` and answer `202` at once. The server applies
   nothing. A worker in the second process, `hirdir admin work`, a thread with its own
-  database session (`io/background.py`), applies one job at a time: the one applying,
-  then the queued ones in the order they were asked for. It takes a job up by making
-  it `applying`, in a transaction of its own, before the first batch: the process that
+  database session (`io/background.py`), works one job at a time: the one applying,
+  then the previews of more than a hundred rows that wait and the queued applies, in
+  the order they were asked for, a preview by when its file was sent and an apply by
+  when it was asked for (P-325). It takes an apply up by making it `applying`, in a
+  transaction of its own, before the first batch: the process that
   takes a piece of work is the one that owns it (P-263), and `applying` is said of a
   job only by the process that applies it.
   It finds its work by looking in the database every second, one read of an index, so
@@ -289,6 +297,21 @@ upload, by its extension and by its first bytes.
   /about/load`: `running`, `not_running`, or `in_process` where one process does both.
   Such a question holds the file for an instant, so a process that starts asks for
   its lock for two seconds before it takes another to be running.
+- **Previewing in the background.** A preview that the worker takes up (P-325) is
+  worked as the person who sent it, under the request ID of the preview, whose role
+  is looked at again first: one that is lost ends it `failed`. It makes the copy of the
+  database, ends its own read of the live one, and works every row on the copy through
+  the same functions as a preview in the request, `preview_rows` in `io/imports.py`.
+  Every 50 rows it writes how far it has got, `rows_previewed`, to the live database
+  in a transaction of a moment of its own, never in the copy. At the end it throws the
+  copy away and stores the rows, the counts and `previewed` in one transaction, with
+  its event, and nothing of a preview is kept before then. So a stop of the process,
+  which the worker looks for at those writes, leaves the job `previewing`, its
+  `rows_previewed` set back to 0, and it is worked again from its first row when the
+  process starts; a job found `previewing` as the process starts is so too, whatever
+  stopped it. An error nobody foresaw throws the copy away, makes the job `failed`
+  with the reason and the request ID in `failure`, and is logged with its traceback;
+  the rows that it held for the work are removed with it, and the file is sent again.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,

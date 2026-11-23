@@ -30,7 +30,9 @@ SkipRejected = Annotated[
 APPLYING: dict[int | str, dict[str, Any]] = {
     409: {
         "model": Problem,
-        "description": "It is applied already, or being applied, or failed before 0.7.0.",
+        "description": "It is still being previewed, or applied already, or being applied, or "
+        "it failed: its preview in the background did not end (P-325), or it is of a release "
+        "before 0.7.0.",
     },
     422: {"model": Problem, "description": "Rows are rejected, and `skip_rejected` is not given."},
 }
@@ -41,6 +43,13 @@ PREVIEWING: dict[int | str, dict[str, Any]] = {
         "description": "More than a hundred rows: stored as a job that is `previewing`, with no "
         "rows yet. The background work previews it; `GET /imports/{hid}` says how far it has "
         "got, `rows_previewed` of `row_count`, and that it is `previewed` (P-325).",
+    },
+}
+STILL_PREVIEWING: dict[int | str, dict[str, Any]] = {
+    409: {
+        "model": Problem,
+        "description": "The job is still `previewing`: its rows are listed once it is "
+        "previewed (P-325).",
     },
 }
 
@@ -69,6 +78,17 @@ def begun(request: Request, background_tasks: BackgroundTasks, db: Db, job: Any)
     return shapes.job_out(db, job)
 
 
+def previewed(
+    request: Request, background_tasks: BackgroundTasks, response: Response, db: Db, job: Any
+) -> r.ImportPreview:
+    """Return a preview. One stored for the background work, `previewing`, is answered
+    `202`, and the worker is woken once it is stored, as for an apply (P-325)."""
+    if job.status == imports.PREVIEWING:
+        response.status_code = 202
+        background_tasks.add_task(background.wake, request.app.state)
+    return shapes.preview_out(db, job)
+
+
 @imports_.post(
     "/preview",
     status_code=201,
@@ -86,6 +106,8 @@ def begun(request: Request, background_tasks: BackgroundTasks, db: Db, job: Any)
 )
 async def preview_import(
     request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
     principal: Inventory,
     context: Audit,
     db: Db,
@@ -119,7 +141,9 @@ async def preview_import(
     """Work out what importing a file would do, and store that as a preview.
 
     Nothing is changed. Each row comes back as `create`, `update` with the fields it
-    changes, `unchanged`, or `rejected` with the reasons.
+    changes, `unchanged`, or `rejected` with the reasons. A file of more than a hundred
+    rows is read and checked, stored, and answered `202` at once: the background work
+    previews it, and `GET /imports/{hid}` follows it until it is `previewed` (P-325).
     """
     data = await limited_body(request)
     job = await run_in_threadpool(
@@ -135,8 +159,9 @@ async def preview_import(
         max_bytes=request.app.state.config.max_file_bytes,
         system=system,
         complete=complete,
+        in_background=True,
     )
-    return shapes.preview_out(db, job)
+    return previewed(request, background_tasks, response, db, job)
 
 
 @imports_.post("/{hid}/apply", status_code=202, responses=APPLYING)
@@ -187,7 +212,7 @@ def get_import(hid: str, _: Viewer, db: Db) -> r.ImportJobOut:
     return shapes.job_out(db, imports.get_job(db, hid))
 
 
-@imports_.get("/{hid}/rows")
+@imports_.get("/{hid}/rows", responses=STILL_PREVIEWING)
 def list_import_rows(
     hid: str,
     _: Viewer,
@@ -203,6 +228,7 @@ def list_import_rows(
     """List the rows of a preview, in the order of the file unless a sort says otherwise.
 
     Each says what the preview found, and once it is applied, what the apply did with it.
+    A job that is still `previewing` is answered `409` (P-325).
     """
     arrange = tables.arrange(tables.IMPORT_ROWS, sort)
     page, total = imports.list_rows(

@@ -19,7 +19,7 @@ from hirdir.config import Config
 from hirdir.db.models import AuditEvent, ImportJob
 from hirdir.domain.audit import AuditContext
 from hirdir.io import entities, imports
-from tests.api.inventory import API, Maker, wait_for_job
+from tests.api.inventory import API, Maker, previewed, wait_for_job
 from tests.conftest import VIEWER_CODE
 
 HEAD = "vendor,pid,serial_number,hostname"
@@ -35,14 +35,16 @@ def switches(count: int, first: int = 1) -> str:
 
 
 def preview(make: Maker, entity: str, text: str) -> dict[str, Any]:
+    """Preview a file, and return its job once it is previewed: in the background where
+    it has more than a hundred rows (P-325)."""
     response = make.client.post(
         f"{API}/imports/preview",
         params={"entity": entity},
         content=text,
         headers={**make.headers, "Content-Type": "text/csv"},
     )
-    assert response.status_code == 201, response.text
-    return response.json()["job"]
+    assert response.status_code in (201, 202), response.text
+    return previewed(make.client, make.headers, response.json())["job"]
 
 
 def begin(make: Maker, job: dict[str, Any], expect: int = 202) -> dict[str, Any]:
@@ -162,7 +164,8 @@ def test_an_apply_answers_at_once_and_works_fifty_rows_to_a_transaction(
     assert len(made) == 120
     assert {event["request_id"] for event in made} == {started["request_id"]}
     assert {event["via"] for event in made} == {"import"}
-    assert job_events(make, job) == ["preview", "apply_started", "apply"]
+    # A file of more than a hundred rows was previewed in the background (P-325).
+    assert job_events(make, job) == ["preview", "previewed", "apply_started", "apply"]
     end = make.audit(record_type="import_job", action="apply")[0]
     assert {entry["field"]: entry["new"] for entry in end["changes"]} == {
         "status": "applied",
@@ -241,7 +244,7 @@ def test_a_stop_partway_keeps_what_was_stored_and_a_resume_applies_nothing_twice
     assert make.get("/items", limit=1)["total"] == 50
     outcomes = [row["applied_outcome"] for row in rows(make, job)]
     assert outcomes == ["create"] * 50 + [None] * 70
-    assert job_events(make, job) == ["preview", "apply_started", "apply_stopped"]
+    assert job_events(make, job) == ["preview", "previewed", "apply_started", "apply_stopped"]
     stop = make.audit(record_type="import_job", action="apply_stopped")[0]
     assert (stop["actor_name"], stop["via"]) == (None, "system")
 
@@ -257,6 +260,7 @@ def test_a_stop_partway_keeps_what_was_stored_and_a_resume_applies_nothing_twice
     assert len({event["record_hid"] for event in made}) == 120
     assert job_events(make, job) == [
         "preview",
+        "previewed",
         "apply_started",
         "apply_stopped",
         "apply_resumed",
