@@ -2780,6 +2780,69 @@ at gzip's level 6, where the middleware's own is 9: a page of 100 items is some 
 of JSON, which level 9 compresses in 10 to 12 ms, and level 6 in 5 to 8 ms, 3 per cent
 larger.
 
+**Measured at 0.9.19, alone on the host** (S36, P-143), the release as built, on the
+four-core build host with nothing else running, after every change above and the
+collector settled as the server settles it (`hirdir.memory.settle`).
+
+`make time-import`, 10,000 new items, load 1.0 to 1.4:
+
+| | Start of 0.9.19 | 0.9.19 | Quality |
+|---|--:|--:|--:|
+| Preview, from the request to the job previewed | 169.8 s | 27.2 s | 30 s |
+| the request answered | | 0.95 s | |
+| Apply, from the request to the job applied | 183.4 s | 36.4 s | 60 s |
+| the order of the rows | 3.4 s | 0.8 s | |
+| 200 batches, median / 95th percentile | 770 / 862 ms | 165 / 241 ms | |
+| 199 pauses between them | 23.9 s | 0.4 s | |
+| a sign-in with nothing going on, median | 83 ms | 90 ms | |
+| what a sign-in waited during the apply, median / 95th / longest | 387 / 774 / 1197 ms | 131 / 270 / 342 ms | |
+
+Both meet their quality. Of the 3.6 s between the preview of the first round, 30.8 s,
+and this one, the new item and its event stored together save some 1 s, as measured on
+1,000 rows; the rest was not measured apart, and is most likely the collector, settled
+in this run and not in the first.
+
+`make time-filters`, the item list, a page of 100 with the total counted, median and
+95th percentile in milliseconds of 15 runs after 2 warm-ups, load 1.0 to 1.2:
+
+| Request | Start of 0.9.19 | 0.9.19 |
+|---|--:|--:|
+| no filter, by name | 218 / 231 | 168 / 218 |
+| is_major:eq:true, by name (the grid's first page) | 182 / 443 | 150 / 174 |
+| covered:eq:true, by name | 385 / 664 | 194 / 251 |
+| covered:eq:true, by covered_until | 508 / 559 | 236 / 313 |
+| covered:eq:false, by name | 455 / 546 | 224 / 238 |
+| covered:eq:false, by covered_until | 534 / 806 | 278 / 321 |
+| contract_count:gt:1, by name | 404 / 666 | 202 / 281 |
+| contract_count:gt:1, by -contract_count | 484 / 764 | 208 / 242 |
+| no filter, by -contract_count | 357 / 393 | 237 / 318 |
+| out_of_service_cover:eq:true, by name | 277 / 549 | 181 / 266 |
+| out_of_service_contract.number:eq:one, by name | 576 / 674 | 70 / 80 |
+| out_of_service_contract.number:eq:one, by out_of_service_contract.number | 636 / 677 | 100 / 152 |
+| no filter, by out_of_service_contract.number | 239 / 520 | 207 / 260 |
+| out_of_service_contract.hid:eq:one, by name | 256 / 348 | 69 / 85 |
+| contract.number:eq:one, by name | 392 / 659 | 113 / 188 |
+| contract.number:eq:one, by contract.number | 447 / 505 | 148 / 208 |
+| no filter, by contract.number | 349 / 620 | 221 / 276 |
+| contract.status:eq:renewal_pending, by name | 394 / 752 | 124 / 187 |
+| purchase_line_mismatch:eq:true, by name | 187 / 514 | 141 / 216 |
+| effective.do_not_renew:eq:true, by name | 256 / 313 | 186 / 263 |
+| covered:eq:false effective.do_not_renew:eq:true, by name | 475 / 783 | 227 / 316 |
+| is_major:eq:true, by name (the grid's first page), no weight set | 174 / 502 | 145 / 305 |
+| no filter, by -effective.support_weight, no weight set | 266 / 602 | 180 / 312 |
+| is_major:eq:true, by name (the grid's first page), the item weights set | 166 / 187 | 144 / 162 |
+| no filter, by -effective.support_weight, the item weights set | 254 / 560 | 177 / 351 |
+
+Every one meets the target of D-165, where 15 did not at the start of 0.9.19; the
+slowest at the median is 278 ms and at the 95th percentile 351 ms. The contract list:
+138 / 206, 30 / 49 and 40 / 45. Worked out anew, the coverage report takes 832 / 946
+ms whole, 1141 / 1415 by region and 1023 / 1062 for the page of `uncovered`, against
+1379, 1868 and 1779 ms at the start; kept, each takes 11 to 29 ms. The summary anew,
+1.6 s whole and 2.7 s by region, the capacity report anew, 0.9 s, or 1.6 s with the six
+weights set, and the check of what is kept, 1.9 s, are long reports, which the second
+process works out ahead (P-275) and the server gives as kept; they are not pages of the
+grid, and stay as they were.
+
 ## Configuration
 
 `/etc/hirdir/config.toml`, every key optional:
