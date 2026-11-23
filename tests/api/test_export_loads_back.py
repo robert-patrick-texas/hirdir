@@ -40,7 +40,7 @@ from hirdir.ids import new_hid
 from hirdir.io import examples, imports
 from hirdir.io.columns import CLEAR_MARK
 from hirdir.io.entities import LISTS, LOAD_ORDER
-from tests.api.inventory import API
+from tests.api.inventory import API, previewed
 
 FORMATS = ("csv", "json")
 CONTENT_TYPES = {"csv": "text/csv", "json": "application/json"}
@@ -268,14 +268,16 @@ def export(client: TestClient, headers: dict[str, str], entity: str, format_: st
 def preview(
     client: TestClient, headers: dict[str, str], entity: str, format_: str, text: str
 ) -> dict[str, Any]:
+    """Preview a file, and return the preview: one of more than a hundred rows, such as
+    the states, once the background work has previewed it (P-325)."""
     response = client.post(
         f"{API}/imports/preview",
         params={"entity": entity, "file_name": examples.file_name(entity, format_)},
         content=text.encode("utf-8"),
         headers={**headers, "Content-Type": CONTENT_TYPES[format_]},
     )
-    assert response.status_code == 201, response.text
-    return response.json()
+    assert response.status_code in (201, 202), response.text
+    return previewed(client, headers, response.json())
 
 
 def changed_rows(

@@ -5,6 +5,11 @@ change, where none of it is kept: in a savepoint that is then undone, or for a l
 file on a copy of the database, so that nobody waits for it. What it reports is
 therefore what an apply will do, and no rule is written twice.
 
+A preview of more than a hundred rows that a request asks for is worked in the
+background (P-325): the request reads and checks what it is sent and stores the job as
+previewing, with its rows, and the worker works it out on a copy of the database, as the
+request would have, and stores what each row would do once every row is worked.
+
 An apply is asked for by a request, which stores the job as queued, and worked in the
 background by the worker (`hirdir.io.background`), which takes it up as applying,
 one job at a time, 50 rows to a batch and each batch a transaction of its own (D-185).
@@ -21,7 +26,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-from sqlalchemy import case, func, insert, select, update
+from sqlalchemy import case, delete, func, insert, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -46,6 +51,11 @@ COUNTED = {"create": "created", "update": "updated", "unchanged": "unchanged"}
 SOURCES = ("file", "bulk")
 # The jobs that are being applied, or wait to be.
 BUSY = ("queued", "applying")
+# A job whose preview the background work is to work, or is working (P-325).
+PREVIEWING = "previewing"
+# What a row of such a job holds as its outcome until the preview ends. It is never
+# answered: the rows of a job that is previewing are not listed.
+WAITING = "waiting"
 # Why a job is stopped that the stop of the background work cut short: the process
 # that applied it stopped, after the batch it was in or without storing it.
 CUT_SHORT = "the background work stopped while it was being applied; apply it again to resume"
@@ -368,7 +378,7 @@ def _count(results: Sequence[Any]) -> dict[str, int]:
     return counts
 
 
-def preview_rows(
+def _worked(
     db: Session,
     context: AuditContext,
     role: Role | None,
@@ -377,19 +387,24 @@ def preview_rows(
     which: Entity,
     mode: str,
     rows: Sequence[Row],
-    file_name: str | None = None,
-    file_sha256: str | None = None,
     system_hid: str | None = None,
     complete: bool = False,
-) -> ImportJob:
-    """Work the rows without keeping anything, and store what they would do.
+    progress: Callable[[int], None] | None = None,
+) -> tuple[list[Result], int]:
+    """Work the rows without keeping anything. Return what each would do, and how many
+    items a file read from an external system that is everything it reports would mark
+    `not_reported`: none where a row is rejected (P-248).
 
-    A file read from an external system that is everything it reports counts how many
-    items its apply would mark `not_reported`: none where a row is rejected (P-248).
+    `progress` is told how far the rows have got, where they are worked on a copy of the
+    database: worked in place, in the caller's own session, they say nothing until they
+    end, since what `progress` stored in that session would be undone with them.
     """
     working = replace(context, via="import") if source == "file" else context
     with engine.trial(db, in_place=len(rows) <= IN_PLACE_UP_TO) as trying:
-        results = _work(trying, working, role, which, mode, rows, system_hid=system_hid)
+        told = progress if trying is not db else None
+        results = _work(
+            trying, working, role, which, mode, rows, system_hid=system_hid, progress=told
+        )
     marks = 0
     if (
         complete
@@ -398,22 +413,60 @@ def preview_rows(
     ):
         named = {result.record_hid for result in results if result.row_version is not None}
         marks = len(systems.not_named(db, system_hid, {hid for hid in named if hid}))
-    job = ImportJob(
+    return results, marks
+
+
+def _job(
+    context: AuditContext,
+    *,
+    source: str,
+    which: Entity,
+    mode: str,
+    rows: Sequence[Row],
+    file_name: str | None,
+    file_sha256: str | None,
+    system_hid: str | None,
+    complete: bool,
+) -> ImportJob:
+    """Return the job of a preview, as yet with none of its rows worked."""
+    return ImportJob(
         source=source,
         entity=which.name,
         mode=mode,
         file_name=file_name,
         file_sha256=file_sha256,
-        status="previewed",
+        status=PREVIEWING,
         row_count=len(rows),
-        rows_previewed=len(rows),
+        rows_previewed=0,
         created_by=context.actor_hid,
         system_hid=system_hid,
         complete=complete if system_hid is not None else None,
-        not_reported=marks,
-        **_count(results),
+        not_reported=0,
     )
-    db.add(job)
+
+
+def _sent(db: Session, context: AuditContext, job: ImportJob) -> None:
+    """Record that a preview was asked for, on its job: who sent it, in which request."""
+    audit.record(
+        db,
+        context,
+        "preview",
+        "import_job",
+        job.hid,
+        [change(name, None, getattr(job, name)) for name in ("source", "entity", "row_count")],
+    )
+
+
+def _store(
+    db: Session, job: ImportJob, rows: Sequence[Row], results: Sequence[Result], marks: int
+) -> None:
+    """Store what each row of a preview would do, and its counts, and make it `previewed`:
+    one way for a preview worked in the request and one worked in the background."""
+    for name, count in _count(results).items():
+        setattr(job, name, count)
+    job.not_reported = marks
+    job.rows_previewed = len(rows)
+    job.status = "previewed"
     db.flush()
     if results:
         db.execute(
@@ -435,14 +488,76 @@ def preview_rows(
                 for result in results
             ],
         )
-    audit.record(
+
+
+def preview_rows(
+    db: Session,
+    context: AuditContext,
+    role: Role | None,
+    *,
+    source: str,
+    which: Entity,
+    mode: str,
+    rows: Sequence[Row],
+    file_name: str | None = None,
+    file_sha256: str | None = None,
+    system_hid: str | None = None,
+    complete: bool = False,
+    in_background: bool = False,
+) -> ImportJob:
+    """Work the rows without keeping anything, and store what they would do.
+
+    A file read from an external system that is everything it reports counts how many
+    items its apply would mark `not_reported`: none where a row is rejected (P-248).
+
+    With `in_background`, as a request asks, more than `IN_PLACE_UP_TO` rows are not
+    worked here: they are stored as they were read, on a job that is `previewing`, for
+    the background work to preview (`work_preview`, P-325). Fewer are worked at once.
+    """
+    job = _job(
+        context,
+        source=source,
+        which=which,
+        mode=mode,
+        rows=rows,
+        file_name=file_name,
+        file_sha256=file_sha256,
+        system_hid=system_hid,
+        complete=complete,
+    )
+    if in_background and len(rows) > IN_PLACE_UP_TO:
+        db.add(job)
+        db.flush()
+        db.execute(
+            insert(ImportRow),
+            [
+                {
+                    "job_hid": job.hid,
+                    "row": number,
+                    "outcome": WAITING,
+                    "values": row.values,
+                    # What could not be read, which rejects the row when it is worked.
+                    "reasons": row.reasons,
+                }
+                for number, row in enumerate(rows, start=1)
+            ],
+        )
+        _sent(db, context, job)
+        return job
+    results, marks = _worked(
         db,
         context,
-        "preview",
-        "import_job",
-        job.hid,
-        [change(name, None, getattr(job, name)) for name in ("source", "entity", "row_count")],
+        role,
+        source=source,
+        which=which,
+        mode=mode,
+        rows=rows,
+        system_hid=system_hid,
+        complete=complete,
     )
+    db.add(job)
+    _store(db, job, rows, results, marks)
+    _sent(db, context, job)
     return job
 
 
@@ -459,12 +574,14 @@ def preview(
     max_bytes: int = files.MAX_BYTES,
     system: str | None = None,
     complete: bool = False,
+    in_background: bool = False,
 ) -> ImportJob:
     """Read a file, work out what importing it would do, and store that as a preview.
 
     A file of items may name `system`, the external system it was read from, by whose
     identifier its rows are matched first, and be `complete`, everything that system
-    reports (P-248).
+    reports (P-248). With `in_background`, a file of more than a hundred rows is read
+    and checked here, and stored for the background work to preview (P-325).
     """
     parsed = files.read(
         data, format_=format_, entity_name=entity_name, mode=mode, max_bytes=max_bytes
@@ -485,6 +602,7 @@ def preview(
         file_sha256=hashlib.sha256(data).hexdigest(),
         system_hid=system_hid,
         complete=complete,
+        in_background=in_background,
     )
 
 
@@ -613,9 +731,15 @@ def list_rows(
 
     `outcome` keeps to the rows the preview found so, and `applied_outcome` to those
     the apply did so with. `arrange` sorts them as was asked for, and the order of the
-    file settles what that leaves tied.
+    file settles what that leaves tied. The rows of a job that is still `previewing` are
+    not listed: nothing is known of them yet (P-325).
     """
-    get_job(db, hid)
+    job = get_job(db, hid)
+    if job.status == PREVIEWING:
+        raise Conflict(
+            "this preview is still being worked out: its rows are listed once it is previewed",
+            {"status": "wait for it to be previewed"},
+        )
     query = select(ImportRow).where(ImportRow.job_hid == hid)
     if outcome:
         if outcome not in OUTCOMES:
@@ -660,6 +784,16 @@ def begin_apply(
     dialect.hold_other_writers(db)
     job = get_job(db, hid, source)
     db.refresh(job)
+    if job.status == PREVIEWING:
+        raise Conflict(
+            "this preview is still being worked out: it may be applied once it is previewed",
+            {"status": "wait for it to be previewed"},
+        )
+    if job.status == "failed":
+        raise Conflict(
+            "this preview failed, and is not applied",
+            {"status": f"{_again(job)} to make a new preview"},
+        )
     if job.entity in LISTS and (job.created or job.updated) and _role(db, context) != Role.ADMIN:
         raise NotAllowed(
             f"an Admin applies a file of {job.entity} that changes them: this needs the admin role"
@@ -713,23 +847,30 @@ def recover(db: Session) -> list[str]:
     `applying` here is one that the stop of the last worker cut short. A job that
     waited, `queued`, which nobody had taken up, waits still, and is applied in its
     turn. Return the jobs stopped.
+
+    A preview found `previewing` is worked again from its first row in its turn, since
+    nothing of it was kept (P-325): it is said again to have worked none.
     """
     found = list(db.scalars(select(ImportJob.hid).where(ImportJob.status == "applying")))
     for hid in found:
         _stop(db, hid, CUT_SHORT)
+    db.execute(
+        update(ImportJob)
+        .where(ImportJob.status == PREVIEWING, ImportJob.rows_previewed != 0)
+        .values(rows_previewed=0)
+    )
     return found
 
 
 def next_job(db: Session) -> str | None:
-    """Return the job to apply next: the one applying, else the one that has waited longest."""
+    """Return the job to work next: the one applying, else the one asked for first, of
+    the previews that wait for the background work, by when the file was sent (P-325),
+    and the applies that wait, by when the apply was asked for."""
+    asked = case((ImportJob.status == PREVIEWING, ImportJob.created_at), else_=ImportJob.applied_at)
     return db.scalar(
         select(ImportJob.hid)
-        .where(ImportJob.status.in_(BUSY))
-        .order_by(
-            case((ImportJob.status == "applying", 0), else_=1),
-            ImportJob.applied_at,
-            ImportJob.hid,
-        )
+        .where(ImportJob.status.in_((*BUSY, PREVIEWING)))
+        .order_by(case((ImportJob.status == "applying", 0), else_=1), asked, ImportJob.hid)
         .limit(1)
     )
 
@@ -1325,3 +1466,233 @@ def _apply_waiting(
                 raise
         else:
             return
+
+
+# --- a preview in the background (P-325) ----------------------------------------------
+
+
+class _Cut(Exception):
+    """The stop of the background work cut a preview short: it is worked again later."""
+
+
+# How long a preview in the background waits to store what it worked out again, where
+# another change held the writer's place for longer than `busy_timeout`, in seconds.
+STORE_AGAIN_AFTER = 0.1
+
+
+def work(db: Session, hid: str, stop: threading.Event | None = None) -> str:
+    """Work a job that the worker found (`next_job`): preview one that is `previewing`
+    (P-325), and apply one that is to be applied (D-185). Return the status it ends in,
+    or "" where it was neither."""
+    status = db.scalar(select(ImportJob.status).where(ImportJob.hid == hid))
+    db.rollback()
+    if status == PREVIEWING:
+        return work_preview(db, hid, stop)
+    return work_job(db, hid, stop)
+
+
+def _sender(db: Session, hid: str) -> AuditContext:
+    """Return who sent a preview, through which door, in which request: its event.
+
+    A preview in the background is worked under the request ID of the request that
+    sent it, and as the person who sent it.
+    """
+    event = db.scalars(
+        select(AuditEvent)
+        .where(
+            AuditEvent.record_type == "import_job",
+            AuditEvent.record_hid == hid,
+            AuditEvent.action == "preview",
+        )
+        .order_by(AuditEvent.at.desc(), AuditEvent.hid.desc())
+        .limit(1)
+    ).first()
+    if event is None:
+        return AuditContext(actor_hid=None, via="system")
+    # An agent's preview is for the person it was answerable to when it sent it (P-316).
+    return AuditContext(
+        actor_hid=event.actor_hid,
+        via=event.via,
+        request_id=event.request_id,
+        for_hid=event.for_hid,
+    )
+
+
+def _again(job: ImportJob) -> str:
+    """Say how a preview that failed is made again."""
+    return "send the file again" if job.source == "file" else "ask for the bulk edit again"
+
+
+def _take_preview(db: Session, hid: str) -> ImportJob | None:
+    """Take a preview that waits for the background work, in a transaction of its own
+    before any row of it is worked, as having worked none. None where it does not wait."""
+    dialect.hold_other_writers(db)
+    job = db.get(ImportJob, hid)
+    if job is not None:
+        db.refresh(job)
+    if job is None or job.status != PREVIEWING:
+        db.rollback()
+        return None
+    job.rows_previewed = 0
+    db.commit()
+    return job
+
+
+def _waiting_rows(db: Session, hid: str) -> list[Row]:
+    """Return the rows of a preview that waits, as they were read, in the file's order."""
+    found = db.execute(
+        select(ImportRow.values, ImportRow.reasons)
+        .where(ImportRow.job_hid == hid)
+        .order_by(ImportRow.row)
+    )
+    return [Row(values=values or {}, reasons=reasons or []) for values, reasons in found]
+
+
+def _previewed(
+    db: Session,
+    hid: str,
+    context: AuditContext,
+    rows: Sequence[Row],
+    results: Sequence[Result],
+    marks: int,
+) -> None:
+    """Store what each row of a preview in the background would do, in place of the rows
+    as read, as a preview in the request stores it, and make the job `previewed`, in one
+    transaction, with its event."""
+    dialect.hold_other_writers(db)
+    job = db.get_one(ImportJob, hid)
+    db.refresh(job)
+    db.execute(delete(ImportRow).where(ImportRow.job_hid == hid))
+    _store(db, job, rows, results, marks)
+    audit.record(
+        db,
+        context,
+        "previewed",
+        "import_job",
+        hid,
+        [
+            change("status", PREVIEWING, job.status),
+            *(change(name, None, getattr(job, name)) for name in COUNTED.values()),
+            change("rejected", None, job.rejected),
+            *([change("not_reported", None, marks)] if job.complete else []),
+        ],
+    )
+    db.commit()
+
+
+def _fail(db: Session, hid: str, why: str) -> None:
+    """Make a preview in the background `failed`, with why, so that it is not applied.
+    The rows it held for the work are let go: nothing of them was ever worked out."""
+    dialect.hold_other_writers(db)
+    job = db.get_one(ImportJob, hid)
+    db.refresh(job)
+    before = job.status
+    db.execute(delete(ImportRow).where(ImportRow.job_hid == hid))
+    job.status, job.failure = "failed", why
+    # Nobody ended it: the server did, in the course of the preview that was sent.
+    sent = _sender(db, hid)
+    by_the_server = AuditContext(actor_hid=None, via="system", request_id=sent.request_id)
+    audit.record(
+        db,
+        by_the_server,
+        "preview_failed",
+        "import_job",
+        hid,
+        [change("status", before, "failed"), change("failure", None, why)],
+    )
+    db.commit()
+
+
+def work_preview(db: Session, hid: str, stop: threading.Event | None = None) -> str:
+    """Work out a preview that a request stored for the background work (P-325).
+
+    This is the worker's part, beside the requests. The rows are worked as the person
+    who sent them, whose role is looked at again first, on a copy of the database, as a
+    preview in the request is (`_worked`), and the job says how far they have got, in
+    `rows_previewed`, written to the live database in a transaction of a moment every
+    `BATCH_ROWS` rows. Once every row is worked, what each would do is stored and the
+    job is `previewed`. A role that is lost, or an error nobody foresaw, makes it
+    `failed`, with why. Nothing of a preview is kept until it ends: when `stop` is set,
+    it stops after the rows it is in and is worked again from its first row, later.
+
+    Return the status the job is left in: `previewed`, `failed`, or `previewing` where
+    a stop cut it short; "" where it did not wait to be previewed.
+    """
+    stop = stop or threading.Event()
+    job = _take_preview(db, hid)
+    if job is None:
+        return ""
+    # What is read of the job is read once, before anything can go wrong.
+    source, mode, system_hid, complete = job.source, job.mode, job.system_hid, job.complete
+    again = _again(job)
+    try:
+        context = _sender(db, hid)
+        role = _role(db, context)
+        if role is None or not role.allows(Role.INVENTORY):
+            _fail(
+                db,
+                hid,
+                f"who asked for the preview no longer holds the Inventory role; anybody "
+                f"who does may {again}",
+            )
+            return "failed"
+        which = entity(job.entity)
+        rows = _waiting_rows(db, hid)
+        db.rollback()
+
+        def told(done: int) -> None:
+            if stop.is_set():
+                raise _Cut
+            try:
+                db.execute(
+                    update(ImportJob).where(ImportJob.hid == hid).values(rows_previewed=done)
+                )
+                db.commit()
+            except OperationalError as error:
+                # Another change held the writer's place too long: how far it has got is
+                # said at the next rows instead, and nothing of the preview is lost.
+                db.rollback()
+                if not dialect.is_busy(error):
+                    raise
+
+        results, marks = _worked(
+            db,
+            context,
+            role,
+            source=source,
+            which=which,
+            mode=mode,
+            rows=rows,
+            system_hid=system_hid,
+            complete=bool(complete),
+            progress=told,
+        )
+        while True:
+            try:
+                _previewed(db, hid, context, rows, results, marks)
+                break
+            except OperationalError as error:
+                # Another change held the writer's place too long: nothing was stored,
+                # and the rows worked out are stored again a moment later.
+                db.rollback()
+                if not dialect.is_busy(error):
+                    raise
+                if stop.wait(STORE_AGAIN_AFTER):
+                    raise _Cut from None
+        return "previewed"
+    except _Cut:
+        db.rollback()
+        # Worked again from its first row when the background work starts again.
+        db.execute(update(ImportJob).where(ImportJob.hid == hid).values(rows_previewed=0))
+        db.commit()
+        return PREVIEWING
+    except Exception as error:
+        db.rollback()
+        log.exception("the preview of %s failed", hid)
+        _fail(
+            db,
+            hid,
+            f"an error nobody foresaw ended it ({type(error).__name__}); the request ID "
+            f"is {_sender(db, hid).request_id}; {again}",
+        )
+        return "failed"

@@ -136,14 +136,25 @@ class Desk:
         return response.json()
 
     def preview(self, entity: str, text: str, format_: str = "csv") -> dict[str, Any]:
+        """Preview a file, and return the preview. One of more than a hundred rows is
+        answered `202` and previewed by the process of the background work (P-325): it
+        is waited for, and its job and first rows read, as a preview in the request
+        answers them."""
         response = self.client.post(
             "/imports/preview",
             params={"entity": entity},
             content=text,
             headers={"Content-Type": "application/json" if format_ == "json" else "text/csv"},
         )
-        assert response.status_code == 201, response.text
-        return response.json()
+        assert response.status_code in (201, 202), response.text
+        answer = response.json()
+        if response.status_code == 201:
+            return answer
+        assert answer["job"]["status"] == "previewing", answer
+        job = self.wait(answer["job"]["hid"])
+        assert job["status"] == "previewed", job
+        rows = self.get(f"/imports/{job['hid']}/rows", limit=100)["items"]
+        return {"job": job, "rows": rows, "not_reported_first": job["not_reported_first"]}
 
     def apply(self, preview: dict[str, Any], expect: int = 202) -> dict[str, Any]:
         """Apply a preview, and return its job once the server has applied it."""
@@ -158,11 +169,11 @@ class Desk:
         return self.wait(begun["hid"])
 
     def wait(self, hid: str) -> dict[str, Any]:
-        """Return a job once it is no longer being applied."""
+        """Return a job once it is no longer being previewed or applied."""
         deadline = time.monotonic() + WAIT_FOR_JOB
         while True:
             job = self.get(f"/imports/{hid}")
-            if job["status"] not in ("queued", "applying"):
+            if job["status"] not in ("previewing", "queued", "applying"):
                 return job
             assert time.monotonic() < deadline, f"the job {hid} is still {job['status']}"
             time.sleep(0.05)

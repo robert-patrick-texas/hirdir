@@ -4458,7 +4458,9 @@ export interface paths {
      * Work out what importing a file would do, and store that as a preview.
      *
      * Nothing is changed. Each row comes back as `create`, `update` with the fields it
-     * changes, `unchanged`, or `rejected` with the reasons.
+     * changes, `unchanged`, or `rejected` with the reasons. A file of more than a hundred
+     * rows is read and checked, stored, and answered `202` at once: the background work
+     * previews it, and `GET /imports/{hid}` follows it until it is `previewed` (P-325).
      */
     post: {
       parameters: {
@@ -4573,7 +4575,7 @@ export interface paths {
             "application/json": components["schemas"]["ImportJobOut"];
           };
         };
-        /** It is applied already, or being applied, or failed before 0.7.0. */
+        /** It is still being previewed, or applied already, or being applied, or it failed: its preview in the background did not end (P-325), or it is of a release before 0.7.0. */
         409: {
           content: {
             "application/json": components["schemas"]["Problem"];
@@ -4628,6 +4630,7 @@ export interface paths {
      * List the rows of a preview, in the order of the file unless a sort says otherwise.
      *
      * Each says what the preview found, and once it is applied, what the apply did with it.
+     * A job that is still `previewing` is answered `409` (P-325).
      */
     get: {
       parameters: {
@@ -4652,6 +4655,12 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["Page_ImportRowOut_"];
+          };
+        };
+        /** The job is still `previewing`: its rows are listed once it is previewed (P-325). */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
           };
         };
         /** Validation Error */
@@ -4776,7 +4785,10 @@ export interface paths {
     /**
      * Work out what one change would do to many items, and store that as a preview.
      *
-     * Nothing is changed. Each row comes back with what it was and what it would be.
+     * Nothing is changed. Each row comes back with what it was and what it would be. A
+     * change of more than a hundred items is checked, stored, and answered `202` at once:
+     * the background work previews it, and `GET /imports/{hid}` follows it until it is
+     * `previewed` (P-325).
      */
     post: {
       parameters: {
@@ -4846,7 +4858,7 @@ export interface paths {
             "application/json": components["schemas"]["ImportJobOut"];
           };
         };
-        /** It is applied already, or being applied, or failed before 0.7.0. */
+        /** It is still being previewed, or applied already, or being applied, or it failed: its preview in the background did not end (P-325), or it is of a release before 0.7.0. */
         409: {
           content: {
             "application/json": components["schemas"]["Problem"];

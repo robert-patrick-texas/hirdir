@@ -43171,7 +43171,7 @@
     },
     "/api/v1/imports/preview": {
       "post": {
-        "description": "Work out what importing a file would do, and store that as a preview.\n\nNothing is changed. Each row comes back as `create`, `update` with the fields it\nchanges, `unchanged`, or `rejected` with the reasons.",
+        "description": "Work out what importing a file would do, and store that as a preview.\n\nNothing is changed. Each row comes back as `create`, `update` with the fields it\nchanges, `unchanged`, or `rejected` with the reasons. A file of more than a hundred\nrows is read and checked, stored, and answered `202` at once: the background work\npreviews it, and `GET /imports/{hid}` follows it until it is `previewed` (P-325).",
         "operationId": "preview_import_api_v1_imports_preview_post",
         "parameters": [
           {
@@ -43554,7 +43554,7 @@
                 }
               }
             },
-            "description": "It is applied already, or being applied, or failed before 0.7.0."
+            "description": "It is still being previewed, or applied already, or being applied, or it failed: its preview in the background did not end (P-325), or it is of a release before 0.7.0."
           },
           "422": {
             "content": {
@@ -43642,7 +43642,7 @@
     },
     "/api/v1/imports/{hid}/rows": {
       "get": {
-        "description": "List the rows of a preview, in the order of the file unless a sort says otherwise.\n\nEach says what the preview found, and once it is applied, what the apply did with it.",
+        "description": "List the rows of a preview, in the order of the file unless a sort says otherwise.\n\nEach says what the preview found, and once it is applied, what the apply did with it.\nA job that is still `previewing` is answered `409` (P-325).",
         "operationId": "list_import_rows_api_v1_imports__hid__rows_get",
         "parameters": [
           {
@@ -43759,6 +43759,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The job is still `previewing`: its rows are listed once it is previewed (P-325)."
           },
           "422": {
             "content": {
@@ -44042,7 +44052,7 @@
     },
     "/api/v1/items/bulk-update": {
       "post": {
-        "description": "Work out what one change would do to many items, and store that as a preview.\n\nNothing is changed. Each row comes back with what it was and what it would be.",
+        "description": "Work out what one change would do to many items, and store that as a preview.\n\nNothing is changed. Each row comes back with what it was and what it would be. A\nchange of more than a hundred items is checked, stored, and answered `202` at once:\nthe background work previews it, and `GET /imports/{hid}` follows it until it is\n`previewed` (P-325).",
         "operationId": "bulk_update_api_v1_items_bulk_update_post",
         "parameters": [
           {
@@ -44179,7 +44189,7 @@
                 }
               }
             },
-            "description": "It is applied already, or being applied, or failed before 0.7.0."
+            "description": "It is still being previewed, or applied already, or being applied, or it failed: its preview in the background did not end (P-325), or it is of a release before 0.7.0."
           },
           "422": {
             "content": {

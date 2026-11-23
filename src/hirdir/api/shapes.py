@@ -1579,8 +1579,10 @@ def row_out(row: ImportRow) -> shapes.ImportRowOut:
 
 
 def preview_out(db: Session, job: ImportJob) -> shapes.ImportPreview:
-    """Return a preview: the job, and the first of its rows."""
-    rows, _ = imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)
+    """Return a preview: the job, and the first of its rows; none while the background
+    work previews it (P-325)."""
+    previewing = job.status == imports.PREVIEWING
+    rows = [] if previewing else imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)[0]
     return shapes.ImportPreview(
         job=job_out(db, job),
         rows=[row_out(row) for row in rows],

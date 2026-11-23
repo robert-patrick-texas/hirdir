@@ -1973,7 +1973,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | `system_hid` | reference | an import of items only: the external system the file was read from, by whose identifier its rows are matched (P-248). Blank for every other |
 | `complete` | boolean | with `system_hid`: the file is everything that system reports, so that what it does not name is marked `not_reported` when it is applied whole |
 | `not_reported` | integer | how many items that would mark, as the preview found, and how many it marked once applied |
-| `failure` | text | why a `failed` job was not applied, or why a `stopped` one stopped |
+| `failure` | text | why a `failed` job was not previewed whole or not applied, or why a `stopped` one stopped |
 | `applied_at`, `applied_by` | timestamp, user HID | when it was applied, and by whom |
 
 The job carries `created_at` and `created_by`, for who made the preview. Anybody who
@@ -1982,7 +1982,7 @@ holds the Inventory role may apply it. Its rows are kept one to a record in `imp
 | Field | Type | Notes |
 |---|---|---|
 | `job_hid`, `row` | reference, integer | rows are numbered from 1, in the order of the file |
-| `outcome` | choice | `create`, `update`, `unchanged` or `rejected` |
+| `outcome` | choice | `create`, `update`, `unchanged` or `rejected`. While its job is `previewing`, every row holds `waiting`, which no answer gives, and the rows as they were read: what each would do is stored in their place once the preview ends (P-325) |
 | `record_hid` | reference | the record the row matched, or created once applied |
 | `row_version` | integer | the version that record was previewed at |
 | `key` | text | how the row names its record, for people |
