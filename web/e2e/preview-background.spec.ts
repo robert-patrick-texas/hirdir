@@ -29,10 +29,12 @@ const MANY = 120;
 
 type Job = { hid: string; status: string; file_name: string | null; row_count: number };
 
-function contacts(name: string, rows: number) {
+/** A file of new contacts, named by the file's `part` and its mark: none of another test's. */
+function contacts(name: string, part: string, rows: number) {
   const lines = Array.from(
     { length: rows },
-    (_, at) => `Background Preview ${suffix} ${at + 1},pb-${suffix}-${at + 1}@example.org`,
+    (_, at) =>
+      `Background Preview ${suffix} ${part} ${at + 1},pb-${suffix}-${part}-${at + 1}@example.org`,
   );
   return {
     name,
@@ -107,7 +109,7 @@ test("a file of more than a hundred rows is followed while it is previewed, left
     unchanged: 0,
     rejected: 0,
   });
-  const sent = await send(page, contacts(name, MANY));
+  const sent = await send(page, contacts(name, "many", MANY));
 
   // Being previewed: how far it has got, said politely, and nothing to apply or page.
   const job = page.getByTestId("import-job");
@@ -155,7 +157,7 @@ test("a file of more than a hundred rows is followed while it is previewed, left
   const rows = page.getByTestId("preview-rows").locator("tbody tr");
   await expect(rows).toHaveCount(100);
   await expect(rows.first()).toHaveAttribute("data-row", "1");
-  await expect(rows.first()).toContainText(`Background Preview ${suffix} 1`);
+  await expect(rows.first()).toContainText(`Background Preview ${suffix} many 1`);
   await expect(past).toContainText("Previewed, not applied");
   await expect(past.getByTestId("job-rows")).toHaveText(
     `${MANY} to create, 0 to update, 0 unchanged, 0 rejected`,
@@ -186,7 +188,7 @@ test("a preview that failed in the background says why, offers to send the file 
     rejected: 0,
     failure: why,
   });
-  const first = await send(page, contacts(name, MANY));
+  const first = await send(page, contacts(name, "failed", MANY));
 
   const job = page.getByTestId("import-job");
   await expect(job).toHaveAttribute("data-status", "failed");
