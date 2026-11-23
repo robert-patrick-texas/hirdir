@@ -2371,6 +2371,54 @@ and 877 ms. A sign-in waits for the batch that holds the one writer to end, so h
 it waits is how long a batch takes, under a second (D-185: "a fraction of a second at
 most") only while 50 rows take under a second.
 
+**An import at 0.9.19, each row made cheaper** (P-324), measured while other work shared
+the host, so that each number stands beside the load it was taken at and is no
+measurement of the quality: S36 and the final timing are run with the host to itself.
+Each step was measured on a preview and an apply of 1,000 new items, in one process on
+a copy of the fixture, by the processor time of a row and the statements it sends:
+
+| After | Preview, ms a row | statements | Apply, ms a row | statements | Load |
+|---|--:|--:|--:|--:|--:|
+| 0.9.18 | 15.3 | 38.6 | 16.2 | 41.7 | 6.8 |
+| the copy one transaction | 14.6 ¹ | 38.6 | | | 0.9 |
+| records read back 50 at a time | 8.1 | 20.8 | 9.0 | 23.9 | 5.7 |
+| what a file cannot change held | 7.8 | 15.7 | 8.9 | 19.6 | 7.7 |
+| no blank value looked up | 5.7 | 13.7 | 7.3 | 17.6 | 9.5 |
+| serial numbers read together for the order, places by HID, one look for a twin | 5.1 | 8.7 | 7.8 | 12.7 | 6.0 |
+| no pause where nobody else writes, records read before their batch | 4.4 | 8.7 | 5.8 | 12.7 | 2.9 |
+| models, owners and locations read ahead of each batch | 4.2 | 7.7 | 4.9 | 8.6 | 5.7 |
+| the writer's place not taken again | 3.7 | 6.7 | 4.1 | 7.5 | 6.2 |
+| the read a row is compared with, two statements built once | 3.3 | 6.5 | 3.8 | 7.4 | 8.0 |
+
+¹ The time of the whole row, not its processor time alone, against 17.1 ms for 0.9.18
+on the same quiet host: the copy that stored each row by itself waited on the disk.
+
+Until the step that ends the pause, an apply also left the writer's place free for
+0.12 s after every batch, 2.3 s in 1,000 rows, which its processor time does not show.
+A file of 1,000 updates by HID, `hid,comments`, went from 27.0 ms a row and 62.6
+statements to 2.4 ms and 5.6 to preview, and from 25.5 ms to 2.2 ms to apply. Every row
+of both files, and every audit event, came out as 0.9.18 made them.
+
+What a new item's row costs now, profiled over a preview of 10,000: its record and its
+audit event stored by the session, one after the other, a third of the time; finding
+its record, an eighth; the look for a twin of its serial number or asset tag, a tenth;
+its savepoint, a tenth; reading the batch back, an eighth; SQLite itself, a tenth of the
+whole. A row sends six or seven statements: its savepoint and the end of it, the find,
+the look for a twin, and the two inserts.
+
+`make time-import`, 10,000 new items, the two run one after the other on the shared
+host:
+
+| | 0.9.18, load 5.1 to 5.5 | 0.9.19, load 7.7 to 9.4 |
+|---|--:|--:|
+| Preview | 209.4 s | 44.2 s |
+| Apply, from the request to the job applied | 227.3 s | 73.0 s |
+| the order of the rows | 4.5 s | 1.5 s |
+| 200 batches | 198.5 s, median 941 ms | 69.7 s, median 343 ms |
+| 199 pauses between them | 24.1 s | 1.7 s, the longest 98 ms |
+| a sign-in with nothing going on, median | 239 ms | 227 ms |
+| what a sign-in waited during the apply, median / 95th / longest | 799 / 1210 / 2200 ms | 196 / 499 / 525 ms |
+
 **Measured at 0.8.0.** On the same host, median and 95th percentile in milliseconds of
 15 runs after 2 warm-ups, with the host otherwise quiet: its load average over the
 minute of each request was 0.9 to 1.5, of which about 1 is the timing itself. The
