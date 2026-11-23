@@ -2952,6 +2952,10 @@ witness_circuits() {
     local land building hall pat sam telecom exchange partner morgan desk link internet dark group
     local made wanted entry key value
     local undo=() settings=()
+    # From 0.9.18 the dates of a circuit are its A side's, and the names that 0.9.17
+    # took are refused (P-317, P-320).
+    local installed=installed_on activated=activated_on
+    if previous_at 0019; then installed=a_installed_on activated=a_activated_on; fi
 
     witness_circuited=yes
     api GET '/regions?limit=1000'
@@ -2994,7 +2998,7 @@ witness_circuits() {
     # Between two locations from before, with a second carrier, cost lines with dates,
     # a rate that ended and a credit that ends, a device on each side, and a site
     # contact of its own for the Z side.
-    api POST /circuits "{\"name\": \"Upgrade Witness Link\", \"enterprise_circuit_id\": \"UW-EC-0001\", \"description\": \"Between the room and the hall\", \"circuit_type\": \"point_to_point\", \"port_mbps\": \"1000\", \"a_location_hid\": \"$witness_room\", \"a_note\": \"demarc in the basement\", \"z_location_hid\": \"$hall\", \"carrier_hid\": \"$telecom\", \"carrier_circuit_number\": \"UWT/0001/000/UWTL\", \"billing_account\": \"UW-BA-0001\", \"billing_contract\": \"UW-MSA-0001\", \"installed_on\": \"$(day_from_today -400)\", \"activated_on\": \"$(day_from_today -390)\", \"support_weight\": \"0.75\", \"owner_hid\": \"$witness_owner\", \"notes\": \"Made with the release before\", \"tags\": [\"upgrade-witness\"]}"
+    api POST /circuits "{\"name\": \"Upgrade Witness Link\", \"enterprise_circuit_id\": \"UW-EC-0001\", \"description\": \"Between the room and the hall\", \"circuit_type\": \"point_to_point\", \"port_mbps\": \"1000\", \"a_location_hid\": \"$witness_room\", \"a_note\": \"demarc in the basement\", \"z_location_hid\": \"$hall\", \"carrier_hid\": \"$telecom\", \"carrier_circuit_number\": \"UWT/0001/000/UWTL\", \"billing_account\": \"UW-BA-0001\", \"billing_contract\": \"UW-MSA-0001\", \"$installed\": \"$(day_from_today -400)\", \"$activated\": \"$(day_from_today -390)\", \"support_weight\": \"0.75\", \"owner_hid\": \"$witness_owner\", \"notes\": \"Made with the release before\", \"tags\": [\"upgrade-witness\"]}"
     made=$status
     link=$(json_field hid)
     api POST "/circuits/$link/carriers" "{\"vendor_hid\": \"$exchange\", \"role\": \"local_exchange\", \"circuit_number\": \"UWX-0001\", \"notes\": \"Hands it over at the hall\"}"
@@ -3018,7 +3022,7 @@ witness_circuits() {
 
     # Its far end in the carrier's network, with a note, and rates below its port's; it
     # names an account manager of its own in place of the carrier's.
-    api POST /circuits "{\"name\": \"Upgrade Witness Internet\", \"enterprise_circuit_id\": \"UW-EC-0002\", \"circuit_type\": \"internet\", \"port_mbps\": \"1000\", \"down_mbps\": \"500\", \"up_mbps\": \"50\", \"a_location_hid\": \"$building\", \"z_note\": \"carrier network\", \"carrier_hid\": \"$telecom\", \"carrier_circuit_number\": \"UWT/0002/000/UWTL\", \"activated_on\": \"$(day_from_today -100)\"}"
+    api POST /circuits "{\"name\": \"Upgrade Witness Internet\", \"enterprise_circuit_id\": \"UW-EC-0002\", \"circuit_type\": \"internet\", \"port_mbps\": \"1000\", \"down_mbps\": \"500\", \"up_mbps\": \"50\", \"a_location_hid\": \"$building\", \"z_note\": \"carrier network\", \"carrier_hid\": \"$telecom\", \"carrier_circuit_number\": \"UWT/0002/000/UWTL\", \"$activated\": \"$(day_from_today -100)\"}"
     made=$status
     internet=$(json_field hid)
     api POST "/circuits/$internet/costs" '{"description": "Port", "monthly_cost": "500.00"}'
