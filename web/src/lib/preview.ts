@@ -202,7 +202,10 @@ export function hasPreview(job: Counted): boolean {
   return job.rows_previewed >= job.row_count && counted >= job.row_count;
 }
 
-/** A preview that failed in the background: it was never whole, is never applied, and is sent again. */
+/**
+ * A preview that failed in the background: it was never whole, is never applied, and is
+ * sent again.
+ */
 export function previewFailed(job: Counted): boolean {
   return job.status === "failed" && !hasPreview(job);
 }
