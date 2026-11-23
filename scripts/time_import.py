@@ -19,8 +19,11 @@ at once.
 The file is of new items made from what the fixture holds: switches and access points
 of its models, at its floors and rooms, under its owners, with serial numbers, asset
 tags, host names and MAC addresses of their own (EXI..., AT-I..., imp-..., 02-5F-...).
-It is previewed, the preview is applied, and the job is asked how far it has got until
-it is applied. While it is applied a person signs in every second, and each sign-in is
+It is previewed, and a file of more than a hundred rows is previewed in the background
+(P-325): the request answers `202` at once, and the job is asked how far it has got
+until it is previewed, the preview being timed from the request to the job previewed
+(P-327). The preview is applied, and the job is asked how far it has got until it is
+applied. While it is applied a person signs in every second, and each sign-in is
 timed: a sign-in writes an audit event, so it waits for the one writer as any change
 does. The same sign-in is timed first with nothing else going on.
 
@@ -138,13 +141,16 @@ class Known:
 
 
 def prepare(target: Path) -> Known:
-    """Make the account that applies the file in the copy, and read what the file is to
-    refer to."""
+    """Bring the copy to the schema of this code, as `hirdir admin migrate` does, make the
+    account that applies the file in it, and read what the file is to refer to. A fixture
+    made by an earlier release is so timed as this one, and is itself left as it is."""
     from hirdir.config import Config
+    from hirdir.db import migrate
     from hirdir.db.engine import make_engine, make_sessions
     from hirdir.db.models import CatalogEntry, Location, Owner, Vendor
     from hirdir.domain import accounts, audit
 
+    migrate.upgrade(Config(state_dir=target).database_url)
     engine = make_engine(Config(state_dir=target).database_url)
     try:
         with make_sessions(engine)() as db:
@@ -337,6 +343,7 @@ class Measured:
     rows: int
     file_bytes: int
     preview_s: float
+    preview_answered_s: float
     preview_load: float
     previewed: dict[str, Any]
     apply_s: float
@@ -379,11 +386,32 @@ def run(base: str, data: bytes, rows: int, facts: dict[str, Any], spans: Spans) 
             content=data,
             headers={"Content-Type": "text/csv"},
         )
-        preview_s = time.perf_counter() - began
-        preview_load = load()
-        if response.status_code != 201:
+        answered_s = time.perf_counter() - began
+        if response.status_code not in (201, 202):
             raise SystemExit(f"the preview was refused: {response.status_code} {response.text}")
         previewed = response.json()["job"]
+        # More than a hundred rows are previewed in the background (P-325): followed
+        # from the request to the job previewed.
+        told = 0.0
+        while previewed["status"] == "previewing":
+            if time.perf_counter() - began > LONGEST:
+                raise SystemExit(f"the preview took longer than {LONGEST} s")
+            time.sleep(ASK_EVERY)
+            previewed = ask_job(client, previewed["hid"])
+            if time.perf_counter() - told >= 10:
+                told = time.perf_counter()
+                print(
+                    f"  previewing: {previewed['rows_previewed']:,} of "
+                    f"{previewed['row_count']:,} rows, load {load():.2f}"
+                )
+        preview_s = time.perf_counter() - began
+        preview_load = load()
+        if previewed["status"] != "previewed":
+            raise SystemExit(f"the preview ended {previewed['status']}: {previewed['failure']}")
+        print(
+            f"preview answered {response.status_code} in {answered_s:.2f} s, "
+            f"previewed {preview_s:.1f} s after the request"
+        )
         print(
             f"preview: {preview_s:.1f} s, load {preview_load:.2f}; "
             f"{previewed['created']:,} to create, {previewed['rejected']:,} rejected"
@@ -425,6 +453,7 @@ def run(base: str, data: bytes, rows: int, facts: dict[str, Any], spans: Spans) 
         rows=rows,
         file_bytes=len(data),
         preview_s=preview_s,
+        preview_answered_s=answered_s,
         preview_load=preview_load,
         previewed=previewed,
         apply_s=ended - began,
@@ -458,8 +487,9 @@ def report(found: Measured, pause: float) -> str:
 
     lines = [
         f"file: {found.rows:,} new items, {found.file_bytes / 1e6:.1f} MB of CSV",
-        f"preview: {found.preview_s:.1f} s, {verdict(found.preview_s, PREVIEW_TARGET_S)}, "
-        f"load {found.preview_load:.2f}",
+        f"preview: {found.preview_s:.1f} s from the request to the job previewed, "
+        f"{verdict(found.preview_s, PREVIEW_TARGET_S)}, load {found.preview_load:.2f}; "
+        f"the request answered in {found.preview_answered_s:.2f} s",
         f"apply: {found.apply_s:.1f} s from the request to the job applied, "
         f"{verdict(found.apply_s, APPLY_TARGET_S)}, load {found.apply_load:.2f}; "
         f"{found.job['applied']:,} applied, {found.job['stale']:,} stale",
