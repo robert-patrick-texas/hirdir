@@ -370,7 +370,12 @@ curl -H "Authorization: Bearer $HIRDIR_TOKEN" -H 'Content-Type: text/csv' \
     'https://inventory.example.net/hirdir/api/v1/imports/preview?entity=tags'
 ```
 
-The answer is the preview: what each row would do, and the HID of the stored job.
+The answer is the preview: what each row would do, and the HID of the stored job. A
+file of more than a hundred rows is previewed in the background from 0.9.19: the answer
+is a `202` with the job `previewing` and no rows yet, and
+`GET /api/v1/imports/<that HID>` says how far it has got, `rows_previewed` of
+`row_count`, until its `status` is `previewed`;
+`GET /api/v1/imports/<that HID>/rows` then lists what each row would do.
 `POST /api/v1/imports/<that HID>/apply` then loads it in the background: it answers at
 once, and `GET /api/v1/imports/<that HID>` says how far it has got, until its `status`
 is `applied`. A script waits for that before it previews the next file of the load
@@ -413,7 +418,7 @@ From 0.9.10 the service is two processes, each a unit of systemd, on the one dat
 | Unit | Runs | What it does |
 |---|---|---|
 | `hirdir.service` | `hirdir admin serve` | The server. It answers the web page, the API and the command line, on `127.0.0.1:8715`. |
-| `hirdir-worker.service` | `hirdir admin work` | The process of the background work. It applies the imports and bulk edits that were asked for, records the capacity balance of the week each Monday just after midnight, and works out the long reports ahead, at night and after a change, and keeps them in the database for the server to give. It listens on nothing. |
+| `hirdir-worker.service` | `hirdir admin work` | The process of the background work. It previews the files and bulk edits of more than a hundred rows, applies the imports and bulk edits that were asked for, records the capacity balance of the week each Monday just after midnight, and works out the long reports ahead, at night and after a change, and keeps them in the database for the server to give. It listens on nothing. |
 
 What nobody waits for is so kept off the processor that answers people. Both run as
 the `hirdir` user, under the same limits, and write to `/var/lib/hirdir` and nowhere
@@ -454,7 +459,12 @@ edit that is applied then is taken and shown as waiting to be applied, `queued`,
 nothing of it is applied; when the process starts it applies it, and the others that
 waited, in the order they were asked for. A job that was being applied when the
 process stopped is `stopped`, with the reason, and Apply on the job, or the same
-`POST`, resumes it from the first row it had not applied; nothing is applied twice. The record
+`POST`, resumes it from the first row it had not applied; nothing is applied twice. From
+0.9.19 a file or a bulk edit of more than a hundred rows that is sent to be previewed
+then is taken likewise, and shown as `previewing`, with no row worked, until the process
+starts and previews it; one that was being previewed when the process stopped is
+previewed again from its first row, since nothing of a preview is kept until it ends.
+A file of a hundred rows or fewer is previewed at once by the server, as always. The record
 of a week that was missed is made when the process next starts. The long reports are
 not worked out ahead meanwhile: the first person to open the first page, the coverage
 report, the renewal worklist or the capacity report after a change, or on a new day,
@@ -2504,6 +2514,67 @@ Going back to 0.9.17 is by the backup the upgrade took, as
 [Going back to the release before](#going-back-to-the-release-before) says, since the
 schema changed: what was entered since is lost, every country and state added or
 changed since among it.
+
+### From 0.9.18 to 0.9.19
+
+The schema goes from revision `0019` to `0020`. One column is added, `rows_previewed`
+of the import jobs, which says how far a preview in the background has got; it is set
+to the `row_count` of every job, since every job before it was previewed whole in its
+request. No table is added, nothing else that is held is changed, and the upgrade
+writes no audit event. It takes its backup and stops and starts the service as every
+upgrade does. `/etc/hirdir/config.toml` gains no setting, so the upgrade says nothing
+of it.
+
+Every import and bulk edit from before is as it was: one that waits to be applied, of
+whatever size, is `previewed`, lists what each row would do, and is applied as before.
+
+0.9.19 is the round of speed (P-323). What a person sees changed:
+
+- **A preview of more than a hundred rows is worked in the background** (P-325), as an
+  apply is: a file on the Import page, by `hirdir import` or sent to
+  `POST /imports/preview`, and a bulk edit of more than a hundred items. It is stored at
+  once as a job that is `previewing`, and the process of the background work previews
+  it, taking the previews and the applies one at a time, in the order they were asked
+  for. The Import page follows it as it follows an apply, Previewing 3,200 of 10,000
+  rows, and may be left and come back to; so does the bulk edit of the item list. A
+  file of a hundred rows or fewer is previewed at once, in its request, as before.
+  `hirdir import` and `hirdir items set` wait for it and say how far it has got, and
+  `--no-wait` leaves it to the server. A preview is worked as the person who sent the
+  file, whose role is looked at again as it is taken up. One that a stop of the process
+  cut short is worked again from its first row when the process starts again; one that
+  an error ended, or a role that was lost, is `failed`, with the reason, and is not
+  applied: the file is sent again.
+- **An import takes less time for each row** (P-143, P-324), in its preview and in its
+  apply, and does with each row what it did.
+- **The item list answers sooner** under the filters and the sorts of what covers an
+  item (P-326), with every page as it was.
+
+For whoever operates the host:
+
+- **The second process must run for a large preview to be worked**, as for an apply.
+  While `hirdir-worker.service` is stopped, a preview of more than a hundred rows is
+  taken and shown as `previewing`, and waits until the process starts again: see
+  [The service](#the-service). About says whether it runs.
+- Nothing is to be set or done at the upgrade.
+
+Before the upgrade, look at the scripts that send a file to `POST /imports/preview`, or
+more than a hundred items to `POST /items/bulk-update`, and read from the answer what
+each row would do: from 0.9.19 a file of more than a hundred rows is answered `202`,
+with the job `previewing` and no rows, where it was answered `201` with the preview.
+Such a script follows `GET /imports/{hid}` until its `status` is `previewed`, as it
+follows an apply, and then reads the rows with `GET /imports/{hid}/rows`. A script that
+uses `hirdir import` or `hirdir items set` needs no change.
+
+For a script that reads the API: an import job answers `rows_previewed`, how many of
+its `row_count` rows the preview has worked, and its `status` may be `previewing`;
+while it is, `GET /imports/{hid}/rows` and `POST /imports/{hid}/apply` answer `409`. A
+job that is `failed` may be a preview that an error or a lost role ended, with why in
+`failure`. Nothing is taken away.
+
+Going back to 0.9.18 is by the backup the upgrade took, as
+[Going back to the release before](#going-back-to-the-release-before) says, since the
+schema changed: what was entered since is lost, every import previewed or applied since
+among it.
 
 ### If the upgrade stops
 

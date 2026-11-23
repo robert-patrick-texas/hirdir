@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.db.models import Setting
-from hirdir.domain import file_kinds, formats, lifecycle, load, product, records
+from hirdir.domain import file_kinds, formats, held, lifecycle, load, product, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
@@ -701,8 +701,9 @@ def get_setting(db: Session, key: str) -> SettingValue:
 
 
 def value(db: Session, key: str) -> Any:
-    """Return the value in force of the setting key."""
-    return get_setting(db, key).value
+    """Return the value in force of the setting key: looked up once while a file of
+    items is worked, which changes no setting (P-324)."""
+    return held.kept(db, ("setting", key), lambda: get_setting(db, key).value)
 
 
 def values(db: Session, keys: tuple[str, ...]) -> dict[str, Any]:

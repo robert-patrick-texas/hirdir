@@ -24,7 +24,7 @@ from hirdir.db.models import (
     Item,
     Registration,
 )
-from hirdir.domain import geography, health, records
+from hirdir.domain import geography, health, held, records
 from hirdir.domain.errors import Invalid
 
 # The kinds of model that run on a host, and the kinds that may host one: an item of no
@@ -68,10 +68,15 @@ def shown_name(item: Item) -> str:
 
 
 def kinds_of(db: Session, entry_hids: set[str | None]) -> dict[str, str]:
-    """Return the kind of each of the models."""
+    """Return the kind of each of the models: each read once while a file of items is
+    worked, which changes the kind of no model (P-324)."""
     wanted = {hid for hid in entry_hids if hid}
     if not wanted:
         return {}
+    return held.kept_many(db, "kinds", wanted, lambda missing: _kinds(db, missing))
+
+
+def _kinds(db: Session, wanted: set[str]) -> dict[str, str]:
     rows = db.execute(
         select(CatalogEntry.hid, CatalogEntry.kind).where(CatalogEntry.hid.in_(wanted))
     )

@@ -266,10 +266,21 @@ upload, by its extension and by its first bytes.
   order of the rows once for the whole job, then works them 50 to a batch
   (`io/imports.py`), each batch a transaction that takes the one writer's place before
   it looks, as a small preview does, and stores with its rows what it did with each
-  one and how far the job has got. Between two batches it leaves the writer's place
-  free for 0.12 seconds: SQLite tells a change that waits for the place to try again
-  every tenth of a second at the longest, so such a change is sure to get it there,
-  and a sign-in waits a batch, a fraction of a second, at most. A batch that waits
+  one and how far the job has got. Between two batches it takes the writer's place
+  again at once, unless a change by somebody else is under way (P-143, P-324). Every
+  connection that writes to a database in a file holds a shared lock on `writing.lock`
+  beside it, from its first change until its transaction ends, each connection a lock
+  of its own (`db/engine.py`): a request, a job of the clock and a command of `hirdir
+  admin` alike, in whichever process, and nothing is written for it. Between two
+  batches the worker asks for that lock alone, without waiting. Granted, nobody is
+  changing anything, and the next batch begins; refused, a change is under way, which
+  may be waiting for the place, and the worker looks again every 5 ms until it is
+  done, a second at the most, and then goes on. So a change that waited for a batch, a
+  sign-in among them, gets the place as the batch ends, and waits a batch, a fraction
+  of a second, at most, while an apply that nobody writes beside never stops between
+  its batches. Where the file cannot be opened, the worker leaves the place free for
+  0.12 seconds instead, as before 0.9.19: SQLite tells a change that waits for the
+  place to try again every tenth of a second at the longest. A batch that waits
   longer than `busy_timeout` itself is tried again from its start. The rows of one
   group, which are checked together, are kept in one batch whatever its size, and a
   group of thousands of members therefore holds others up for as long as it takes.
@@ -300,18 +311,62 @@ upload, by its extension and by its first bytes.
 - **Previewing in the background.** A preview that the worker takes up (P-325) is
   worked as the person who sent it, under the request ID of the preview, whose role
   is looked at again first: one that is lost ends it `failed`. It makes the copy of the
-  database, ends its own read of the live one, and works every row on the copy through
-  the same functions as a preview in the request, `preview_rows` in `io/imports.py`.
-  Every 50 rows it writes how far it has got, `rows_previewed`, to the live database
-  in a transaction of a moment of its own, never in the copy. At the end it throws the
-  copy away and stores the rows, the counts and `previewed` in one transaction, with
-  its event, and nothing of a preview is kept before then. So a stop of the process,
+  database and works every row on the copy through the same functions as a preview in
+  the request, those of `preview_rows` in `io/imports.py`. Every 50 rows it writes how
+  far it has got, `rows_previewed`, to the live database in a transaction of a moment
+  of its own, never in the copy; one that another change holds up past `busy_timeout`
+  is passed over, and said at the next 50. At the end it throws the copy away and
+  stores the rows, the counts and `previewed` in one transaction, with its event,
+  tried again a tenth of a second later where it is held up so, and nothing of a
+  preview is kept before then. So a stop of the process,
   which the worker looks for at those writes, leaves the job `previewing`, its
   `rows_previewed` set back to 0, and it is worked again from its first row when the
   process starts; a job found `previewing` as the process starts is so too, whatever
   stopped it. An error nobody foresaw throws the copy away, makes the job `failed`
   with the reason and the request ID in `failure`, and is logged with its traceback;
   the rows that it held for the work are removed with it, and the file is sent again.
+- **What a row of a file costs** (P-324). A preview and an apply work every row
+  through the functions of any other change, and then say what the row changed, from
+  its record as a file holds it, read before the row and after it. A preview on a copy
+  is one transaction, each row a savepoint within it, as a preview in place is: the
+  copy takes the writer's place before its first row, so that storing a row's
+  savepoint is no transaction stored on the disk. The records of a file of items are
+  read back 50 rows at a time, after the last of them, and not each after its own
+  row: what a row changed is what its record reads as right after its own write, so
+  before a row is written, the rows of the batch whose records it may change the read
+  of are read back first. Of other items, the read of an item shows the texts the item
+  it is in, its host and the item it was seen on are written as, which another item
+  that comes to answer to the same text changes; what it has from the items and the
+  groups its walk goes up through, and whether its host has left the team's hands;
+  how many items run on it; and, for a context with no host, the item that has its
+  serial number. A row that changes one of those items, names this one as its host, or
+  makes or renames an item that answers to one of those texts has the rows before it
+  read first (`Items.shown` and `Items.reach` in `io/entities.py`). In an apply, a row
+  that would no longer do what was previewed shows only once its batch is read; the
+  batch is then undone and worked again a row at a time, each read after its own
+  write, so that the row is left out as stale before the rows after it are worked, as
+  it always was. Every other entity reads each row back after its own write. What an
+  item is read as, to be compared, is the columns a row sets, read as they are stored,
+  which are all a row's changes are made of: what is worked out in force or beside
+  them, the sources, the coverage, the health, the review and the count of what runs
+  on it, is left out of that read, and is the export's alone. What a
+  file of items cannot change is looked up once for it and not for each row
+  (`domain/held.py`): the places and their paths, the operators the places give and
+  those retired, the settings, the time zone and the weights in force, the lifecycle
+  rules and the kinds of the models. It is held while the rows are worked, a preview
+  letting go of it with the records every 500 rows, and an apply holding it for one
+  batch alone, since another request may change any of it between two batches; it is
+  no record, and nothing inherited is copied down. Before each batch of 50, the
+  models, the owners and the locations its rows name are read together, as each row
+  would find them: no row of items makes or renames any of them but a model made for
+  a reference, which is looked for again. So are the items that have the serial
+  numbers its rows give: an item a row finds by its model and serial number is the one
+  read so, unless a row before it in the batch gave that number or took it from an
+  item, and then it is looked for as it stands. A value a row leaves blank is not
+  looked up; the items that have the serial numbers of a file are read together when
+  the order of its rows is worked out, which writes nothing; and a transaction that
+  took the writer's place outside a savepoint holds it until it ends, and is not given
+  it again for each row (`dialect.hold_other_writers`).
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
@@ -2344,6 +2399,64 @@ and 877 ms. A sign-in waits for the batch that holds the one writer to end, so h
 it waits is how long a batch takes, under a second (D-185: "a fraction of a second at
 most") only while 50 rows take under a second.
 
+**An import at 0.9.19, each row made cheaper** (P-324), measured while other work shared
+the host, so that each number stands beside the load it was taken at and is no
+measurement of the quality: S36 and the final timing are run with the host to itself.
+Each step was measured on a preview and an apply of 1,000 new items, in one process on
+a copy of the fixture, by the processor time of a row and the statements it sends:
+
+| After | Preview, ms a row | statements | Apply, ms a row | statements | Load |
+|---|--:|--:|--:|--:|--:|
+| 0.9.18 | 15.3 | 38.6 | 16.2 | 41.7 | 6.8 |
+| the copy one transaction | 14.6 ¹ | 38.6 | | | 0.9 |
+| records read back 50 at a time | 8.1 | 20.8 | 9.0 | 23.9 | 5.7 |
+| what a file cannot change held | 7.8 | 15.7 | 8.9 | 19.6 | 7.7 |
+| no blank value looked up | 5.7 | 13.7 | 7.3 | 17.6 | 9.5 |
+| serial numbers read together for the order, places by HID, one look for a twin | 5.1 | 8.7 | 7.8 | 12.7 | 6.0 |
+| no pause where nobody else writes, records read before their batch | 4.4 | 8.7 | 5.8 | 12.7 | 2.9 |
+| models, owners and locations read ahead of each batch | 4.2 | 7.7 | 4.9 | 8.6 | 5.7 |
+| the writer's place not taken again | 3.7 | 6.7 | 4.1 | 7.5 | 6.2 |
+| the read a row is compared with, two statements built once | 3.3 | 6.5 | 3.8 | 7.4 | 8.0 |
+| the items of a batch's serial numbers read ahead of it, on a quiet host | 3.0 | 5.6 | 3.5 | 6.4 | 1.3 |
+
+¹ The time of the whole row, not its processor time alone, against 17.1 ms for 0.9.18
+on the same quiet host: the copy that stored each row by itself waited on the disk.
+
+Until the step that ends the pause, an apply also left the writer's place free for
+0.12 s after every batch, 2.3 s in 1,000 rows, which its processor time does not show.
+A file of 1,000 updates by HID, `hid,comments`, went from 27.0 ms a row and 62.6
+statements to 2.4 ms and 5.6 to preview, and from 25.5 ms to 2.2 ms to apply. Every row
+of both files, and every audit event, came out as 0.9.18 made them.
+
+What a new item's row costs now, profiled over a preview of 10,000: its record and its
+audit event stored by the session, one after the other, a third of the time; finding
+its record, an eighth; the look for a twin of its serial number or asset tag, a tenth;
+its savepoint, a tenth; reading the batch back, an eighth; SQLite itself, a tenth of the
+whole. A row sends six or seven statements: its savepoint and the end of it, the find,
+the look for a twin, and the two inserts.
+
+`make time-import`, 10,000 new items, the two run one after the other on the shared
+host:
+
+| | 0.9.18, load 5.1 to 5.5 | 0.9.19, load 7.7 to 9.4 |
+|---|--:|--:|
+| Preview | 209.4 s | 44.2 s |
+| Apply, from the request to the job applied | 227.3 s | 73.0 s |
+| the order of the rows | 4.5 s | 1.5 s |
+| 200 batches | 198.5 s, median 941 ms | 69.7 s, median 343 ms |
+| 199 pauses between them | 24.1 s | 1.7 s, the longest 98 ms |
+| a sign-in with nothing going on, median | 239 ms | 227 ms |
+| what a sign-in waited during the apply, median / 95th / longest | 799 / 1210 / 2200 ms | 196 / 499 / 525 ms |
+
+With the last step, a preview of more than a hundred rows worked in the background
+(P-325), and the host quiet but for the timing itself, load 1.0 to 1.4, two runs: the
+preview 28.6 s and 30.6 s from the request to the job previewed, the request answered
+in 1.1 s; the apply 40.7 s and 40.2 s, its 200 batches 187 and 190 ms at the median and
+252 and 265 ms at the 95th percentile, the 199 pauses 0.4 s in all; a sign-in 85 ms
+with nothing going on, and during the apply it waited 138 and 141 ms beyond that at the
+median, 281 and 290 ms at the 95th percentile and 324 and 290 ms at the longest. The
+preview stands at its 30 s, and the apply well within its minute.
+
 **Measured at 0.8.0.** On the same host, median and 95th percentile in milliseconds of
 15 runs after 2 warm-ups, with the host otherwise quiet: its load average over the
 minute of each request was 0.9 to 1.5, of which about 1 is the timing itself. The
@@ -2480,6 +2593,130 @@ works out the four long reports anew one after another, 4.3 s.
 
 A run on a host that other work shares is not a measurement: S36 at 1.0.0 is run with
 the host to itself.
+
+**Measured at 0.9.19: the item list (P-326).** Two changes, with every answer as it
+was, page for page and total for total, and the coverage report's, the renewal
+worklist's and a vendor's portfolio with them, which read the same fields:
+
+- What is in force for each contract today, its term, its status, its number, the day
+  its period starts and the last day that is known of it, is worked out once for a
+  statement, in a table of the statement's own, `contract_today`
+  (`contracts.HELD_TODAY`), from the contract and its agreement, and every coverage of
+  every item reads it there, as D-166 and D-184 say of the coverage report; before, each
+  coverage of each item worked them out again, some twenty look-ups of its agreement
+  each. A test of an item, `covered`, `out_of_service_cover`, and one of several,
+  `contract.*` and `out_of_service_contract.*`, is asked as one set of the items that
+  have such a coverage, `items.hid IN (...)`, which the database works out once for the
+  statement and looks each item up in. A value of an item, `contract_count`,
+  `covered_until`, and the least status and number that a sort by `contract.status`,
+  `contract.number` or `out_of_service_contract.number` reads, is read from a table of
+  its own for each, one row to an item that has such a coverage, so that a statement
+  works out only those it reads. SQLite works each table out once (`MATERIALIZED`, by
+  `dialect.materialized`) and builds an index of its own for the look-ups;
+  PostgreSQL plans them as it will. None of it is a record or kept.
+- The records a filter matches are matched once, with what each is sorted by, and the
+  page and the total are read from them in one statement (`listing.page`), where the
+  filter was worked out twice, for the count and for the page. A page with nothing on
+  it past the first record counts them by itself.
+
+The statements of `listing.page` alone, in milliseconds of processor time, median of 7
+after one (the harness of lane G; the host shared with the other lanes of 0.9.19, 1 to
+3 of its 4 cores busy with other work):
+
+| Request | Before | After | Matched |
+|---|--:|--:|--:|
+| No filter, by name | 118, 131 | 73, 84 | 47,110 |
+| `is_major:eq:true`, by name (the grid's first page) | 72, 72 | 51, 52 | 34,778 |
+| `covered:eq:true`, by name | 284, 299 | 105, 99 | 15,140 |
+| `covered:eq:true`, by `covered_until` | 385, 378 | 146, 159 | 15,140 |
+| `covered:eq:false`, by name | 345, 344 | 123, 136 | 31,970 |
+| `covered:eq:false`, by `covered_until` | 431, 446 | 190, 170 | 31,970 |
+| `contract_count:gt:1`, by name | 277, 293 | 88, 96 | 592 |
+| `contract_count:gt:1`, by `-contract_count` | 359, 353 | 91, 99 | 592 |
+| No filter, by `-contract_count` | 219, 237 | 123, 152 | 47,110 |
+| `out_of_service_cover:eq:true`, by name | 171, 175 | 81, 84 | 1,258 |
+| `out_of_service_contract.number:eq:<one>`, by name | 545, 523 | 19, 19 | 37 |
+| `out_of_service_contract.number:eq:<one>`, by it | 590, 595 | 47, 47 | 37 |
+| No filter, by `out_of_service_contract.number` | 144, 143 | 106, 103 | 47,110 |
+| `out_of_service_contract.hid:eq:<one>`, by name | 216, 213 | 18, 19 | 37 |
+| `contract.number:eq:<one>`, by name | 282, 320 | 16, 15 | 364 |
+| `contract.number:eq:<one>`, by `contract.number` | 344, 348 | 59, 51 | 364 |
+| No filter, by `contract.number` | 253, 237 | 123, 117 | 47,110 |
+| `contract.status:eq:renewal_pending`, by name | 304, 305 | 30, 27 | 2,421 |
+| `purchase_line_mismatch:eq:true`, by name | 68, 71 | 37, 39 | 121 |
+| `effective.do_not_renew:eq:true`, by name | 128, 131 | 73, 68 | 2,134 |
+| `covered:eq:false effective.do_not_renew:eq:true`, by name | 360, 349 | 130, 123 | 1,629 |
+| No filter, by `-effective.support_weight` | 125, 125 | 85, 92 | 47,110 |
+
+The requests of `make time-filters`, from the request to the last byte of the answer,
+median and 95th percentile of 15 runs after 2 warm-ups, two runs before and two after,
+one after the other, with the load average of the host over the minute of each in
+brackets. The other lanes of 0.9.19 were running their tests: the load average was 6.6
+to 9.4 on 4 cores, and a request before took a quarter to a half longer at the median
+than the same request timed on the idle host at the start of 0.9.19 (P-326), so the two
+columns are to be read against each other and not against D-165, which the timing
+alone on the host holds them to:
+
+| Request | Before | After | Answered |
+|---|--:|--:|--:|
+| no filter, by name | 279 / 396 (6.65); 294 / 702 (6.61) | 212 / 284 (6.99); 276 / 396 (9.12) | 47,110 |
+| is_major:eq:true, by name (the grid's first page) | 205 / 489 (6.68); 233 / 643 (6.64) | 224 / 633 (7.15); 237 / 651 (9.27) | 34,778 |
+| covered:eq:true, by name | 463 / 816 (6.71); 488 / 1016 (6.85) | 316 / 829 (7.06); 311 / 638 (9.41) | 15,140 |
+| covered:eq:true, by covered_until | 599 / 676 (6.70); 847 / 1072 (7.04) | 369 / 502 (6.97); 317 / 542 (9.14) | 15,140 |
+| covered:eq:false, by name | 562 / 1016 (6.68); 721 / 970 (7.47) | 400 / 790 (6.90); 345 / 710 (9.05) | 31,970 |
+| covered:eq:false, by covered_until | 678 / 996 (6.65); 767 / 1059 (7.63) | 431 / 799 (6.91); 486 / 970 (8.89) | 31,970 |
+| contract_count:gt:1, by name | 505 / 836 (6.63); 675 / 868 (8.16) | 341 / 597 (6.76); 286 / 706 (8.82) | 592 |
+| contract_count:gt:1, by -contract_count | 786 / 1362 (7.06); 596 / 1119 (8.29) | 292 / 420 (6.78); 266 / 357 (8.75) | 592 |
+| no filter, by -contract_count | 503 / 809 (7.20); 420 / 524 (8.19) | 316 / 576 (6.64); 422 / 874 (8.64) | 47,110 |
+| out_of_service_cover:eq:true, by name | 375 / 735 (7.09); 383 / 557 (7.85) | 320 / 742 (6.70); 277 / 667 (8.59) | 1,258 |
+| out_of_service_contract.number:eq:&lt;one&gt;, by name | 753 / 1334 (7.31); 728 / 969 (7.88) | 100 / 161 (6.70); 81 / 123 (8.59) | 37 |
+| out_of_service_contract.number:eq:&lt;one&gt;, by out_of_service_contract.number | 831 / 1093 (7.54); 741 / 949 (7.84) | 121 / 272 (6.70); 152 / 253 (8.70) | 37 |
+| no filter, by out_of_service_contract.number | 371 / 651 (7.30); 311 / 748 (7.69) | 304 / 664 (6.82); 310 / 821 (8.56) | 47,110 |
+| out_of_service_contract.hid:eq:&lt;one&gt;, by name | 314 / 413 (7.28); 394 / 654 (7.88) | 85 / 209 (6.82); 114 / 173 (8.56) | 37 |
+| contract.number:eq:&lt;one&gt;, by name | 464 / 979 (7.40); 544 / 988 (7.67) | 143 / 170 (6.82); 187 / 291 (8.52) | 364 |
+| contract.number:eq:&lt;one&gt;, by contract.number | 568 / 705 (7.33); 643 / 858 (7.49) | 205 / 343 (6.83); 205 / 376 (8.40) | 364 |
+| no filter, by contract.number | 431 / 889 (7.23); 534 / 911 (7.49) | 348 / 830 (6.86); 349 / 1029 (8.20) | 47,110 |
+| contract.status:eq:renewal_pending, by name | 534 / 933 (7.27); 542 / 811 (7.50) | 240 / 956 (6.79); 179 / 596 (8.11) | 2,421 |
+| purchase_line_mismatch:eq:true, by name | 261 / 623 (7.33); 228 / 629 (7.62) | 235 / 265 (6.79); 209 / 334 (8.11) | 121 |
+| effective.do_not_renew:eq:true, by name | 333 / 730 (7.47); 416 / 667 (7.73) | 252 / 625 (6.81); 327 / 801 (7.86) | 2,134 |
+| covered:eq:false effective.do_not_renew:eq:true, by name | 534 / 612 (7.17); 804 / 1279 (7.81) | 286 / 580 (6.74); 403 / 675 (7.71) | 1,629 |
+| contracts, no filter | 186 / 330 (7.07); 278 / 402 (8.30) | 192 / 254 (7.00); 290 / 405 (7.57) | 314 |
+| contracts, to_review:eq:true | 33 / 64 (7.07); 34 / 68 (8.30) | 32 / 63 (7.00); 29 / 34 (7.57) | 6 |
+| contracts, renewal_overdue:eq:true | 37 / 79 (7.07); 38 / 106 (8.30) | 46 / 77 (7.00); 44 / 95 (7.57) | 15 |
+| is_major:eq:true, by name (the grid's first page), no weight set | 253 / 346 (7.23); 314 / 1083 (8.42) | 203 / 598 (6.92); 281 / 780 (7.60) | 34,778 |
+| no filter, by -effective.support_weight, no weight set | 344 / 815 (7.13); 349 / 499 (8.31) | 314 / 618 (6.85); 261 / 584 (7.56) | 47,110 |
+| is_major:eq:true, by name (the grid's first page), the item weights set | 220 / 271 (7.04); 331 / 652 (8.52) | 211 / 246 (6.78); 183 / 239 (7.35) | 34,778 |
+| no filter, by -effective.support_weight, the item weights set | 313 / 658 (7.11); 449 / 679 (8.99) | 264 / 653 (6.64); 245 / 584 (7.08) | 47,110 |
+
+The coverage report reads the same fields, and is faster with them, with the same
+counts, on the same host at a load average of 4.8 to 6.0: worked out anew, whole, 1527 /
+1825 before and 869 / 975 after; narrowed to a region 2062 / 2173 and 1164 / 1297; a page
+of `uncovered` 2021 / 2309 and 1142 / 1931. The renewal worklist and the alert anew, 219
+/ 285 and 185 / 228 before, 162 / 226 and 155 / 292 after, move by less than the runs
+do. Kept, each is answered as before, in 10 to 35 ms.
+
+What was looked at and left, with what it costs now:
+
+- The sort by name calls the Python function that folds text for each record matched,
+  some 15 ms for the 47,110 of the list with no filter. SQLite's own `lower()`, for text
+  that is all ASCII, with the test that it is, costs as much. A column of the folded
+  name with an index would not, and is a migration.
+- The default view leaves out what is archived by the state in force, which reads up
+  to three items above each item: some 30 ms of the 50 ms that counting the list with
+  no filter takes.
+- Each coverage value that a request reads costs some 30 to 60 ms over the 47,110
+  items: its table, some 20 to 30 ms, and a look-up of each item in it. A request that
+  reads two of them, a filter by one and a sort by another, pays for both.
+- SQLite joins the coverages to `contract_today` from the contracts that cover, and
+  reads each coverage by the index of its contract. Reading the coverages in their own
+  order, as a join that SQLite may not reorder (`CROSS JOIN`) has it, saves some 10 ms
+  of a test such as `covered`; PostgreSQL takes no such join with a condition, so it
+  would be one more thing that differs between the two.
+- Shaping a page of 100 items in Python takes some 90 ms of every request, whatever its
+  filter: the operators, the groups and the places in force of each item and its
+  coverages, read and worked out for the page. With the collector of Python's memory
+  turned off, or the objects of the application's start frozen out of it, a request was
+  no faster that the runs could tell, and the slowest of fifteen as slow.
 
 ## Configuration
 
