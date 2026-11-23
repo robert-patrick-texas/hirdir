@@ -1,15 +1,16 @@
-// A stored preview, followed while it is applied in the background.
+// A stored preview, followed while it is previewed or applied in the background.
 //
 // An apply is answered at once, and the server works the rows beside the requests. The
 // page reads the job again every moment while it is queued or applying, so that it
-// shows how far the apply has got, and stops reading once it has ended. A page that is
-// left and come back to reads the job afresh, and follows it again if it is still under
-// way.
+// shows how far the apply has got, and stops reading once it has ended. 0.9.19: a
+// preview of more than a hundred rows is answered at once too, and is followed in the
+// same way while it is previewing (P-325). A page that is left and come back to reads
+// the job afresh, and follows it again if it is still under way.
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { type ApiError, api } from "../api";
 import { toApiError } from "./hooks";
-import { isWorking, type Job } from "./preview";
+import { isUnderWay, type Job, whatEnded } from "./preview";
 import { waitAsTold } from "./watch";
 
 /** How long a page waits before it reads a job that is under way again, in milliseconds. */
@@ -34,6 +35,11 @@ interface Options {
   first?: Job | undefined;
   /** The apply ended, applied or stopped: what it changed may be read again. */
   onEnded?: (job: Job) => void;
+  /**
+   * 0.9.19: the preview in the background that this page followed ended, previewed or
+   * failed: its rows may be read (P-325).
+   */
+  onPreviewed?: (job: Job) => void;
 }
 
 interface State {
@@ -45,8 +51,8 @@ interface State {
   answers: number;
 }
 
-/** Read a job, and read it again every moment while its apply is under way. */
-export function useJob(hid: string, { first, onEnded }: Options = {}): FollowedJob {
+/** Read a job, and read it again every moment while its preview or its apply is under way. */
+export function useJob(hid: string, { first, onEnded, onPreviewed }: Options = {}): FollowedJob {
   const [state, setState] = useState<State>(() => ({
     hid,
     job: first,
@@ -57,7 +63,9 @@ export function useJob(hid: string, { first, onEnded }: Options = {}): FollowedJ
   // Each turn is one read. A page that has the job already reads it when it is applied.
   const [turn, setTurn] = useState(first === undefined ? 1 : 0);
   const ended = useEffectEvent((job: Job) => onEnded?.(job));
-  const following = useRef(false);
+  const previewed = useEffectEvent((job: Job) => onPreviewed?.(job));
+  // The status the job was last seen in, to tell when what was under way has ended.
+  const seen = useRef<Job["status"] | undefined>(undefined);
 
   useEffect(() => {
     if (turn === 0) return;
@@ -82,10 +90,10 @@ export function useJob(hid: string, { first, onEnded }: Options = {}): FollowedJ
   }, [hid, turn]);
 
   const job = state.hid === hid ? state.job : first;
-  const working = job !== undefined && isWorking(job);
+  const working = job !== undefined && isUnderWay(job);
 
-  // While the apply is under way, the job is read again a moment after each answer, and
-  // after a read that failed too: the server may have been busy for that moment.
+  // While the preview or the apply is under way, the job is read again a moment after
+  // each answer, and after a read that failed too: the server may have been busy then.
   // Each answer is a new state, which times the next read from itself. 0.9.10: a server
   // past its ceiling says how long to leave it alone, and is left alone that long (P-265).
   useEffect(() => {
@@ -94,15 +102,13 @@ export function useJob(hid: string, { first, onEnded }: Options = {}): FollowedJ
     return () => clearTimeout(timer);
   }, [working, state]);
 
-  // An apply that was under way and is no longer has ended, whichever way.
+  // A preview or an apply that was under way and is no longer has ended, whichever way.
   useEffect(() => {
     if (job === undefined) return;
-    if (isWorking(job)) {
-      following.current = true;
-    } else if (following.current) {
-      following.current = false;
-      ended(job);
-    }
+    const what = whatEnded(seen.current, job.status);
+    seen.current = job.status;
+    if (what === "preview") previewed(job);
+    else if (what === "apply") ended(job);
   }, [job]);
 
   const reload = useCallback(() => setTurn((count) => count + 1), []);
