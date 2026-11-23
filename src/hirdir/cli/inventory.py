@@ -893,8 +893,25 @@ def _finish(
     as_json: bool,
     wait: bool = True,
 ) -> None:
-    """Print a preview, and apply it when asked to and when nothing stands in the way."""
+    """Print a preview, and apply it when asked to and when nothing stands in the way.
+
+    A preview that the server works in the background is waited for first (P-325),
+    unless it is not to be applied and the command is not to wait.
+    """
     job = preview["job"]
+    if job["status"] == PREVIEWING:
+        if not wait and not apply:
+            if as_json:
+                typer.echo(json.dumps(preview, indent=2))
+            typer.echo(
+                f"previewing: the server previews its {job['row_count']} rows; "
+                f"`hirdir imports show {job['hid']} --wait` waits for it, and "
+                f"`hirdir imports apply {job['hid']}` applies it once it is previewed",
+                err=True,
+            )
+            return
+        preview = _previewed(target, job, quiet=as_json)
+        job = preview["job"]
     if not apply:
         if as_json:
             typer.echo(json.dumps(preview, indent=2))
@@ -961,13 +978,22 @@ def _say_not_reported(preview: dict[str, Any]) -> None:
     typer.echo(f"it marks {count} as not reported by {system}: {first}{more}", err=True)
 
 
-# --- an apply in the background (D-185) ---
+# --- a preview and an apply in the background (P-325, D-185) ---
 
 NoWait = Annotated[
     bool,
-    typer.Option("--no-wait", help="Leave the apply to the server, and do not wait for it to end."),
+    typer.Option(
+        "--no-wait",
+        help="Leave the work to the server, and do not wait for it to end: a preview of "
+        "more than 100 rows, or with --apply the apply, since only a preview is applied.",
+    ),
 ]
+PREVIEWING = "previewing"
 BEING_APPLIED = ("queued", "applying")
+# What the server is still working on: a preview in the background, or an apply.
+BEING_WORKED = (PREVIEWING, *BEING_APPLIED)
+# How many rows the answer of a preview holds, as the server gives them.
+FIRST_ROWS = 100
 # How long the command waits between two looks at a job being applied: at first, and
 # at the longest, in seconds. A small file is done before a person would notice.
 FIRST_LOOK = 0.05
@@ -986,27 +1012,44 @@ def _apply_job(
     _ended(target, job, as_json=as_json)
 
 
-def _wait(target: Target, job: dict[str, Any], *, quiet: bool = False) -> dict[str, Any]:
-    """Wait for a job being applied to end, saying how far it has got. Return it then.
+def _how_far(job: dict[str, Any]) -> str:
+    """Say how far the server has got with a job it is working on."""
+    if job["status"] == PREVIEWING:
+        return f"previewing: {job['rows_previewed']} of {job['row_count']} rows"
+    if job["status"] == "queued":
+        return "queued: waiting to be applied"
+    return f"applying: {job['rows_done']} of {job['row_count']} rows"
 
-    Stopping the command does not stop the apply, which the server goes on with.
+
+def _wait(target: Target, job: dict[str, Any], *, quiet: bool = False) -> dict[str, Any]:
+    """Wait for a job being previewed in the background or applied to end, saying how
+    far it has got. Return it then.
+
+    Stopping the command does not stop the preview or the apply, which the server goes
+    on with.
     """
     pause = FIRST_LOOK
     said = None
-    while job["status"] in BEING_APPLIED:
-        now = (job["status"], job["rows_done"])
+    while job["status"] in BEING_WORKED:
+        now = (job["status"], job["rows_previewed"], job["rows_done"])
         if not quiet and now != said:
-            typer.echo(
-                "queued: waiting to be applied"
-                if job["status"] == "queued"
-                else f"applying: {job['rows_done']} of {job['row_count']} rows",
-                err=True,
-            )
+            typer.echo(_how_far(job), err=True)
             said = now
         time.sleep(pause)
         pause = min(pause * 2, LOOK_AT_MOST)
         job = client.call(target, "GET", f"/imports/{job['hid']}")
     return job
+
+
+def _previewed(target: Target, job: dict[str, Any], *, quiet: bool) -> dict[str, Any]:
+    """Wait for a preview that the server works in the background (P-325), and return it
+    as a preview in the request is answered: the job, its first rows, and the first
+    items it would mark not reported. One that failed exits `6` with why."""
+    job = _wait(target, job, quiet=quiet)
+    if job["status"] == "failed":
+        raise client.fail(f"the preview failed: {job['failure']}", client.EXIT_SERVER)
+    rows = client.call(target, "GET", f"/imports/{job['hid']}/rows", params={"limit": FIRST_ROWS})
+    return {"job": job, "rows": rows["items"], "not_reported_first": job["not_reported_first"]}
 
 
 def _show_applied(rows: list[dict[str, Any]]) -> None:
@@ -1019,10 +1062,27 @@ def _show_applied(rows: list[dict[str, Any]]) -> None:
 
 
 def _ended(target: Target, job: dict[str, Any], *, as_json: bool) -> None:
-    """Say how an apply ended, and exit with the code for it."""
+    """Say how an apply ended, and exit with the code for it: or how a preview in the
+    background did, which was waited for (P-325)."""
     hid = job["hid"]
     if as_json:
         typer.echo(json.dumps(job, indent=2))
+    if job["status"] == "previewed":
+        typer.echo(
+            f"preview: {_counts(job)}. Nothing was changed; `hirdir imports apply {hid}` "
+            "applies it.",
+            err=True,
+        )
+        return
+    if job["status"] == "failed":
+        raise client.fail(f"the preview failed: {job['failure']}", client.EXIT_SERVER)
+    if job["status"] == PREVIEWING:
+        typer.echo(
+            f"previewing: the server previews it; `hirdir imports show {hid} --wait` "
+            "waits for its end",
+            err=True,
+        )
+        return
     if job["status"] in BEING_APPLIED:
         typer.echo(
             f"{job['status']}: the server applies it; `hirdir imports show {hid} --wait` "
@@ -1084,13 +1144,17 @@ imports_ = typer.Typer(
 def show_import(
     hid: Annotated[str, typer.Argument(help="The HID of the stored preview.")],
     wait: Annotated[
-        bool, typer.Option("--wait", help="Wait for an apply that is going on to end.")
+        bool,
+        typer.Option(
+            "--wait", help="Wait for a preview in the background or an apply that goes on to end."
+        ),
     ] = False,
     format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Show a stored preview and how far its apply has got."""
+    """Show a stored preview, and how far its preview in the background or its apply
+    has got; with --wait, wait for either to end."""
     target = client.load_target(url, token)
     job = client.call(target, "GET", f"/imports/{hid}")
     if wait:
@@ -1100,7 +1164,16 @@ def show_import(
     if format_ == "json":
         typer.echo(json.dumps(job, indent=2))
         return
-    shown = ("source", "entity", "file_name", "status", "row_count", "rows_done", "applied")
+    shown = (
+        "source",
+        "entity",
+        "file_name",
+        "status",
+        "row_count",
+        "rows_previewed",
+        "rows_done",
+        "applied",
+    )
     for name in (*shown, "stale", "failure"):
         if job[name] is not None:
             typer.echo(f"{name}: {job[name]}")
@@ -1203,8 +1276,9 @@ def import_file(
 ) -> None:
     """Preview what a file would create and change, and with --apply, do it.
 
-    The server applies it in the background, and the command waits for the end and
-    says how far it has got, unless --no-wait is given.
+    The server applies it in the background, and previews in the background a file of
+    more than 100 rows; the command waits for the end and says how far it has got,
+    unless --no-wait is given.
     """
     target = client.load_target(url, token)
     try:
@@ -1352,8 +1426,8 @@ def set_(
 ) -> None:
     """Change one item, or with --filter, many: previewed first, applied with --apply.
 
-    The server applies a change in the background, and the command waits for the end
-    unless --no-wait is given.
+    The server applies a change in the background, and previews in the background one
+    of more than 100 items; the command waits for the end unless --no-wait is given.
     """
     target = client.load_target(url, token)
     many = filter_ is not None or all_rows

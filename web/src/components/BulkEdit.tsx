@@ -4,9 +4,10 @@
 // and stores it as a preview, with before and after for every row. Nothing changes
 // until the preview is applied. The apply goes on in the background, as an import's
 // does: an item that somebody has changed in the meantime is left as it is, and named,
-// and the rest are changed.
+// and the rest are changed. 0.9.19: a bulk edit of more than a hundred items is
+// previewed in the background too, and followed here until its preview has come (P-325).
 
-import { type FormEvent, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type ApiError, api, type Schemas } from "../api";
 import {
   type BulkField,
@@ -28,7 +29,7 @@ import { useOwnerOptions, useTags } from "../lib/lists";
 import { choiceOptions, SETTABLE_STATUSES } from "../lib/options";
 import type { FormValue, Option } from "../lib/patch";
 import { entrySeen } from "../lib/pick";
-import type { Preview } from "../lib/preview";
+import { applyBegun, type Preview } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
 import { useJob } from "../lib/useJob";
@@ -505,7 +506,8 @@ interface BulkPreviewProps {
 /**
  * A bulk edit, previewed: what it would do to each item, and the apply. The apply goes on
  * in the background and is followed here, and on its page among the imports, which the
- * panel may be closed for.
+ * panel may be closed for. 0.9.19: so does a preview of more than a hundred items, until
+ * it is shown as one answered at once is (P-325).
  */
 function BulkPreview(props: BulkPreviewProps) {
   const { preview, what, busy, error, again, onApplied, onChange, onClose } = props;
@@ -519,12 +521,28 @@ function BulkPreview(props: BulkPreviewProps) {
   });
   const job = followed.job ?? preview.job;
   const previewed = job.status === "previewed";
+  // Not applied yet: being previewed, previewed, or a preview that failed.
+  const unchanged = !applyBegun(job);
+
+  // 0.9.19: the preview takes the place of the form, whose button the keyboard was on:
+  // the keyboard is put on the preview, and not lost to the page (P-325).
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const now = document.activeElement;
+    if (now === null || now === document.body) box.current?.focus({ preventScroll: true });
+  }, []);
 
   return (
-    <div data-testid="bulk-preview" data-status={job.status}>
+    <div
+      className="bulk-preview"
+      data-testid="bulk-preview"
+      data-status={job.status}
+      ref={box}
+      tabIndex={-1}
+    >
       <p>
         What the change would do to <strong>{what}</strong>, row by row.{" "}
-        {previewed ? "Nothing has been changed yet." : ""}
+        {unchanged ? "Nothing has been changed yet." : ""}
       </p>
       <JobCounts job={job} />
       <ApplyCounts job={job} />
@@ -539,7 +557,7 @@ function BulkPreview(props: BulkPreviewProps) {
       />
       <Problem error={error ?? followed.error} />
       <p className="actions">
-        {previewed && (
+        {unchanged && (
           <button type="button" onClick={onChange} disabled={busy}>
             Change the edit
           </button>

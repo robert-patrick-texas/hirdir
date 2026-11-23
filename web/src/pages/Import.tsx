@@ -38,9 +38,14 @@ import {
 import { useSystems } from "../lib/lists";
 import {
   countsText,
+  hasPreview,
+  isPreviewing,
+  isUnderWay,
   isWorking,
   type Job,
   type Preview,
+  previewFailed,
+  previewingText,
   progressText,
   statusLabel,
 } from "../lib/preview";
@@ -71,6 +76,8 @@ interface Sent {
 /**
  * Import: choose a file, see what it would do, apply it, and look at what was imported
  * before. A preview has an address of its own, `/import/<hid>`, so it can be come back to.
+ * 0.9.19: a file of more than a hundred rows is answered at once with its job, being
+ * previewed in the background, which the page follows to its preview (P-325).
  */
 export function Import() {
   const { hid = "" } = useParams();
@@ -334,8 +341,10 @@ interface OneJobProps {
 
 /**
  * One stored preview: what it is, what it would do or did, and the button to apply it.
- * While it is being applied the page follows it, and once it has ended lists the rows it
- * left out. It may be left and come back to: it is read afresh, and followed again.
+ * While it is being previewed or applied the page follows it, and once an apply has
+ * ended lists the rows it left out. It may be left and come back to: it is read afresh,
+ * and followed again. 0.9.19: a preview in the background is shown, once it has come, as
+ * one answered at once is: its counts as the job has them, and its first rows read (P-325).
  */
 function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
   const [turn, setTurn] = useState(0);
@@ -345,6 +354,7 @@ function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
       onChanged();
       onEnded();
     },
+    onPreviewed: onChanged,
   });
   // The answer of the preview is shown at once; the job as the server has it follows.
   const job: Job | undefined = followed.job ?? sent?.preview.job;
@@ -430,6 +440,8 @@ function OneJob({ hid, sent, busy, onChanged, onEnded, again }: OneJobProps) {
  * reported (P-248): how many, and the first of them as links where the preview named them.
  */
 function NotReported({ job }: { job: Job }) {
+  // 0.9.19: nothing is known of them until the file is previewed whole (P-325).
+  if (!hasPreview(job)) return null;
   // The first of them as the job names them while it is previewed, so that a preview come
   // back to names them again (review).
   const named =
@@ -461,6 +473,14 @@ function NotReported({ job }: { job: Job }) {
   );
 }
 
+/**
+ * Whether a job of the list was never asked to be applied: previewed, being previewed, or
+ * a preview that failed in the background. Its apply's columns say nothing.
+ */
+function notAsked(job: Job): boolean {
+  return job.status === "previewed" || isPreviewing(job) || previewFailed(job);
+}
+
 /** The previews that were made, newest first until a header is clicked: files, or bulk edits. */
 function PastJobs({ turn, current }: { turn: number; current: string }) {
   const [source, setSource] = useState<Job["source"]>("file");
@@ -483,10 +503,10 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
   );
   const items = jobs.data?.items ?? [];
   const holdsAll = jobs.data ? jobs.data.total === items.length : false;
-  // A job of the list that is being applied is followed here too: the list is read again
-  // a moment after each answer, until none of those on show is under way; and after the
-  // answer of a busy server, no sooner than it says (P-265).
-  const underWay = items.some(isWorking);
+  // A job of the list that is being previewed or applied is followed here too: the list
+  // is read again a moment after each answer, until none of those on show is under way;
+  // and after the answer of a busy server, no sooner than it says (P-265).
+  const underWay = items.some(isUnderWay);
   const { loading, reload, error } = jobs;
   useEffect(() => {
     if (!underWay || loading) return;
@@ -586,6 +606,18 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                     <td>{modeLabel(job.mode)}</td>
                     <td>
                       {statusLabel(job)}
+                      {/* 0.9.19: how far a preview in the background has got (P-325). */}
+                      {isPreviewing(job) && (
+                        <>
+                          {" "}
+                          <progress
+                            className="job-progress"
+                            max={Math.max(job.row_count, 1)}
+                            value={job.rows_previewed}
+                            aria-label={previewingText(job)}
+                          />
+                        </>
+                      )}
                       {isWorking(job) && (
                         <>
                           {" "}
@@ -598,19 +630,27 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                         </>
                       )}
                     </td>
-                    <td>{countsText(job)}</td>
+                    <td data-testid="job-rows">
+                      {isPreviewing(job) ? (
+                        previewingText(job)
+                      ) : hasPreview(job) ? (
+                        countsText(job)
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
                     <td className="number nowrap" data-testid="job-worked">
-                      {job.status === "previewed" ? (
+                      {notAsked(job) ? (
                         <span className="muted">—</span>
                       ) : (
                         `${job.rows_done} of ${job.row_count}`
                       )}
                     </td>
                     <td className="number">
-                      {job.status === "previewed" ? <span className="muted">—</span> : job.applied}
+                      {notAsked(job) ? <span className="muted">—</span> : job.applied}
                     </td>
                     <td className="number">
-                      {job.status === "previewed" ? <span className="muted">—</span> : job.stale}
+                      {notAsked(job) ? <span className="muted">—</span> : job.stale}
                     </td>
                     <td>{job.created_by_name ?? <span className="muted">—</span>}</td>
                   </tr>

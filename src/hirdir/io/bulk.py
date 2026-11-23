@@ -79,8 +79,14 @@ def preview(
     set_: dict[str, Any] | None = None,
     add_tags: Sequence[str] = (),
     remove_tags: Sequence[str] = (),
+    in_background: bool = False,
 ) -> ImportJob:
-    """Work out what a bulk edit would do to each item it names, and store that."""
+    """Work out what a bulk edit would do to each item it names, and store that.
+
+    What is asked for is checked here. With `in_background`, as a request asks, a bulk
+    edit of more than a hundred items is then stored for the background work to
+    preview, as a file of as many rows is (P-325).
+    """
     change = _change(set_ or {}, one_item=hids is not None and len(set(hids)) == 1)
     adding = _labels(db, add_tags, "add_tags")
     removing = _labels(db, remove_tags, "remove_tags")
@@ -136,5 +142,12 @@ def preview(
                 )
             rows.append(Row(values=values))
     return imports.preview_rows(
-        db, context, role, source="bulk", which=ITEM, mode="update", rows=rows
+        db,
+        context,
+        role,
+        source="bulk",
+        which=ITEM,
+        mode="update",
+        rows=rows,
+        in_background=in_background,
     )

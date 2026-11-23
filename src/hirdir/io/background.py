@@ -1,9 +1,11 @@
-"""The worker that applies imports and bulk edits beside the requests (D-185), and the
-process of the background work that it runs in (P-263, P-267).
+"""The worker that applies imports and bulk edits beside the requests (D-185), and
+previews those of more than a hundred rows (P-325), and the process of the background
+work that it runs in (P-263, P-267).
 
-The worker is a thread with a database session of its own, and it applies one job at a
-time: the one applying, then the queued ones in the order they were asked for. The
-rules of an apply are in `hirdir.io.imports`; this is when they are run.
+The worker is a thread with a database session of its own, and it works one job at a
+time: the one applying, then the previews that wait and the queued applies, in the
+order they were asked for. The rules of a preview and of an apply are in
+`hirdir.io.imports`; this is when they are run.
 
 It runs in the second process of the service, `hirdir admin work`, which answers
 nothing on the network and finds its work by looking in the database every second:
@@ -20,7 +22,8 @@ and then, so a job is never left waiting for a signal that went astray.
 One worker works a database. When it starts, a job found applying is marked stopped
 before anything else is done, since the stop of the process that applied it cut it
 short; when it stops, the job being applied stops after the batch it is in, to be
-resumed. Two workers on one database would each take for stopped what the other is
+resumed. A preview that a stop cut short keeps nothing, and is worked again from its
+first row. Two workers on one database would each take for stopped what the other is
 applying, so the process of the background work holds a lock on `worker.lock` in the
 state directory for as long as it runs, as the server holds `server.lock`.
 """
@@ -116,6 +119,8 @@ class Worker:
 
         A job that is cut short so is stopped, to be resumed. One whose batch takes
         longer still is found applying when a worker starts again, and is stopped then.
+        A preview in the background stops after the rows it is in, keeps nothing, and is
+        worked again from its first row when a worker starts again (P-325).
         """
         self._stop.set()
         self._wake.set()
@@ -134,16 +139,16 @@ class Worker:
                 self._wake.clear()
 
     def once(self) -> bool:
-        """Apply the next job, if there is one. Say whether there was. With none, the
-        long reports are worked out again where they are due, which is no job: the
-        worker waits for its next look after it as after nothing."""
+        """Work the next job, a preview or an apply, if there is one. Say whether there
+        was. With none, the long reports are worked out again where they are due, which
+        is no job: the worker waits for its next look after it as after nothing."""
         with self.sessions() as db:
             hid = imports.next_job(db)
             db.rollback()
             if hid is None:
                 self._work_ahead(db)
                 return False
-            imports.work_job(db, hid, self._stop)
+            imports.work(db, hid, self._stop)
             return True
 
     def _work_ahead(self, db: Session) -> None:

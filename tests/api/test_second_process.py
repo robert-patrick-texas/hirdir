@@ -100,14 +100,16 @@ def asker(db: Any, request_id: str) -> AuditContext:
     return AuditContext(actor_hid=user.hid, via="api", request_id=request_id)
 
 
-def preview(make: Maker, entity: str, text: str) -> dict[str, Any]:
+def preview(make: Maker, entity: str, text: str, expect: int = 201) -> dict[str, Any]:
+    """Send a file to be previewed, and return its job as the answer has it: previewed,
+    or `previewing` where it has more than a hundred rows, answered `202` (P-325)."""
     response = make.client.post(
         f"{API}/imports/preview",
         params={"entity": entity},
         content=text,
         headers={**make.headers, "Content-Type": "text/csv"},
     )
-    assert response.status_code == 201, response.text
+    assert response.status_code == expect, response.text
     return response.json()["job"]
 
 
@@ -119,11 +121,11 @@ def begin(make: Maker, job: dict[str, Any]) -> dict[str, Any]:
 
 
 def ended(make: Maker, job: dict[str, Any], within: float = 30.0) -> dict[str, Any]:
-    """Return a job once it is no longer waiting or being applied."""
+    """Return a job once it is no longer waiting, being previewed or being applied."""
     deadline = time.monotonic() + within
     while True:
         found = make.get(f"/imports/{job['hid']}")
-        if found["status"] not in ("queued", "applying"):
+        if found["status"] not in ("previewing", "queued", "applying"):
             return found
         assert time.monotonic() < deadline, f"the job is still {found['status']}"
         time.sleep(0.02)
@@ -260,7 +262,7 @@ def test_a_stop_in_the_middle_of_an_apply_stops_after_the_batch_and_is_resumed(
     config: Config, server: Maker, monkeypatch
 ) -> None:
     server.entry(server.vendor())
-    job = preview(server, "items", switches(120))
+    job = preview(server, "items", switches(120), expect=202)
     original = imports._apply_batch
     stored, go_on = threading.Event(), threading.Event()
 
@@ -273,6 +275,8 @@ def test_a_stop_in_the_middle_of_an_apply_stops_after_the_batch_and_is_resumed(
 
     monkeypatch.setattr(imports, "_apply_batch", held_after_its_first_batch)
     with background.working(config) as worker:
+        # More than a hundred rows: the second process previews them first (P-325).
+        assert ended(server, job)["status"] == "previewed"
         begin(server, job)
         assert stored.wait(30)
         # The stop is asked for while the first batch is being stored, as SIGTERM asks.
@@ -291,6 +295,51 @@ def test_a_stop_in_the_middle_of_an_apply_stops_after_the_batch_and_is_resumed(
         done = ended(server, job)
     assert (done["status"], done["rows_done"], done["applied"]) == ("applied", 120, 120)
     assert server.get("/items", limit=1)["total"] == 120
+
+
+def test_a_large_file_is_previewed_by_the_second_process_and_a_stop_leaves_it_to_begin_again(
+    config: Config, server: Maker, monkeypatch
+) -> None:
+    """The server previews no file of more than a hundred rows: it stores it, and the
+    second process previews it (P-325). A stop of that process in the middle keeps
+    nothing of it, and it is previewed again from its first row when it starts again."""
+    server.entry(server.vendor())
+    job = preview(server, "items", switches(120), expect=202)
+    time.sleep(0.3)
+    waiting = server.get(f"/imports/{job['hid']}")
+    assert (waiting["status"], waiting["rows_previewed"]) == ("previewing", 0)
+    work = imports._work
+    told, go_on = threading.Event(), threading.Event()
+
+    def held_after_the_first_rows(*arguments: Any, progress: Any = None, **more: Any) -> Any:
+        def tell(done: int) -> None:
+            progress(done)
+            if not told.is_set():
+                told.set()
+                assert go_on.wait(30)
+
+        return work(*arguments, progress=tell, **more)
+
+    monkeypatch.setattr(imports, "_work", held_after_the_first_rows)
+    with background.working(config) as worker:
+        assert told.wait(30)
+        assert server.get(f"/imports/{job['hid']}")["rows_previewed"] == 50
+        # The stop is asked for in the middle of the rows, as SIGTERM asks.
+        worker.stop(within=0)
+        go_on.set()
+    stopped = server.get(f"/imports/{job['hid']}")
+    assert (stopped["status"], stopped["rows_previewed"], stopped["created"]) == (
+        "previewing",
+        0,
+        0,
+    )
+    server.get(f"/imports/{job['hid']}/rows", expect=409)
+
+    monkeypatch.setattr(imports, "_work", work)
+    with background.working(config):
+        done = ended(server, job)
+    assert (done["status"], done["rows_previewed"], done["created"]) == ("previewed", 120, 120)
+    assert server.get(f"/imports/{job['hid']}/rows", limit=1)["total"] == 120
 
 
 def test_what_is_done_by_the_clock_is_shared_between_the_two(config: Config) -> None:

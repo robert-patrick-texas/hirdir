@@ -74,7 +74,8 @@
 #                      capacity balance of the worked example; and, where the package has
 #                      the unit of the background work, the two units of the service: an
 #                      import applied by the second process, the server answering alone
-#                      while that unit is stopped, and a stop, a start and a restart of
+#                      while that unit is stopped, from 0.9.19 a preview of more than a
+#                      hundred rows waiting for it, and a stop, a start and a restart of
 #                      hirdir acting on both; and, where the second process keeps the long
 #                      reports in the database, that it works them out by itself, again
 #                      after a change when the setting says and not with the setting at 0,
@@ -498,12 +499,82 @@ api() {
     fi
 }
 
-# send PATH FILE [TYPE]: POST a file as the body of a request to the API under $prefix,
-# which is how an import is sent. PATH carries the query. The type is text/csv unless
-# given. A large file has two minutes.
-send() {
+# posted PATH FILE [TYPE]: POST a file as the body of a request to the API under $prefix,
+# which is how an import is sent, and leave the answer as it came. PATH carries the
+# query. The type is text/csv unless given. A large file has two minutes.
+posted() {
     authorized POST "$prefix/api/v1$1" --header "Content-Type: ${3:-text/csv}" \
         --data-binary "@$2" --max-time 120
+}
+
+# send PATH FILE [TYPE]: what posted does, and where the file is sent to be previewed
+# and is answered 202, the preview followed until it is worked: see followed.
+send() {
+    posted "$@"
+    case $1 in /imports/preview*) followed ;; esac
+}
+
+# The most rows that a preview is worked in its request, from 0.9.19 (P-325). A file of
+# more is stored as a job that is previewing, the answer is a 202, and the process of the
+# background work previews it, as it applies an import. It is IN_PLACE_UP_TO of
+# hirdir.io.imports, which a test in packaging/tests/ holds it to.
+in_request_rows=100
+
+# preview_status ROWS: what POST /imports/preview of the package under test answers a file
+# of that many rows with: 202 from 0.9.19 where it has more than $in_request_rows, and
+# 201 otherwise, as every release before it answers every file it previews.
+preview_status() {
+    if [ "$1" -gt "$in_request_rows" ] && dpkg --compare-versions "$version" ge 0.9.19; then
+        echo 202
+    else
+        echo 201
+    fi
+}
+
+# previewed_by HID [SECONDS]: look at an import job until it is no longer previewing, two
+# minutes at the most unless SECONDS says otherwise. The body is then the job as it was
+# last seen. Where it is still previewing by then, a note says how far it has got, and
+# this fails.
+previewed_by() {
+    local hid=$1 most=${2:-120} began=$SECONDS
+    while :; do
+        api GET "/imports/$hid"
+        [ "$(json_field status)" = previewing ] || return 0
+        if [ $((SECONDS - began)) -ge "$most" ]; then
+            note "the preview $hid is still previewing after $most s, at $(json_field rows_previewed) of $(json_field row_count) rows"
+            return 1
+        fi
+        sleep 0.2
+    done
+}
+
+# followed: where the last response is a 202 to a preview, a job of more than
+# $in_request_rows rows that the process of the background work previews (P-325), wait
+# for it with previewed_by and leave in $work/body what a preview worked in its request
+# answers: the job as it ended, its first hundred rows, and the first items that a
+# complete import would mark; so whatever reads the answer of a preview reads either
+# alike. $status stays the 202, and the answer as it came, the job previewing with no
+# rows, is kept in $work/begun.json. Any other answer is left as it is.
+followed() {
+    local hid
+    [ "$status" = 202 ] || return 0
+    cp "$work/body" "$work/begun.json"
+    hid=$(json 'd["job"]["hid"]')
+    previewed_by "$hid" || true
+    cp "$work/body" "$work/followed-job.json"
+    api GET "/imports/$hid/rows?limit=100"
+    python3 -c '
+import json, sys
+
+job = json.load(open(sys.argv[1], encoding="utf-8"))
+try:
+    rows = json.load(open(sys.argv[2], encoding="utf-8")).get("items", [])
+except (OSError, ValueError, AttributeError):
+    rows = []
+print(json.dumps({"job": job, "rows": rows, "not_reported_first": job.get("not_reported_first", [])}))' \
+        "$work/followed-job.json" "$work/body" >"$work/followed.json" 2>&1 || true
+    cp "$work/followed.json" "$work/body"
+    status=202
 }
 
 # json_field KEY: the value of a top-level key of the JSON in $work/body. A string is
@@ -3908,11 +3979,12 @@ upgrade() {
     # has run hirdir-setup or reloaded nginx since the upgrade: a file larger than the
     # megabyte nginx takes when it is left to itself. It is previewed and not applied,
     # so the inventory stays as it was carried over. The examples are imported below,
-    # with everything else the fresh pass does.
+    # with everything else the fresh pass does. From 0.9.19 a file of so many rows is
+    # previewed by the second process (P-325), which send follows.
     large_file "$work/large-upgraded.csv" "Upgrade Witness Networks" UW-48P
     send "/imports/preview?entity=items&file_name=large-upgraded.csv" "$work/large-upgraded.csv"
     expect "pkg under $prefix/, where the upgrade alone changed nginx, a file of $(megabytes "$work/large-upgraded.csv") is taken and previewed: $large_rows items to create" \
-        "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
+        "$status $(job_counts)" "$(preview_status "$large_rows") [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
 
     if [ -n "$witness_entry" ]; then
         local row_version hid retired wanted place
@@ -4479,7 +4551,7 @@ loads_back() {
                 send "/imports/preview?file_name=$name.json" "$file" application/json
             fi
             got="$got, previewed $status $(job_counts)$(rows_changed "$([ "$tidy" -gt 0 ] && echo tidied)"); "
-            wanted="$wanted$format: 200 $count rows, as in the zip, previewed 201 [\"previewed\", $count, 0, $tidy, $((count - tidy)), 0]; "
+            wanted="$wanted$format: 200 $count rows, as in the zip, previewed $(preview_status "$count") [\"previewed\", $count, 0, $tidy, $((count - tidy)), 0]; "
         done
         expect "pkg $when the $name table, exported whole as CSV and as JSON in the form that loads back, holds the $count records that GET /exports/tables counts, as the zip of every table does, and previewed back into this installation $said" \
             "$got" "$wanted"
@@ -4535,7 +4607,7 @@ files() {
         if held_list "$name"; then
             # A list that every inventory has from its install, as the examples write it.
             expect "S12 POST $prefix/api/v1/imports/preview with examples/$name.csv as its body: each of its $rows rows finds its record unchanged, since every inventory holds the list from its install" \
-                "$status $(job_counts)$(rows_changed)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+                "$status $(job_counts)$(rows_changed)" "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
             hid=$(json 'd["job"]["hid"]')
             apply_job "/imports/$hid/apply"
             expect "S12 POST $prefix/api/v1/imports/{hid}/apply changes none of the $rows" \
@@ -4543,7 +4615,7 @@ files() {
             continue
         fi
         expect "S12 POST $prefix/api/v1/imports/preview with examples/$name.csv as its body: each of its $rows rows is to be created" \
-            "$status $(job_counts)" "201 [\"previewed\", $rows, $rows, 0, 0, 0]"
+            "$status $(job_counts)" "$(preview_status "$rows") [\"previewed\", $rows, $rows, 0, 0, 0]"
         hid=$(json 'd["job"]["hid"]')
         apply_job "/imports/$hid/apply"
         expect "S12 POST $prefix/api/v1/imports/{hid}/apply creates the $rows" \
@@ -4635,12 +4707,12 @@ files() {
         rows=$(table 'len(rows)' "examples/$name.csv")
         send "/imports/preview?entity=$entity&file_name=$name.csv" "examples/$name.csv"
         expect "S13 examples/$name.csv a second time: each of its $rows rows finds its record unchanged" \
-            "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+            "$status $(job_counts)" "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
         hid=$(json 'd["job"]["hid"]')
         # A JSON file names its entity in its envelope, so the URL leaves it out.
         send "/imports/preview?file_name=$name.json" "examples/$name.json" application/json
         expect "S13 and examples/$name.json, the same records as JSON: unchanged as well" \
-            "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+            "$status $(job_counts)" "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
         apply_job "/imports/$hid/apply"
         expect "S13 applied, the second import of examples/$name.csv changes nothing" \
             "$status $(job_counts)" "202 [\"applied\", $rows, 0, 0, $rows, 0]"
@@ -4679,7 +4751,7 @@ files() {
         test "$rows" -ge "$item_rows"
     send "/imports/preview?entity=items&file_name=round-trip.csv" "$work/round-trip.csv"
     expect "pkg imported back as it is, every row finds its record by HID, unchanged" \
-        "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+        "$status $(job_counts)" "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
 
     # nginx refuses a body of more than a megabyte unless it is told otherwise, and the
     # snippet of the package tells it: client_max_body_size 100m, the limit of a reference
@@ -4689,7 +4761,7 @@ files() {
         test "$(stat -c %s "$work/large.csv")" -gt 1048576
     send "/imports/preview?entity=items&file_name=large.csv" "$work/large.csv"
     expect "pkg nginx lets it through under $prefix/, and it is previewed: $large_rows items to create" \
-        "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
+        "$status $(job_counts)" "$(preview_status "$large_rows") [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
     hid=$(json 'd["job"]["hid"]')
     apply_job "/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
     expect "pkg and applied in the background, with an Idempotency-Key" \
@@ -6563,14 +6635,14 @@ structure() {
         send "/imports/preview?file_name=$entity.json" "$work/back-$entity.json" application/json
         expect "pkg an export of every record of $entity ($rows rows) is imported back as it is, as CSV and as JSON: every row finds its record by HID, unchanged" \
             "$made $status $(job_counts)" \
-            "201 [\"previewed\", $rows, 0, 0, $rows, 0] 201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+            "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0] $(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
     done
     api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "include_archived": true, "include_drafts": true, "sort": ["depth"]}'
     cp "$work/body" "$work/back-items.csv"
     rows=$(table 'len(rows)' "$work/back-items.csv")
     send "/imports/preview?entity=items&file_name=items.csv" "$work/back-items.csv"
     expect "pkg and so is an export of every item, sorted by depth so that a parent stands before its minor items, $(table 'sum(1 for r in rows if r["parent"])' "$work/back-items.csv") of the $rows rows" \
-        "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+        "$status $(job_counts)" "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
 }
 
 # ---- condition, observation and health; one switch alone; how a cluster is managed ------------
@@ -7298,7 +7370,7 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
         send "/imports/preview?file_name=$number.json" "$work/back-$number.json" application/json
         expect "pkg an export of every record of $number ($staged rows) is imported back as it is, as CSV and as JSON: every row finds its record by HID, unchanged" \
             "$made $status $(job_counts)" \
-            "201 [\"previewed\", $staged, 0, 0, $staged, 0] 201 [\"previewed\", $staged, 0, 0, $staged, 0]"
+            "$(preview_status "$staged") [\"previewed\", $staged, 0, 0, $staged, 0] $(preview_status "$staged") [\"previewed\", $staged, 0, 0, $staged, 0]"
     done
     api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "include_drafts": true, "filter": "serial_number:glob:PKG0000G*", "sort": ["serial_number"]}'
     cp "$work/body" "$work/back-placed.csv"
@@ -7860,7 +7932,7 @@ operators_and_plans() {
         send "/imports/preview?file_name=$entity.json" "$work/back-$entity.json" application/json
         expect "pkg an export of every record of $entity ($rows rows), with the operators, the flag for deliveries and what was planned and moved, is imported back as it is, as CSV and as JSON: every row finds its record by HID, unchanged" \
             "$made $status $(job_counts)" \
-            "201 [\"previewed\", $rows, 0, 0, $rows, 0] 201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+            "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0] $(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
     done
     api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "filter": "serial_number:glob:PKG0000N*", "sort": ["depth", "serial_number"]}'
     cp "$work/body" "$work/back-operated.csv"
@@ -8552,7 +8624,7 @@ cover_and_purchases() {
         send "/imports/preview?file_name=$entity.json" "$work/back-$entity.json" application/json
         expect "pkg an export of every record of $entity ($rows rows), the retired and what is under a retired contract among them, is imported back as it is, as CSV and as JSON: every row finds its record, unchanged" \
             "$made $status $(job_counts)" \
-            "201 [\"previewed\", $rows, 0, 0, $rows, 0] 201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+            "$(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0] $(preview_status "$rows") [\"previewed\", $rows, 0, 0, $rows, 0]"
     done
     api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "filter": "serial_number:glob:PKG0000V02*", "sort": ["serial_number"]}'
     cp "$work/body" "$work/back-arrived.csv"
@@ -8971,7 +9043,7 @@ job_said() {
 second_process() {
     has_worker || return 0
     section "the second process of the service"
-    local hid code worker_pid
+    local hid code worker_pid many="" waiting="" more=$((in_request_rows + 1))
     sign_in "$admin" "$admin_code"
     expect "pkg both units of the service run" "$(units_are)" "active active"
 
@@ -9006,12 +9078,30 @@ second_process() {
     expect "pkg and so is a preview of an import" "$status" 201
     api POST "/imports/$hid/apply"
     code=$status
+    # From 0.9.19 a preview of more rows than a preview is worked in its request waits for
+    # the second process too (P-325). It is asked for after the apply, which is taken up
+    # first. posted leaves the answer as it came, and follows nothing.
+    if dpkg --compare-versions "$version" ge 0.9.19; then
+        { echo label; seq -f 'pkgtest-worker-many-%03g' 1 "$more"; } >"$work/many-tags.csv"
+        posted "/imports/preview?entity=tags&file_name=many-tags.csv" "$work/many-tags.csv"
+        many=$(json 'd["job"]["hid"]')
+        waiting="$status $(json '[d["job"]["status"], d["job"]["row_count"], d["job"]["rows_previewed"], d["rows"]]')"
+    fi
     sleep 5
     api GET "/imports/$hid"
     expect "pkg an apply asked for while the unit is stopped is taken, 202, and nothing of it is applied, by the server or by anything else: it waits, queued" \
         "$code $status $(job_said)" '202 200 ["queued", 0, 0, ""]'
     api GET /tags
     expect "pkg its tag is not there" "$status $(json 'sum(t["label"] == "pkgtest-worker-2" for t in d)')" "200 0"
+    if [ -n "$many" ]; then
+        api GET "/imports/$many"
+        waiting="$waiting $status $(json '[d["status"], d["rows_previewed"]]')"
+        api GET "/imports/$many/rows?limit=1"
+        waiting="$waiting $status"
+        api POST "/imports/$many/apply"
+        expect "pkg a preview of a file of $more tags, more rows than a preview is worked in its request, asked for while the unit is stopped is taken, 202, with its job previewing and no rows, and waits so, no row of it worked by the server or by anything else; meanwhile its rows are not listed and it is not applied, each a 409" \
+            "$waiting $status" "202 [\"previewing\", $more, 0, []] 200 [\"previewing\", 0] 409 409"
+    fi
 
     # Started again, it applies what waited: a job is applying only once a process has
     # taken it up, so one that waited queued was never cut short, and nobody asks again.
@@ -9030,6 +9120,12 @@ second_process() {
         '200 ["applied", 1, 1, ""] new'
     api GET /tags
     expect "pkg and its tag is there" "$status $(json 'sum(t["label"] == "pkgtest-worker-2" for t in d)')" "200 1"
+    # And the preview that waited, after it, which nobody applies: no tag of it is made.
+    if [ -n "$many" ]; then
+        previewed_by "$many" 60 || true
+        expect "pkg and the preview that waited is worked once the unit has started, by the second process, with nobody asking again: previewed, each of its $more rows a tag to create, every row worked" \
+            "$status $(json '[d["status"], d["row_count"], d["created"], d["rows_previewed"]]')" "200 [\"previewed\", $more, $more, $more]"
+    fi
     api GET /about/load
     if [ "$status" = 200 ]; then
         expect "pkg the server says that the process of the background work is running" "$(json_field worker)" running

@@ -822,7 +822,7 @@ def test_the_short_browser_check_is_a_pass_that_runs_a_spec_file_of_the_web_ui()
 
 
 def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_code_says() -> None:
-    """The notes of the upgrade to 0.9.17, the newest, and what the package test asks for
+    """The notes of the upgrade to 0.9.17, and what the package test asks for
     it: migration 0018 makes the users' table anew, kind in the place of
     is_service_account and answerable_hid, adds for_hid to the audit trail, creates no
     table and writes no event, and the file of the package test declares each column as
@@ -1000,7 +1000,7 @@ def test_the_install_page_and_the_package_test_say_of_kinds_and_agents_what_the_
 
 
 def test_the_install_page_and_the_package_test_say_of_circuit_sides_and_lists_as_the_code() -> None:
-    """The notes of the upgrade to 0.9.18, the newest, and what the package test asks for
+    """The notes of the upgrade to 0.9.18, and what the package test asks for
     it: migration 0019 renames the A side's dates in their places, adds the Z side's and
     its network, gives every circuit group a kind and a carrier, and creates and loads the
     lists of countries and states from the data file beside it, which the wheel carries,
@@ -1168,3 +1168,113 @@ def test_the_install_page_and_the_package_test_say_of_circuit_sides_and_lists_as
     assert 'expect "S63 after the upgrade, ' in hook
     assert "tidied[contacts]=1" in hook
     assert "unset 'tidied[contacts]'" in hook
+
+
+def test_the_install_page_and_the_package_test_say_of_a_preview_in_the_background_as_the_code() -> (
+    None
+):
+    """The notes of the upgrade to 0.9.19, the newest, and what the package test asks for
+    it: migration 0020 adds `import_jobs.rows_previewed` and sets it to each job's
+    `row_count`, creates no table and writes no event, and the file of the package test
+    declares the column as the model does and compares the jobs and their rows as it
+    compares the tables of the inventory (P-325); a preview of more rows than the server
+    works in its request is answered 202, as the contract says, and the package test
+    follows it to previewed and expects a 202 wherever its file has so many; and the
+    routes, the fields and the status that the page names are the contract's."""
+    import json
+
+    from sqlalchemy import inspect
+    from sqlalchemy.dialects import sqlite
+
+    from hirdir.db.models import ImportJob, ImportRow
+    from hirdir.io import imports
+
+    versions = ROOT / "src/hirdir/db/migrations/versions"
+    revision = max(path.name[:4] for path in versions.glob("[0-9]*.py"))
+    assert revision == "0020"
+    (migration,) = versions.glob(f"{revision}_*.py")
+    source = migration.read_text(encoding="utf-8")
+    assert 'down_revision = "0019"' in source
+    # A column and no table, and no event: the pass whose migration fails puts the
+    # trigger in its way, and the upgrade is to leave the audit trail as it was.
+    assert "op.create_table" not in source
+    assert "audit_events" not in source
+    jobs, rows = ImportJob.__tablename__, ImportRow.__tablename__
+    column = inspect(ImportJob).columns["rows_previewed"]
+    assert (
+        'jobs.add_column(sa.Column("rows_previewed", sa.Integer, nullable=False, '
+        'server_default="0"))' in source
+    )
+    assert jobs == "import_jobs"
+    assert 'op.execute("UPDATE import_jobs SET rows_previewed = row_count")' in source
+
+    # The file of the package test says what the migration adds, declared as SQLite has
+    # it from the model, and what it reads of its default, as the migration gives it.
+    hook = (PACKAGING / "package-test.d" / f"migration-{revision}.sh").read_text(encoding="utf-8")
+    assert "\nwrites_no_event=yes\n" in hook
+    assert "upgrade_events" not in hook
+    assert "fail_by" not in hook
+    declared = column.type.compile(dialect=sqlite.dialect())
+    said = f"{column.name} {declared} {'NULL' if column.nullable else 'NOT NULL'} -"
+    assert said == "rows_previewed INTEGER NOT NULL -"
+    assert f"\nalso new_columns {jobs} '{said}'\n" in hook
+    assert "\"every [$few_0020, $many_0020] '0' 1\"" in hook
+    for table in (jobs, rows):
+        assert f'*) more_tables="${{more_tables:+$more_tables }}{table}" ;; esac\n' in hook
+        assert f"\nmay_add[{table}]=yes\n" in hook
+    for function in ("before_0020", "changed_0020", "after_0020"):
+        assert f"\n{function}() {{\n" in hook
+
+    # The rows a preview is worked in its request, as the package test and the server
+    # count them; and the package test follows a preview that is answered 202, and
+    # expects one wherever a file of it has more, not a 201 by its number of rows alone.
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (most,) = re.findall(r"^in_request_rows=(\d+)$", script, re.M)
+    assert int(most) == imports.IN_PLACE_UP_TO == 100
+    assert "\n    case $1 in /imports/preview*) followed ;; esac\n" in script
+    assert (
+        '    if [ "$1" -gt "$in_request_rows" ] && dpkg --compare-versions "$version" ge 0.9.19;'
+        in script
+    )
+    assert not re.findall(r'"201 \[\\"previewed\\", \$', script)
+    assert 'expect "pkg a preview of a file of $more tags, ' in script
+
+    # The notes.
+    assert "### From 0.9.18 to 0.9.19" in INSTALL
+    notes = INSTALL.split("### From 0.9.18 to 0.9.19\n", 1)[1].split("\n### ", 1)[0]
+    page = " ".join(notes.split())
+    assert f"The schema goes from revision `0019` to `{revision}`." in page
+    assert f"One column is added, `{column.name}` of the import jobs" in page
+    assert "it is set to the `row_count` of every job" in page
+    assert (
+        "No table is added, nothing else that is held is changed, and the upgrade writes no "
+        "audit event." in page
+    )
+    assert "A preview of more than a hundred rows is worked in the background" in page
+    assert "A file of a hundred rows or fewer is previewed at once, in its request" in page
+    assert "**The second process must run for a large preview to be worked**" in page
+    assert "Going back to 0.9.18 is by the backup the upgrade took" in page
+
+    # The routes, the answers, the fields and the status that the page names are the
+    # contract's.
+    contract = json.loads((ROOT / "contract" / "openapi.json").read_text(encoding="utf-8"))
+    for path in ("/imports/preview", "/items/bulk-update"):
+        answers = contract["paths"][f"/api/v1{path}"]["post"]["responses"]
+        assert {"201", "202"} <= set(answers)
+        assert f"`POST {path}`" in page
+    assert "answered `202`" in page
+    assert "answered `201` with the preview" in page
+    for method, path in (
+        ("get", "/imports/{hid}"),
+        ("get", "/imports/{hid}/rows"),
+        ("post", "/imports/{hid}/apply"),
+    ):
+        assert method in contract["paths"][f"/api/v1{path}"]
+        assert f"`{method.upper()} {path}`" in page
+    job = contract["components"]["schemas"]["ImportJobOut"]["properties"]
+    for field in (column.name, "row_count", "failure"):
+        assert field in job
+        assert f"`{field}`" in page
+    assert "previewing" in job["status"]["enum"]
+    assert "`previewing`" in page
+    assert "answer `409`" in page
