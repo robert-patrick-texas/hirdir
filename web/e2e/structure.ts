@@ -71,7 +71,8 @@ export async function importFile(
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   const job = page.getByTestId("import-job");
   await expect(job).toHaveAttribute("data-status", "previewed", waiting);
-  await expect(count(page, "created")).toHaveText(String(rows.length));
+  // Every count with the separator of thousands (P-195): "1,000".
+  await expect(count(page, "created")).toHaveText(rows.length.toLocaleString("en-US"));
   await expect(count(page, "rejected")).toHaveText("0");
   await page
     // A count in a sentence has the separator of thousands (P-195): "Apply 1,000 rows".

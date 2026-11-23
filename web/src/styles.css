@@ -1193,11 +1193,10 @@ tr[aria-current="true"] {
   margin: 0.75rem 0;
 }
 
-/* 0.9.19: a preview that takes the keyboard where what held it went, the form of a bulk
-   edit or the block of a preview under way, is no control, and is not ringed as one
-   (P-325). */
-.apply-preview:focus,
-.bulk-preview:focus {
+/* 0.9.19: the heading of a job, or the sentence that opens the preview of a bulk edit,
+   takes the keyboard where what held it went, or as the job comes: it is no control, and
+   is not ringed as one (P-325). */
+[data-job-home]:focus {
   outline: none;
 }
 

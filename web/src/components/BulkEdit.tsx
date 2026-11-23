@@ -29,7 +29,7 @@ import { useOwnerOptions, useTags } from "../lib/lists";
 import { choiceOptions, SETTABLE_STATUSES } from "../lib/options";
 import type { FormValue, Option } from "../lib/patch";
 import { entrySeen } from "../lib/pick";
-import { applyBegun, type Preview } from "../lib/preview";
+import { applyBegun, bulkIntro, isPreviewing, type Preview } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
 import { useJob } from "../lib/useJob";
@@ -37,6 +37,7 @@ import { CheckField, CheckGroupField, SelectField } from "./Field";
 import { FormFields } from "./FormFields";
 import { ApplyCounts, ApplyPreview, JobCounts, LeftOutOf, PreviewRows } from "./Preview";
 import { Problem } from "./Problem";
+import { firstField } from "./RowForm";
 
 type Choice = Schemas["ChoiceOut"];
 
@@ -262,6 +263,14 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // 0.9.19: the form back in the place of the preview, by Change the edit, takes the
+  // keyboard on its first field, which was on the button that went (review R3).
+  const form = useRef<HTMLFormElement>(null);
+  const [back, setBack] = useState(0);
+  useEffect(() => {
+    if (back === 0 || preview !== null || !form.current) return;
+    firstField(form.current)?.focus();
+  }, [back, preview]);
 
   const count = chosenCount(rows);
   // Every item the list shows: the reader set no filter, whatever a switch of the grid adds.
@@ -350,7 +359,7 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
       <h2 id="bulk-edit">Bulk edit</h2>
       <Problem error={owners.error ?? tags.error} />
       {!preview && (
-        <form onSubmit={submit} className="stack" noValidate>
+        <form onSubmit={submit} className="stack" noValidate ref={form}>
           <p>
             This changes <strong>{what}</strong>. Add each field to change. A field that is not
             added is left as it is.
@@ -480,7 +489,10 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
           error={error}
           again={makePreview}
           onApplied={onApplied}
-          onChange={() => setPreview(null)}
+          onChange={() => {
+            setPreview(null);
+            setBack((was) => was + 1);
+          }}
           onClose={onClose}
         />
       )}
@@ -523,26 +535,23 @@ function BulkPreview(props: BulkPreviewProps) {
   const previewed = job.status === "previewed";
   // Not applied yet: being previewed, previewed, or a preview that failed.
   const unchanged = !applyBegun(job);
+  const intro = bulkIntro(job);
 
   // 0.9.19: the preview takes the place of the form, whose button the keyboard was on:
-  // the keyboard is put on the preview, and not lost to the page (P-325).
-  const box = useRef<HTMLDivElement>(null);
+  // the keyboard is put on the sentence that opens the preview, which says what it is,
+  // and not lost to the page (P-325, review R8).
+  const opening = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     const now = document.activeElement;
-    if (now === null || now === document.body) box.current?.focus({ preventScroll: true });
+    if (now === null || now === document.body) opening.current?.focus({ preventScroll: true });
   }, []);
 
   return (
-    <div
-      className="bulk-preview"
-      data-testid="bulk-preview"
-      data-status={job.status}
-      ref={box}
-      tabIndex={-1}
-    >
-      <p>
-        What the change would do to <strong>{what}</strong>, row by row.{" "}
-        {unchanged ? "Nothing has been changed yet." : ""}
+    <div className="bulk-preview" data-testid="bulk-preview" data-status={job.status}>
+      <p ref={opening} tabIndex={-1} data-job-home="" data-testid="bulk-intro">
+        {intro.before}
+        <strong>{what}</strong>
+        {intro.after}
       </p>
       <JobCounts job={job} />
       <ApplyCounts job={job} />
@@ -566,6 +575,14 @@ function BulkPreview(props: BulkPreviewProps) {
           {previewed ? "Cancel" : "Close"}
         </button>
       </p>
+      {/* 0.9.19: what a change of the edit leaves behind it while this one is previewed
+          (review R6). */}
+      {isPreviewing(job) && (
+        <p className="hint" data-testid="bulk-change-hint">
+          Changed now, this preview is still worked out to its end and kept among the imports, not
+          applied, and the changed edit is previewed after it.
+        </p>
+      )}
       <LeftOutOf job={job} turn={turn} />
       <PreviewRows job={job} preview={preview} turn={turn} />
     </div>

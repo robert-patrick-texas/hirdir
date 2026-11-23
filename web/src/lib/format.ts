@@ -155,11 +155,19 @@ export function today(zone: string = appZone(), now: Date = new Date()): string 
 }
 
 /**
+ * A whole number with its thousands marked, for a count on a page: "50,000" (P-195). It is
+ * the one way a count is written, in a sentence, a table or a button.
+ */
+export function countText(count: number): string {
+  return count.toLocaleString("en-US");
+}
+
+/**
  * "1 second", "2 seconds", "34,778 items": the count with the separator of thousands, as
  * the numbers of the tables have it (P-195).
  */
 export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
+  return `${countText(count)} ${count === 1 ? one : many}`;
 }
 
 /** A MAC address as people write it: twelve stored hex digits as `00:00:5e:00:53:02`. */
