@@ -366,7 +366,12 @@ upload, by its extension and by its first bytes.
   looked up; the items that have the serial numbers of a file are read together when
   the order of its rows is worked out, which writes nothing; and a transaction that
   took the writer's place outside a savepoint holds it until it ends, and is not given
-  it again for each row (`dialect.hold_other_writers`).
+  it again for each row (`dialect.hold_other_writers`). A new item and its audit
+  event are stored by one flush of the session, and not by one each (`records.created`
+  with `together`): the item is given beforehand what its own flush gave it, its HID,
+  given or made, its moments and the default of each field not given, so that the
+  event says what the item is stored with, and the item's moments come before the
+  event's, as they did.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,

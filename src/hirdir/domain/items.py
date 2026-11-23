@@ -855,6 +855,8 @@ def create_item(db: Session, context: AuditContext, fields: dict[str, Any]) -> I
         FIELDS,
         # A new item has no tags: with none given there is nothing to look up (P-324).
         then=(lambda: tags.set_labels(db, RECORD_TYPE, item.hid, labels)) if labels else None,
+        # Stored with its event by one flush, and not by one each (P-324).
+        together=True,
     )
     _settle_line(db, context, item.purchase_line_hid)
     return item

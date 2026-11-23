@@ -5,9 +5,10 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
 from decimal import Decimal
+from functools import cache
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, inspect, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
@@ -185,12 +186,20 @@ def created(
     *,
     names: Mapping[str, str] | None = None,
     then: Callable[[], list[dict[str, Any]]] | None = None,
+    together: bool = False,
 ) -> None:
     """Add record, and audit its creation with every field that was given a value.
 
     `names` gives the documented name of a field whose attribute is called something
     else. `then` runs once the record has its HID, for what is stored beside the record
     and belongs in the same event, such as its tags; it returns the changes it made.
+
+    With `together`, the record is not stored by itself first: the session's next flush
+    stores it and its event at once (P-324). The record is given beforehand what that
+    first flush gave it, its HID, its moments and the default of each field that was not
+    given, so that the event says of it what it is stored with. A field whose default
+    the database or a function works out is no such field: the record is then stored
+    by itself first, as without `together`.
     """
     record.created_by = context.actor_hid
     record.updated_by = context.actor_hid
@@ -198,8 +207,11 @@ def created(
     given = None if record.hid else ids.take_given(record_type)
     if given is not None:
         record.hid = given
-    db.add(record)
-    db.flush()
+    if together and _given_defaults(record, fields):
+        db.add(record)
+    else:
+        db.add(record)
+        db.flush()
     changes = [
         change((names or {}).get(name, name), None, jsonable(getattr(record, name), name))
         for name in fields
@@ -208,6 +220,51 @@ def created(
     if then is not None:
         changes += then()
     audit.record(db, context, "create", record_type, record.hid, changes)
+
+
+def _given_defaults(record: Any, fields: tuple[str, ...]) -> bool:
+    """Give a record that is not stored yet what its first flush would give it: its HID,
+    its moments, and the default of each field that was not given. Say whether that is
+    so; where a field's default is not a plain value, nothing is given, and False."""
+    known = _defaults_of(type(record), fields)
+    if known is None:
+        return False
+    defaults, moments = known
+    given = inspect(record).dict
+    for name, value in defaults:
+        if name not in given:
+            setattr(record, name, value)
+    if record.hid is None:
+        record.hid = ids.new_hid()
+    # Its moments before its event's, which the flush gives, as when it was stored first.
+    now = clock.now()
+    for name in moments:
+        if name not in given:
+            setattr(record, name, now)
+    return True
+
+
+@cache
+def _defaults_of(
+    model: type, fields: tuple[str, ...]
+) -> tuple[tuple[tuple[str, Any], ...], tuple[str, ...]] | None:
+    """Return, for a kind of record, the plain default of each of the fields that has
+    one, and its moments; None where a field's default is the database's or a
+    function's. Worked out once for each kind."""
+    columns = inspect(model).columns
+    defaults: list[tuple[str, Any]] = []
+    for name in fields:
+        column = columns.get(name)
+        if column is None:
+            continue
+        if column.server_default is not None:
+            return None
+        if column.default is not None:
+            if not column.default.is_scalar:
+                return None
+            defaults.append((name, column.default.arg))
+    moments = tuple(name for name in ("created_at", "updated_at") if name in columns)
+    return tuple(defaults), moments
 
 
 def apply(
