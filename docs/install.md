@@ -478,7 +478,11 @@ process again by itself, three seconds after it fails.
 `hirdir admin serve` on the same directory stops at once with `another hirdir server
 is running on /var/lib/hirdir: stop it first`, and a second `hirdir admin work`, after
 two seconds, with `another process of the background work is running on
-/var/lib/hirdir: stop it first`.
+/var/lib/hirdir: stop it first`. A third file, `/var/lib/hirdir/writing.lock`, empty,
+is shared: every process that writes to the database, the two of the service and a
+`hirdir admin` command alike, holds it from its first change until it is stored, and
+the second process looks at it between two batches of an apply, to let a change by
+somebody else go first (P-324). Nothing is to be done with it.
 
 **The commands that need the service stopped** need both stopped: `hirdir admin
 restore`, `hirdir admin reset` and `hirdir admin load-examples`. `sudo systemctl stop
@@ -2555,6 +2559,14 @@ For whoever operates the host:
   While `hirdir-worker.service` is stopped, a preview of more than a hundred rows is
   taken and shown as `previewing`, and waits until the process starts again: see
   [The service](#the-service). About says whether it runs.
+- **A preview of more than a hundred rows is worked on a copy of the database**, as it
+  was in 0.9.18, now in the private temporary directory of `hirdir-worker.service`
+  where it was the server's: the copy is the size of the database, one at a time, and
+  is thrown away when the preview ends. A host whose `/tmp` is smaller than the
+  database ends such a preview `failed`.
+- The state directory gains one file, `writing.lock`, empty, which every process that
+  writes holds while it writes, and the second process looks at between two batches of
+  an apply (P-324).
 - Nothing is to be set or done at the upgrade.
 
 Before the upgrade, look at the scripts that send a file to `POST /imports/preview`, or
