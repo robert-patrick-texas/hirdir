@@ -37,6 +37,7 @@ from hirdir.domain.errors import DomainError
 from hirdir.io import background, examples
 from hirdir.io import store as file_store
 from hirdir.io.store import Store
+from hirdir.memory import settle
 
 DEV_CONFIG = '[server]\nstate_dir = "."\n'
 # How many references a message names before it says how many more there are.
@@ -139,6 +140,7 @@ def serve(
         if work:
             held.enter_context(contextlib.closing(_one_worker(config.state_dir)))
         app = create_app(config, scheduled=True, work=work)
+        settle()
         uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False)
 
 
@@ -185,6 +187,7 @@ def work() -> None:
         signal.signal(asked, lambda *_: stop.set())
     try:
         with background.working(config):
+            settle()
             typer.echo(f"hirdir: the background work of {config.state_dir} is under way", err=True)
             stop.wait()
         typer.echo(f"hirdir: the background work of {config.state_dir} is stopped", err=True)

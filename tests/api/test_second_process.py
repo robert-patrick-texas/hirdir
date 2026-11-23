@@ -480,6 +480,7 @@ def served(installed: Config, monkeypatch, *options: str) -> dict[str, Any]:
     seen: dict[str, Any] = {}
 
     def started_and_stopped(application: FastAPI, **how: Any) -> None:
+        seen["listening"] = True
         with TestClient(application):
             state = application.state
             seen["worker"] = background.worker_state(state)
@@ -506,9 +507,17 @@ def served(installed: Config, monkeypatch, *options: str) -> dict[str, Any]:
                     time.sleep(0.05)
         application.state.engine.dispose()
 
+    def settled() -> None:
+        # The server keeps what it was made with out of the collector's passes
+        # (P-326); a test process, which makes many applications, does not.
+        seen["settled"] = "listening" not in seen
+
+    monkeypatch.setattr(admin, "settle", settled)
     monkeypatch.setattr(uvicorn, "run", started_and_stopped)
     result = runner.invoke(command, ["admin", "serve", *options])
     assert result.exit_code == 0, result.output
+    # Once the application is made, and before it listens.
+    assert seen.get("settled") is True
     return seen
 
 

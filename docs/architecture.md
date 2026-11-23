@@ -191,7 +191,7 @@ A built file's name changes whenever its content does, so it is served with
 `Cache-Control: public, max-age=31536000, immutable` and a browser asks for it once for
 each release. The page itself and every answer of the API are `no-store`. Any answer
 larger than a kilobyte is compressed with gzip when the browser accepts it, by the
-application itself, so no nginx setting is needed for it. A page of a list shrinks to
+application itself, at level 6, so no nginx setting is needed for it. A page of a list shrinks to
 about a tenth.
 
 ### Browser hardening
@@ -2772,10 +2772,12 @@ out of the collector once the application is made (`gc.freeze()` after
 `create_app`), on the same host one after the other: `covered:eq:false`, by
 `covered_until`, 326 / 726 without and 311 / 371 with; by
 `-effective.support_weight` with the item weights set 260 / 650 and 255 / 288; the
-list with no filter 211 / 285 and 199 / 224 (load average 1.4 to 2.2). Freezing them is
-a choice of how the application starts, and is not made here. Nor is the level at which
-an answer is compressed: a page of 100 items is some 500 KB of JSON, which gzip's level
-9, the middleware's own, compresses in 10 to 12 ms, and level 6 in 5 to 8 ms, 3 per cent
+list with no filter 211 / 285 and 199 / 224 (load average 1.4 to 2.2). So `hirdir admin
+serve` and `hirdir admin work` do it once the application, or the background work, is
+made, and before the first request or job (`hirdir.memory.settle`), and the timing does
+the same; the tests, which make many applications, do not. And an answer is compressed
+at gzip's level 6, where the middleware's own is 9: a page of 100 items is some 500 KB
+of JSON, which level 9 compresses in 10 to 12 ms, and level 6 in 5 to 8 ms, 3 per cent
 larger.
 
 ## Configuration

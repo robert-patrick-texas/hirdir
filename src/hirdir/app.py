@@ -93,6 +93,9 @@ HEALTH_SAID = {
 log = logging.getLogger("hirdir")
 KEEP_FOR_GOOD = "public, max-age=31536000, immutable"
 SMALLEST_COMPRESSED = 1024
+# How hard an answer is compressed: a page of the item list, some 500 KB, takes 5 to 8 ms
+# at 6 and 10 to 12 ms at 9, the most, for 3 per cent more bytes (P-326).
+COMPRESS_LEVEL = 6
 # A picture of a reference is shown from a blob: address the page made of what it
 # fetched itself, which runs nothing (P-159).
 CONTENT_SECURITY_POLICY = (
@@ -518,7 +521,10 @@ def create_app(config: Config, scheduled: bool = False, work: bool = True) -> Fa
     # hirdir sets no cookie, so no other site can make a signed-in request and learn
     # anything from the size of a compressed answer.
     app.add_middleware(
-        GZipMiddleware, minimum_size=SMALLEST_COMPRESSED, exclude_content_types=NOT_COMPRESSED
+        GZipMiddleware,
+        minimum_size=SMALLEST_COMPRESSED,
+        exclude_content_types=NOT_COMPRESSED,
+        compresslevel=COMPRESS_LEVEL,
     )
     app.add_middleware(
         Gateway,

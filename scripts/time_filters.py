@@ -957,8 +957,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         from hirdir.app import create_app
         from hirdir.config import Config
+        from hirdir.memory import settle
 
         app = create_app(Config(state_dir=given.folder))
+        # As the server does once it is made (P-326).
+        settle()
         # What a service that ran on the fixture worked out ahead and left in its
         # database (P-275) would be given in place of an answer worked out anew.
         from hirdir.io import kept

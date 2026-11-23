@@ -535,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
     from hirdir.app import create_app
     from hirdir.config import Config
     from hirdir.io import imports
+    from hirdir.memory import settle
 
     with tempfile.TemporaryDirectory(prefix="hirdir-time-import-") as folder:
         target = Path(folder)
@@ -545,6 +546,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"copied and prepared in {time.perf_counter() - began:.1f} s, in {target}")
         spans = Spans()
         app = create_app(Config(state_dir=target), scheduled=True)
+        # As the server does once it is made (P-326).
+        settle()
         with spans.wrapped(imports, PARTS), Served(app) as base:
             found = run(base, data, given.rows, facts, spans)
         app.state.engine.dispose()
