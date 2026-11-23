@@ -377,18 +377,6 @@ def connections_out(
 ) -> dict[str, list[r.CircuitConnection]]:
     """Return the circuits each item, or each device group, is connected to."""
     return {
-        hid: [
-            r.CircuitConnection.model_validate(
-                {
-                    "hid": circuit.hid,
-                    "name": circuit.name,
-                    "enterprise_circuit_id": circuit.enterprise_circuit_id,
-                    "side": link.side,
-                    "link_hid": link.hid,
-                    "record_status": circuit.record_status,
-                }
-            )
-            for link, circuit in listed
-        ]
-        for hid, listed in circuit_records.connections_of(db, field, hids).items()
+        hid: [r.CircuitConnection.model_validate(one) for one in listed]
+        for hid, listed in circuit_records.connections_listed(db, field, hids).items()
     }

@@ -79,6 +79,7 @@ from hirdir.domain import (
 from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
 from hirdir.domain.errors import Existing
+from hirdir.domain.held import reading
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
 from hirdir.io import alerts, balance, fields, imports, operated, planning, tried
@@ -298,7 +299,7 @@ def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -
         {one.source_hid for one in found.values() if one.source == operators.SOURCE_GROUP},
     )
     named.update((hid, group.name) for hid, group in its_groups.items())
-    atlas = geography.Atlas(db)
+    atlas = geography.atlas(db)
     for one in found.values():
         if one.source in geography.LEVELS and one.source_hid:
             place = geography.Place(
@@ -433,7 +434,7 @@ def owner_out(db: Session, owner: Owner) -> shapes.OwnerOut:
 
 def location_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.LocationRef]:
     """Return each of the locations as an item or a group that is there names it."""
-    atlas = geography.Atlas(db)
+    atlas = geography.atlas(db)
     wanted = sorted(hid for hid in hids if hid)
     atlas.read_locations(wanted)
     refs = {}
@@ -884,15 +885,19 @@ def _cover(
     # agreement of its contract in the session and does not read it again.
     _held = _by_hid(db, Agreement, {contract.agreement_hid for contract in under.values()})
     refs = _contract_refs(db, list(under.values()), today)
+    # What is in force for each contract, worked out once for the page and read by each
+    # of its coverages (P-326).
+    standing = {hid: contracts.Standing(contract, today) for hid, contract in under.items()}
     out: dict[str, tuple[list[shapes.CoverageRef], date | None, int, list[shapes.ContractRef]]]
     out = {}
     for hid, its in found.items():
         listed = []
         counting: dict[str, shapes.ContractRef] = {}
         for coverage, contract in its:
-            if contracts.still_counts(coverage, contract, today):
+            held = standing[contract.hid]
+            if contracts.still_counts_by(coverage, held):
                 counting.setdefault(contract.hid, refs[contract.hid])
-            span = contracts.span(coverage, contract, today)
+            span = contracts.span_by(coverage, held)
             listed.append(
                 shapes.CoverageRef(
                     hid=coverage.hid,
@@ -900,13 +905,16 @@ def _cover(
                     contract=refs[contract.hid],
                     starts_on=span.starts_on,
                     ends_on=span.ends_on,
-                    in_force=contracts.in_force(coverage, contract, today),
+                    in_force=contracts.in_force_by(coverage, held),
                     left_service=coverage.left_service,
                 )
             )
         covering = {one.contract_hid for one in listed if one.in_force}
         ordered = sorted(counting.values(), key=lambda ref: (records.key(ref.number), ref.hid))
-        out[hid] = (listed, contracts.covered_until(its, today), len(covering), ordered)
+        until = contracts.covered_until_by(
+            [(coverage, standing[contract.hid]) for coverage, contract in its], today
+        )
+        out[hid] = (listed, until, len(covering), ordered)
     return out
 
 
@@ -977,7 +985,17 @@ def _line_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.PurchaseL
 
 
 def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
-    """Return items with what they refer to and the values in force of what they inherit."""
+    """Return items with what they refer to and the values in force of what they inherit.
+
+    What the parts of the page read again, the groups of each item, its walk up, what it
+    has in force in a field, the places and the operators that are retired, is read once
+    while the page is shaped, and let go after (P-326).
+    """
+    with reading(db):
+        return _items_out(db, items)
+
+
+def _items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     hids = [item.hid for item in items]
     lines = item_rules.lines_above(db, items)
     # What each is installed in, and what it runs on (P-246): what a value comes from.
@@ -1066,11 +1084,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     )
         out.append(
             shapes.ItemOut(
-                **{
-                    name: getattr(item, name)
-                    for name in shapes.ItemOut.model_fields
-                    if name not in _ITEM_SHAPED
-                },
+                **{name: getattr(item, name) for name in _ITEM_OWN},
                 catalog=None
                 if entry is None
                 else shapes.ItemCatalog(
@@ -1194,6 +1208,9 @@ _ITEM_SHAPED = (
     "tags",
     "effective",
 )
+# What an item answers as the record holds it, in the order of its shape: found once, and
+# not again for each item of a page.
+_ITEM_OWN = tuple(name for name in shapes.ItemOut.model_fields if name not in _ITEM_SHAPED)
 
 
 def item_out(db: Session, item: Item) -> shapes.ItemOut:
