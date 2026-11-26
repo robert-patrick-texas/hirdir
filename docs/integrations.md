@@ -307,7 +307,7 @@ From vakr's report to hirdir's `observed_status`:
 | reachable from every monitoring position | `online` |
 | reachable from some positions only, or with loss or latency over its threshold | `degraded` |
 | unreachable from every position, with readings that are fresh | `unreachable` |
-| readings that are stale, a device never polled, or one in maintenance | no row: hirdir's value stays as it is, and its `observed_at` shows its age |
+| readings that are stale, a device never polled, or one in maintenance | a row that names the device and gives no status. It confirms the registration, so that `complete` does not mark the device as no longer reported. hirdir's value stays as it is, and its `observed_at` shows its age |
 
 From hirdir's intent to what vakr polls and what sunstone counts:
 
@@ -333,7 +333,7 @@ its history.
 | From → to | What | How | Account |
 |---|---|---|---|
 | hirdir → vakr | sites, devices, their models, operators, and circuits on interfaces | vakr reads hirdir's API on a timer and writes its inventory file from what it reads. `vakr inventory plan` shows each change before it is applied | a hirdir service account, View-only |
-| vakr → hirdir | observed status, observed hardware, registrations | vakr writes what it reports under the shared names, and sends it as two imports, one of items and one of device groups: `system` vakr, mode `update` (P-334), `complete` | a hirdir service account, Inventory |
+| vakr → hirdir | observed status, observed hardware, registrations | vakr writes what it reports under the shared names, as two JSON files, one of items and one of device groups, each row leaving out what it does not say. It sends them as two imports: `system` vakr, mode `update` (P-334), `complete` | a hirdir service account, Inventory |
 | hirdir → sunstone | regions, sites, locations, devices, groups, circuits, carrier networks, operators | sunstone's import adapter writes the generated part of its topology (SI-09) | a hirdir service account, View-only |
 | vakr → sunstone | live state and history | sunstone's live-state source for vakr (SI-08) | vakr's integration reader |
 | sunstone → hirdir | fixes to what hirdir owns, such as a circuit's ends | a file that a person previews and applies in hirdir. sunstone has no sign-in, so it never writes with an account of its own | the person's |
