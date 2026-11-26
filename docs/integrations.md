@@ -24,7 +24,7 @@ in all its forms should be shared across each project, carrier/provider circuit 
 enterprise circuit ID, same fields with same content across the tools/projects."
 
 Everything on this page is proposed unless the tracking table says it is built:
-- P-329 to P-339 and O-04 in hirdir's [Decisions](decisions.md#proposed);
+- P-329 to P-340 and O-04 in hirdir's [Decisions](decisions.md#proposed);
 - ADR-037 and ADR-038 in vakr;
 - SI-01 to SI-10 in sunstone's Decisions.
 
@@ -120,24 +120,28 @@ A circuit has the same block of fields in all three projects, under hirdir's nam
 |---|---|
 | `circuit_hid` | the circuit's HID |
 | `name` | hirdir's name for the circuit |
-| `enterprise_circuit_id` | the enterprise's own ID for it |
+| `enterprise_circuit_id` | the enterprise's own ID for it: one value for the whole circuit |
 | `circuit_type` | from hirdir's list: `internet`, `mpls`, `point_to_point`, `dark_fiber`, `wavelength`, `voice`, `other` |
 | `carrier`, `carrier_hid` | the primary carrier, by its vendor's name and HID |
-| `carrier_circuit_number` | the number the primary carrier gives the circuit |
-| `carriers` | each of the other carriers: `carrier`, `carrier_hid`, `role` (`local_exchange`, `cross_connect`, `last_mile`, `other`), `side` (`a`, `z`, or blank for the whole circuit; P-338) and `circuit_number` |
+| `carrier_circuit_id` | the ID the primary carrier gives the circuit, as the carrier writes it (P-340) |
+| `carriers` | each of the other carriers: `carrier`, `carrier_hid`, `role` (`local_exchange`, `cross_connect`, `last_mile`, `other`), `side` (`a`, `z`, or blank for the whole circuit; P-338) and `carrier_circuit_id` |
 | `port_mbps`, `down_mbps`, `up_mbps` | the speed of the port, and the download and upload rates the circuit is limited to, in Mbps. A blank rate means the port's speed |
 | `side` | on vakr's interface and on sunstone's link end: whether this device is on the `a` or `z` side of the circuit |
 | `interface` | the port where the circuit lands (P-330) |
 
 What each project changes:
-- **vakr.** `provider` becomes `carrier`. `circuit_id` becomes `carrier_circuit_number`.
+- **hirdir.** `carrier_circuit_number` becomes `carrier_circuit_id`, and so does the
+  other carriers' `circuit_number` (P-340). It is an ID, not a number to count with.
+  `enterprise_circuit_id` stays a single value for the whole circuit, as the owner
+  confirmed on 2026-11-26.
+- **vakr.** `provider` becomes `carrier`. `circuit_id` becomes `carrier_circuit_id`.
   `contracted_bps` becomes `down_mbps` and `up_mbps`, in Mbps as hirdir writes them.
   `circuit_hid`, `enterprise_circuit_id`, `carriers`, `circuit_type`, `port_mbps` and
   `side` are added. `capacity_override_bps` stays, as vakr's own. The filter `provider`
   becomes `carrier`.
 - **sunstone.** `enterprise_cid`, which holds a value for each side, becomes the single
   `enterprise_circuit_id`. `circuit.provider` becomes `carrier`. `circuit.circuit_id`,
-  which also holds a value for each side, becomes `carrier_circuit_number`, and a number
+  which also holds a value for each side, becomes `carrier_circuit_id`, and an ID
   that belongs to one side alone goes in `carriers`, with its `side`. `circuit_hid`,
   `circuit_type` and the rates are added. `type` (`carrier`, `cross-connect`), `service`
   and `technology` stay sunstone's own until hirdir holds them.
@@ -431,7 +435,7 @@ fixture.
 |---|---|---|---|
 | The common keys: `hid` and `<name>_hid` | P-329; HIDs exist already | ADR-037 (1), proposed | SI-01, proposed |
 | Shared fields under hirdir's names, operators on devices | P-329, 0.9.20 | ADR-037 (2), proposed | SI-02, SI-07, proposed |
-| The circuit block, and which way is down | P-330, P-338, 0.9.20 | ADR-037 (3), proposed | SI-03, proposed |
+| The circuit block, and which way is down | P-330, P-338, P-340, 0.9.20 | ADR-037 (3), proposed | SI-03, proposed |
 | One rule for an interface's name | P-331, 0.9.20 | ADR-037 (6), proposed | SI-05, proposed |
 | Registrations follow the node through a replacement | P-332, 0.9.20 | none | none |
 | What a tool reports: files of device groups, the mode `update` | P-333, P-334, 0.9.20 | ADR-037 (4), proposed | none |
