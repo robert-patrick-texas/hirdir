@@ -121,6 +121,7 @@ A host with an earlier release is upgraded by installing the new package.
 | [Data model](docs/data-model.md) | The records, inheritance, identity, lifecycle, counting and weight |
 | [Architecture](docs/architecture.md) | The software, access, the package and how it is tested |
 | [Interfaces](docs/interfaces.md) | The API, the filter grammar, import and export, the CLI, the web UI |
+| [Integrations](docs/integrations.md) | How hirdir, vakr and sunstone share keys, fields and data |
 | [Examples](examples/README.md) | A small fictional inventory as CSV and JSON, and how to load it |
 | [Build plan](docs/build-plan.md) | Releases, parallel lanes and the acceptance scenarios |
 | [Release process](docs/release-process.md) | Versions, release notes, the dependency rule, publishing these pages |
@@ -128,9 +129,11 @@ A host with an earlier release is upgraded by installing the new package.
 
 ## Status
 
-0.9.19 is the latest release. Next is 1.0.0: an accessibility pass, complete user and
-operator documentation, backup and restore checked, and the timing run again on the
-release. The order of work is in the [build plan](docs/build-plan.md).
+0.9.19 is the latest release. Next is 0.9.20: the keys and fields that hirdir shares
+with vakr and sunstone ([Integrations](docs/integrations.md)). Then 1.0.0: an
+accessibility pass, complete user and operator documentation, backup and restore
+checked, and the timing run again on the release. The order of work is in the
+[build plan](docs/build-plan.md).
 
 Every example in this repository is fictional.
 
