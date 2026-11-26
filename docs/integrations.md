@@ -353,13 +353,15 @@ before another can load it.
      the preview.
    - A stack is registered by hand.
    - A file is generated from a hirdir export for `vakr inventory plan`.
-2. **With hirdir 0.9.20, vakr's ADR-037 and sunstone's SI-01 to SI-09:**
+2. **With hirdir 0.9.20, vakr's ADR-037 and sunstone's SI-01 to SI-09.** vakr's ADR-037 goes
+   in before vakr's production install, so that production starts on the shared names
+   (the owner, 2026-11-26). It brings:
    - the keys, the shared fields and the circuit block;
    - the mode `update`, and files of device groups from a tool;
    - the copy of the catalog;
    - the generated topology, and live state from vakr.
-3. **With vakr's ADR-038:** observed hardware and object sets, and hirdir showing what
-   differs.
+3. **With vakr's ADR-038, after vakr's 14-day parallel run:** observed hardware and object
+   sets, and hirdir showing what differs.
 4. **After 1.0.0:**
    - hirdir's sync from the audit trail (P-223), read in the order of each event's HID,
      so that a batch resumes where the last one ended;
@@ -465,14 +467,14 @@ fixture.
 
 | What | hirdir | vakr | sunstone |
 |---|---|---|---|
-| The common keys: `hid` and `<name>_hid` | P-329; HIDs exist already | ADR-037 (1), proposed | SI-01, proposed |
+| The common keys: `hid` and `<name>_hid` | P-329; HIDs exist already | ADR-037 (1), proposed, before vakr's production install | SI-01, proposed |
 | Shared fields under hirdir's names, operators on devices | P-329, 0.9.20 | ADR-037 (2), proposed | SI-02, SI-07, proposed |
 | The circuit block, and which way is down | P-330, P-338, P-340, 0.9.20 | ADR-037 (3), proposed | SI-03, proposed |
 | One rule for an interface's name | P-331, 0.9.20 | ADR-037 (6), proposed | SI-05, proposed |
 | Registrations follow the node through a replacement | P-332, 0.9.20 | none | none |
 | What a tool reports: files of device groups, the mode `update` | P-333, P-334, 0.9.20 | ADR-037 (4), proposed | none |
 | External systems that are general, linked or registered, and the box | P-341, 0.9.20 | ADR-037 (2) and (4), proposed | none |
-| The hardware a tool sees | P-336, 0.9.20 | ADR-038 (1), proposed | none |
+| The hardware a tool sees | P-336, 0.9.20 | ADR-038 (1), proposed, after vakr's parallel run | none |
 | How a model is recognized; one catalog | P-337, 0.9.20 | ADR-038 (2), proposed | SI-04, proposed |
 | A site's time zone | P-339, 0.9.20 | ADR-037 (2), proposed | SI-02, proposed |
 | Stacks and clusters | held already | ADR-038 (3), proposed | SI-06, proposed |
