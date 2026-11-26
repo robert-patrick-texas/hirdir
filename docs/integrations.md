@@ -467,7 +467,7 @@ fixture.
 
 | What | hirdir | vakr | sunstone |
 |---|---|---|---|
-| The common keys: `hid` and `<name>_hid` | P-329; HIDs exist already | ADR-037 (1), proposed, before vakr's production install | SI-01, proposed |
+| The common keys: `hid` and `<name>_hid` | P-329; HIDs exist already | ADR-037 (1), proposed, before vakr's production install | SI-01, proposed, with SI-09 |
 | Shared fields under hirdir's names, operators on devices | P-329, 0.9.20 | ADR-037 (2), proposed | SI-02, SI-07, proposed |
 | The circuit block, and which way is down | P-330, P-338, P-340, 0.9.20 | ADR-037 (3), proposed | SI-03, proposed |
 | One rule for an interface's name | P-331, 0.9.20 | ADR-037 (6), proposed | SI-05, proposed |
