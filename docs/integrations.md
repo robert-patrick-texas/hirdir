@@ -24,7 +24,7 @@ in all its forms should be shared across each project, carrier/provider circuit 
 enterprise circuit ID, same fields with same content across the tools/projects."
 
 Everything on this page is proposed unless the tracking table says it is built:
-- P-329 to P-340 and O-04 in hirdir's [Decisions](decisions.md#proposed);
+- P-329 to P-341 and O-04 in hirdir's [Decisions](decisions.md#proposed);
 - ADR-037 and ADR-038 in vakr;
 - SI-01 to SI-10 in sunstone's Decisions.
 
@@ -336,7 +336,7 @@ its history.
 
 | From → to | What | How | Account |
 |---|---|---|---|
-| hirdir → vakr | sites, devices, their models, operators, and circuits on interfaces | vakr reads hirdir's API on a timer and writes its inventory file from what it reads. `vakr inventory plan` shows each change before it is applied | a hirdir service account, View-only |
+| hirdir → vakr | the devices whose box is ticked for vakr (P-341), with their sites, models and operators, and circuits on interfaces | vakr reads hirdir's API on a timer and writes its inventory file from what it reads. `vakr inventory plan` shows each change before it is applied | a hirdir service account, View-only |
 | vakr → hirdir | observed status, observed hardware, registrations | vakr writes what it reports under the shared names, as two JSON files, one of items and one of device groups, each row leaving out what it does not say. It sends them as two imports: `system` vakr, mode `update` (P-334), `complete` | a hirdir service account, Inventory |
 | hirdir → sunstone | regions, sites, locations, devices, groups, circuits, carrier networks, operators | sunstone's import adapter writes the generated part of its topology (SI-09) | a hirdir service account, View-only |
 | vakr → sunstone | live state and history | sunstone's live-state source for vakr (SI-08) | vakr's integration reader |
@@ -365,6 +365,38 @@ before another can load it.
      so that a batch resumes where the last one ended;
    - vakr's feed of events, and Server-Sent Events;
    - object sets of metrics.
+
+## External systems in hirdir: general, linked, registered
+
+hirdir knows every system the team uses, at one of three levels (P-341). Each level has
+all that the level before it has.
+
+| Level | What it does | Examples |
+|---|---|---|
+| **general** | Named and kept with its kind, home address and notes. It shows on no other page | a ticketing system, a wiki |
+| **linked** | Shows as a link on the records it relates to: the kinds named in `shows_on`, and only a vendor's records where the system belongs to a vendor | sunstone on items, sites and circuits; a building system on locations; a carrier's portal on that carrier's circuits; a maker's support portal on its items |
+| **registered** | Items and device groups are registered with it. Each one's page has a box that asks the system to take it | vakr |
+
+**The link.** A link is built from the system's `link_template`, which may hold:
+- `{hid}`, `{name}` and `{external_id}`, for any record;
+- `{hostname}` and `{fqdn}`, for an item or a group;
+- `{serial_number}`, `{asset_tag}` and `{pid}`, for an item;
+- `{code}`, for a place;
+- `{enterprise_circuit_id}` and `{carrier_circuit_id}`, for a circuit.
+
+A record with no value for a placeholder in the template shows no link, rather than a
+broken one.
+
+| System | Its template |
+|---|---|
+| vakr, which keeps hirdir's keys | `https://vakr.example.net/devices?hid={hid}` |
+| A building system | `https://building.example/detail/{external_id}`, where the ID is the one a person enters on the building |
+| A carrier's portal | `https://carrier.example/portal/`, or `https://carrier.example/portal/circuits/{carrier_circuit_id}` where the portal takes the carrier's ID |
+
+**The box.** Ticking the box makes a registration `pending`. The system takes it at its
+next exchange (its pull from hirdir's API, an export, or a file of its own) and confirms
+it, and the registration becomes `registered`. Clearing the box makes it `removed`, which
+for vakr disables the device. With no registered system, a page shows no box.
 
 ## Access between the projects
 
@@ -439,7 +471,7 @@ fixture.
 | One rule for an interface's name | P-331, 0.9.20 | ADR-037 (6), proposed | SI-05, proposed |
 | Registrations follow the node through a replacement | P-332, 0.9.20 | none | none |
 | What a tool reports: files of device groups, the mode `update` | P-333, P-334, 0.9.20 | ADR-037 (4), proposed | none |
-| A registration as a link into its tool | P-335, 0.9.20 | ADR-037 (2), the link back, proposed | none |
+| External systems that are general, linked or registered, and the box | P-341, 0.9.20 | ADR-037 (2) and (4), proposed | none |
 | The hardware a tool sees | P-336, 0.9.20 | ADR-038 (1), proposed | none |
 | How a model is recognized; one catalog | P-337, 0.9.20 | ADR-038 (2), proposed | SI-04, proposed |
 | A site's time zone | P-339, 0.9.20 | ADR-037 (2), proposed | SI-02, proposed |
