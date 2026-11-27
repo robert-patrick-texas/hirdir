@@ -5,8 +5,13 @@ Instructions for an agent building this project. Read this page, then
 
 ## Where we are
 
-The next release is the first row of the table in
-[docs/build-plan.md](docs/build-plan.md) that has no file in `docs/releases/`.
+The release in progress, its state and what waits on the owner are in `STATUS.md` when
+it exists (a local file, not committed).
+
+The next release is the one `STATUS.md` names. Without it, the next release is the
+first one in [docs/build-plan.md](docs/build-plan.md) that has no file in
+`docs/releases/`: the releases after 0.9.0 are described in the paragraphs below its
+table, not as rows in it.
 
 ## Authority
 
